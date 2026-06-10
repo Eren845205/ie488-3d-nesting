@@ -1,0 +1,13 @@
+# IE 488 — 3D voxel nesting bağımlılıkları
+# Kurulum: pip install -r requirements.txt
+numpy
+matplotlib
+trimesh>=4.0
+shapely>=2.0
+networkx
+rtree
+fast-simplification
+pillow
+pytest
+# sunum üretimi (opsiyonel)
+python-pptx

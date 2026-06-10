@@ -1,0 +1,13 @@
+# Çıktılar — DEMO_*.bat / run3d ile yeniden üretilebilir
+results/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# OneDrive / OS
+desktop.ini
+Thumbs.db
