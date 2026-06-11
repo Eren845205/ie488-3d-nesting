@@ -32,10 +32,16 @@ class Bin3D:
     """Heightmap bin. All placement math is in voxel units; mm at the edges."""
 
     def __init__(self, plate_w_mm: float = 220.0, plate_d_mm: float = 220.0,
-                 pitch: float = 220.0 / 64):
+                 pitch: float = 220.0 / 64, z_clearance: int = 0):
         self.plate_w_mm = float(plate_w_mm)
         self.plate_d_mm = float(plate_d_mm)
         self.pitch = float(pitch)
+        # z_clearance: parça başka parça ÜZERİNE oturduğunda araya konan boş
+        # hücre sayısı (voxel).  Yatay boşluk voxelize._dilate'te; dikey boşluk
+        # burada tek taraflı verilir — çift taraflı z-dilation'dan yarı maliyet
+        # (hoca min 1 mm şartı, 2026-06-11).  Plakaya oturan parça (drop z=0)
+        # yükseltilmez.
+        self.z_clearance = int(z_clearance)
         self.nx = int(plate_w_mm // pitch)
         self.ny = int(plate_d_mm // pitch)
         self.height = np.zeros((self.nx, self.ny), dtype=np.int32)
@@ -62,6 +68,8 @@ class Bin3D:
         for i, j, b in zip(cols_i, cols_j, orient.bottom[cols_i, cols_j]):
             np.maximum(Z, self.height[i:i + npx, j:j + npy] - b, out=Z)
         np.maximum(Z, 0, out=Z)
+        if self.z_clearance:
+            Z[Z > 0] += self.z_clearance  # parça üstüne oturma -> dikey boşluk
         return Z
 
     def drop_z(self, orient: Orientation, x: int, y: int) -> int:
@@ -69,7 +77,10 @@ class Bin3D:
         f = orient.filled
         sub = self.height[x:x + f.shape[0], y:y + f.shape[1]]
         vals = sub[f] - orient.bottom[f]
-        return max(int(vals.max()), 0)
+        z = max(int(vals.max()), 0)
+        if self.z_clearance and z > 0:
+            z += self.z_clearance
+        return z
 
     def place(self, part: VoxelPart, orientation_idx: int,
               x: int, y: int, z: int) -> Placement3D:

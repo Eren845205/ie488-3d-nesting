@@ -73,10 +73,9 @@ def test_margin_dilation_grows_volume():
     plain = voxelize_part("box", _box(), PITCH, n_orientations=1)
     fat = voxelize_part("box", _box(), PITCH, n_orientations=1, margin=1)
     assert fat.orientations[0].voxel_count > plain.orientations[0].voxel_count
-    # dilation pads one voxel on every side
-    assert fat.orientations[0].shape == tuple(
-        s + 2 for s in plain.orientations[0].shape
-    )
+    # dilation YATAY (x, y) — dikey boşluk Bin3D.z_clearance'ta (2026-06-11)
+    px, py, pz = plain.orientations[0].shape
+    assert fat.orientations[0].shape == (px + 2, py + 2, pz)
 
 
 @pytest.mark.skipif(

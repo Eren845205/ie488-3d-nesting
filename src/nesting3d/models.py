@@ -30,6 +30,41 @@ NUMUNE_QUANTITIES = {
     "n1": 4, "n2": 16, "n3": 3, "n4": 15, "n5": 1, "n6": 3, "n7": 3, "n8": 3,
 }
 
+# Parça-bazlı poz kısıtı (voxelize.rotation_matrices 8-poz master sete indeks).
+# Gerekçe (2026-06-11, hedef z <= 170 mm):
+#   - Plakalar (n3/n6/n7/n8, ~228x180 mm) dik dikilirse tek başına 178-190 mm
+#     yükseklik üretir -> hedef yapısal olarak imkânsızlaşır.  Yalnız yatay
+#     pozlara izin verilir; 180°/270° (indeks 4/5) çıkıntı-delik geçişme
+#     hizalanması için eklidir.
+#   - n5 (17.9 x 249 x 134.7) Ry dönüşü poz setinde olmadığından yatamaz;
+#     yan pozları 249 mm yükseklik üretir -> sadece orijinal dik pozlar.
+NUMUNE_ORIENTATIONS = {
+    "n3": (0, 1, 4, 5),
+    "n6": (0, 1, 4, 5),
+    "n7": (0, 1, 4, 5),
+    "n8": (0, 1, 4, 5),
+    "n5": (0, 1),
+}
+
+# Büyük delikli plakalar — dblf.plates_first_key bunları başa, tip-tip ardışık
+# koyar ki aynı tipler üst üste geçişerek (çıkıntı -> delik) otursun.
+NUMUNE_PLATES = frozenset({"n3", "n6", "n7", "n8"})
+
+# Hibrit poz seti (2026-06-11 akşam): SADECE kısa dik boylu plakalara (n3
+# 178.3, n6 180.9 mm) dik pozlar (2, 3) da açılır; n7 (187.5) ve n8 (190.1)
+# dik kalırsa eski 190 tavanı geri gelir, kapalı kalır.  Beklenen yapı: n3
+# (belki n6) dik + kalan plakalar yatık istif -> tavan ~178-181, eski rekor
+# 190.5'in altı.  Tam-bindirme probu (probe_nesting) yatık geçişmenin ~0
+# olduğunu gösterdi -> salt-yatık yolun tabanı ~206; SA ofset-delik
+# hizalarıyla 198'e indi ama 178 bandına inmesi için dik n3 şart görünüyor.
+NUMUNE_ORIENTATIONS_HYBRID = {
+    "n3": (0, 1, 2, 3, 4, 5),
+    "n6": (0, 1, 2, 3, 4, 5),
+    "n7": (0, 1, 4, 5),
+    "n8": (0, 1, 4, 5),
+    "n5": (0, 1),
+}
+
 SCENARIOS = {
     "default": {"chair": 10, "bracket": 5, "ring": 15},
     "stress": {"chair": 14, "bracket": 7, "ring": 21},
@@ -92,7 +127,8 @@ def numune_model_set(
 
     Mesh'ler GERÇEK boyutlarıyla kullanılır — load_model'deki ölçekleme
     burada YOK.  Packing orijinal (watertight) mesh'ten voxelize edilir;
-    4. eleman display_mesh görsel + STL export içindir.
+    4. eleman display_mesh SADECE görsel (render) içindir — STL export
+    orijinal mesh'ten gider (kabartma yazılar decimation'da silinmesin).
     """
     models_dir = Path(models_dir)
     out = []

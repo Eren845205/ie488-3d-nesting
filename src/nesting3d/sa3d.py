@@ -22,7 +22,7 @@ Determinism: all randomness flows through one seeded random.Random — same
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from src.nesting3d.bin3d import Bin3D, Placement3D
 from src.nesting3d.dblf import dblf, place_in_order
@@ -96,6 +96,7 @@ def simulated_annealing_3d(
     iterations: int = 600,
     t0: float = 3.0,
     t_min: float = 0.05,
+    order_key: Optional[Callable[[VoxelPart], tuple]] = None,
 ) -> SA3DResult:
     """Minimize bin height by searching (order, orientation) space with SA.
 
@@ -107,7 +108,9 @@ def simulated_annealing_3d(
     rng = random.Random(seed)
 
     # Start from the full DBLF baseline (order + orientation choices).
-    base_placements, base_bin = dblf(parts, bin_factory)
+    # order_key (örn. dblf.plates_first_key) başlangıç sırasını değiştirir;
+    # best-so-far korunduğundan SA bu baseline'ın altına asla düşmez.
+    base_placements, base_bin = dblf(parts, bin_factory, order_key=order_key)
     by_id = {p.id: p for p in parts}
     current: Solution = [
         (by_id[pl.part_id], pl.orientation_idx) for pl in base_placements

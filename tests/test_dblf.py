@@ -4,7 +4,7 @@ import numpy as np
 import trimesh
 
 from src.nesting3d.bin3d import Bin3D
-from src.nesting3d.dblf import dblf
+from src.nesting3d.dblf import dblf, plates_first_key, tower_order_key
 from src.nesting3d.voxelize import voxelize_part
 
 # trimesh grid size is round(extent/pitch)+1 (vertex-centred, conservative):
@@ -61,6 +61,61 @@ def test_volume_descending_order():
     big = _cube_part("big", edge_mm=9.0)  # 3x3x3 voxels
     placements, _ = dblf([small, big], _bin)
     assert placements[0].part_id == "big"
+
+
+def test_plates_first_order():
+    # plakalar başa, aynı isimliler ARDIŞIK; plaka-dışılar hacim-azalan sona
+    def named(part_id, name, edge):
+        vp = _cube_part(part_id, edge_mm=edge)
+        vp.name = name
+        return vp
+
+    parts = [
+        named("small", "small", 6.0),
+        named("pA_1", "plateA", 9.0),
+        named("big", "big", 9.0),
+        named("pB_1", "plateB", 9.0),
+        named("pA_2", "plateA", 9.0),
+    ]
+    key = plates_first_key(frozenset({"plateA", "plateB"}))
+    order = [p.id for p in sorted(parts, key=key)]
+    assert order[:3] == ["pA_1", "pA_2", "pB_1"]  # plakalar önce, tip-tip
+    assert order[3:] == ["big", "small"]          # kalanlar hacim-azalan
+
+
+def test_dblf_custom_order_key_changes_placement_order():
+    small = _cube_part("small", edge_mm=6.0)
+    big = _cube_part("big", edge_mm=9.0)
+    placements, _ = dblf([small, big], _bin,
+                         order_key=lambda p: (p.volume_voxels,))
+    assert placements[0].part_id == "small"  # hacim-ARTAN özel sıra uygulanır
+
+
+def test_tower_order_plates_lead_and_deterministic():
+    def named(part_id, name, edge):
+        vp = _cube_part(part_id, edge_mm=edge)
+        vp.name = name
+        return vp
+
+    def build():
+        return [
+            named("big", "big", 9.0),
+            named("pA_1", "plateA", 9.0),
+            named("pB_1", "plateB", 9.0),
+            named("pA_2", "plateA", 9.0),
+            named("small", "small", 6.0),
+        ]
+
+    plates = frozenset({"plateA", "plateB"})
+    parts = build()
+    key = tower_order_key(parts, plates, _bin)
+    order = [p.id for p in sorted(parts, key=key)]
+    assert set(order[:3]) == {"pA_1", "pA_2", "pB_1"}  # plakalar önde
+    assert order[3:] == ["big", "small"]               # kalanlar hacim-azalan
+    # determinizm: aynı girdiden aynı sıra
+    parts2 = build()
+    order2 = [p.id for p in sorted(parts2, key=tower_order_key(parts2, plates, _bin))]
+    assert order == order2
 
 
 def test_deterministic():

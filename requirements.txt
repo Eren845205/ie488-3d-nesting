@@ -6,6 +6,7 @@ trimesh>=4.0
 shapely>=2.0
 networkx
 rtree
+scipy
 fast-simplification
 pillow
 pytest

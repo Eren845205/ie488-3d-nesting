@@ -1,10 +1,13 @@
 """compare_numune.py — hoca numuneleri DBLF vs SA karşılaştırma raporu.
 
-Önkoşul (iki koşu, run3d):
-  python -m src.nesting3d.run3d --scenario numune --algo dblf --voxel-method slice \
-      --plate 350 --pitch 2.5 --export-stl --out results/numune_dblf
-  python -m src.nesting3d.run3d --scenario numune --algo sa --iters 1000 \
-      --voxel-method slice --plate 350 --pitch 2.5 --export-stl --out results/numune_sa
+Önkoşul (iki koşu, run3d — final konfigürasyon 2026-06-12: taban 335x335,
+pitch 1.5, margin 1 voxel = garantili >=1 mm boşluk, slice voxelization,
+z limiti 600 mm, hibrit poz seti = kısa plakalara (n3/n6) dik serbest):
+  python -m src.nesting3d.run3d --scenario numune --algo dblf --pitch 1.5 \
+      --orient hybrid --export-stl --check-clearance --out results/numune_dblf
+  python -m src.nesting3d.run3d --scenario numune --algo sa --iters 2000 \
+      --pitch 1.5 --orient hybrid --seed 13 --export-stl --check-clearance \
+      --out results/numune_sa
 
 Çıktılar (results/):
   numune_comparison.png   yan yana DBLF / SA yerleşimi + metrik bar grafiği
@@ -16,6 +19,7 @@
 """
 
 import csv
+import json
 from pathlib import Path
 
 import sys
@@ -37,8 +41,10 @@ SA_DIR = _RES / "numune_sa"
 
 DBLF_C = "#DD8452"
 SA_C = "#55A868"
-PITCH = 2.5
-PLATE = 350.0
+PITCH = 1.5
+PLATE = 335.0   # hoca makinesi tabanı (2026-06-11); z limiti 600 mm
+MARGIN_MM = 1.5  # margin 1 voxel @ pitch 1.5
+MAX_Z = 600.0
 
 
 def _read_summary(run_dir: Path) -> dict:
@@ -151,9 +157,20 @@ def write_report(dblf: dict, sa: dict, parts: list[dict]) -> None:
     with open(md, "w", encoding="utf-8") as f:
         f.write("# Numune Seti — 3D Nesting Sonuçları\n\n")
         f.write(f"Hoca numuneleri (8 model, toplam {sum(p['adet'] for p in parts)} "
-                f"parça), gerçek mm boyutlarıyla.  Taban {PLATE:.0f}x{PLATE:.0f} mm "
-                f"(4.stl = 304.8 mm olduğundan 220 mm tabla yetersiz), "
-                f"pitch {PITCH} mm, slice voxelization.\n\n")
+                f"parça), gerçek mm boyutlarıyla.  Taban {PLATE:.0f}x{PLATE:.0f} mm, "
+                f"z limiti {MAX_Z:.0f} mm (hoca makinesi, 2026-06-11), "
+                f"pitch {PITCH} mm, margin 1 voxel (garantili >= 1 mm parça arası "
+                f"boşluk), slice voxelization, hibrit poz seti (kısa plakalar "
+                f"n3/n6 dik durabilir — uzun plakalar n7/n8 yalnız yatık).  "
+                f"STL çıktısı devoxelize edilmiş ORİJİNAL mesh'lerden üretilir "
+                f"(kabartma yazılar korunur).\n\n")
+        for run_dir, label in ((DBLF_DIR, "DBLF"), (SA_DIR, "SA")):
+            cj = run_dir / "clearance_numune.json"
+            if cj.exists():
+                c = json.load(open(cj, encoding="utf-8"))
+                durum = "OK" if c["ok"] else "İHLAL"
+                f.write(f"Ölçülen min parça arası mesafe ({label}): "
+                        f"**{c['min_mm']:.2f} mm** — {durum} (eşik 1 mm)\n\n")
         f.write("## Parça envanteri\n\n")
         f.write("| parça | dosya | adet | x (mm) | y (mm) | z (mm) | hacim (mm³) | üçgen |\n")
         f.write("|---|---|---|---|---|---|---|---|\n")
