@@ -65,6 +65,22 @@ NUMUNE_ORIENTATIONS_HYBRID = {
     "n5": (0, 1),
 }
 
+# Eğik 'ekmek rafı' poz seti (2026-06-12, hedef <=170): hibrit set + eğik
+# pozlar (8/9/10/11 = dikten 20°/25°/30°/35°).  Gerekçe: eğik plaka
+# yüksekliği h·cosθ + t·sinθ — 170 altına inen pozlar:
+#   n3 (178.3): 20° → 172.7✗, 25° → 168.0✓, 30° → 161.9✓
+#   n6 (180.9): 25° → 171.9✗, 30° → 166.1✓
+#   n7 (187.5): 30° → 169.8✓(sınırda), 35° → 162.1✓
+#   n8 (190.1): 30° → 174.0✗, 35° → 166.5✓
+# Tavanı aşan eğik pozlar sete alınmaz (arama uzayı şişmesin).
+NUMUNE_ORIENTATIONS_TILT = {
+    "n3": (0, 1, 4, 5, 2, 3, 9, 10, 11),
+    "n6": (0, 1, 4, 5, 2, 3, 10, 11),
+    "n7": (0, 1, 4, 5, 10, 11),
+    "n8": (0, 1, 4, 5, 11),
+    "n5": (0, 1),
+}
+
 SCENARIOS = {
     "default": {"chair": 10, "bracket": 5, "ring": 15},
     "stress": {"chair": 14, "bracket": 7, "ring": 21},

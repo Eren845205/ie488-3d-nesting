@@ -35,6 +35,23 @@ def test_rotation_matrices_count():
     assert np.allclose(rotation_matrices(4)[0], np.eye(4))
 
 
+def test_tilt_pose_height():
+    # indeks 9 = dikten 25° (Rx 65°): ince uzun plakanın voxel yüksekliği
+    # h·cos25° + t·sin25° beklentisine (± 2 voxel kuantizasyon) oturmalı
+    from src.nesting3d.voxelize import N_MASTER_POSES
+
+    assert len(rotation_matrices(N_MASTER_POSES)) == N_MASTER_POSES
+    plate = _box(w=100.0, d=80.0, h=10.0)  # 80 mm dik boy, 10 mm kalınlık
+    vp = voxelize_part("p", plate, PITCH, allowed_orientations=(2, 9))
+    upright_h = vp.orientations[0].shape[2] * PITCH      # dik: ~80
+    tilt_h = vp.orientations[1].shape[2] * PITCH          # 25° eğik
+    import math
+    expected = 80.0 * math.cos(math.radians(25)) + 10.0 * math.sin(math.radians(25))
+    assert abs(upright_h - 80.0) <= 2 * PITCH
+    assert abs(tilt_h - expected) <= 2 * PITCH
+    assert tilt_h < upright_h
+
+
 def test_box_voxelizes_solid():
     vp = voxelize_part("box", _box(), PITCH, n_orientations=1)
     o = vp.orientations[0]

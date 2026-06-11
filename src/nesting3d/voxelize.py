@@ -37,14 +37,26 @@ def rotation_matrices(n_orientations: int = 4) -> List[np.ndarray]:
     180°/ters pozlar plaka-plaka geçişme (çıkıntı deliğe oturma) için
     kritik (hedef <=170 mm, 2026-06-11); toz yataklı üretimde her
     oryantasyon basılabilir.  n_orientations=1 keeps only the original pose.
+
+    İndeks 8..11: EĞİK pozlar — dikten 20°/25°/30°/35° yatırılmış
+    (Rx 70°/65°/60°/55°).  'Ekmek rafı' düzeni için (2026-06-12): dik plaka
+    178-190 mm tavan üretirken eğik plaka yükseklik·cosθ + kalınlık·sinθ'ya
+    iner (n3 25° ≈ 168, n8 35° ≈ 166) ve paralel eğik plakalar raf gibi
+    sık dizilebilir.  Yalnız allowed_orientations ile seçilir;
+    n_orientations'lı eski çağrılar ilk 8 pozu görür.
     """
     rz = trimesh.transformations.rotation_matrix(math.pi / 2, (0, 0, 1))
     rz2 = rz @ rz
     rx = trimesh.transformations.rotation_matrix(math.pi / 2, (1, 0, 0))
     rx2 = rx @ rx
+    tilt = [trimesh.transformations.rotation_matrix(math.radians(a), (1, 0, 0))
+            for a in (70.0, 65.0, 60.0, 55.0)]  # dikten 20°/25°/30°/35°
     mats = [np.eye(4), rz, rx, rz @ rx,
-            rz2, rz2 @ rz, rx2, rz @ rx2]
+            rz2, rz2 @ rz, rx2, rz @ rx2, *tilt]
     return mats[: max(1, min(n_orientations, len(mats)))]
+
+
+N_MASTER_POSES = 12  # 8 eksen-hizalı + 4 eğik (allowed_orientations indeksleri)
 
 
 @dataclass
@@ -213,7 +225,7 @@ def voxelize_part(
     <=170 mm hedefini imkânsız kılar).  Verilirse n_orientations yok sayılır.
     """
     if allowed_orientations is not None:
-        master = rotation_matrices(8)
+        master = rotation_matrices(N_MASTER_POSES)
         rots = [master[i] for i in allowed_orientations]
     else:
         rots = rotation_matrices(n_orientations)

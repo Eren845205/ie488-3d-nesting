@@ -132,6 +132,34 @@ Final konfig: pitch 1.5, margin 1, --orient hybrid, 2000 iter, seed 13.
 Resmî klasörler: numune_sa = _hyb_s13 kopyası; numune_dblf = aynı konfig DBLF
 koşusu; compare_numune.py metinleri pitch 1.5 + hibrit olarak güncellendi.
 
+## EĞİK PLAKA ("ekmek rafı") DENEYİ — 2026-06-12 ~02:30 (SA koşuları BEKLEMEDE)
+
+Hedef <=170 için son koz: plakaları dik değil 20-35° eğik dikmek.
+Kod HAZIR ve test edildi (96/96): master sete eğik pozlar (indeks 8-11 =
+dikten 20/25/30/35°), `NUMUNE_ORIENTATIONS_TILT` (her plakaya yalnız <170
+veren açılar), `run3d --orient tilt`.
+
+Ölçülen eğik tavanlar (p1.5, margin 1, voxel): n3 35°→150.0, n6 35°→148.5,
+n7 35°→160.5, n8 35°→157.5 — hepsi 35°'de dizilirse raf tavanı ~160.5 mm.
+Raf mekaniği: paralel eğik plakalar merdiven profilleriyle iç içe oturur,
+her plakanın alt kenarı tabana değerse (z=0) z_clearance maliyeti yok;
+>=1 mm boşluğu yatay dilation verir.
+
+DBLF probu 214.5 (beklenen — greedy eğik pozu hiç seçmez, hibritte de
+öyleydi; değer SA'dan gelecek).
+
+**SA koşuları KULLANICI BAŞLATACAK (ayrı session) — hazır komutlar:**
+```
+python -m src.nesting3d.run3d --scenario numune --algo sa --iters 2000 --pitch 1.5 --seed 42 --orient tilt --export-stl --check-clearance --out results/_tilt_s42
+python -m src.nesting3d.run3d --scenario numune --algo sa --iters 2000 --pitch 1.5 --seed 7  --orient tilt --export-stl --check-clearance --out results/_tilt_s07
+python -m src.nesting3d.run3d --scenario numune --algo sa --iters 2000 --pitch 1.5 --seed 13 --orient tilt --export-stl --check-clearance --out results/_tilt_s13
+```
+Süre: 3 paralel ~2-2.5 saat. Değerlendirme: en iyi `_tilt_*` sonucu 181.5
+(hibrit rekoru) ile kıyasla; <=170 inerse sunum + resmî klasörler + compare
+raporu güncellenir (aynı prosedür: numune_sa'ya kopyala, numune_dblf'i
+`--orient tilt` ile yeniden koş, compare_numune.py, make_pptx_numune.py
+sabitlerini güncelle).
+
 ## Sıradaki adımlar (PC açılınca)
 
 1. 5 final koşuyu yukarıdaki komutlarla yeniden başlat (paralel)

@@ -26,7 +26,8 @@ from src.nesting3d.clearance import min_clearance
 from src.nesting3d.dblf import dblf, plates_first_key, tower_order_key
 from src.nesting3d.export_stl import export_scene, placed_meshes
 from src.nesting3d.models import (NUMUNE_ORIENTATIONS,
-                                  NUMUNE_ORIENTATIONS_HYBRID, NUMUNE_PLATES,
+                                  NUMUNE_ORIENTATIONS_HYBRID,
+                                  NUMUNE_ORIENTATIONS_TILT, NUMUNE_PLATES,
                                   SCENARIOS, model_set)
 from src.nesting3d.sa3d import simulated_annealing_3d
 from src.nesting3d.visualize3d import render_convergence, render_layout
@@ -78,10 +79,12 @@ def _parse_args(argv=None):
                         "plates-first = plakalar önce + aynı tip ardışık; "
                         "tower = DP-optimal çapraz-tip plaka istif sırası "
                         "(geçişme matrisinden, numune ≤170 denemesi)")
-    p.add_argument("--orient", choices=["flat", "hybrid"], default="flat",
+    p.add_argument("--orient", choices=["flat", "hybrid", "tilt"],
+                   default="flat",
                    help="numune plaka poz kısıtı: flat = tüm plakalar yatık; "
-                        "hybrid = kısa plakalara (n3/n6) dik de serbest "
-                        "(tavan 178-181 denemesi)")
+                        "hybrid = kısa plakalara (n3/n6) dik de serbest; "
+                        "tilt = hibrit + eğik 'ekmek rafı' pozları "
+                        "(20-35°, <=170 denemesi)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--iters", type=int, default=1000)
     p.add_argument("--export-stl", action="store_true")
@@ -110,8 +113,10 @@ def run_scenario(scenario: str, args) -> list[dict]:
         n_orientations=args.rotations, margin=prm["margin"],
         method=prm["voxel_method"],
         orientation_overrides=(
-            (NUMUNE_ORIENTATIONS_HYBRID if args.orient == "hybrid"
-             else NUMUNE_ORIENTATIONS) if scenario == "numune" else None),
+            {"flat": NUMUNE_ORIENTATIONS,
+             "hybrid": NUMUNE_ORIENTATIONS_HYBRID,
+             "tilt": NUMUNE_ORIENTATIONS_TILT}[args.orient]
+            if scenario == "numune" else None),
     )
     # margin: yatay boşluk grid dilation'da, dikey boşluk z_clearance'ta
     bin_factory = lambda: Bin3D(plate, plate, pitch,
