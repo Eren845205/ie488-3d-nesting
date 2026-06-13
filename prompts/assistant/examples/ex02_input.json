@@ -1,0 +1,5 @@
+{
+  "soru": "Bu siparislerin fiyati hangi kurala gore belirlendi?",
+  "baglam_kaynaklari": ["fiyat#r1"],
+  "baglam_metni": "### [fiyat#r1] (fiyat)\nKural: r1 (hacim_kademesi)\nAciklama: Hacim 1000-5000 cm3 arasi — kademe 2\nGirdi: hacim_cm3=2400\nAra deger: 1.5000\nToplam sonra: 750.0000\nNihai toplam: 750.0"
+}

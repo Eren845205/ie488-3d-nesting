@@ -160,6 +160,20 @@ raporu güncellenir (aynı prosedür: numune_sa'ya kopyala, numune_dblf'i
 `--orient tilt` ile yeniden koş, compare_numune.py, make_pptx_numune.py
 sabitlerini güncelle).
 
+### SONUÇ — 2026-06-12 (3 koşu tamamlandı, otonom değerlendirme)
+
+| seed | yükseklik | density | clearance | süre |
+|---|---|---|---|---|
+| 42 | **181.5 mm** | 0.228 | min 1.62 mm OK | 4218 s |
+| 13 | 183.0 mm | 0.232 | min 1.50 mm OK | 4493 s |
+| 7  | 192.0 mm | 0.213 | min 1.50 mm OK | 4333 s |
+
+**Karar:** En iyi tilt sonucu 181.5 = hibrit rekoruyla AYNI, ≤170'e inmedi →
+sunum/resmî klasör güncellemesi YAPILMADI (prosedür şartı sağlanmadı).
+Eğik pozlar SA'da rekoru kıramadı; 181.5 sağlam bir plato görünüyor.
+Kalan kozlar: daha fazla seed/iters, plaka-önce başlangıç sezgisi (aşağıda
+madde 3). Sonuçlar `results/_tilt_s42 / _s07 / _s13` altında duruyor.
+
 ## Sıradaki adımlar (PC açılınca)
 
 1. 5 final koşuyu yukarıdaki komutlarla yeniden başlat (paralel)

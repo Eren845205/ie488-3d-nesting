@@ -1,0 +1,24 @@
+{
+  "is_id": "demo-002",
+  "n_orders": 5,
+  "n_batches": 3,
+  "n_warnings": 2,
+  "total_revenue_usd": 3400.00,
+  "kaynaklar": [
+    {
+      "id": "yerlesim#B001",
+      "tip": "yerlesim",
+      "icerik": "Yukseklik: 220.5 mm\nDoluluk: %68.1\nCozucu: SA\n5 parca yerlesti"
+    },
+    {
+      "id": "termin#cizelge",
+      "tip": "termin",
+      "icerik": "Uyarilar:\n- ORD-FORD-A2: 3 gun gecikme\n- ORD-BAYKAR-B1: 1 gun gecikme"
+    },
+    {
+      "id": "fiyat#B001",
+      "tip": "fiyat",
+      "icerik": "Nihai fiyat: 3400.00 USD"
+    }
+  ]
+}

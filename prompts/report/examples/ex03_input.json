@@ -1,0 +1,19 @@
+{
+  "is_id": "demo-003",
+  "n_orders": 1,
+  "n_batches": 1,
+  "n_warnings": 0,
+  "total_revenue_usd": 890.75,
+  "kaynaklar": [
+    {
+      "id": "yerlesim#B001",
+      "tip": "yerlesim",
+      "icerik": "Yukseklik: 145.0 mm\nDoluluk: %88.5\nCozucu: DBLF\n8 parca yerlesti"
+    },
+    {
+      "id": "fiyat#B001",
+      "tip": "fiyat",
+      "icerik": "Nihai fiyat: 890.75 USD\nKural: hacim_kademesi + uzaklik_kademesi"
+    }
+  ]
+}

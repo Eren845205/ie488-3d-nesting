@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+
+{% block title %}Sonuclar &mdash; Konteyner Nesting Sistemi{% endblock %}
+
+{% block content %}
+
+<a href="/" class="back-link">&larr; Ana Sayfaya Don</a>
+
+<h2 class="section-heading">Pipeline Sonuclari</h2>
+
+{% if used_demo %}
+<div class="alert alert-warning" style="margin-bottom: 16px;">
+    Demo senaryosu kullanildi &mdash; kendi siparislerinizi
+    <a href="/siparisler">/siparisler</a> ekranindan girin.
+</div>
+{% endif %}
+
+<!-- Ozet kartlar -->
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="sc-label">Toplam Ciro Onerisi</div>
+        <div class="sc-value">{{ "%.0f"|format(total_revenue) }}</div>
+        <div class="sc-unit">USD</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Siparis Sayisi</div>
+        <div class="sc-value">{{ n_orders }}</div>
+        <div class="sc-unit">siparis</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Parti Sayisi</div>
+        <div class="sc-value">{{ n_batches }}</div>
+        <div class="sc-unit">parti</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Pipeline Suresi (Time-to-Quote)</div>
+        <div class="sc-value">{{ "%.2f"|format(elapsed) }}</div>
+        <div class="sc-unit">saniye</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Uyari Sayisi</div>
+        <div class="sc-value">{{ n_warnings }}</div>
+        <div class="sc-unit">{% if n_warnings == 0 %}temiz{% else %}uyari{% endif %}</div>
+    </div>
+</div>
+
+<!-- LLM Yonetici Ozeti -->
+{% if llm_active %}
+<div class="card" id="llm-ozet-card">
+    <div class="card-title">LLM Yonetici Ozeti</div>
+    <div id="ozet-content">
+        <p style="color: var(--color-text-muted); font-size: 14px;">
+            Yerel model (llama3) kullanilarak Turkce yonetici ozeti olusturulacak.
+            Lokal model birkaç-onlarca saniye surebilir.
+        </p>
+        <button class="btn btn-primary" id="ozet-btn" onclick="ozetOlustur()">
+            Yonetici Ozeti Olustur
+        </button>
+    </div>
+    <div id="ozet-loading" style="display:none; padding: 12px 0;">
+        <span style="color: var(--color-text-muted);">Yerel model dusunuyor, lutfen bekleyin...</span>
+    </div>
+    <div id="ozet-result" style="display:none;"></div>
+    <div id="ozet-uyari" style="display:none;" class="alert alert-warning"></div>
+    <div id="ozet-hata" style="display:none;" class="alert" style="background:#fee2e2;"></div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">LLM Yonetici Ozeti</div>
+    <p style="color: var(--color-text-muted);">
+        <em>LLM kapali</em> — <code>configs/llm.local.json</code> yapılandirmasi eksik
+        veya Ollama servisi calismıyor.
+    </p>
+</div>
+{% endif %}
+
+<!-- Siparis oncelik tablosu -->
+<div class="card">
+    <div class="card-title">1. Siparis Oncelik Tablosu (EDD Agirlikli)</div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sira</th>
+                    <th>Siparis</th>
+                    <th>Musteri</th>
+                    <th>Termin</th>
+                    <th>Oncelik Sinifi</th>
+                    <th>Toplam Hacim (cm3)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in ranked %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ order.order_id }}</strong></td>
+                    <td>{{ order.customer }}</td>
+                    <td>{{ order.deadline }}</td>
+                    <td>
+                        {% if order.priority_class == 1 %}
+                            <span class="badge badge-red">Sinif 1</span>
+                        {% else %}
+                            <span class="badge badge-yellow">Sinif {{ order.priority_class }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ "%.0f"|format(order.total_volume_cm3) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Parti plani + uyarilar -->
+<div class="card">
+    <div class="card-title">2. Parti Plani</div>
+
+    {% if warnings %}
+        <div class="alert alert-warning">
+            {{ warnings | length }} termin asimi uyarisi tespit edildi.
+        </div>
+        <div class="table-wrapper" style="margin-bottom: 20px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Siparis</th>
+                        <th>Termin</th>
+                        <th>Tahmini Bitis</th>
+                        <th>Gecikme (gun)</th>
+                        <th>Parti</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in warnings %}
+                    <tr>
+                        <td>{{ w.order_id }}</td>
+                        <td>{{ w.deadline }}</td>
+                        <td>{{ w.estimated_completion }}</td>
+                        <td><span class="badge badge-red">{{ w.delay_days }} gun</span></td>
+                        <td>{{ w.batch_id }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-success">
+            Termin asimi uyarisi yok &mdash; tum siparisler planli terminlerde teslim edilebilir.
+        </div>
+    {% endif %}
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Parti ID</th>
+                    <th>Musteri</th>
+                    <th>Siparisler</th>
+                    <th>Toplam Hacim (cm3)</th>
+                    <th>Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch in batches %}
+                <tr>
+                    <td><strong>{{ batch.batch_id }}</strong></td>
+                    <td>{{ batch.customer }}</td>
+                    <td>
+                        {% for order in batch.orders %}
+                            <span class="badge badge-blue">{{ order.order_id }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ "%.0f"|format(batch.total_volume_cm3) }}</td>
+                    <td>
+                        {% if batch.oversized %}
+                            <span class="badge badge-red">Asiri Boyutlu</span>
+                        {% else %}
+                            <span class="badge badge-green">Normal</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Parti basi nesting + fiyat -->
+{% for batch in batches %}
+{% set nr = nesting_results.get(batch.batch_id, {}) %}
+{% set pr = pricing_results.get(batch.batch_id, {}) %}
+<div class="card">
+    <div class="card-title">
+        Parti {{ batch.batch_id }} &mdash; {{ batch.customer }}
+        &nbsp;
+        {% if batch.oversized %}
+            <span class="badge badge-red">Asiri Boyutlu</span>
+        {% else %}
+            <span class="badge badge-green">Normal</span>
+        {% endif %}
+    </div>
+
+    <!-- Nesting metrikleri -->
+    <div class="info-grid" style="margin-bottom: 20px;">
+        <div class="info-item">
+            <div class="info-label">Nesting Yuksekligi</div>
+            <div class="info-value">{{ "%.1f"|format(nr.get('height_mm', 0.0)) }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Doluluk Orani</div>
+            <div class="info-value">
+                {% set density_pct = nr.get('density', 0.0) * 100 %}
+                {{ "%.1f"|format(density_pct) }}%
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Yerlestirilen Parca</div>
+            <div class="info-value">{{ nr.get('n_parts', 0) }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Nesting Suresi</div>
+            <div class="info-value">{{ "%.3f"|format(nr.get('elapsed_sec', 0.0)) }} s</div>
+        </div>
+        {% if nr.get('note') %}
+        <div class="info-item">
+            <div class="info-label">Not</div>
+            <div class="info-value" style="color: #b45309; font-size: 13px;">{{ nr.note }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Fiyat dokumu -->
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <strong>Toplam Fiyat Onerisi</strong>
+            <span style="font-size: 20px; font-weight: 800; color: var(--color-primary);">
+                {{ "%.2f"|format(pr.get('total_price', 0.0)) }} $
+            </span>
+        </div>
+        {% set breakdown = pr.get('breakdown', []) %}
+        {% if breakdown %}
+        <ul class="breakdown-list">
+            {% for line in breakdown %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<!-- LLM Asistan Soru-Cevap -->
+{% if llm_active %}
+<div class="card" id="llm-asistan-card">
+    <div class="card-title">Sisteme Soru Sor (LLM Asistan)</div>
+    <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
+        Yalnizca bu kosunun sonuclari (nesting, fiyat, termin) hakkinda soru sorabilirsiniz.
+        Asistan baglamdaki verilere dayanarak Turkce yanit uretir.
+    </p>
+
+    <!-- Sohbet gecmisi -->
+    <div id="sohbet-container" style="margin-bottom: 16px;">
+        {% for tur in sohbet %}
+        <div class="sohbet-soru">
+            <strong>Siz:</strong> {{ tur.soru }}
+        </div>
+        <div class="sohbet-cevap">
+            <strong>Asistan:</strong> {{ tur.cevap }}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Soru girisi -->
+    <div style="display: flex; gap: 8px; align-items: flex-end;">
+        <textarea
+            id="soru-input"
+            rows="2"
+            placeholder="Ornek: B001 partisinin nesting yuksekligi nedir?"
+            style="flex: 1; padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; resize: vertical;"
+        ></textarea>
+        <button class="btn btn-primary" id="sor-btn" onclick="soruSor()">
+            Sor
+        </button>
+    </div>
+    <div id="sor-loading" style="display:none; padding: 8px 0; color: var(--color-text-muted); font-size: 13px;">
+        Yerel model dusunuyor...
+    </div>
+    <div id="sor-hata" style="display:none;" class="alert alert-warning" style="margin-top:8px;"></div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">Sisteme Soru Sor (LLM Asistan)</div>
+    <p style="color: var(--color-text-muted);">
+        <em>LLM kapali</em> — asistan devre disi.
+    </p>
+</div>
+{% endif %}
+
+<!-- Yeniden calistir formu -->
+<div class="card" style="text-align: center; padding: 28px;">
+    <p style="margin-bottom: 16px; color: var(--color-text-muted);">
+        Pipeline&#39;i yeniden kosturmak icin asagidaki dugmeyi kullanin.
+    </p>
+    <form method="POST" action="/run" id="rerun-form">
+        <button type="submit" class="btn btn-primary" id="rerun-btn">
+            Pipeline&#39;i Yeniden Calistir
+        </button>
+    </form>
+</div>
+
+<!-- Yukleniyor overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Pipeline kosturuluyor, lutfen bekleyin...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.sohbet-soru {
+    background: #f0f4ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+.sohbet-cevap {
+    background: #f0fff4;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+.ozet-body {
+    background: #f8fafc;
+    border-left: 4px solid var(--color-primary);
+    padding: 14px 18px;
+    border-radius: 6px;
+    font-size: 15px;
+    line-height: 1.7;
+    margin-top: 12px;
+}
+</style>
+
+<script>
+    document.getElementById('rerun-form').addEventListener('submit', function() {
+        document.getElementById('loading-overlay').classList.add('active');
+        document.getElementById('rerun-btn').disabled = true;
+        document.getElementById('rerun-btn').textContent = 'Kosturuluyor...';
+    });
+
+    function ozetOlustur() {
+        const btn = document.getElementById('ozet-btn');
+        const loading = document.getElementById('ozet-loading');
+        const result = document.getElementById('ozet-result');
+        const uyari = document.getElementById('ozet-uyari');
+        const hata = document.getElementById('ozet-hata');
+
+        btn.disabled = true;
+        btn.textContent = 'Olusturuluyor...';
+        loading.style.display = 'block';
+        result.style.display = 'none';
+        uyari.style.display = 'none';
+        hata.style.display = 'none';
+
+        fetch('/ozet', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+            .then(r => r.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yeniden Olustur';
+
+                if (data.hata) {
+                    hata.style.display = 'block';
+                    hata.textContent = 'Hata: ' + data.hata;
+                    return;
+                }
+                if (data.topraklama_uyarisi) {
+                    uyari.style.display = 'block';
+                    uyari.textContent = 'Topraklama Uyarisi: ' + data.topraklama_uyarisi;
+                    return;
+                }
+                result.style.display = 'block';
+                result.innerHTML = '<div class="ozet-body">' +
+                    '<strong>' + (data.baslik || '') + '</strong><br><br>' +
+                    escapeHtml(data.ozet || '') + '</div>';
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yonetici Ozeti Olustur';
+                hata.style.display = 'block';
+                hata.textContent = 'Baglanti hatasi: ' + err;
+            });
+    }
+
+    function soruSor() {
+        const input = document.getElementById('soru-input');
+        const btn = document.getElementById('sor-btn');
+        const loading = document.getElementById('sor-loading');
+        const hata = document.getElementById('sor-hata');
+        const container = document.getElementById('sohbet-container');
+
+        const soru = input.value.trim();
+        if (!soru) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Bekleniyor...';
+        loading.style.display = 'block';
+        hata.style.display = 'none';
+
+        fetch('/sor', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({soru: soru})
+        })
+        .then(r => r.json())
+        .then(data => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = 'Sor';
+
+            if (data.hata) {
+                hata.style.display = 'block';
+                hata.textContent = 'Hata: ' + data.hata;
+                return;
+            }
+
+            const soruDiv = document.createElement('div');
+            soruDiv.className = 'sohbet-soru';
+            soruDiv.innerHTML = '<strong>Siz:</strong> ' + escapeHtml(soru);
+            container.appendChild(soruDiv);
+
+            const cevapDiv = document.createElement('div');
+            cevapDiv.className = 'sohbet-cevap';
+            let cevapHtml = '<strong>Asistan:</strong> ' + escapeHtml(data.cevap || '');
+            if (data.sayi_bayragi) {
+                cevapHtml += ' <span style="color:#b45309; font-size:12px;">[Sayi-topraklama uyarisi]</span>';
+            }
+            if (data.ret) {
+                cevapHtml += ' <span style="color:#6b7280; font-size:12px;">[Baglam-disi soru]</span>';
+            }
+            cevapDiv.innerHTML = cevapHtml;
+            container.appendChild(cevapDiv);
+
+            input.value = '';
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = 'Sor';
+            hata.style.display = 'block';
+            hata.textContent = 'Baglanti hatasi: ' + err;
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    // Enter ile soru gonder (Shift+Enter yeni satir)
+    document.addEventListener('DOMContentLoaded', function() {
+        const input = document.getElementById('soru-input');
+        if (input) {
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    soruSor();
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

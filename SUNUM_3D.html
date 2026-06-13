@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IE 488 — 3B Voxel Nesting Sunumu (Aşama 2)</title>
+<style>
+  :root{
+    --accent:#2563eb;
+    --accent2:#059669;
+    --ink:#1e293b;
+    --muted:#64748b;
+    --bg:#f8fafc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    overflow:hidden;
+  }
+  .slide{
+    display:none;
+    height:100vh;
+    width:100vw;
+    padding:5vh 7vw;
+    flex-direction:column;
+    justify-content:center;
+    animation:fade .35s ease;
+  }
+  .slide.active{display:flex;}
+  @keyframes fade{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+
+  h1{font-size:3.1rem;line-height:1.15;margin-bottom:1rem;color:var(--ink);}
+  h2{font-size:2.05rem;color:var(--accent);margin-bottom:1.3rem;border-bottom:3px solid var(--accent);padding-bottom:.45rem;align-self:flex-start;}
+  h3{font-size:1.25rem;color:var(--accent2);margin:.8rem 0 .3rem;}
+  p,li{font-size:1.25rem;line-height:1.55;color:var(--ink);}
+  ul{margin-left:1.4rem;margin-top:.3rem;}
+  li{margin-bottom:.6rem;}
+  .sub{color:var(--muted);font-size:1.45rem;margin-top:.6rem;}
+  .small{font-size:1rem;color:var(--muted);}
+  .accent{color:var(--accent);font-weight:600;}
+  .green{color:var(--accent2);font-weight:600;}
+  .pill{align-self:flex-start;background:#dbeafe;color:var(--accent);padding:.25rem .9rem;border-radius:999px;font-size:1rem;font-weight:600;margin-bottom:.5rem;}
+  li .pill, p .pill{display:inline-block;align-self:auto;margin-bottom:0;}
+
+  .row{display:flex;gap:2.5vw;align-items:center;}
+  .col{flex:1;}
+  img{max-width:100%;max-height:60vh;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.12);}
+
+  table{border-collapse:collapse;margin-top:.8rem;font-size:1.15rem;width:100%;}
+  th,td{border:1px solid #cbd5e1;padding:.5rem .9rem;text-align:center;}
+  th{background:var(--accent);color:#fff;}
+  tr:nth-child(even){background:#eef2ff;}
+  .win{background:#dcfce7 !important;font-weight:700;color:#166534;}
+
+  .note{background:#fef9c3;border-left:5px solid #eab308;padding:.8rem 1.2rem;border-radius:8px;margin-top:1rem;font-size:1.1rem;}
+
+  .footer{position:fixed;bottom:16px;right:26px;color:var(--muted);font-size:.9rem;}
+  .pager{position:fixed;bottom:16px;left:26px;color:var(--muted);font-size:.9rem;}
+  .hint{position:fixed;top:16px;right:26px;color:#cbd5e1;font-size:.82rem;}
+  .big-num{font-size:2.4rem;font-weight:800;color:var(--accent2);}
+
+  /* Konuşma notları paneli (N ile aç/kapa) */
+  #notes{
+    position:fixed;left:0;right:0;bottom:0;
+    background:#0f172a;color:#e2e8f0;
+    padding:1.1rem 2rem 1.3rem;
+    box-shadow:0 -8px 30px rgba(0,0,0,.3);
+    font-size:1.05rem;line-height:1.5;
+    max-height:42vh;overflow:auto;
+    display:none;
+    border-top:3px solid var(--accent);
+  }
+  #notes.show{display:block;}
+  #notes .lbl{color:#38bdf8;font-weight:700;font-size:.85rem;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:.4rem;}
+  #notes b{color:#fff;}
+  #notes .q{color:#fbbf24;font-weight:700;}
+  #notes ul{margin-left:1.2rem;}
+  #notes li{font-size:1.05rem;color:#e2e8f0;margin-bottom:.35rem;}
+</style>
+</head>
+<body>
+
+<!-- 1: Başlık -->
+<section class="slide active" data-notes="
+<span class='lbl'>Sen söyle (açılış — 3 cümle)</span>
+<b>1)</b> Geçen hafta 2B nesting'i göstermiştim: baseline sezgiseller + Simulated Annealing.<br>
+<b>2)</b> Yönlendirmenizle aynı iskeleti 3B'ye taşıdım: gerçek 3B modeller, voxelization, yüksekliği minimize edilen kutu, çıktı STL.<br>
+<b>3)</b> İki senaryoda test ettim: direktifteki sette baseline çok güçlü çıktı; kalabalık sette SA yüksekliği 3.4 mm düşürdü.<br>
+<i>Not: 'optimal çözdüm' deme — 'bu çözünürlükte optimuma yakın' de.</i>
+">
+  <span class="pill">IE 488 — Dönem Projesi · Aşama 2</span>
+  <h1>Eklemeli İmalatta<br>3B Voxel Nesting</h1>
+  <p class="sub">Karmaşık 3B modelleri voxel'leştirip yüksekliği minimize edilen<br>kutuya yerleştirme — 2B iskeletin hacimsel genellemesi</p>
+  <p class="small" style="margin-top:1.6rem;">STL mesh &nbsp;→&nbsp; Voxelization &nbsp;→&nbsp; Order &nbsp;→&nbsp; DBLF + Simulated Annealing &nbsp;→&nbsp; .STL &nbsp;·&nbsp; 220×220 mm taban, yükseklik serbest</p>
+</section>
+
+<!-- 2: Direktif -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Geçen toplantıda bu pipeline'ı çizmiştiniz: karmaşık bir 3B mesh alınacak, voxel'leştirilecek, sıralanıp kutuya yerleştirilecek, sonuç STL olarak verilecek. Kutunun tabanı sabit, yüksekliği serbest — amaç yüksekliği indirmek. Üç model, 10-5-15 adetlerle.'<br>
+<i>Bu slayt 'direktifi doğru anladım mı' teyididir — hoca düzeltecekse burada düzeltir.</i>
+">
+  <h2>Çıkış Noktası — Verilen Yön</h2>
+  <div class="row">
+    <div class="col"><img src="WhatsApp Image 2026-06-09 at 21.28.07.jpeg" alt="Hoca direktifi"></div>
+    <div class="col">
+      <h3>Okuduğum pipeline:</h3>
+      <ul>
+        <li>3B karmaşık form (3D mesh / STL)</li>
+        <li>Voxelization — grid temsiline geçiş</li>
+        <li>Order — sıralama + yerleştirme</li>
+        <li>Çıktı: <b>.STL</b></li>
+      </ul>
+      <p class="green" style="margin-top:1rem;">Kutu: taban sabit, yükseklik serbest → yüksekliği minimize et</p>
+      <p class="green">3 model, adetler ×10 / ×5 / ×15</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3: Problem -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Problem 3B strip packing: taban sabit, yükseklik serbest, yüksekliği minimize ediyorum. Toz yataklı sistemlerde yükseklik doğrudan baskı süresi ve toz maliyeti demek.'<br>
+<span class='q'>? 2B'den farkı:</span> 2B'de doluluğu maksimize ediyordum; 3B'de tavan açık — amaç yüksekliği indirmek. Aynı ailenin open-dimension üyesi.<br>
+<span class='q'>? N-IM ne:</span> Review'de 'gerçek geometri temsili' sınıfı (voxel/polygon); E-IM yalnız bounding box idi.
+">
+  <h2>Problem: 3B Strip Packing (Open-Dimension)</h2>
+  <ul>
+    <li>Sabit <b>220×220 mm taban</b> (2B fazla aynı tabla) — yükseklik sınırsız ama cezalı: <span class="accent">amaç max yüksekliği minimize etmek.</span></li>
+    <li>SLM/SLS toz yatağı mantığı: bina yüksekliği ≈ baskı süresi + toz maliyeti.</li>
+    <li>2B'deki "utilization maksimize" amacının open-dimension karşılığı.</li>
+    <li>Literatür konumu: Tang vd. 2025'te <b>N-IM (voxel)</b> dalı — 2B'de E\P\S kutusundaydım, şimdi <span class="accent">N\P\S</span>'ye yükseldim.</li>
+    <li>İkincil metrik: packing density = parça hacmi / kullanılan zarf hacmi.</li>
+  </ul>
+</section>
+
+<!-- 4: Modeller -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Üç model seçtim: çizdiğiniz örneğe sadık kalarak bir sandalye (içbükey), asimetrik bir L-braket ve ortası delik bir halka. Adetler direktifteki gibi 10-5-15, toplam 30 parça.'<br>
+<span class='q'>? Neden bu üçü:</span> içbükeylik, asimetri, delik — bounding box ile temsil edilse büyük hacim israfı olurdu; voxel temsilin değerini gösteriyorlar.<br>
+<span class='q'>? Neden prosedürel:</span> tekrar üretilebilirlik + internete bağımlılık yok; ama herhangi bir STL de sisteme verilebilir.
+">
+  <h2>Parça Seti — 3 Model, 30 Parça</h2>
+  <img src="results/models_overview.png" alt="3 model">
+  <div class="note">Modeller prosedürel üretiliyor (<b>scripts/generate_models.py</b>) — pipeline model-bağımsız: data/models/ klasörüne konan herhangi bir STL aynı akıştan geçer.</div>
+</section>
+
+<!-- 5: Voxelization -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Mesh'i 3.44 mm'lik voxel'lere bölüyorum; sandalye yaklaşık 11×11×21 voxel. Her parçanın 4 duruşu var: dik ve yan, her biri 0 ve 90 derece. Yerleştirme hızlı olsun diye her duruşun alt ve üst kolon profillerini önceden çıkarıyorum.'<br>
+<span class='q'>? Neden 24 değil 4 oryantasyon:</span> AM'de parça stabilitesi + arama uzayını küçük tutmak; parametrik, artırılabilir.<br>
+<span class='q'>? Neden bu pitch:</span> hız/doğruluk dengesi — 64'lük grid dakika-altı demoya izin veriyor.
+">
+  <h2>Adım 1 — Voxelization</h2>
+  <ul>
+    <li>Her mesh <b>3.44 mm</b>'lik voxel'lere bölünür → taban <b>64×64</b> hücrelik grid (sandalye ≈ 11×11×21 voxel).</li>
+    <li><b>4 eksen-hizalı duruş:</b> dik / yan × 0° / 90° — her duruş için ayrı grid.</li>
+    <li>Her duruşun <b>kolon profilleri</b> önceden çıkarılır: alt profil (bottom) + üst profil (top) — yerleştirme bu profillerle O(taban) sürede.</li>
+    <li>İç hacim dolduruluyor (fill) — yüzey-kabuk grid metrikleri bozardı.</li>
+    <li>2B'deki raster/AABB fikrinin hacimsel hali: collision testi grid üzerinde.</li>
+  </ul>
+  <div class="note">Çözünürlük bilinçli kaba: 64×64 gridde SA'nın her denemesi ~20 ms → 1000 iterasyonluk arama dakikanın altında.</div>
+</section>
+
+<!-- 6: DBLF -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Kutunun durumunu tek bir yükseklik haritasıyla tutuyorum — Tetris gibi: parça (x,y)'ye bırakılınca nereye oturacağı kolon profillerinden tek formülle çıkıyor. Baseline kuralım DBLF: bütün duruş ve pozisyon adayları içinde en alçak tepeyi veren yerleşimi seç.'<br>
+<span class='q'>? Neden z değil z_tepe:</span> amaç tavanı indirmek — aynı z'de yatık duruş dik duruştan iyi; kural bunu direkt ödüllendiriyor.<br>
+<span class='q'>? Sınırlama sorulursa:</span> 'heightmap çıkıntı altı boşlukları kullanamaz; hız için bilinçli taviz. Tam 3B collision sonraki aşamanın işi.'
+">
+  <h2>Adım 2 — DBLF Baseline + Heightmap</h2>
+  <ul>
+    <li><b>Order:</b> parçalar hacim-azalan sıralanır (2B BFD'nin alan-azalan kuralının 3B'si) — direktifteki "Order" adımı.</li>
+    <li>Kutu durumu tek 2B <b>yükseklik haritası</b>: H[x,y] = o kolondaki en üst dolu voxel.</li>
+    <li>Parçanın ineceği z, kolon profillerinden tek formülle — tüm pozisyonlar vektörize taranır.</li>
+    <li class="green">Seçim kuralı: tüm (duruş, x, y) adayları içinde <b>en alçak TEPE</b>: (z_tepe, z, y, x) sözlüksel minimumu = Deepest-Bottom-Left-Fill.</li>
+  </ul>
+  <div class="note"><b>Bilinen sınırlama (bilinçli):</b> heightmap, çıkıntı ALTINA parça sokamaz (örn. sandalye oturağının altı). Karşılığında her SA denemesi ucuz. Tam 3B voxel collision → Aşama 3 kapısı.</div>
+</section>
+
+<!-- 7: SA -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle (EN GÜÇLÜ MÜHENDİSLİK HİKÂYESİ)</span>
+'SA'nın 2B iskeletini aynen taşıdım; tek fark karar değişkeni artık sıra + duruş. Enerji = max yükseklik + küçük bir kompaktlık terimi.'<br>
+<span class='q'>? Derin soru gelirse RMS hikâyesi:</span> 'İlk denemede kompaktlık terimi ortalama yükseklikti ve SA hiç ilerlemiyordu. Sebep: dik duran halka ile yatan halka aynı kolon-hacmi kaplıyor — ortalamaya göre özdeşler, gradyan yok. Kareli ortalamaya (RMS) geçince yatık duruş kesin avantajlı oldu ve arama çalıştı.'<br>
+<span class='q'>? İkinci kalibrasyon:</span> 't0=8 mm iken kabul oranı %86 — fiilen rastgele yürüyüş. 3 mm'ye indirince arama dengelendi.'
+">
+  <h2>Adım 3 — Simulated Annealing Katmanı</h2>
+  <ul>
+    <li>2B'deki SA iskeletinin portu — ama karar değişkeni büyüdü: <b>sıra + her parçanın duruşu</b>.</li>
+    <li>Komşu hamleler: swap / insert / reverse (2B ile aynı) + <b>duruş çevirme</b>.</li>
+    <li class="green">Enerji = max yükseklik (mm) + 0.1 × RMS kolon yüksekliği.</li>
+    <li>Başlangıç çözümü = DBLF'nin tam çözümü → SA asla baseline'ın altına düşemez.</li>
+    <li>Deterministik: seed=42 ile her koşu aynı sonucu verir.</li>
+  </ul>
+  <div class="note"><b>RMS neden?</b> Ortalama yükseklik, dik duran ve yatan parçayı AYNI puanlar (aynı kolon-hacmi) — gradyan yok. Kareli ortalama yayvan/alçak yerleşimi kesin tercih eder; SA'ya plato dışına çıkacağı bir yokuş verir.</div>
+</section>
+
+<!-- 8: Sonuç default -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Direktifteki sette baseline 44.7 mm buldu; SA'yı 3000 iterasyona kadar zorladım, geçemedi. Bunu başarısızlık değil doğrulama olarak okuyorum: greedy'nin çözümü gerçekten akıllı — taban dolunca halkaları dik dikiyor ve tavanı yükseltmiyor.'<br>
+<span class='q'>? Alt sınır sorulursa:</span> 'Yatan sandalyenin en ince boyutu 11 voxel — hiçbir yerleşim altına inemez. Ben 13'teyim; aradaki 2 voxel'in kapanabilirliği açık soru — dürüst boşluk bu.'<br>
+<i>2B paralelliği kur: small set orada da 'zaten optimal' çıkmıştı; dürüst raporlama aynı çizgide.</i>
+">
+  <h2>Sonuç 1 — Direktif Seti (30 parça)</h2>
+  <div class="row">
+    <div class="col"><img src="results/nesting3d_default.png" alt="default yerleşim"></div>
+    <div class="col">
+      <p class="big-num">44.7 mm</p>
+      <ul>
+        <li>SA <b>3000 iterasyonda dahi geçemedi</b> → baseline bu çözünürlükte optimuma yakın.</li>
+        <li>Greedy'nin çözümü akıllıca: taban dolunca halkaları <b>DİK</b> dikip 13 voxel'de tutuyor.</li>
+        <li>Katı alt sınır: 11 voxel (yatan sandalyenin kalınlığı) — boşluk en çok 2 voxel.</li>
+      </ul>
+      <div class="note"><b>2B'deki small set hikâyesinin 3B karşılığı:</b> "iyileşme yok" değil, "baseline doğrulandı".</div>
+    </div>
+  </div>
+</section>
+
+<!-- 9: Sonuç stress -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Setin kalabalık versiyonunda — adetler 1.4 katı, 42 parça — tablo değişiyor: baseline 58.4 mm'de kalıyor, SA bunu 55.0'a indiriyor. Bir voxel katmanı kazandı; density de 0.39'dan 0.41'e çıktı.'<br>
+<span class='q'>? Neden burada kazanıyor:</span> taban sıkışınca greedy'nin erken kararları sonraki parçaları kötü yerlere itiyor; SA sırayı ve duruşları birlikte oynatarak tıkanıklığı çözüyor.<br>
+<i>2B paralelliği: medium sette de durum buydu — kalabalık arttıkça arama değer üretiyor.</i>
+">
+  <h2>Sonuç 2 — Stress Seti (42 parça): SA Kazancı</h2>
+  <div class="row">
+    <div class="col"><img src="results/nesting3d_stress.png" alt="stress yerleşim"></div>
+    <div class="col">
+      <p>DBLF: <b>58.4 mm</b></p>
+      <p class="big-num">SA: 55.0 mm <span style="font-size:1.4rem;">(−3.4 mm)</span></p>
+      <ul>
+        <li class="green">Density: 0.387 → 0.406</li>
+        <li>Adetler ×1.4 (14/7/21): taban sıkışınca sıra + duruş kararları kritikleşiyor — SA'nın arama payı burada açılıyor.</li>
+        <li>~25 saniyede 1000 iterasyon.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 10: Karşılaştırma grafiği -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Sol grafik yükseklik — alçak olan iyi: default'ta çubuklar eşit (baseline doğrulandı), stress'te SA 3.4 mm indiriyor. Sağ grafik density — yüksek olan iyi: stress'te 0.387'den 0.406'ya çıkıyor.'<br>
+<i>2B sunumdaki karşılaştırma grafiğinin 3B karşılığı — aynı anlatım: yeşil SA, kalabalık sette baseline'ı geçiyor; seyrek sette eşit çünkü baseline zaten tavanda.</i><br>
+<span class='q'>? Eksen sorulursa:</span> yükseklik mm cinsinden, density birimsiz oran (parça hacmi / kullanılan zarf hacmi).
+">
+  <h2>Sonuçlar — DBLF vs SA Karşılaştırması</h2>
+  <img src="results/comparison_3d.png" alt="DBLF vs SA karşılaştırma">
+</section>
+
+<!-- 11: Yakınsama + tablo -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Yakınsama grafiği SA'nın gerçekten arama yaptığının kanıtı: 90. iterasyon civarında baseline'ın altına inen bir konfigürasyon buluyor ve onu koruyor.'<br>
+<span class='q'>? Neden tek basamak:</span> yükseklik voxel cinsinden — 3.44 mm'lik katmanlar. Bir sonraki iyileşme bir katman daha demek; pürüzsüz eğri bu problemde olmaz.<br>
+<i>Tekrar-üretilebilirlik: seed sabit, iki koşu aynı sonucu verir; sayılar results/summary_3d.md'de.</i>
+">
+  <h2>Sayılarla — Yakınsama ve Özet Tablo</h2>
+  <div class="row">
+    <div class="col"><img src="results/sa3d_convergence_stress.png" alt="SA yakınsama"></div>
+    <div class="col">
+      <table>
+        <tr><th>Senaryo</th><th>Parça</th><th>DBLF</th><th>SA</th><th>Kazanç</th></tr>
+        <tr><td>default</td><td>30</td><td>44.7 mm</td><td>44.7 mm</td><td>— (doğrulandı)</td></tr>
+        <tr class="win"><td>stress</td><td>42</td><td>58.4 mm</td><td>55.0 mm</td><td>−3.4 mm · density +0.019</td></tr>
+      </table>
+      <div class="note"><b>Dürüst okuma:</b> kazanç tek hamlede geliyor (90. iterasyon) ve sonrası plato — voxel dünyasında iyileşmeler katman katmandır, sürekli eğri beklenmez.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 12: STL -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Direktifteki son ok STL'di: çözümü voxel'de bırakmıyorum — her parçanın gerçek mesh'ine bulunan duruş ve konumu uygulayıp tek STL sahnesi yazıyorum. Bu dosya doğrudan slicer'a gidebilir.' İstenirse 3D Viewer'da aç.<br>
+<span class='q'>? Test vurgusu:</span> 25 yeni birim testi — çakışmazlık, determinizm, STL geri-yüklenebilirliği, SA'nın baseline altına düşmemesi testle sabit. 2B kodu değişmedi; 47 eski test geçiyor.
+">
+  <h2>Pipeline'ın Son Oku — .STL Çıktısı</h2>
+  <ul>
+    <li>Yerleşim çözümü voxel'lerden <b>GERÇEK geometriye</b> geri çevriliyor: her parçanın orijinal mesh'ine duruş + konum dönüşümü uygulanıp tek sahnede birleştiriliyor.</li>
+    <li class="green">results/nesting3d_result_default.stl · nesting3d_result_stress.stl</li>
+    <li>Windows 3D Viewer / herhangi bir slicer ile açılır — baskıya giden dosya formatının kendisi.</li>
+    <li>Tek tık demo: <b>DEMO_3D.bat</b> — modeller + iki senaryo + görseller + STL, ~1 dakika.</li>
+    <li>Doğrulama: <b>72 birim testi</b> (47 eski 2B + 25 yeni 3B) — 2B koduna dokunulmadı.</li>
+  </ul>
+</section>
+
+<!-- 13: Sonraki adımlar -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle</span>
+'Beş yön görüyorum: cavity doldurma — yani sandalyenin altına halka sokabilmek; daha ince çözünürlük; lab'ın gerçek parçalarıyla test; alt sınır analizi; GA karşılaştırması.'<br>
+<b>KAPANIŞ HAMLESİ (mutlaka):</b> hocaya dön ve sor — 'Hangisini önceliklendirmemi istersiniz?'<br>
+<span class='q'>? Neden cavity ilk sırada:</span> en görünür sınırlama; çözülürse default sette de kazanç ihtimali doğar.
+">
+  <h2>Sınırlamalar ve Sonraki Adımlar</h2>
+  <ul>
+    <li>Heightmap çıkıntı altını kullanamaz → <b>tam 3B voxel collision</b> ile "cavity" doldurma (sandalye altına halka sokmak).</li>
+    <li>Daha ince pitch (ör. 96×96 grid) — temsil hassaslaşır, süre/kalite eğrisi çıkarılır.</li>
+    <li>Gerçek dünya STL'leri (lab parçaları) ile aynı pipeline'ın testi.</li>
+    <li>Alt sınır analizi: 13 voxel'in optimal olduğunun kanıtı ya da 12'lik çözüm.</li>
+    <li>2B'den taşınan diğer yön: GA karşılaştırması.</li>
+  </ul>
+  <p class="sub" style="margin-top:1.4rem;font-style:italic;">Hangisini önceliklendirmemi istersiniz?</p>
+</section>
+
+<!-- 14: Özet -->
+<section class="slide" data-notes="
+<span class='lbl'>Sen söyle (kapanış — 4 cümle)</span>
+'Çizdiğiniz pipeline'ı uçtan uca kurdum. 2B'de geliştirdiğim iskelet 3B'ye taşındı. Sizin verdiğiniz sette baseline çok güçlü çıktı ve SA bunu doğruladı; kalabalık sette SA 3.4 mm kazandırdı. Hepsi tekrar-üretilebilir ve 72 testle doğrulanmış — STL çıktıları da hazır.'<br>
+Sonra teşekkür + soru al.
+">
+  <h2>Özet</h2>
+  <ul>
+    <li class="green">Direktifteki pipeline uçtan uca çalışıyor: STL → voxel → order → yükseklik-minimize kutu → STL.</li>
+    <li>2B iskelet (constructive + SA) 3B'ye birebir taşındı — kod tabanı ayrık, 2B'ye dokunulmadı.</li>
+    <li>Direktif seti: 44.7 mm — baseline bu çözünürlükte optimuma yakın (SA doğruladı).</li>
+    <li><b>Stress seti: 58.4 → 55.0 mm — SA'nın net arama kazancı.</b></li>
+    <li>Tekrar-üretilebilir (seed=42) · 72 birim testi · tek tık demo + STL çıktıları.</li>
+  </ul>
+  <p class="sub" style="margin-top:1.4rem;">Teşekkürler — sorularınız?</p>
+</section>
+
+<div class="hint">← → ilerle &nbsp;·&nbsp; N = notların &nbsp;·&nbsp; F11 tam ekran</div>
+<div class="pager"><span id="cur">1</span> / <span id="tot">14</span></div>
+<div class="footer">IE 488 · 3B Voxel Nesting</div>
+<div id="notes"></div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const notesBox=document.getElementById('notes');
+  let i=0, notesOn=false;
+  document.getElementById('tot').textContent=slides.length;
+  function refreshNotes(){
+    notesBox.innerHTML = slides[i].getAttribute('data-notes') || "<span class='lbl'>Not yok</span>";
+    notesBox.classList.toggle('show', notesOn);
+  }
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    document.getElementById('cur').textContent=i+1;
+    refreshNotes();
+  }
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){show(i+1);e.preventDefault();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){show(i-1);e.preventDefault();}
+    else if(e.key==='Home'){show(0);}
+    else if(e.key==='End'){show(slides.length-1);}
+    else if(e.key==='n'||e.key==='N'){notesOn=!notesOn;refreshNotes();}
+  });
+  // tıklayınca ilerle (sağ yarı ileri, sol yarı geri) — not panelinde tıklama sayma
+  document.addEventListener('click',e=>{
+    if(notesBox.contains(e.target)) return;
+    if(e.clientX > window.innerWidth/2) show(i+1); else show(i-1);
+  });
+  show(0);
+</script>
+</body>
+</html>

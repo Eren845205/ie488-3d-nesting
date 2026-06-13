@@ -1,0 +1,8 @@
+{
+  "id": "parser-v1",
+  "version": "1.0",
+  "model_hint": "haiku-class",
+  "changelog": [
+    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — sintetik few-shot ile"}
+  ]
+}

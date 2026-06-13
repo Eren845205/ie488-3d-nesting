@@ -25,19 +25,14 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 from src.nesting3d.bin3d import Bin3D, Placement3D
-from src.nesting3d.dblf import dblf, place_in_order
+from src.nesting3d.dblf import dblf
 from src.nesting3d.voxelize import VoxelPart
 
 Solution = List[Tuple[VoxelPart, int]]
 
-
-def decode(solution: Solution, bin_factory: Callable[[], Bin3D]):
-    """Place the solution's parts in order with their fixed orientations."""
-    parts = [p for p, _ in solution]
-    orients = [oi for _, oi in solution]
-    bin3d = bin_factory()
-    placements = place_in_order(parts, bin3d, lambda i, _p: (orients[i],))
-    return placements, bin3d
+# §1.4 (PLAN_DEMO1): decode is defined in solvers/base.py as the canonical
+# shared implementation; sa3d re-exports it so existing callers are unchanged.
+from src.nesting3d.solvers.base import decode  # noqa: E402 (import after type aliases)
 
 
 def _energy(bin3d: Bin3D) -> float:

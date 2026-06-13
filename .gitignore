@@ -11,3 +11,21 @@ venv/
 # OneDrive / OS
 desktop.ini
 Thumbs.db
+
+# Runtime durum (uygulama üretir — repro/benchmark yeniden üretir)
+logs/
+data/telemetry/
+data/orders.json
+
+# Büyük ikili dosyalar (teslimat/kaynak materyal — repoya girmez)
+*.zip
+*.pdf
+*.pptx
+*.docx
+*.jpg
+*.jpeg
+/*.png
+NUMUNE_YERLESIM_SA_Z155.stl
+hocaya_sunum/
+*.pdf.txt
+_extract.py

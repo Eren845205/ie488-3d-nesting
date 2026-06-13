@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Ana Sayfa &mdash; Konteyner Nesting Sistemi{% endblock %}
+
+{% block content %}
+
+<div class="hero-section">
+    <h2>Konteyner Nesting Sistemi</h2>
+    <p>
+        Bu demo, additive manufacturing (AM) ortaminda birden fazla musteri siparisini
+        oncelik siralamasina gore partilere ayirir, 3D nesting ile konteyner icinde
+        optimal yerlesim hesaplar ve parti basi fiyat dokumu cikartir.
+    </p>
+
+    <!-- Havuz ozeti -->
+    <div class="pool-summary-bar">
+        {% if pool_count > 0 %}
+            <span class="badge badge-green">{{ pool_count }} siparis</span>
+            havuzda &mdash; pipeline havuzu kullanacak.
+            <a href="/siparisler" class="nav-link" style="margin-left: 8px;">Havuzu Yonet</a>
+        {% else %}
+            <span class="badge badge-yellow">Bos havuz</span>
+            &mdash; demo senaryosu kullanilacak.
+            <a href="/siparisler" class="nav-link" style="margin-left: 8px;">Kendi Siparislerinizi Ekleyin</a>
+        {% endif %}
+    </div>
+
+    <form method="POST" action="/run" id="run-form" style="margin-top: 16px;">
+        <button type="submit" class="btn btn-primary" id="run-btn">
+            Pipeline&#39;i Calistir
+        </button>
+    </form>
+</div>
+
+<!-- Senaryo ozeti -->
+<div class="card">
+    <div class="card-title">Senaryo Ozeti</div>
+
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="info-label">Konteyner Genisligi</div>
+            <div class="info-value">{{ container.get('width_mm', '-') }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Konteyner Derinligi</div>
+            <div class="info-value">{{ container.get('depth_mm', '-') }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Makine Sayisi</div>
+            <div class="info-value">{{ capacity.get('num_machines', '-') }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Maks. Hacim / Parti</div>
+            <div class="info-value">{{ "{:,.0f}".format(capacity.get('max_volume_per_batch_cm3', 0)) }} cm3</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Parti Suresi</div>
+            <div class="info-value">{{ capacity.get('batch_duration_hours', '-') }} saat</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Siparis Sayisi</div>
+            <div class="info-value">{{ orders | length }}</div>
+        </div>
+    </div>
+
+    <div class="card-title" style="margin-top: 16px;">Siparis Havuzu</div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Siparis ID</th>
+                    <th>Musteri</th>
+                    <th>Termin</th>
+                    <th>Oncelik</th>
+                    <th>Parca Sayisi</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td><strong>{{ order.order_id }}</strong></td>
+                    <td>{{ order.customer }}</td>
+                    <td>{{ order.deadline }}</td>
+                    <td>
+                        {% if order.priority_class == 1 %}
+                            <span class="badge badge-red">Sinif 1</span>
+                        {% else %}
+                            <span class="badge badge-yellow">Sinif {{ order.priority_class }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ order.parts | length }} cesit</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Yukleniyor overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Pipeline kosturuluyor, lutfen bekleyin...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('run-form').addEventListener('submit', function() {
+        document.getElementById('loading-overlay').classList.add('active');
+        document.getElementById('run-btn').disabled = true;
+        document.getElementById('run-btn').textContent = 'Kosturuluyor...';
+    });
+</script>
+{% endblock %}

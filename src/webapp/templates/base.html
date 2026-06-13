@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Konteyner Nesting Sistemi{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <h1>Konteyner Nesting Sistemi &mdash; Demo</h1>
+    <span class="header-subtitle">Additive Manufacturing Parti Planlama ve Fiyatlama</span>
+    <nav class="site-nav">
+        <a href="/" class="nav-link">Ana Sayfa</a>
+        <a href="/siparisler" class="nav-link">Siparis Havuzu</a>
+    </nav>
+</header>
+
+<main class="container">
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    IE 488 Proje Demo &mdash; Deterministik pipeline: Siparis &rarr; Cizgeleme &rarr; Nesting &rarr; Fiyatlama
+</footer>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

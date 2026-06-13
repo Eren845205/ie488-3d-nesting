@@ -1,0 +1,6 @@
+{
+  "baslik": "Pipeline Sonucu: 3 Siparis, 2 Parti, Toplam 1.250 USD",
+  "govde_md": "Bu kosuda 3 siparis 2 partiye ayrildi ve termin asimi tespit edilmedi. B001 partisinin nesting yuksekligi 180.0 mm olup doluluk orani %72.3 seviyesinde gerceklesti. Toplam fiyat onerisi 1.250,50 USD olarak hesaplandi. Tum siparisler planli terminlerde teslim edilebilir durumdadir.",
+  "kullanilan_kaynaklar": ["yerlesim#B001", "fiyat#B001", "fiyat#B002"],
+  "eksik_bilgi": []
+}
