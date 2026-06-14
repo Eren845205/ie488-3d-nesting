@@ -89,8 +89,190 @@ yakalandı/düzeltildi), SA araması (214.5 → 198.0).
 | R3 | **Enerji ağırlığı `0.1·RMS` bu veride seçildi** (`sa3d._energy`) | Çok geniş tabanlı/yayvan setlerde RMS terimi max-height'ı domine edebilir veya etkisizleşebilir | Benchmark'ta ağırlık taraması; gerekirse normalize RMS |
 | R4 | **Seed alışverişi** (5 seed'den en iyi sonucu rapora koyduk) | Tek instance'a şans uydurma; app'te kullanıcıya "tipik" değil "şanslı" kalite vaat eder | Multi-start SA'yı resmî bileşen yap (N seed paralel, en iyi otomatik alınır — bütçesi tanımlı) |
 | R5 | **Heightmap modeli overhang altına parça SOKAMAZ** (`bin3d.py` bilinen sınır) | Numune setinde kabul edilebilirdi; konsol/kavisli büyük parçalı setlerde sistematik hacim kaybı | App fazında ölç: benchmark'ta heightmap kaybı > %X ise tam-3D serbest yerleştirme değerlendir |
-| R6 | **Pitch/margin/taban default'ları senaryo-eksenli** | 2.5/1.5/1.25 mm değerleri bu parça ölçeğine göre seçildi | Parça ölçeğinden otomatik pitch önerisi (örn. min duvar kalınlığı / hedef çözünürlük oranı) |
+| R6 | ✅ **KAPANDI (2026-06-14, pitch boyutu)** — pitch artık parça ölçeğinden türetiliyor (`instances/pitch.suggest_pitch`); margin/taban hâlâ açık | (eski) Pitch/margin/taban default'ları senaryo-eksenli | Adaptif pitch eklendi (§2.1); margin/taban backlog'da |
 | R7 | **Benchmark YOK — asıl kök risk** | Yukarıdakilerin hiçbiri tek veriyle aklanamaz; testler doğruluğu kanıtlıyor, optimizasyon kalitesini kanıtlamıyor | §5 benchmark düzenini kur; "genel" iddiası o zamana dek inanç statüsünde |
+
+---
+
+## 2.1 — Benchmark sahte-yeşil tanısı + adaptif pitch çözümü (2026-06-14)
+
+> Motor kalitesi kolu (görüşme: "önce benchmark, R7 kök risk"). İlk gerçek
+> portföy koşusu denenince ortaya çıkan tanı ve uygulanan çözüm.
+
+**Tanı — benchmark hiç uçtan uca koşmamış (sahte yeşil):**
+- Donmuş config tek global `PITCH=15 mm` dayatıyordu. Dilim-voxelizer en küçük
+  parça boyutu ~pitch/2 (7.5 mm) altına düşünce **boş voxel grid** üretip
+  şifreli `AssertionError` atıyordu.
+- Tune setinin **10 instance'ından 3'ü çöküyordu**: her iki `thin_plates`
+  (min boyut 4.9 / 5.8 mm) + bir `long_rods` (5.2 mm). `few_large` (8.2 mm)
+  sınırda hayatta kalıyordu.
+- Gizlenme sebebi: `--quick` modu sadece ilk 3 sağlam instance'ı (random_boxes /
+  few_large) alıyor; tam set hiç koşulmamış. Birim testler küçük fixture'larda
+  geçtiği için "benchmark altyapısı hazır" iddiası **inanç statüsündeydi** —
+  R7'nin tam da uyardığı durum.
+- Ek bulgu: `ga` ve `tabu` çözücüleri yazılmış ama benchmark
+  `_SOLVER_REGISTRY`'sine **kayıtlı değildi** → tam portföy fiziksel olarak
+  koşamıyordu (sadece dblf + sa3d).
+
+**Çözüm — adaptif pitch (kullanıcı kararı: ana çözüm clamp DEĞİL):**
+1. **`instances/pitch.suggest_pitch`** — pitch her instance'ın en küçük parça
+   boyutundan türetilir: `min_dim / 2.5`, `[2.0, 15.0]` mm'e kelepçeli. 10/10
+   tune instance artık voxelize oluyor (çöken 3'ü pitch 2.0-2.3 alıyor).
+2. **Tek-konfig kuralı yeniden yorumlandı:** kural artık pitch SAYISINA değil
+   pitch TÜRETME KURALINA uygulanır. Kural tüm instance'lara aynı uygulandığı
+   için determinizm + karşılaştırma adilliği korunur (Değişmez #4 ihlal değil,
+   somutlaştırma). `PITCH` artık tavan (ceil) rolünde.
+3. **Voxelizer fail-fast guard** (`voxelize._slice_voxelize`): şifreli assert
+   yerine açık, aksiyon alınabilir `ValueError` — pitch, min boyut oranı ve
+   "adaptif pitch kullan / suggest_pitch" yönlendirmesi mesajda. Sessiz/kriptik
+   çöküş kapandı. (Clamp YAPILMADI — 3 mm levhayı 15 mm'e şişirmek problemi
+   bozardı; guard yalnızca teşhis koyar.)
+4. **ga + tabu benchmark registry'sine eklendi**; `SOLVER_NAMES` tam portföye
+   çıkarıldı (`dblf, sa3d, ga, tabu` — PLAN_DEMO1 Faz 5.3).
+5. Çıktı tablosuna **`pitch_mm` kolonu** eklendi (adaptif pitch instance başına
+   değiştiği için tekrar-üretilebilirlik şartı).
+
+**Dosyalar:** `src/nesting3d/instances/pitch.py` (yeni), `voxelize.py` (guard),
+`scripts/benchmark.py` (registry + adaptif yol + kolon), `scripts/benchmark_config.py`
+(politika), `tests/test_instances_pitch.py` (yeni, 12 test). Numune 181.5 mm
+yolu etkilenmedi (numune kendi pitch'ini run3d'den alır, benchmark config'inden
+değil).
+
+---
+
+## 2.2 — İlk tam portföy koşusunun iki büyük bulgusu (2026-06-14)
+
+> Adaptif pitch fix'i sayesinde ilk kez koşan tam tune seti (10 instance ×
+> 4 çözücü) + BR holdout iki kritik motor kalitesi bulgusu verdi.
+
+### Bulgu #2 — Portföy bu benchmark'ta NO-OP (demo riski)
+
+`results/benchmark_tune_portfolio_adaptive.md`: **10/10 tune instance'ında
+dört çözücü (dblf/sa3d/ga/tabu) bire bir aynı yüksekliği** veriyor. Ortalama
+özdeş: **47.9799 mm, dördü de.** Tek fark süre: DBLF 0.2 s, metaheuristikler
+sıfır kazanç için 11-18 s (50-350× yavaş). thin_plates/long_rods dahil
+(oryantasyonun kritik olması gereken aileler) hepsi berabere.
+
+- **Bozukluk DEĞİL — iki bağımsız kanıt:** (i) gerçek numune'de SA 198→181.5 mm
+  (%8) iyileştirmişti; (ii) tam e2e koşusunun holdout'unda **BR5'te ga/sa3d/tabu
+  20.0 mm vs DBLF 28.0 mm — %28 iyileştirme** (doluluk 0.50→0.70). Yani portföy
+  dejenere olmayan instance'ta açıkça farklılaşıyor; sorun çözücüler değil,
+  sentetik tune instance'larının ayırt edemeyecek kadar kolay/seyrek olması.
+- **Kök sebep:** sentetik instance'lar **çok kolay / küçük**. DBLF greedy zaten
+  lokal-optimali buluyor; seyrek paketlemede max-yükseklik dejenere (SA 168/200
+  hamle kabul ediyor ama yükseklik düz kalıyor — manzara düz).
+- **Demo açısından kritik:** amacı "çoklu algoritma kıyası" olan demo bu
+  instance'larla **4 özdeş satır** gösterir. Çözüm yönü (ayrı karar): (a) daha
+  zor/büyük sentetik instance'lar (DBLF suboptimal olacak yoğunlukta); (b)
+  numune'yi benchmark instance'ı yap (SA'nın değer kattığı bilinen tek nokta);
+  (c) ikincil ayırt edici metrik (doluluk/RMS gap) ekle — yükseklik tek başına
+  ayırt etmiyor.
+
+### Bulgu #3 — BR holdout verisi ölçek-bozuk + pahalı
+
+BR loader (`instances/br_loader.py`) gerçek OR-Library değil, **yayınlanmış
+parametrelerden seed'li yeniden-üretim** (`data/br/README_br.md`). Sorun:
+konteyner 100×100 ama kutular 1-20 birim — gerçek Bischoff-Ratcliff'te konteyner
+587×233×220 ve kutular ölçekle orantılı. 1 mm kutu / 100 mm konteyner = %1.
+Sonuç: BR1=tek parça (`h=1.0` dejenere), BR1/3/9/12 min boyut 1 mm → pitch 0.5 →
+200 voxel/eksen → SA 60-230 s/çözücü (BR9 tek çözücüde 231 s). Anlamlı packing
+benchmark'ı değil.
+
+- **Yapısal önlem (uygulandı):** benchmark'a **voxel/eksen bütçesi** eklendi
+  (`MAX_VOXELS_PER_AXIS=170`). Bütçeyi aşan instance ATLANIR + MD'de
+  "Atlanan Instance'lar" bölümünde LOGLANIR ("no silent caps" ilkesi; sessiz
+  kabalaştırma=parça kaybı YOK, çökme YOK). Sonuç: tam benchmark artık uçtan
+  uca koşar (10 tune + BR5; BR1/3/9/12 atlanır+loglanır).
+- **Açık karar (kullanıcıya):** BR verisi (a) gerçek OR-Library dosyalarıyla
+  değiştirilsin; (b) ölçek-tutarlı yeniden üretilsin (konteyner ∝ kutu); (c)
+  HPC gelince (A14) bütçe yükseltilip olduğu gibi koşulsun; (d) şimdilik
+  atlanmış kalsın. Holdout doğrulamasının değeri (b) veya (a)'ya bağlı.
+
+**Ek dosyalar (2.2):** `scripts/benchmark.py` (voxel bütçesi skip + atlanan
+raporu), `scripts/benchmark_config.py` (`MAX_VOXELS_PER_AXIS`, `PITCH_FLOOR`
+2.0→0.5). Tune tablosu: `results/benchmark_tune_portfolio_adaptive.md`.
+
+**R6 margin/taban kısmı:** hâlâ sabit (backlog, bu notların kapsamı dışı).
+
+---
+
+## 2.3 — Hız: drop_map ayrılabilir kayan-maksimum optimizasyonu (2026-06-14)
+
+> Tetikleyici: kullanıcı "yavaş olma problemini de çözmemiz lazım". Demo değer
+> önerisi time-to-quote (§7) olduğu için yavaş motor doğrudan ürün riski.
+
+**Profil (cProfile, thin_plates SA):** süre **%98.7'si tek fonksiyonda** —
+`bin3d.drop_map`. Voxel ne kadar ince (adaptif pitch sonrası) o kadar baskın.
+drop_map her (parça, oryantasyon, SA iterasyonu) için footprint kolonları ×
+serbest pozisyon kadar iş yapıyordu (O(fw·fh·npx·npy)).
+
+**İçgörü:** TÜM benchmark parçaları KUTU. Bir kutu eksen-hizalı oturduğunda
+footprint dolu-dikdörtgen + tabanı düz (tek-değer) → drop_map = H'nin pencere
+üzerinde **kayan-maksimumu**, ki bu AYRILABİLİR (önce eksen0 fw kaydırma, sonra
+eksen1 fh kaydırma) → O((fw+fh)·npx·npy).
+
+**Uygulama (`bin3d._drop_map_fast`):** kaydırmalı-maksimum (numpy `np.maximum`
+ile fw+fh kaydırma; sol-hizalı valid pencere İNŞA YOLUYLA garantili — scipy
+maximum_filter1d'in merkezleme/offset belirsizliği DENENDİ ve çift boyutlarda
+kaydığı için TERK EDİLDİ). Konkav footprint / değişken taban (numune STL)
+hızlı yola girmez, genel döngüye düşer → sonuç korunur. Dependency YOK.
+
+**Sonuç:** thin_plates SA 71s→1.85s (**38×**); tam benchmark 520s→**51.8s**
+(~17× ort.); **sonuçlar BİRE BİR AYNI** (tune ort. 47.9799 değişmedi; 5 seed ×
+160 oryantasyon doğrudan kıyas 0 uyuşmazlık). 867 test yeşil (+34 drop_map
+eşdeğerlik testi `tests/test_bin3d_dropmap.py`).
+
+**Açık kalan hız işi:** numune (gerçek STL, konkav parçalar) genel döngüde
+kalıyor → hızlanmadı. Genel yol için grayscale-dilation (scipy grey_dilation,
+değişken taban destekli) bir sonraki adım — ama numune REKORUNU bozmama şartı
+dikkatli doğrulama gerektirir; backlog'a yazıldı.
+
+---
+
+## 2.4 — Bulgu #2 ve #3 çözüldü: ayırt edici benchmark + BR ölçek (2026-06-14)
+
+> §2.2'deki iki açık karar kullanıcı yönüyle kapatıldı. Hız fix'i (§2.3) bunu
+> mümkün kıldı: ayırt edici instance'lar daha yoğun/çok-parçalı = eskiden çok
+> yavaş, şimdi <2s.
+
+### Bulgu #2 çözümü — sıkı taban rejimi (sentetik ayırt edicilik)
+
+İçgörü: ayırt etme **parçalar tabanın küçük kısmıyken** olur (katman başına çok
+parça → 2D yerleşim + oryantasyon kararı önemli → DBLF suboptimal). Eski seyrek
+kurulum (8 parça, 300×300) her şeyi 1-2 katmana sığdırıyordu → sıralama
+önemsiz. Çözüm: `benchmark_config.TUNE_INSTANCES` ampirik olarak SIKI TABAN
+rejimine ayarlandı (parça sayısı ↑, konteyner ↓). Sonuç (`benchmark_discriminating`):
+
+| instance | dblf | en iyi metaheuristik | kazanç |
+|---|---|---|---|
+| syn_rb_s0 | 176.4 | 152.3 (sa/ga) | %13.6 |
+| syn_flms_s0 | 269.3 | 211.6 (ga/tabu) | %21.4 |
+| syn_hqr_s0 | 402.4 | 381.2 | %5.3 |
+| syn_tp_s0 | 77.7 | 70.4 | %9.4 |
+| syn_lr_s0 | 46.8 | 41.6 (sa/tabu) | %11.1 |
+
+**Her instance pozitif kazanç (2.9-21.4%); FARKLI çözücüler farklı instance'da
+kazanıyor** (flms'te GA/tabu, rb'de SA/GA, lr'de SA/tabu) → tek çözücü domine
+etmiyor, portföy her instance'ta en iyiyi seçiyor. Demo'nun "çoklu algoritma
+kıyası" iddiası artık veriyle gerçek. Hepsi voxel bütçesinde (vpa≤32), hızlı.
+
+### Bulgu #3 çözümü — konteyner ∝ kutu (BR ölçek)
+
+`br_loader`: kutu boyutları YAYINLANDIĞI GİBİ korundu; konteyner kenarı =
+`CONTAINER_DIM_FACTOR (5) × sınıfın en büyük kutu boyutu` yapıldı (kutu
+ölçekleme ×2/×4 denendi, ayırt etmeyi BOZDU → terk). Sonuç: ölçeksiz BR5'in
+%28.6 ayırt etmesi KORUNDU; holdout atlama 4→1'e düştü (yalnız BR12, 20:1
+dinamik aralık → voxel motoru için HPC ister, dürüstçe loglanır).
+
+**Dosyalar (2.3+2.4):** `bin3d.py` (drop_map hızlı yol), `br_loader.py`
+(konteyner ∝ kutu), `benchmark_config.py` (ayırt edici TUNE presetleri),
+`tests/test_bin3d_dropmap.py` (+34). 867 test yeşil. Tablo:
+`results/benchmark_discriminating.md`.
+
+**Motor kalitesi kolu durumu:** R7 (benchmark) artık GERÇEK — uçtan uca koşuyor,
+çözücüleri ayırt ediyor, hızlı. R6 pitch kapandı. Sıradaki doğal işler: R1
+(24 poz), R2/R4 (adaptif t0 + multi-start SA), numune'yi benchmark'a ekleme,
+genel-yol drop_map hızlandırma (numune).
 
 ---
 

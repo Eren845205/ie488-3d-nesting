@@ -16,6 +16,7 @@ import numpy as np
 from src.nesting3d.voxelize import Orientation, VoxelPart
 
 
+
 @dataclass
 class Placement3D:
     """One placed part: voxel cell (x, y, z) of its grid's (0,0,0) corner."""
@@ -63,6 +64,13 @@ class Bin3D:
         if npx <= 0 or npy <= 0:
             return None
 
+        # Hizli yol: dolu-dikdortgen footprint + tek-deger taban (KUTU parcalar)
+        # → ayrik kayan-maksimum, ~25x hizli. Konkav footprint / degisken taban
+        # (numune STL) None doner ve genel donguye duser. Sonuc bire bir ayni.
+        fast = self._drop_map_fast(orient, npx, npy)
+        if fast is not None:
+            return fast
+
         Z = np.zeros((npx, npy), dtype=np.int32)
         cols_i, cols_j = np.nonzero(orient.filled)
         for i, j, b in zip(cols_i, cols_j, orient.bottom[cols_i, cols_j]):
@@ -70,6 +78,45 @@ class Bin3D:
         np.maximum(Z, 0, out=Z)
         if self.z_clearance:
             Z[Z > 0] += self.z_clearance  # parça üstüne oturma -> dikey boşluk
+        return Z
+
+    def _drop_map_fast(self, orient: Orientation, npx: int, npy: int
+                       ) -> Optional[np.ndarray]:
+        """drop_map'in hizli yolu — sadece dolu-dikdortgen + tek-deger taban.
+
+        Kutu parcalar icin (filled tamamen dolu, bottom her kolonda ayni deger
+        b0) drop_map = H'nin (fw x fh) sol-hizali penceresi uzerinde kayan-
+        maksimum eksi b0. Islem AYRILABILIR: once eksen0 boyunca fw kaydirma,
+        sonra eksen1 boyunca fh kaydirma — her biri O(npx*npy) numpy maksimumu.
+        Toplam O((fw+fh)*npx*npy), dongunun O(fw*fh*npx*npy)'sine kiyasla cok
+        daha ucuz. Kaydirma kurulumu sol-hizali valid pencereyi INSA YOLUYLA
+        garantiler (merkezleme/offset belirsizligi YOK); sonuc genel donguyle
+        bire bir ayni.
+        """
+        filled = orient.filled
+        if not filled.all():
+            return None  # konkav footprint → genel yol
+        bottom = orient.bottom
+        b0 = int(bottom.flat[0])
+        if not (bottom == b0).all():
+            return None  # degisken taban → genel yol
+
+        fw, fh = filled.shape
+        H = self.height
+        # Eksen0: m0[x, :] = max_{k in [0,fw)} H[x+k, :], x in [0, npx)
+        m0 = H[:npx].copy()
+        for k in range(1, fw):
+            np.maximum(m0, H[k:k + npx], out=m0)
+        # Eksen1: Z[x, y] = max_{k in [0,fh)} m0[x, y+k], y in [0, npy)
+        Z = m0[:, :npy].copy()
+        for k in range(1, fh):
+            np.maximum(Z, m0[:, k:k + npy], out=Z)
+
+        if b0:
+            Z -= b0
+        np.maximum(Z, 0, out=Z)
+        if self.z_clearance:
+            Z[Z > 0] += self.z_clearance
         return Z
 
     def drop_z(self, orient: Orientation, x: int, y: int) -> int:

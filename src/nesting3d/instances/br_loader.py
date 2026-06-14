@@ -64,6 +64,23 @@ BR_CLASSES: List[str] = [f"BR{i}" for i in range(1, 16)]
 # Orijinal makale standardı
 _CONTAINER = ContainerSpec(width_mm=100.0, depth_mm=100.0, height_mm=None)
 
+# Ölçek-tutarlılık düzeltmesi (2026-06-14). Sorun (tanı APP_YOL_HARITASI §2.2):
+# yayınlanmış birim aralıkları (kutu 1-20) 100 mm konteynerle birlikte 1 mm'lik
+# kutular üretiyordu → pitch 0.5 → 200 voxel/eksen → benchmark voxel bütçesini
+# (170) aşıp atlanıyordu + dejenere (BR1 tek 1mm kutu). Gerçek BR konteyneri
+# (587×233×220) ise 1174 voxel/eksen → voxel motoru için HPC'siz infeasible.
+# Pratik çözüm — KONTEYNER ∝ KUTU (kutu boyutları YAYINLANDIĞI GİBİ korunur):
+# konteyner kenarı = CONTAINER_DIM_FACTOR × sınıfın en büyük kutu boyutu. Böylece
+# kutular her sınıfta konteynerin ~%(100/factor)'ı veya altı kalır → katman
+# başına çok kutu → 2D yerleşim önemli → çözücüler ayırt eder (ölçeksiz BR5
+# zaten %28 ayırt ediyordu, korunur). Kutu ÖLÇEKLEME denendi (×2/×4) ve ayırt
+# etmeyi BOZDU (kutu büyüyüp katman başına 1-2'ye düştü) — terk edildi.
+#
+# Bütçe etkileşimi: çok-geniş dinamik aralıklı sınıflar (min 1 / max 20, oran 20)
+# konteyner büyüdükçe 1 mm kutuda voxel bütçesini (170) aşar → benchmark voxel
+# guard'ıyla atlanır+loglanır (honest; o sınıf voxel motoru için HPC ister).
+CONTAINER_DIM_FACTOR: float = 5.0
+
 N_INSTANCES_PER_CLASS: int = 5  # her sınıf için üretilen örnek sayısı
 
 
@@ -123,6 +140,12 @@ def generate_br_instance(
         h = float(rng.randint(*params.h_range))
         type_dims.append((w, d, h))
 
+    # Konteyner ∝ kutu: kenar = CONTAINER_DIM_FACTOR × en büyük kutu boyutu.
+    # Kutular konteynerin küçük kısmı kalır → ayırt edici packing (yukarıdaki not).
+    max_box_dim = max(max(t) for t in type_dims)
+    cont_side = CONTAINER_DIM_FACTOR * max_box_dim
+    container = ContainerSpec(width_mm=cont_side, depth_mm=cont_side, height_mm=None)
+
     # Toplam adedi tipler arasında böl (rastgele bölme)
     # Son tip kalan adedi alır
     qtys: List[int] = []
@@ -148,7 +171,7 @@ def generate_br_instance(
         ))
 
     return NestingInstance(
-        container=_CONTAINER,
+        container=container,
         parts=parts,
         meta={
             "family": "bischoff_ratcliff",
@@ -157,6 +180,7 @@ def generate_br_instance(
             "seed": seed,
             "n_types": n_types,
             "total_qty": total_qty,
+            "container_side_mm": cont_side,
             "source_method": "seed_regenerated",
             "reference": "Bischoff & Ratcliff (1995), Eur. J. Oper. Res. 84, 435-461",
         },

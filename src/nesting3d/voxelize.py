@@ -141,7 +141,20 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
         for poly in sec.polygons_full:
             mask |= _contains_xy(poly, px, py)
         grid[:, :, k] = mask.reshape(n[0], n[1])
-    assert grid.any(), "slice voxelization boş grid üretti — pitch/mesh hatası"
+    if not grid.any():
+        # Fail-fast tanı: sessiz/şifreli assert yerine açık, aksiyon alınabilir
+        # hata. Boş grid = pitch parçanın en küçük özelliği için fazla kaba;
+        # hiçbir dilim merkezi parçaya düşmemiş. Ana çözüm clamp DEĞİL, adaptif
+        # pitch (instances/pitch.py suggest_pitch) — bu guard onu zorlar.
+        ext = mesh.extents  # bounding-box boyutları (mm)
+        min_feat = float(min(ext))
+        raise ValueError(
+            f"Voxelizasyon boş grid üretti: pitch={pitch:.3f} mm, parçanın en "
+            f"küçük boyutu ({min_feat:.3f} mm) için fazla kaba "
+            f"(min_dim/pitch={min_feat / pitch:.2f}, ~0.5 altı kaybolur). "
+            f"Pitch'i <= {min_feat / 2.0:.3f} mm yapın veya adaptif pitch "
+            f"kullanın (instances.pitch.suggest_pitch). bbox_extents={ext}"
+        )
     return grid
 
 

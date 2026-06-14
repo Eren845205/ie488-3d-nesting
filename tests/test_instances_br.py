@@ -38,10 +38,17 @@ class TestGenerateBRInstance:
         inst = generate_br_instance("BR1", 0)
         assert isinstance(inst, NestingInstance)
 
-    def test_container_100x100(self):
-        inst = generate_br_instance("BR1", 0)
-        assert inst.container.width_mm == 100.0
-        assert inst.container.depth_mm == 100.0
+    def test_container_proportional_to_box(self):
+        """Konteyner ∝ kutu (2026-06-14): kenar = CONTAINER_DIM_FACTOR × en
+        büyük kutu boyutu; kare taban (w == d)."""
+        from src.nesting3d.instances.br_loader import CONTAINER_DIM_FACTOR
+        for cls in ["BR1", "BR5", "BR12"]:
+            inst = generate_br_instance(cls, 0)
+            max_box = max(
+                max(p.width_mm, p.depth_mm, p.height_mm) for p in inst.parts
+            )
+            assert inst.container.width_mm == inst.container.depth_mm
+            assert inst.container.width_mm == CONTAINER_DIM_FACTOR * max_box
 
     def test_open_dimension_container(self):
         inst = generate_br_instance("BR1", 0)

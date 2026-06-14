@@ -49,6 +49,7 @@ if str(_ROOT) not in sys.path:
 
 from src.nesting3d.instances.features import FEATURE_NAMES, extract_features
 from src.nesting3d.instances.format import to_voxel_parts, ContainerSpec
+from src.nesting3d.instances.pitch import suggest_pitch
 from src.nesting3d.instances.synthetic import (
     random_boxes,
     few_large_many_small,
@@ -60,6 +61,8 @@ from src.nesting3d.instances.br_loader import load_br_instance
 from src.nesting3d.bin3d import Bin3D
 from src.nesting3d.solvers.dblf_solver import DBLFSolver
 from src.nesting3d.solvers.sa_solver import SASolver
+from src.nesting3d.solvers.ga_solver import GASolver
+from src.nesting3d.solvers.tabu_solver import TabuSolver
 from src.nesting3d.telemetry import append_run
 
 # ---------------------------------------------------------------------------
@@ -69,6 +72,8 @@ from src.nesting3d.telemetry import append_run
 _SOLVER_REGISTRY: Dict[str, Any] = {
     "dblf": DBLFSolver,
     "sa3d": SASolver,
+    "ga": GASolver,
+    "tabu": TabuSolver,
 }
 
 _FAMILY_BUILDERS = {
@@ -152,6 +157,10 @@ def run_benchmark(
     telemetry_path: Optional[Path] = None,
     n_orientations: int = 4,
     is_quick: bool = False,
+    adaptive_pitch: bool = False,
+    pitch_factor: float = 2.5,
+    pitch_floor: float = 2.0,
+    max_voxels_per_axis: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Tum instance'lar x tum cozucular icin benchmark kosu.
 
@@ -194,6 +203,7 @@ def run_benchmark(
         solvers[name] = cls()
 
     rows: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
 
     for inst_spec in instances:
         inst_id = inst_spec["id"]
@@ -213,16 +223,55 @@ def run_benchmark(
         # Teorik alt sinir
         lb_mm = _compute_lb(nesting_inst)
 
-        # Voxelizasyon
+        # Pitch: adaptif modda her instance'a kendi pitch'i (R6); aksi halde
+        # gecirilen scalar pitch (geriye uyumlu — testler + --quick yolu).
+        # adaptif modda gecirilen `pitch` scalar'i TAVAN (ceil) olarak kullanilir.
         cont = nesting_inst.container
-        parts = to_voxel_parts(nesting_inst, pitch, n_orientations=n_orientations)
+        if adaptive_pitch:
+            inst_pitch = suggest_pitch(
+                nesting_inst,
+                factor=pitch_factor,
+                floor=pitch_floor,
+                ceil=pitch,
+            )
+        else:
+            inst_pitch = pitch
+
+        # Runtime bütçesi: adaptif pitch çok ince parça (ör. BR birim-ölçek
+        # 1 mm) için konteyner-eksen voxel sayısını patlatabilir. "Sessiz
+        # kabalaştırma YOK" ilkesi (parça kaybolur) + "çökme YOK": eşiği aşan
+        # instance ATLA + LOGLA (drop'u açıkça raporla). Atlananlar HPC/A14
+        # veya veri-yeniden-ölçekleme backlog'una düşer.
+        cont_axes = [cont.width_mm, cont.depth_mm]
+        if cont.height_mm:
+            cont_axes.append(cont.height_mm)
+        vox_per_axis = max(cont_axes) / max(inst_pitch, 1e-9)
+        if max_voxels_per_axis is not None and vox_per_axis > max_voxels_per_axis:
+            skipped.append({
+                "instance_id": inst_id,
+                "aile": family,
+                "split": split,
+                "pitch_mm": round(inst_pitch, 4),
+                "vox_per_axis": round(vox_per_axis, 1),
+                "neden": (
+                    f"voxel/eksen {vox_per_axis:.0f} > butce {max_voxels_per_axis} "
+                    f"(min parca {pitch_floor}mm cozunurlugu konteyner olcegine gore "
+                    f"asiri ince — veri yeniden-olceklensin veya HPC)"
+                ),
+            })
+            print(f"[benchmark] ATLANDI: {inst_id} ({family}) — "
+                  f"voxel/eksen {vox_per_axis:.0f} > {max_voxels_per_axis}")
+            continue
+
+        # Voxelizasyon
+        parts = to_voxel_parts(nesting_inst, inst_pitch, n_orientations=n_orientations)
 
         # Q4: default-arg ile closure gecmis-baglama tuzagini onle
-        def make_bin(cont=cont) -> Bin3D:  # type: ignore[assignment]
+        def make_bin(cont=cont, inst_pitch=inst_pitch) -> Bin3D:  # type: ignore[assignment]
             return Bin3D(
                 plate_w_mm=cont.width_mm,
                 plate_d_mm=cont.depth_mm,
-                pitch=pitch,
+                pitch=inst_pitch,
             )
 
         # Her cozucu icin kos
@@ -249,6 +298,7 @@ def run_benchmark(
                 "instance_id": inst_id,
                 "aile": family,
                 "split": split,
+                "pitch_mm": round(inst_pitch, 4),
                 "cozucu": solver_name,
                 "height_mm": round(result.height_mm, 4),
                 "density": round(result.density, 6),
@@ -280,7 +330,7 @@ def run_benchmark(
                 aile=r["aile"],
                 feature_vector=feat.values,
                 cozucu=r["cozucu"],
-                pitch=pitch,
+                pitch=inst_pitch,
                 budget=budget,
                 seed=seed,
                 height_mm=r["height_mm"],
@@ -294,7 +344,10 @@ def run_benchmark(
         rows.extend(inst_results)
 
     # Cikti dosyalari yaz
-    _write_outputs(rows, out_dir, label)
+    _write_outputs(rows, out_dir, label, skipped=skipped)
+    if skipped:
+        print(f"[benchmark] {len(skipped)} instance ATLANDI (voxel butcesi) — "
+              f"detay MD'de '## Atlanan Instance'lar' bolumunde.")
 
     return rows
 
@@ -303,7 +356,12 @@ def run_benchmark(
 # Cikti dosyalari
 # ---------------------------------------------------------------------------
 
-def _write_outputs(rows: List[Dict[str, Any]], out_dir: Path, label: str) -> None:
+def _write_outputs(
+    rows: List[Dict[str, Any]],
+    out_dir: Path,
+    label: str,
+    skipped: Optional[List[Dict[str, Any]]] = None,
+) -> None:
     """MD ve CSV cikti dosyalarini yaz."""
     md_path = out_dir / f"benchmark_{label}.md"
     csv_path = out_dir / f"benchmark_{label}.csv"
@@ -336,13 +394,26 @@ def _write_outputs(rows: List[Dict[str, Any]], out_dir: Path, label: str) -> Non
         md_lines.extend(_build_avg_section(split_rows, split_name))
         md_lines.append("")
 
+    # Atlanan instance'lar — "no silent caps": drop'u acikca raporla.
+    if skipped:
+        md_lines.append("## Atlanan Instance'lar (voxel butcesi)")
+        md_lines.append("")
+        md_lines.append("| instance_id | aile | split | pitch_mm | vox/eksen | neden |")
+        md_lines.append("|---|---|---|---|---|---|")
+        for s in skipped:
+            md_lines.append(
+                f"| {s['instance_id']} | {s['aile']} | {s['split']} | "
+                f"{s['pitch_mm']} | {s['vox_per_axis']} | {s['neden']} |"
+            )
+        md_lines.append("")
+
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
 def _build_md_table(rows: List[Dict[str, Any]]) -> List[str]:
     """Ana kolonlarla markdown tablosu olustur."""
     cols = [
-        "instance_id", "aile", "cozucu",
+        "instance_id", "aile", "pitch_mm", "cozucu",
         "height_mm", "density", "time_s",
         "height_lb_mm", "density_ratio", "winner_flag",
     ]
@@ -422,6 +493,10 @@ def main() -> None:
     args = _parse_args()
 
     from scripts.benchmark_config import (
+        ADAPTIVE_PITCH,
+        PITCH_FACTOR,
+        PITCH_FLOOR,
+        MAX_VOXELS_PER_AXIS,
         PITCH,
         BUDGET,
         SEED,
@@ -430,11 +505,12 @@ def main() -> None:
         HOLDOUT_INSTANCES,
     )
 
-    # Parametre uzerine yazma
-    # --quick pitch=10: tum synthetic instance'larda min_dim=10 >= pitch/2=5
-    # voxel merkezi 5 mm < 10 mm -> voxelizasyon guvenli.
-    # pitch=20 kullanilmamali: min_dim=10 box @ pitch=20 -> z_center=10mm=sinir.
+    # Pitch politikasi:
+    # --quick: sabit pitch=10 (sadece ilk 3 sağlam instance; hizli smoke).
+    # tam set: adaptif (her instance'a kendi pitch'i, R6) — PITCH tavan rolunde.
+    # adaptif mod thin_plates/long_rods cokuslerini yapisal olarak cozer.
     pitch = 10.0 if args.quick else PITCH
+    adaptive_pitch = ADAPTIVE_PITCH and not args.quick
     budget = 30 if args.quick else BUDGET
     seed = SEED
     solver_names = args.solvers.split(",") if args.solvers else SOLVER_NAMES
@@ -450,8 +526,12 @@ def main() -> None:
               f"pitch={pitch} mm, budget={budget}")
     else:
         instances_to_run = TUNE_INSTANCES + HOLDOUT_INSTANCES
+        pitch_desc = (
+            f"adaptif (min_dim/{PITCH_FACTOR}, [{PITCH_FLOOR}, {pitch}] mm)"
+            if adaptive_pitch else f"{pitch} mm"
+        )
         print(f"[benchmark] Tam set: {len(instances_to_run)} instance, "
-              f"pitch={pitch} mm, budget={budget}")
+              f"pitch={pitch_desc}, budget={budget}, cozucu={solver_names}")
 
     rows = run_benchmark(
         instances=instances_to_run,
@@ -463,6 +543,10 @@ def main() -> None:
         label=label,
         telemetry_path=tel_path,
         is_quick=args.quick,
+        adaptive_pitch=adaptive_pitch,
+        pitch_factor=PITCH_FACTOR,
+        pitch_floor=PITCH_FLOOR,
+        max_voxels_per_axis=None if args.quick else MAX_VOXELS_PER_AXIS,
     )
 
     # Ozet basmak
