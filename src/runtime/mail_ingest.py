@@ -29,10 +29,11 @@ from __future__ import annotations
 
 import email
 import imaplib
+import io
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,22 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Veri modeli
 # ---------------------------------------------------------------------------
+
+@dataclass
+class Attachment:
+    """Mail ekini temsil eden veri modeli.
+
+    Alanlar
+    -------
+    dosya_adi : ek dosya adi (orn. "siparis.xlsx")
+    icerik    : ham bayt dizisi (get_payload(decode=True) ciktisi)
+    mime      : MIME tipi (orn. "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    """
+
+    dosya_adi: str
+    icerik: bytes
+    mime: str
+
 
 @dataclass
 class RawMail:
@@ -52,6 +69,7 @@ class RawMail:
     govde      : Duz metin govde (ParserRole.parse()'a beslenecek)
     tarih      : ISO 8601 veya RFC 2822 tarih dizesi
     message_id : RFC 2822 Message-ID (idempotency anahtari)
+    ekler      : Mail ekleri (varsayilan bos liste — geriye uyum)
     """
 
     gonderen: str
@@ -59,6 +77,7 @@ class RawMail:
     govde: str
     tarih: str
     message_id: str
+    ekler: List[Attachment] = field(default_factory=list)
 
     def __repr__(self) -> str:
         return (
@@ -87,7 +106,7 @@ class MailSource(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Demo sabitleri — 4 gercekci Turkce siparis maili
+# Demo sabitleri — 4 gercekci Turkce siparis maili + 1 Excel ekli mail
 # ---------------------------------------------------------------------------
 
 _DEMO_MAILS: List[Dict[str, str]] = [
@@ -169,7 +188,59 @@ _DEMO_MAILS: List[Dict[str, str]] = [
             "Üretim Planlama, TUSAS"
         ),
     },
+    {
+        "gonderen": "satin.alma@bosch.com.tr",
+        "konu": "Sipariş — Bosch Parça Listesi (Excel Ek)",
+        "tarih": "2026-06-15T10:00:00+03:00",
+        "message_id": "<BOSCH-XLS-2026061501@bosch.com.tr>",
+        "govde": (
+            "Merhaba,\n\n"
+            "Talep ettiğimiz parçaların listesini ek Excel dosyasında bulabilirsiniz. "
+            "Boyutlar ve adet bilgileri dosyada mevcut.\n\n"
+            "Termin: 25 Haziran 2026\n\n"
+            "Saygılarımla,\n"
+            "Mehmet Yılmaz\n"
+            "Satın Alma, Bosch Türkiye"
+        ),
+    },
 ]
+
+
+# ---------------------------------------------------------------------------
+# FakeMailbox — Excel ek uretici
+# ---------------------------------------------------------------------------
+
+def _make_demo_xlsx_attachment() -> Attachment:
+    """Bellek-ici sabit Excel dosyasi uretir (deterministik, seed yok).
+
+    Basliklar: ad, en_mm, boy_mm, yukseklik_mm, adet
+    Satirlar : 3 demo parca (Bosch senaryo)
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        logger.warning("FakeMailbox: openpyxl yuklu degil — xlsx eki bos bayt olarak olusturuldu.")
+        return Attachment(
+            dosya_adi="bosch_siparis.xlsx",
+            icerik=b"",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Siparis"
+    ws.append(["ad", "en_mm", "boy_mm", "yukseklik_mm", "adet"])
+    ws.append(["bosch_klips",   55.0, 38.0, 20.0, 10])
+    ws.append(["bosch_kapak",   90.0, 70.0, 25.0,  4])
+    ws.append(["bosch_gövde",  110.0, 85.0, 45.0,  2])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Attachment(
+        dosya_adi="bosch_siparis.xlsx",
+        icerik=buf.getvalue(),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -177,11 +248,14 @@ _DEMO_MAILS: List[Dict[str, str]] = [
 # ---------------------------------------------------------------------------
 
 class FakeMailbox(MailSource):
-    """DEMO posta kutusu — 4 gercekci Turkce siparis maili.
+    """DEMO posta kutusu — 4 gercekci Turkce siparis maili + 1 Excel ekli mail.
 
     Kimlik gerekmez, internet baglantisi gerekmez.
     Idempotency: ilk fetch tum mailleri dondurur; sonraki fetch bos liste dondurur.
     Yeni FakeMailbox() ornegi mailleri tekrar dondurur (ornek bazli set).
+
+    Geriye uyum: mevcut 4 mailin ekler=[] olarak kalir.
+    5. mail (Bosch): xlsx eki vardir.
     """
 
     def __init__(self) -> None:
@@ -190,9 +264,15 @@ class FakeMailbox(MailSource):
     def fetch_new(self) -> List[RawMail]:
         """Daha once dondurulmemis demo maillerini dondurur."""
         result: List[RawMail] = []
-        for entry in _DEMO_MAILS:
+        for idx, entry in enumerate(_DEMO_MAILS):
             mid = entry["message_id"]
             if mid not in self._seen_ids:
+                # Son entry (5. mail) Excel eki tasiyor; oncekiler ek tasimaz
+                if idx == len(_DEMO_MAILS) - 1:
+                    ekler = [_make_demo_xlsx_attachment()]
+                else:
+                    ekler = []
+
                 result.append(
                     RawMail(
                         gonderen=entry["gonderen"],
@@ -200,6 +280,7 @@ class FakeMailbox(MailSource):
                         govde=entry["govde"],
                         tarih=entry["tarih"],
                         message_id=mid,
+                        ekler=ekler,
                     )
                 )
                 self._seen_ids.add(mid)
@@ -268,19 +349,21 @@ class ImapMailbox(MailSource):
 
     @staticmethod
     def _extract_raw_mail(uid: str, raw_bytes: bytes) -> RawMail:
-        """Bayt'tan RawMail uret."""
+        """Bayt'tan RawMail uret (govde + ekler)."""
         msg = email.message_from_bytes(raw_bytes)
         gonderen = msg.get("From", "")
         konu = msg.get("Subject", "")
         tarih = msg.get("Date", "")
         message_id = msg.get("Message-ID", f"<uid-{uid}>")
         govde = _extract_text_body(msg)
+        ekler = _extract_attachments(msg)
         return RawMail(
             gonderen=gonderen,
             konu=konu,
             govde=govde,
             tarih=tarih,
             message_id=message_id,
+            ekler=ekler,
         )
 
     # ------------------------------------------------------------------
@@ -378,6 +461,118 @@ def _extract_text_body(msg: email.message.Message) -> str:
         # decode=False durumu (string payload)
         raw = msg.get_payload()
         return raw if isinstance(raw, str) else ""
+
+
+# ---------------------------------------------------------------------------
+# Ek cikarici yardimci
+# ---------------------------------------------------------------------------
+
+def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
+    """email.Message'dan ekleri cikarir.
+
+    Kriter: Content-Disposition 'attachment' olan veya dosya adi olan MIME parcalari.
+    Dondurur: List[Attachment] — ek bulunamazsa bos liste.
+    """
+    attachments: List[Attachment] = []
+    if not msg.is_multipart():
+        return attachments
+
+    for part in msg.walk():
+        content_disposition = part.get_content_disposition() or ""
+        filename = part.get_filename()
+
+        if content_disposition.lower() == "attachment" or filename:
+            payload = part.get_payload(decode=True)
+            if payload is None:
+                continue
+            mime = part.get_content_type() or "application/octet-stream"
+            dosya_adi = filename or f"ek_{len(attachments)+1}"
+            attachments.append(
+                Attachment(
+                    dosya_adi=dosya_adi,
+                    icerik=payload,
+                    mime=mime,
+                )
+            )
+
+    return attachments
+
+
+# ---------------------------------------------------------------------------
+# ingest_order — yonlendirme (dosyali + metinli)
+# ---------------------------------------------------------------------------
+
+_STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
+
+
+def ingest_order(
+    mail: RawMail,
+    parser_role: Any,
+) -> Optional[Dict[str, Any]]:
+    """Mail'den siparis dict'i cikar — dosya eki varsa deterministik, yoksa LLM.
+
+    Kural (SS6.1): .xlsx / .csv eki varsa parse_order_attachment (LLM YOK).
+    Ek yoksa parser_role.parse(mail.govde) (LLM — serbest metin).
+
+    Parametreler
+    ------------
+    mail        : RawMail ornegi (ekler alani kontrol edilir)
+    parser_role : ParserRole ornegi (metin parse icin; ek varsa cagrilmaz)
+
+    Dondurur
+    --------
+    dict | None — SCENARIO siparis formatiyla uyumlu dict:
+      {order_id, customer, deadline, priority_class, parts, parse_source}
+      parse_source: "attachment_excel" | "attachment_csv" | "llm_text"
+      None: parse basarisiz (LLM yolu)
+    """
+    from src.runtime.order_attachment_parser import parse_order_attachment
+
+    # Yapılandırılmış ek kontrolu
+    structured_att: Optional[Attachment] = None
+    for att in (mail.ekler or []):
+        ext = "." + att.dosya_adi.rsplit(".", 1)[-1].lower() if "." in att.dosya_adi else ""
+        if ext in _STRUCTURED_EXTENSIONS:
+            structured_att = att
+            break
+
+    if structured_att is not None:
+        # --- Deterministik yol: Excel/CSV ---
+        ext = "." + structured_att.dosya_adi.rsplit(".", 1)[-1].lower()
+        parts = parse_order_attachment(structured_att.dosya_adi, structured_att.icerik)
+        if not parts:
+            logger.warning(
+                "ingest_order: ek parse edildi ama parca listesi bos — %s",
+                structured_att.dosya_adi,
+            )
+        source_tag = "attachment_excel" if ext in (".xlsx", ".xls", ".xlsm") else "attachment_csv"
+        import uuid
+        return {
+            "order_id": f"ATT-{uuid.uuid4().hex[:8].upper()}",
+            "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+            "deadline": "",
+            "priority_class": 2,
+            "parts": parts,
+            "parse_source": source_tag,
+        }
+
+    # --- LLM yolu: serbest metin ---
+    parse_result = parser_role.parse(mail.govde)
+    if parse_result is None:
+        return None
+    # ParserResult veya dogrudan dict kontrolu
+    if hasattr(parse_result, "order_dict"):
+        order = parse_result.order_dict
+    else:
+        order = parse_result  # mock veya dict
+
+    if order is None:
+        return None
+
+    if isinstance(order, dict):
+        order = dict(order)
+        order["parse_source"] = "llm_text"
+    return order
 
 
 # ---------------------------------------------------------------------------

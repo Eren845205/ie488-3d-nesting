@@ -808,7 +808,7 @@ def _register_routes(
             }), 503
 
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
-        from src.runtime.mail_ingest import make_mail_source
+        from src.runtime.mail_ingest import make_mail_source, ingest_order
         from src.llm.roles.parser import parsed_to_order
         from src.llm.roles.explainer import ExplainerInput
         from src.llm.structured import ValidationStatus
@@ -838,36 +838,38 @@ def _register_routes(
             return jsonify({"hata": f"Mail cekme hatasi: {exc}", "asamalar": asamalar}), 500
 
         # ------------------------------------------------------------------
-        # ASAMA 2: Parse (her mail icin)
+        # ASAMA 2: Parse (her mail icin — ek varsa deterministik, yoksa LLM)
         # ------------------------------------------------------------------
         parser_role = llm_components.get("parser_role")
         parsed_orders: List[Dict[str, Any]] = []
         parse_hatalar: List[str] = []
+        parse_kaynak_sayac: Dict[str, int] = {"attachment_excel": 0, "attachment_csv": 0, "llm_text": 0}
 
         for mail in raw_mails:
             try:
-                parse_result = parser_role.parse(mail.govde)
-                if parse_result.status != ValidationStatus.INVALID and parse_result.order_dict:
-                    # Mail gonderenden oncelik ipucu al (FORD/BAYKAR/ASELSAN)
+                order = ingest_order(mail, parser_role)
+                if order is not None:
+                    # Mail gonderenden oncelik ipucu al
                     govde_lower = mail.govde.lower()
                     konu_lower = mail.konu.lower()
                     if "acil" in konu_lower or "acil" in govde_lower:
-                        priority = 1
-                    else:
-                        priority = 2
-                    order = parsed_to_order(
-                        parse_result.data or {},
-                        priority_class=priority,
-                    )
-                    # Musteri adini gonderen domain'den zenginlestir
+                        order["priority_class"] = 1
+
+                    # Musteri adini gonderen domain'den zenginlestir (bos/bilinmiyor ise)
                     if not order.get("customer") or order["customer"] == "Bilinmiyor":
                         domain = mail.gonderen.split("@")[-1].split(".")[0].upper()
                         order["customer"] = domain
-                    # Termin duzeltme: bos/eksik veya ISO olmayan formatlari normalize et
+
+                    # Termin duzeltme
                     order["deadline"] = _normalize_deadline(
                         order.get("deadline", ""),
                         mail_tarih=mail.tarih,
                     )
+
+                    # Kaynak sayaci
+                    src = order.get("parse_source", "llm_text")
+                    parse_kaynak_sayac[src] = parse_kaynak_sayac.get(src, 0) + 1
+
                     parsed_orders.append(order)
                 else:
                     parse_hatalar.append(f"{mail.gonderen}: parse basarisiz")
@@ -877,14 +879,35 @@ def _register_routes(
 
         n_parsed = len(parsed_orders)
         parse_durum = "tamam" if n_parsed > 0 else "hata"
-        parse_cikti = f"{n_parsed} siparis cikarildi"
+
+        # Kaynak ozeti icin etiket
+        kaynak_parcalari = []
+        if parse_kaynak_sayac.get("attachment_excel", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_excel']} Excel'den"
+            )
+        if parse_kaynak_sayac.get("attachment_csv", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_csv']} CSV'den"
+            )
+        if parse_kaynak_sayac.get("llm_text", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['llm_text']} mailden (LLM)"
+            )
+        kaynak_ozet = ", ".join(kaynak_parcalari) if kaynak_parcalari else "bilinmiyor"
+
+        parse_cikti = f"{n_parsed} siparis cikarildi ({kaynak_ozet})"
         if parse_hatalar:
-            parse_cikti += f" ({len(parse_hatalar)} basarisiz)"
+            parse_cikti += f" — {len(parse_hatalar)} basarisiz"
         asamalar.append({
             "ad": "Parse",
             "durum": parse_durum,
             "cikti": parse_cikti,
-            "detay": {"siparis_sayisi": n_parsed, "hatalar": parse_hatalar},
+            "detay": {
+                "siparis_sayisi": n_parsed,
+                "hatalar": parse_hatalar,
+                "kaynak_sayac": parse_kaynak_sayac,
+            },
         })
 
         if n_parsed == 0:
