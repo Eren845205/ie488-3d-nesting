@@ -110,6 +110,39 @@
 </div>
 
 {% if llm_active %}
+<!-- Otonom Mod Bolumu (yalnizca LLM aktifse goster) -->
+<div class="card" id="otonom-card">
+    <div class="card-title">Otonom Mod &mdash; Mailleri Cek ve Isleyin</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:12px;">
+        Sistem mailleri kendisi ceker, LLM ile siparislere donusturur,
+        onceliklendirir, nesting ve fiyat hesaplar.
+        Her asama agent panosu olarak gosterilir.
+        Teklif taslagi <strong>insan onay kapsisi</strong>ndan gecmedikce gonderilmez.
+    </p>
+    <button
+        id="otonom-btn"
+        class="btn btn-primary"
+        onclick="otonomCalistir()"
+        style="margin-bottom:10px;"
+    >
+        Mailleri Cek ve Isle (Otonom)
+    </button>
+    <span id="otonom-spinner" style="display:none; font-size:14px; color:var(--color-text-muted); margin-left:10px;">
+        Otonom zincir calisiyor...
+    </span>
+
+    <!-- Agent Panosu -->
+    <div id="otonom-pano" style="display:none; margin-top:16px;">
+        <div style="font-weight:600; font-size:15px; margin-bottom:10px;">Agent Zinciri</div>
+        <div id="otonom-asamalar"></div>
+        <div id="otonom-ozet" style="margin-top:16px; display:none;"></div>
+        <div id="otonom-teklif" style="margin-top:16px; display:none;"></div>
+    </div>
+    <div id="otonom-hata" style="display:none; color:#c0392b; margin-top:10px; font-size:14px;"></div>
+</div>
+{% endif %}
+
+{% if llm_active %}
 <!-- Mail Parser Bolumu (yalnizca LLM aktifse goster) -->
 <div class="card" id="mail-parser-card">
     <div class="card-title">Siparis Mailini Yapistir &mdash; LLM Okusun</div>
@@ -164,6 +197,224 @@
         document.getElementById('run-btn').disabled = true;
         document.getElementById('run-btn').textContent = 'Kosturuluyor...';
     });
+
+    {% if llm_active %}
+    function otonomCalistir() {
+        var btn = document.getElementById('otonom-btn');
+        var spinner = document.getElementById('otonom-spinner');
+        var pano = document.getElementById('otonom-pano');
+        var asamalarDiv = document.getElementById('otonom-asamalar');
+        var ozetDiv = document.getElementById('otonom-ozet');
+        var teklifDiv = document.getElementById('otonom-teklif');
+        var hataDiv = document.getElementById('otonom-hata');
+
+        btn.disabled = true;
+        spinner.style.display = 'inline';
+        pano.style.display = 'none';
+        hataDiv.style.display = 'none';
+        asamalarDiv.innerHTML = '';
+        ozetDiv.style.display = 'none';
+        teklifDiv.style.display = 'none';
+
+        fetch('/otonom', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({}),
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+
+            if (data.hata && (!data.asamalar || data.asamalar.length === 0)) {
+                hataDiv.textContent = 'Hata: ' + data.hata;
+                hataDiv.style.display = 'block';
+                return;
+            }
+
+            pano.style.display = 'block';
+
+            // Agent asamalari timeline — detay balonlari dahil
+            var asamalar = data.asamalar || [];
+            var html = '<div class="agent-timeline">';
+            asamalar.forEach(function(asama, idx) {
+                var durum = asama.durum || '';
+                var adName = asama.ad || '';
+                var icon = durum === 'tamam' ? '&#10003;' :
+                           durum === 'taslak_hazir' ? '&#9998;' :
+                           durum === 'llm_yok' ? '&#8212;' :
+                           durum === 'tamam_uyari' ? '&#9888;' :
+                           durum.indexOf('hata') >= 0 ? '&#10007;' : '&#8226;';
+                var color = durum === 'tamam' ? '#16a34a' :
+                            durum === 'taslak_hazir' ? '#2563eb' :
+                            durum === 'llm_yok' ? '#6b7280' :
+                            durum === 'tamam_uyari' ? '#d97706' :
+                            durum.indexOf('hata') >= 0 ? '#dc2626' : '#d97706';
+                var cikti = asama.cikti || '';
+                var detay = asama.detay || null;
+
+                html += '<div class="agent-step" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">';
+                html += '<div class="agent-icon" style="width:30px;height:30px;border-radius:50%;background:' + color + ';color:white;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700;">' + icon + '</div>';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-weight:700;font-size:14px;color:#111827;">' + escapeHtml(adName) + '</div>';
+                html += '<div style="font-size:13px;color:#374151;margin-top:3px;">' + escapeHtml(cikti) + '</div>';
+
+                // Detay balonlari — asama bazli
+                if (detay) {
+                    // Mail-Cek: gelen maillerin listesi
+                    if (adName === 'Mail-Cek' && Array.isArray(detay)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        detay.forEach(function(m) {
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">'
+                                  + '<span style="font-weight:600;">' + escapeHtml(m.gonderen || '') + '</span>'
+                                  + ' &mdash; ' + escapeHtml(m.konu || '')
+                                  + '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    // Parse: siparis sayisi + hatalar
+                    if (adName === 'Parse' && typeof detay === 'object' && !Array.isArray(detay)) {
+                        if (detay.siparis_sayisi !== undefined) {
+                            html += '<div class="agent-detail-balloon" style="margin-top:6px;font-size:12px;color:#374151;">';
+                            html += '<span style="color:#15803d;font-weight:600;">' + detay.siparis_sayisi + ' siparis cikarildi</span>';
+                            if (detay.hatalar && detay.hatalar.length > 0) {
+                                html += ' &mdash; <span style="color:#b45309;">' + detay.hatalar.length + ' parse basarisiz</span>';
+                            }
+                            html += '</div>';
+                        }
+                    }
+                    // Onceliklendir: siralama tablosu
+                    if (adName === 'Onceliklendir' && detay.siralama && Array.isArray(detay.siralama)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        html += '<div style="font-size:11px;color:#6b7280;margin-bottom:3px;font-style:italic;">Sistem terminlere ve oncelik sinifina gore siraladi:</div>';
+                        detay.siralama.forEach(function(s) {
+                            var cls = s.priority_class === 1
+                                ? 'background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;'
+                                : 'background:#fefce8;color:#713f12;border:1px solid #fde68a;';
+                            html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">';
+                            html += '<span style="font-size:11px;font-weight:700;color:#6b7280;width:18px;">' + s.sira + '.</span>';
+                            html += '<span style="font-size:12px;font-weight:600;color:#111827;">' + escapeHtml(s.customer || '') + '</span>';
+                            html += '<span style="font-size:11px;color:#6b7280;">' + escapeHtml(String(s.deadline || '')) + '</span>';
+                            html += '<span style="font-size:10px;padding:1px 6px;border-radius:9999px;' + cls + '">Sinif ' + s.priority_class + '</span>';
+                            html += '</div>';
+                        });
+                        if (detay.uyari_sayisi > 0) {
+                            html += '<div style="font-size:11px;color:#b45309;margin-top:3px;">' + detay.uyari_sayisi + ' termin asimi uyarisi</div>';
+                        }
+                        html += '</div>';
+                    }
+                    // Nesting: parti bazli ozet
+                    if (adName === 'Nesting' && detay.batches && Array.isArray(detay.batches)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        detay.batches.forEach(function(b) {
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                            html += '<span style="font-weight:600;">' + escapeHtml(b.batch_id || '') + '</span>';
+                            html += ' — ' + escapeHtml(b.customer || '');
+                            if (b.height_mm) {
+                                html += ' &nbsp;|&nbsp; <span style="color:#1d4ed8;">' + b.height_mm.toFixed(1) + ' mm</span>';
+                            }
+                            if (b.density) {
+                                html += ' &nbsp;|&nbsp; doluluk ' + (b.density * 100).toFixed(1) + '%';
+                            }
+                            if (b.n_parts) {
+                                html += ' &nbsp;|&nbsp; ' + b.n_parts + ' parca';
+                            }
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    // Fiyat: parti fiyatlari
+                    if (adName === 'Fiyat' && detay.parti_fiyatlari && typeof detay.parti_fiyatlari === 'object') {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        Object.keys(detay.parti_fiyatlari).forEach(function(bid) {
+                            var pr = detay.parti_fiyatlari[bid] || {};
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                            html += '<span style="font-weight:600;">' + escapeHtml(bid) + '</span>';
+                            html += ' &mdash; <span style="color:#15803d;font-weight:600;">' + (pr.total_price || 0).toFixed(2) + ' USD</span>';
+                            html += '</div>';
+                        });
+                        if (detay.toplam_fiyat !== undefined) {
+                            html += '<div style="font-size:13px;font-weight:700;color:#15803d;margin-top:4px;border-top:1px solid #d1fae5;padding-top:4px;">Toplam: ' + detay.toplam_fiyat.toFixed(2) + ' USD</div>';
+                        }
+                        html += '</div>';
+                    }
+                    // Acikla: aciklama balonu
+                    if (adName === 'Acikla' && detay.aciklama_md) {
+                        html += '<div class="agent-detail-balloon agent-explain-balloon" style="margin-top:6px;background:#f0f4ff;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                        html += '<div style="font-size:11px;font-weight:600;color:#4338ca;margin-bottom:3px;">Neden bu algoritma?</div>';
+                        html += '<div style="font-size:12px;color:#374151;line-height:1.5;">' + escapeHtml(detay.aciklama_md) + '</div>';
+                        html += '</div>';
+                    }
+                    // Teklif-Taslagi: onay kapisi balonu
+                    if (adName === 'Teklif-Taslagi') {
+                        html += '<div style="font-size:11px;color:#9ca3af;margin-top:3px;font-style:italic;">Insan onay kapisi &mdash; otomatik gonderilmez</div>';
+                        if (detay && detay.taslak) {
+                            html += '<div class="agent-detail-balloon" style="margin-top:6px;background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                            html += '<div style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:3px;">Taslak onizleme (gonderilmedi)</div>';
+                            html += '<div style="font-size:11px;color:#374151;line-height:1.5;max-height:80px;overflow:hidden;">' + escapeHtml(detay.taslak.substring(0, 300)) + (detay.taslak.length > 300 ? '...' : '') + '</div>';
+                            html += '</div>';
+                        }
+                    }
+                }
+
+                html += '</div></div>';
+            });
+            html += '</div>';
+            asamalarDiv.innerHTML = html;
+
+            // Pipeline ozet
+            if (data.pipeline_ozet || data.toplam_fiyat !== undefined) {
+                var ozet = data.pipeline_ozet || {};
+                var ozetHtml = '<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:6px;">';
+                ozetHtml += '<strong style="font-size:14px;">Pipeline Ozeti</strong><br>';
+                if (data.toplam_fiyat !== undefined) {
+                    ozetHtml += '<span style="font-size:20px;font-weight:800;color:#15803d;">' + data.toplam_fiyat.toFixed(2) + ' USD</span> &mdash; toplam fiyat onerisi<br>';
+                }
+                if (ozet.siparis_sayisi !== undefined) {
+                    ozetHtml += ozet.siparis_sayisi + ' siparis | ' + ozet.parti_sayisi + ' parti | ' + ozet.uyari_sayisi + ' uyari<br>';
+                }
+                if (ozet.elapsed_sec !== undefined) {
+                    ozetHtml += '<span style="font-size:12px;color:#6b7280;">Sure: ' + ozet.elapsed_sec.toFixed(2) + 's</span>';
+                }
+                ozetHtml += '</div>';
+                ozetDiv.innerHTML = ozetHtml;
+                ozetDiv.style.display = 'block';
+            }
+
+            // Aciklama + teklif taslagi
+            if (data.aciklama_md || data.teklif_taslagi) {
+                var tkHtml = '';
+                if (data.aciklama_md) {
+                    tkHtml += '<div style="background:#f0f4ff;border-left:4px solid #6366f1;padding:12px 16px;border-radius:6px;margin-bottom:10px;">';
+                    tkHtml += '<strong style="font-size:13px;color:#4338ca;">Algoritma Aciklamasi (LLM)</strong><br>';
+                    tkHtml += '<div style="font-size:14px;margin-top:6px;">' + escapeHtml(data.aciklama_md) + '</div>';
+                    tkHtml += '</div>';
+                }
+                if (data.teklif_taslagi) {
+                    tkHtml += '<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px 16px;border-radius:6px;">';
+                    tkHtml += '<strong style="font-size:13px;color:#15803d;">Teklif Taslagi</strong> ';
+                    tkHtml += '<span style="font-size:11px;color:#6b7280;font-style:italic;">(insan onay kapsisi — gonderilmedi)</span><br>';
+                    tkHtml += '<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">' + escapeHtml(data.teklif_taslagi) + '</div>';
+                    tkHtml += '</div>';
+                }
+                teklifDiv.innerHTML = tkHtml;
+                teklifDiv.style.display = 'block';
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            hataDiv.textContent = 'Ag hatasi: ' + err;
+            hataDiv.style.display = 'block';
+        });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(text)));
+        return div.innerHTML;
+    }
+    {% endif %}
 
     {% if llm_active %}
     function parseMail() {

@@ -95,6 +95,8 @@ def _load_llm_components(
                 timeout_s=prov_cfg.timeout_s,
             )
 
+        from src.llm.roles.explainer import ExplainerRole
+
         report_role = ReportRole(
             provider=provider,
             registry=registry,
@@ -117,10 +119,18 @@ def _load_llm_components(
             role_cfg=cfg.roles.get("parser"),
         )
 
+        explainer_role = ExplainerRole(
+            provider=provider,
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("explainer"),
+        )
+
         return {
             "report_role": report_role,
             "assistant_role": assistant_role,
             "parser_role": parser_role,
+            "explainer_role": explainer_role,
             "llm_active": True,
         }
 
@@ -189,6 +199,56 @@ def _build_grounded_context(pipeline_result: Dict[str, Any]) -> Any:
         is_id="demo-pipeline",
         kaynaklar=kaynaklar,
     )
+
+
+_TURKCE_AYLAR = {
+    "ocak": "01", "subat": "02", "mart": "03", "nisan": "04",
+    "mayis": "05", "haziran": "06", "temmuz": "07", "agustos": "08",
+    "eylul": "09", "ekim": "10", "kasim": "11", "aralik": "12",
+}
+
+
+def _normalize_deadline(deadline_str: str, mail_tarih: str = "") -> str:
+    """Termin dizesini ISO 8601 (YYYY-MM-DD) formatina donusturur.
+
+    Desteklenen formatlar:
+      - ISO 8601: "2026-06-19" -> dogrudan don
+      - Turkce tam tarih: "19 Haziran 2026" -> "2026-06-19"
+      - Bos/tanimsiz: mail tarihinden +30 gun fallback
+    Hicbir durumda atmaz; en kotu fallback bugunden +30 gun.
+    """
+    from datetime import date, timedelta
+
+    s = (deadline_str or "").strip()
+
+    # ISO formatini dene
+    if s:
+        try:
+            date.fromisoformat(s[:10])
+            return s[:10]
+        except ValueError:
+            pass
+
+    # Turkce "GG Ay YYYY" formatini dene
+    if s:
+        parts = s.replace(",", "").split()
+        if len(parts) == 3:
+            gun, ay_str, yil = parts[0], parts[1].lower(), parts[2]
+            ay = _TURKCE_AYLAR.get(ay_str, "")
+            if ay and gun.isdigit() and yil.isdigit():
+                try:
+                    candidate = f"{yil}-{ay}-{int(gun):02d}"
+                    date.fromisoformat(candidate)
+                    return candidate
+                except ValueError:
+                    pass
+
+    # Fallback: mail tarihinden +30 gun veya bugunden +30 gun
+    try:
+        mail_date = date.fromisoformat(mail_tarih[:10])
+        return (mail_date + timedelta(days=30)).isoformat()
+    except Exception:
+        return (date.today() + timedelta(days=30)).isoformat()
 
 
 def create_app(
@@ -704,6 +764,365 @@ def _register_routes(
                 "status": "parse_hatasi",
                 "mesaj": f"Sistem hatasi: {exc}",
             }), 500
+
+    # -----------------------------------------------------------------------
+    # Otonom zincir rotasi (VİTRİN C)
+    # -----------------------------------------------------------------------
+
+    @app.route("/otonom", methods=["POST"])
+    def otonom():
+        """Mail-cek → parse → onceliklendir → nesting → fiyat → acikla → teklif taslagi.
+
+        Tum pipeline asamalarini otomatik kosturur; sonuclari agent-panosu formati
+        ile dondurur. LLM olmadan mail parse edilemeyeceginden LLM gerekli.
+
+        Yanit JSON:
+        {
+          "asamalar": [
+            {"ad": "Mail-Cek", "durum": "tamam", "cikti": "4 mail cekildi"},
+            {"ad": "Parse", "durum": "tamam", "cikti": "4 siparis cikarildi"},
+            {"ad": "Onceliklendir", "durum": "tamam", "cikti": "Ford ACIL once secildi"},
+            {"ad": "Nesting", "durum": "tamam", "cikti": "GA, 2 parti, 3 konteyner"},
+            {"ad": "Fiyat", "durum": "tamam", "cikti": "Toplam 1200 USD"},
+            {"ad": "Acikla", "durum": "tamam|llm_yok", "cikti": "SA en iyi..."},
+            {"ad": "Teklif-Taslagi", "durum": "tamam|llm_yok", "cikti": "...(insan onay gerekli)"},
+          ],
+          "nesting_results": {...},
+          "pricing_results": {...},
+          "pipeline_ozet": {...},
+          "toplam_fiyat": 1200.0,
+          "aciklama_md": "...",
+          "teklif_taslagi": "...",
+          "teklif_onay_gerekli": true,
+        }
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({
+                "hata": (
+                    "Otonom mod LLM gerektiriyor (mail parse icin). "
+                    "Ollama calismiyor veya configs/llm.local.json eksik. "
+                    "Manuel demo icin /run rotasini kullanin."
+                ),
+                "mesaj": "LLM gerekli",
+                "asamalar": [],
+            }), 503
+
+        from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
+        from src.runtime.mail_ingest import make_mail_source
+        from src.llm.roles.parser import parsed_to_order
+        from src.llm.roles.explainer import ExplainerInput
+        from src.llm.structured import ValidationStatus
+        from src.llm.roles.report import ReportInput
+
+        asamalar: List[Dict[str, Any]] = []
+
+        # ------------------------------------------------------------------
+        # ASAMA 1: Mail-Cek
+        # ------------------------------------------------------------------
+        try:
+            mail_source = make_mail_source({"source": "fake"})
+            raw_mails = mail_source.fetch_new()
+            n_mail = len(raw_mails)
+            asamalar.append({
+                "ad": "Mail-Cek",
+                "durum": "tamam",
+                "cikti": f"{n_mail} mail cekildi (FakeMailbox)",
+                "detay": [
+                    {"gonderen": m.gonderen, "konu": m.konu}
+                    for m in raw_mails
+                ],
+            })
+        except Exception as exc:
+            logger.warning("Otonom: Mail-Cek hatasi: %s", exc)
+            asamalar.append({"ad": "Mail-Cek", "durum": "hata", "cikti": str(exc)})
+            return jsonify({"hata": f"Mail cekme hatasi: {exc}", "asamalar": asamalar}), 500
+
+        # ------------------------------------------------------------------
+        # ASAMA 2: Parse (her mail icin)
+        # ------------------------------------------------------------------
+        parser_role = llm_components.get("parser_role")
+        parsed_orders: List[Dict[str, Any]] = []
+        parse_hatalar: List[str] = []
+
+        for mail in raw_mails:
+            try:
+                parse_result = parser_role.parse(mail.govde)
+                if parse_result.status != ValidationStatus.INVALID and parse_result.order_dict:
+                    # Mail gonderenden oncelik ipucu al (FORD/BAYKAR/ASELSAN)
+                    govde_lower = mail.govde.lower()
+                    konu_lower = mail.konu.lower()
+                    if "acil" in konu_lower or "acil" in govde_lower:
+                        priority = 1
+                    else:
+                        priority = 2
+                    order = parsed_to_order(
+                        parse_result.data or {},
+                        priority_class=priority,
+                    )
+                    # Musteri adini gonderen domain'den zenginlestir
+                    if not order.get("customer") or order["customer"] == "Bilinmiyor":
+                        domain = mail.gonderen.split("@")[-1].split(".")[0].upper()
+                        order["customer"] = domain
+                    # Termin duzeltme: bos/eksik veya ISO olmayan formatlari normalize et
+                    order["deadline"] = _normalize_deadline(
+                        order.get("deadline", ""),
+                        mail_tarih=mail.tarih,
+                    )
+                    parsed_orders.append(order)
+                else:
+                    parse_hatalar.append(f"{mail.gonderen}: parse basarisiz")
+            except Exception as exc:
+                logger.warning("Otonom: Parse hatasi (mail=%s): %s", mail.gonderen, exc)
+                parse_hatalar.append(f"{mail.gonderen}: {exc}")
+
+        n_parsed = len(parsed_orders)
+        parse_durum = "tamam" if n_parsed > 0 else "hata"
+        parse_cikti = f"{n_parsed} siparis cikarildi"
+        if parse_hatalar:
+            parse_cikti += f" ({len(parse_hatalar)} basarisiz)"
+        asamalar.append({
+            "ad": "Parse",
+            "durum": parse_durum,
+            "cikti": parse_cikti,
+            "detay": {"siparis_sayisi": n_parsed, "hatalar": parse_hatalar},
+        })
+
+        if n_parsed == 0:
+            return jsonify({
+                "hata": "Hic siparis cikartilamadi (LLM parse basarisiz).",
+                "asamalar": asamalar,
+            }), 500
+
+        # ------------------------------------------------------------------
+        # ASAMA 3-5: Onceliklendir + Nesting + Fiyat (run_pipeline)
+        # ------------------------------------------------------------------
+        import copy
+        scenario = copy.deepcopy(RICH_SCENARIO)
+        scenario["orders"] = parsed_orders
+
+        try:
+            pipeline_result = run_pipeline(scenario)
+        except Exception as exc:
+            logger.exception("Otonom: pipeline hatasi: %s", exc)
+            return jsonify({"hata": f"Pipeline hatasi: {exc}", "asamalar": asamalar}), 500
+
+        ranked = pipeline_result.get("ranked_orders", [])
+        batches = pipeline_result.get("batches", [])
+        warnings = pipeline_result.get("warnings", [])
+        nesting_results = pipeline_result.get("nesting_results", {})
+        pricing_results = pipeline_result.get("pricing_results", {})
+
+        # Onceliklendirme ozeti
+        if ranked:
+            ilk = ranked[0]
+            oncelik_cikti = (
+                f"{ilk.order_id} ({ilk.customer}) one alindi"
+                f" — Sinif {ilk.priority_class}, termin {ilk.deadline}"
+            )
+        else:
+            oncelik_cikti = "Siparis siralanamadi"
+
+        asamalar.append({
+            "ad": "Onceliklendir",
+            "durum": "tamam",
+            "cikti": oncelik_cikti,
+            "detay": {
+                "siralama": [
+                    {
+                        "sira": i + 1,
+                        "order_id": o.order_id,
+                        "customer": o.customer,
+                        "deadline": str(o.deadline),
+                        "priority_class": o.priority_class,
+                    }
+                    for i, o in enumerate(ranked)
+                ],
+                "uyari_sayisi": len(warnings),
+            },
+        })
+
+        # Nesting ozeti
+        n_batches = len(batches)
+        if batches:
+            best_height = min(
+                nesting_results.get(b.batch_id, {}).get("height_mm", 9999.0)
+                for b in batches
+            )
+            winners = []
+            for b in batches:
+                nr = nesting_results.get(b.batch_id, {})
+                port = nr.get("portfolio") or nr.get("tuner") or {}
+                w = port.get("winner") or port.get("winning_config") or "dblf"
+                winners.append(w)
+            nesting_cikti = (
+                f"{n_batches} parti, min yukseklik {best_height:.1f} mm"
+                f" — algoritmalar: {', '.join(set(winners))}"
+            )
+        else:
+            nesting_cikti = "Parti olusturulamadi"
+
+        asamalar.append({
+            "ad": "Nesting",
+            "durum": "tamam" if batches else "hata",
+            "cikti": nesting_cikti,
+            "detay": {
+                "parti_sayisi": n_batches,
+                "batches": [
+                    {
+                        "batch_id": b.batch_id,
+                        "customer": b.customer,
+                        "height_mm": nesting_results.get(b.batch_id, {}).get("height_mm", 0),
+                        "density": nesting_results.get(b.batch_id, {}).get("density", 0),
+                        "n_parts": nesting_results.get(b.batch_id, {}).get("n_parts", 0),
+                    }
+                    for b in batches
+                ],
+            },
+        })
+
+        # Fiyat ozeti
+        toplam_fiyat = sum(
+            pr.get("total_price", 0.0) for pr in pricing_results.values()
+        )
+        fiyat_cikti = f"Toplam {toplam_fiyat:.2f} USD ({n_batches} parti)"
+        asamalar.append({
+            "ad": "Fiyat",
+            "durum": "tamam",
+            "cikti": fiyat_cikti,
+            "detay": {
+                "toplam_fiyat": toplam_fiyat,
+                "parti_fiyatlari": {
+                    bid: {"total_price": pr.get("total_price", 0.0)}
+                    for bid, pr in pricing_results.items()
+                },
+            },
+        })
+
+        # ------------------------------------------------------------------
+        # ASAMA 6: Acikla (LLM explainer -- ilk parti icin)
+        # ------------------------------------------------------------------
+        explainer_role = llm_components.get("explainer_role")
+        aciklama_md = ""
+        acikla_durum = "llm_yok"
+
+        if explainer_role is not None and batches:
+            try:
+                first_batch = batches[0]
+                nr_first = nesting_results.get(first_batch.batch_id, {})
+                port_first = nr_first.get("portfolio") or nr_first.get("tuner") or {}
+                winner_name = (
+                    port_first.get("winner")
+                    or port_first.get("winning_config")
+                    or "dblf"
+                )
+                sistem_ciktisi = {
+                    "kazanan_algoritma": winner_name,
+                    "height_mm": nr_first.get("height_mm", 0.0),
+                    "density": nr_first.get("density", 0.0),
+                    "n_parts": nr_first.get("n_parts", 0),
+                    "toplam_fiyat": toplam_fiyat,
+                }
+                from src.llm.roles.explainer import ExplainerInput
+                exp_input = ExplainerInput(
+                    karar_tipi="algoritma",
+                    sistem_ciktisi=sistem_ciktisi,
+                )
+                exp_result = explainer_role.explain(exp_input)
+
+                if exp_result.status != ValidationStatus.INVALID and exp_result.data:
+                    aciklama_md = exp_result.data.get("aciklama_md", "")
+                    acikla_durum = "tamam"
+                    if exp_result.number_flag:
+                        acikla_durum = "tamam_uyari"
+                else:
+                    aciklama_md = "Aciklama uretilemedi (LLM yanit vermedi)."
+                    acikla_durum = "parcali"
+            except Exception as exc:
+                logger.warning("Otonom: Acikla hatasi: %s", exc)
+                aciklama_md = f"Aciklama hatasi: {exc}"
+                acikla_durum = "hata"
+
+        asamalar.append({
+            "ad": "Acikla",
+            "durum": acikla_durum,
+            "cikti": aciklama_md[:200] if aciklama_md else "LLM aciklama atildi",
+            "detay": {"aciklama_md": aciklama_md},
+        })
+
+        # ------------------------------------------------------------------
+        # ASAMA 7: Teklif Taslagi (LLM -- INSAN ONAY KAPISI)
+        # ------------------------------------------------------------------
+        teklif_taslagi = ""
+        teklif_durum = "llm_yok"
+
+        report_role = llm_components.get("report_role")
+        if report_role is not None:
+            try:
+                context = _build_grounded_context(pipeline_result)
+                report_input = ReportInput(
+                    is_id="otonom-pipeline",
+                    n_orders=len(ranked),
+                    n_batches=n_batches,
+                    n_warnings=len(warnings),
+                    total_revenue_usd=toplam_fiyat,
+                    context=context,
+                )
+                report_result = report_role.run(report_input)
+
+                if not report_result.grounding_blocked and report_result.data:
+                    teklif_taslagi = report_result.data.get("govde_md", "")
+                    teklif_durum = "taslak_hazir"
+                else:
+                    teklif_taslagi = ""
+                    teklif_durum = "topraklama_hatasi"
+            except Exception as exc:
+                logger.warning("Otonom: Teklif taslagi hatasi: %s", exc)
+                teklif_taslagi = ""
+                teklif_durum = "hata"
+
+        asamalar.append({
+            "ad": "Teklif-Taslagi",
+            "durum": teklif_durum,
+            "cikti": (
+                "Taslak hazir — insan onay gerekli, otomatik gonderilmez"
+                if teklif_durum == "taslak_hazir"
+                else "Teklif taslagi uretilemedi"
+            ),
+            "detay": {
+                "taslak": teklif_taslagi,
+                "onay_gerekli": True,
+                "otomatik_gonderildi": False,
+            },
+        })
+
+        # ------------------------------------------------------------------
+        # Yanit
+        # ------------------------------------------------------------------
+        return jsonify({
+            "asamalar": asamalar,
+            "nesting_results": {
+                bid: {
+                    "height_mm": nr.get("height_mm", 0.0),
+                    "density": nr.get("density", 0.0),
+                    "n_parts": nr.get("n_parts", 0),
+                }
+                for bid, nr in nesting_results.items()
+            },
+            "pricing_results": {
+                bid: {"total_price": pr.get("total_price", 0.0)}
+                for bid, pr in pricing_results.items()
+            },
+            "pipeline_ozet": {
+                "siparis_sayisi": len(ranked),
+                "parti_sayisi": n_batches,
+                "uyari_sayisi": len(warnings),
+                "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+            },
+            "toplam_fiyat": toplam_fiyat,
+            "aciklama_md": aciklama_md,
+            "teklif_taslagi": teklif_taslagi,
+            "teklif_onay_gerekli": True,
+        }), 200
 
     # -----------------------------------------------------------------------
     # Siparis havuzu rotalar
