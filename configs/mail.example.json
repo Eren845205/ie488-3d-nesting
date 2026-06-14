@@ -1,0 +1,37 @@
+{
+  "_comment": "Mail ingest konfig ornegi (PLAN_SERVIS S1). Gercek parolalar BURAYA YAZILMAZ — env degiskenlerinden veya sirli konfig dosyasindan alinir.",
+  "_usage": "make_mail_source(config) ile kullanilir. 'source' alani 'fake' (demo) veya 'imap' (uretim) olabilir.",
+
+  "fake_ornek": {
+    "source": "fake"
+  },
+
+  "imap_ornek": {
+    "source": "imap",
+    "host": "imap.sirket.com.tr",
+    "port": 993,
+    "user": "siparis@sirket.com.tr",
+    "password": "PLACEHOLDER_BURAYA_GERCEK_PAROLA_KOYMA",
+    "folder": "INBOX",
+    "use_ssl": true
+  },
+
+  "imap_duz_ssl_ornek": {
+    "source": "imap",
+    "host": "mail.sirket.com.tr",
+    "port": 143,
+    "user": "siparis@sirket.com.tr",
+    "password": "PLACEHOLDER_BURAYA_GERCEK_PAROLA_KOYMA",
+    "folder": "INBOX",
+    "use_ssl": false
+  },
+
+  "_not": [
+    "Parola icin onerilern yontemler:",
+    "  1. Ortam degiskeni: os.environ['MAIL_PASSWORD']",
+    "  2. .env dosyasi (python-dotenv) — .gitignore'a ekle",
+    "  3. Uretim: Vault/Secret Manager entegrasyonu (S2 fazı)",
+    "UID cursor in-memory tutulur; servis yeniden baslatildiginda onceki UIDs kaybolur.",
+    "Kalici cursor icin SqliteIdempotencyStore ile entegre edilebilir (S1.1 plani)."
+  ]
+}
