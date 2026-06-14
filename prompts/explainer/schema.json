@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["aciklama_md", "karar_tipi", "kullanilan_girdiler"],
+  "properties": {
+    "aciklama_md": {
+      "type": "string",
+      "description": "Sade Turkce aciklama metni (markdown, 2-5 cumle). Yalnizca girdideki sistem ciktilarindan konusur."
+    },
+    "karar_tipi": {
+      "type": "string",
+      "enum": ["algoritma", "fiyat", "oncelik"],
+      "description": "Aciklanan karar kategorisi"
+    },
+    "kullanilan_girdiler": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Aciklamada atif yapilan girdi alanlari (orn. 'kazanan_algoritma', 'fiyat_kalemi_mesafe')"
+    },
+    "topraklama_uyarisi": {
+      "type": "boolean",
+      "description": "true ise aciklama_md'de giridide olmayan rakam/sebep uretildi (soft uyari)"
+    }
+  },
+  "additionalProperties": false
+}

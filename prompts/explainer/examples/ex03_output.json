@@ -1,0 +1,6 @@
+{
+  "aciklama_md": "Siralama EDF (En Erken Termin Once) kurali ile yapildi. BAYKAR-2024-07 en once isleniyor cunku termini yalnizca 5 gun kaldi ve sistem bunu 'yuksek gecikme riski' olarak isaretledi. ASELSAN-2024-12 ikinci sirada (14 gun) ve ROKETSAN-2024-09 ucuncu sirada (21 gun) geliyor; ikisinde de gecikme riski dusuk.",
+  "karar_tipi": "oncelik",
+  "kullanilan_girdiler": ["siralama", "oncelik_kurali", "kritik_uyari"],
+  "topraklama_uyarisi": false
+}

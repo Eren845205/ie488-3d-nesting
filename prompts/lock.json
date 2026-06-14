@@ -14,5 +14,10 @@
     "version": "1.0",
     "content_hash": "bfb677d3b4f8bbe0ef4fe5d331a08c10396037f3b2628a81a79f15a53be8b6a9",
     "last_eval_ref": ""
+  },
+  "explainer-v1": {
+    "version": "1.0",
+    "content_hash": "87ef42aa9fe53472454b9b7e50a2c25fa26662933769122bef38ea4f6f19b708",
+    "last_eval_ref": ""
   }
 }

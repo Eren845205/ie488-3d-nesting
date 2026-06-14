@@ -1,0 +1,6 @@
+{
+  "aciklama_md": "Bu sevkiyatin toplam fiyati 2.340,0 USD olarak hesaplandi. Fiyatin buyuk bolumu iki kalemden olusuyor: temel fiyat 1.200,0 USD, mesafe kademesi ise 1.450 km uzaklik nedeniyle 840,0 USD ek getirdi. Bunun ustune 45 derece egim kurali nedeniyle 300,0 USD surcharge eklendi. Agirlik 520,0 kg olarak sisteme girildi.",
+  "karar_tipi": "fiyat",
+  "kullanilan_girdiler": ["nihai_fiyat_usd", "fiyat_kalemleri", "toplam_agirlik_kg", "mesafe_km"],
+  "topraklama_uyarisi": false
+}
