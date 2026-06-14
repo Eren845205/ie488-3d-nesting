@@ -1,4 +1,4 @@
-"""extreme_point.py — Extreme-Point constructive 3D packer (R5 fix).
+"""extreme_point.py — Extreme-Point constructive 3D packer (R5 fix, fast v2).
 
 Motivation (PLAN_3D.md §2.4 known limitation):
   The heightmap Bin3D drops parts from above and cannot slide them into
@@ -35,6 +35,16 @@ Extreme-point generation (Crainic 2008 style, tractable):
   The nz_limit parameter is a *soft ceiling* only for the occupancy array
   allocation.  The grid auto-expands if a placement would exceed the current
   z dimension (see _ensure_z_capacity).
+
+Performance (fast v2):
+  is_feasible uses a 2D column_top array (nx x ny) that tracks the highest
+  occupied z+1 per column.  For the common "place on top" case — where the
+  candidate z is >= all column tops in the footprint — no 3D voxel-AND is
+  needed; the function returns True immediately.  Only sub-top (cavity)
+  candidates pay the full 3D AND cost.  This mirrors bin3d.py's drop_map
+  fast-path pattern and is provably result-identical: the fast path triggers
+  only when z >= local column top, which is a sufficient condition for zero
+  overlap (all occupancy in the footprint is strictly below z).
 """
 
 from __future__ import annotations
@@ -57,10 +67,11 @@ class OccupancyBin3D:
 
     Attributes
     ----------
-    nx, ny    : bin footprint in voxels (fixed)
-    nz_limit  : initial z-axis allocation (auto-expands as needed)
-    pitch     : mm per voxel (for mm-unit reporting only)
-    occupancy : bool array (nx, ny, nz_alloc) — True = occupied
+    nx, ny       : bin footprint in voxels (fixed)
+    nz_limit     : initial z-axis allocation (auto-expands as needed)
+    pitch        : mm per voxel (for mm-unit reporting only)
+    occupancy    : bool array (nx, ny, nz_alloc) — True = occupied
+    column_top   : int array (nx, ny) — per-column topmost occupied z+1 (0=empty)
     extreme_points : set of (x, y, z) int tuples — placement candidates
     placed_voxels  : cumulative count of placed True cells
     """
@@ -74,6 +85,9 @@ class OccupancyBin3D:
         self.occupancy: np.ndarray = np.zeros(
             (self.nx, self.ny, self.nz_limit), dtype=bool
         )
+        # column_top[i, j] = first free z above the topmost occupied voxel in
+        # column (i, j).  0 means the column is entirely empty.
+        self.column_top: np.ndarray = np.zeros((self.nx, self.ny), dtype=np.int32)
         self.extreme_points: Set[Tuple[int, int, int]] = {(0, 0, 0)}
         self.placed_voxels: int = 0
         self._max_z_used: int = 0  # tracks actual max z top seen so far
@@ -93,7 +107,7 @@ class OccupancyBin3D:
         self.occupancy = new_occ
 
     # ------------------------------------------------------------------
-    # Feasibility check
+    # Feasibility check (fast v2 with heightmap short-circuit)
     # ------------------------------------------------------------------
 
     def is_feasible(self, orient: Orientation,
@@ -104,14 +118,38 @@ class OccupancyBin3D:
           1. x + fw <= nx  and  y + fd <= ny  (footprint fits base)
           2. No voxel overlap with occupancy  (3D collision-free)
           z upper-bound is handled by auto-expand; we only check (1) and (2).
+
+        Fast path (heightmap short-circuit):
+          column_top[i, j] stores the first-free-z above the topmost occupied
+          voxel in column (i, j).  If z >= max(column_top[x:x+fw, y:y+fd]),
+          then ALL occupied voxels in the footprint columns are strictly below
+          z — the part placement cannot overlap any of them regardless of the
+          part's own voxel pattern.  Return True without the 3D AND.
+
+          This is a SOUND shortcut (never wrong): when the condition holds,
+          the 3D AND would also return True.  When z < local max column_top
+          (sub-top / cavity candidate), we fall through to the full 3D AND,
+          paying the exact same cost as before — so correctness is fully
+          preserved for the cavity case.
+
+          Result is bit-identical to the full-3D version on every input.
         """
         fw, fd, fh = orient.grid.shape
         if x + fw > self.nx or y + fd > self.ny:
             return False
         z_top = z + fh
+
+        # --- Fast path: entire part is above all occupancy in its footprint ---
+        local_max_top = int(self.column_top[x:x + fw, y:y + fd].max())
+        if z >= local_max_top:
+            # The first occupied voxel (if any) in every footprint column is at
+            # index < local_max_top <= z.  The part voxels start at index z.
+            # Disjoint z-ranges → no overlap possible.
+            return True
+
+        # --- Slow path: sub-top candidate (cavity / overhang) — full 3D AND ---
         self._ensure_z_capacity(z_top)
         occ_slice = self.occupancy[x:x + fw, y:y + fd, z:z_top]
-        # collision iff any voxel in part grid AND in occupancy
         return not bool(np.any(orient.grid & occ_slice))
 
     # ------------------------------------------------------------------
@@ -119,7 +157,7 @@ class OccupancyBin3D:
     # ------------------------------------------------------------------
 
     def place(self, orient: Orientation, x: int, y: int, z: int) -> None:
-        """Commit *orient* at (x, y, z): update occupancy and extreme-points.
+        """Commit *orient* at (x, y, z): update occupancy, column_top, and EPs.
 
         Raises
         ------
@@ -144,6 +182,19 @@ class OccupancyBin3D:
         self.placed_voxels += int(orient.grid.sum())
         if z_top > self._max_z_used:
             self._max_z_used = z_top
+
+        # Update column_top for each footprint column that the part actually
+        # occupies (columns where orient.filled is True — i.e., the part has
+        # at least one voxel in that column).
+        # top[i, j] is the highest z-index occupied in that column + 1.
+        # After placing at z, new column top = z + orient.top[i, j].
+        # We take the element-wise max to handle stacking.
+        fw2, fd2 = orient.filled.shape  # same as fw, fd
+        new_col_top = self.column_top[x:x + fw2, y:y + fd2].copy()
+        part_col_top = np.where(orient.filled, z + orient.top, 0).astype(np.int32)
+        np.maximum(new_col_top, part_col_top, out=new_col_top)
+        self.column_top[x:x + fw2, y:y + fd2] = new_col_top
+
         self._update_extreme_points(x, y, z, fw, fd, fh)
 
     def _update_extreme_points(self, px: int, py: int, pz: int,
@@ -176,11 +227,35 @@ class OccupancyBin3D:
             keep.add((ex, ey, ez))
         self.extreme_points = keep
 
+    def _rebuild_column_top(self) -> None:
+        """Recompute column_top from scratch from current occupancy.
+
+        Used after manual occupancy manipulation (e.g., in tests and
+        _rebuild_extreme_points).
+        """
+        occ = self.occupancy
+        nz = occ.shape[2]
+        # For each column (i, j), find the highest z that is True.
+        # np.max along axis 2 of the z-index where occ is True, +1.
+        # Efficient: flip z-axis, argmax gives first True from the top.
+        # But simpler and still fast: use cumsum trick or just argmax on flip.
+        # For correctness, compute: column_top[i,j] = max z+1 where occ[i,j,z]=True
+        # = 0 if no True in column.
+        col_any = occ.any(axis=2)  # (nx, ny) bool
+        # np.argmax on reversed z finds highest True index
+        flipped = occ[:, :, ::-1]
+        argmax_from_top = np.argmax(flipped, axis=2)  # index from top
+        highest_z = (nz - 1) - argmax_from_top        # actual z index of highest True
+        self.column_top = np.where(col_any, highest_z + 1, 0).astype(np.int32)
+
     def _rebuild_extreme_points(self) -> None:
         """Rebuild EP set from scratch based on current occupancy.
 
         Used in tests that manually modify occupancy without calling place().
         """
+        # Rebuild column_top as well since occupancy was modified directly.
+        self._rebuild_column_top()
+
         occ = self.occupancy
         nz = occ.shape[2]
         # Start fresh

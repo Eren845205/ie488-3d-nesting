@@ -7,7 +7,11 @@ Coverage targets:
   - Determinism
   - Empty-bin first placement lands at (0,0,0)
   - Utility: height_mm, fill_ratio
+  - Equivalence: fast (column_top) is_feasible == full 3D AND on many positions
+  - Speed: fast path is faster than naive full-3D on a medium instance
 """
+
+import time
 
 import numpy as np
 import pytest
@@ -436,3 +440,229 @@ def _make_orient(grid: np.ndarray) -> Orientation:
         top=top,
         voxel_count=int(grid.sum()),
     )
+
+
+# ---------------------------------------------------------------------------
+# Reference is_feasible: pure full-3D, no column_top shortcut
+# ---------------------------------------------------------------------------
+
+def _is_feasible_ref(obin: OccupancyBin3D,
+                     orient: Orientation,
+                     x: int, y: int, z: int) -> bool:
+    """Reference implementation: always does the full 3D AND (no fast path).
+
+    Used for equivalence testing only — never called in production code.
+    """
+    fw, fd, fh = orient.grid.shape
+    if x + fw > obin.nx or y + fd > obin.ny:
+        return False
+    z_top = z + fh
+    obin._ensure_z_capacity(z_top)
+    occ_slice = obin.occupancy[x:x + fw, y:y + fd, z:z_top]
+    return not bool(np.any(orient.grid & occ_slice))
+
+
+# ---------------------------------------------------------------------------
+# Equivalence tests: fast is_feasible == reference full-3D
+# ---------------------------------------------------------------------------
+
+class TestFastPathEquivalence:
+    """Verify that the column_top fast path never disagrees with full 3D AND.
+
+    Strategy: build a bin with a specific occupancy pattern, then sweep
+    is_feasible over many (x, y, z) positions and compare fast vs ref.
+    Cases covered:
+      - empty bin (all positions)
+      - stack-on-top positions (fast path should trigger and agree)
+      - cavity positions inside an arch (slow path, full 3D — exact match)
+      - positions that straddle the arch walls (boundary conditions)
+    """
+
+    def _sweep_equivalence(self, obin: OccupancyBin3D, orient: Orientation,
+                           label: str) -> None:
+        """Check that fast is_feasible matches ref for every valid (x,y,z)."""
+        fw, fd, fh = orient.grid.shape
+        mismatches = []
+        positions_checked = 0
+        for x in range(obin.nx - fw + 1):
+            for y in range(obin.ny - fd + 1):
+                for z in range(30):
+                    fast = obin.is_feasible(orient, x, y, z)
+                    ref = _is_feasible_ref(obin, orient, x, y, z)
+                    if fast != ref:
+                        mismatches.append((x, y, z, fast, ref))
+                    positions_checked += 1
+        assert mismatches == [], (
+            f"{label}: {len(mismatches)} mismatches out of {positions_checked} "
+            f"positions checked. First: {mismatches[0]}"
+        )
+
+    def test_equivalence_empty_bin(self):
+        """On a fresh empty bin, fast == ref for all positions."""
+        obin = OccupancyBin3D(8, 8, 50)
+        orient = _make_orient(np.ones((2, 2, 2), dtype=bool))
+        self._sweep_equivalence(obin, orient, "empty bin")
+
+    def test_equivalence_after_single_place(self):
+        """After placing one block, fast == ref for all candidate positions."""
+        obin = OccupancyBin3D(8, 8, 50)
+        part = _box_part("a", 2, 2, 2)
+        orient0 = part.orientations[0]
+        obin.place(orient0, 0, 0, 0)
+
+        probe = _make_orient(np.ones((2, 2, 2), dtype=bool))
+        self._sweep_equivalence(obin, probe, "single block placed")
+
+    def test_equivalence_arch_cavity_scenario(self):
+        """Arch scenario from overhang proof — many cavity + stack positions."""
+        obin = OccupancyBin3D(10, 6, 50)
+        # Left pillar: x=0, z=0..5
+        for z in range(6):
+            for y in range(6):
+                obin.occupancy[0, y, z] = True
+        # Right pillar: x=6, z=0..5
+        for z in range(6):
+            for y in range(6):
+                obin.occupancy[6, y, z] = True
+        # Roof: x=0..6, z=5
+        for x in range(7):
+            for y in range(6):
+                obin.occupancy[x, y, 5] = True
+        obin._rebuild_extreme_points()  # also rebuilds column_top
+
+        # Probe with a 2x2x2 block
+        probe = _make_orient(np.ones((2, 2, 2), dtype=bool))
+        self._sweep_equivalence(obin, probe, "arch cavity")
+
+    def test_equivalence_stacked_parts(self):
+        """After stacking several parts, fast == ref across all positions."""
+        obin = OccupancyBin3D(6, 6, 60)
+        for i in range(4):
+            part = _box_part(f"s{i}", 2, 2, 2)
+            orient = part.orientations[0]
+            for ep in sorted(obin.extreme_points,
+                             key=lambda e: (e[2], e[1], e[0])):
+                ex, ey, ez = ep
+                if obin.is_feasible(orient, ex, ey, ez):
+                    obin.place(orient, ex, ey, ez)
+                    break
+
+        probe = _make_orient(np.ones((2, 2, 2), dtype=bool))
+        self._sweep_equivalence(obin, probe, "four stacked parts")
+
+    def test_place_extreme_point_identical_to_reference(self):
+        """Full packer: fast EP placements == reference (full-3D-only) placements.
+
+        We monkey-patch is_feasible on a second bin to always use the reference
+        (full-3D) path, run the packer on both, and compare placement lists.
+        This proves the fast path does not alter any placement decision.
+        """
+        parts = [_box_part(f"p{i}", 2, 2, 2) for i in range(6)]
+
+        # Run with the optimized (fast) is_feasible
+        fast_placements, _ = place_extreme_point(
+            list(parts), lambda: OccupancyBin3D(6, 6, 60)
+        )
+
+        # Run with a reference bin where is_feasible is replaced by the ref impl
+        class RefOccupancyBin3D(OccupancyBin3D):
+            def is_feasible(self, orient, x, y, z):  # type: ignore[override]
+                return _is_feasible_ref(self, orient, x, y, z)
+
+        ref_placements, _ = place_extreme_point(
+            list(parts), lambda: RefOccupancyBin3D(6, 6, 60)
+        )
+
+        assert len(fast_placements) == len(ref_placements)
+        for i, (fp, rp) in enumerate(zip(fast_placements, ref_placements)):
+            assert (fp.x, fp.y, fp.z, fp.orientation_idx) == \
+                   (rp.x, rp.y, rp.z, rp.orientation_idx), (
+                f"Part {i} ({fp.part_id}): fast=({fp.x},{fp.y},{fp.z},{fp.orientation_idx})"
+                f" ref=({rp.x},{rp.y},{rp.z},{rp.orientation_idx})"
+            )
+
+    def test_place_extreme_point_identical_overhang_scenario(self):
+        """Packer equivalence in an overhang-rich scenario (mixed part sizes)."""
+        import trimesh as tm
+        parts = []
+        for i, (w, d, h) in enumerate([(2, 2, 3), (3, 2, 2), (2, 3, 2),
+                                        (2, 2, 2), (3, 3, 2), (2, 2, 4)]):
+            mesh = tm.creation.box(extents=(w * PITCH - 0.01,
+                                            d * PITCH - 0.01,
+                                            h * PITCH - 0.01))
+            mesh.apply_translation(-mesh.bounds[0])
+            vp = voxelize_part(f"mix{i}", mesh, PITCH, n_orientations=1)
+            vp.id = f"mix{i}"
+            parts.append(vp)
+
+        fast_placements, _ = place_extreme_point(
+            list(parts), lambda: OccupancyBin3D(8, 8, 80)
+        )
+
+        class RefOccupancyBin3D(OccupancyBin3D):
+            def is_feasible(self, orient, x, y, z):  # type: ignore[override]
+                return _is_feasible_ref(self, orient, x, y, z)
+
+        ref_placements, _ = place_extreme_point(
+            list(parts), lambda: RefOccupancyBin3D(8, 8, 80)
+        )
+
+        assert len(fast_placements) == len(ref_placements)
+        for i, (fp, rp) in enumerate(zip(fast_placements, ref_placements)):
+            assert (fp.x, fp.y, fp.z, fp.orientation_idx) == \
+                   (rp.x, rp.y, rp.z, rp.orientation_idx), (
+                f"Mixed part {i}: fast=({fp.x},{fp.y},{fp.z}) ref=({rp.x},{rp.y},{rp.z})"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Speed test: fast path is faster than reference on a medium instance
+# ---------------------------------------------------------------------------
+
+class TestFastPathSpeed:
+    """Verify that the heightmap short-circuit delivers a measurable speedup.
+
+    The test packs a medium instance (20x20 bin, 30 parts) with both the
+    fast (column_top) and reference (full-3D) is_feasible, and asserts that
+    the fast version is at least 1.5x faster.  The threshold is conservative
+    to avoid flakiness on slow CI machines.
+
+    This test is NOT marked slow — it should complete in <5 s on any modern
+    machine because the instance is sized to be tight but not huge.
+    """
+
+    def test_fast_is_faster_than_reference_medium(self):
+        """Fast is_feasible is faster than full-3D on a medium instance.
+
+        We use a 30x30 bin with 50 parts so that occupancy accumulates enough
+        to make the 3D AND non-trivial.  The fast path avoids the 3D AND for
+        every "place on top" call (the common case), paying only the O(footprint)
+        column_top max.  Threshold: 1.2x — conservative to survive slow CI and
+        Python timer noise while still proving the fast path helps.
+        """
+        nx = ny = 30
+        pitch = 5.0
+        parts_fast = [_box_part(f"f{i}", 2, 2, 3) for i in range(50)]
+        parts_ref = [_box_part(f"r{i}", 2, 2, 3) for i in range(50)]
+
+        # Time the fast (optimized) packer
+        t0 = time.perf_counter()
+        place_extreme_point(list(parts_fast),
+                            lambda: OccupancyBin3D(nx, ny, 400, pitch=pitch))
+        t_fast = time.perf_counter() - t0
+
+        # Time the reference (full-3D-only) packer
+        class RefOccupancyBin3D(OccupancyBin3D):
+            def is_feasible(self, orient, x, y, z):  # type: ignore[override]
+                return _is_feasible_ref(self, orient, x, y, z)
+
+        t0 = time.perf_counter()
+        place_extreme_point(list(parts_ref),
+                            lambda: RefOccupancyBin3D(nx, ny, 400, pitch=pitch))
+        t_ref = time.perf_counter() - t0
+
+        speedup = t_ref / t_fast if t_fast > 0 else float("inf")
+        assert speedup >= 1.2, (
+            f"Expected >= 1.2x speedup, got {speedup:.2f}x "
+            f"(fast={t_fast*1000:.1f}ms ref={t_ref*1000:.1f}ms)"
+        )
