@@ -221,13 +221,71 @@
             <div class="info-label">Nesting Suresi</div>
             <div class="info-value">{{ "%.3f"|format(nr.get('elapsed_sec', 0.0)) }} s</div>
         </div>
+        <div class="info-item">
+            <div class="info-label">Voxel Pitch</div>
+            <div class="info-value">{{ nr.get('pitch_mm', '-') }} mm</div>
+        </div>
         {% if nr.get('note') %}
         <div class="info-item">
             <div class="info-label">Not</div>
-            <div class="info-value" style="color: #b45309; font-size: 13px;">{{ nr.note }}</div>
+            <div class="info-value" style="color: #b45309; font-size: 13px;">{{ nr.get('note') }}</div>
         </div>
         {% endif %}
     </div>
+
+    <!-- Portföy kıyas tablosu -->
+    {% set port = nr.get('portfolio') %}
+    {% if port %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+            <strong style="font-size: 15px;">4 Algoritma Yarisi</strong>
+            <span class="badge badge-green">Kazanan: {{ port.get('winner', '?') }}</span>
+            {% if port.get('gain_pct', 0.0) > 0.01 %}
+            <span class="badge badge-blue">DBLF'ye gore +{{ "%.1f"|format(port.get('gain_pct', 0.0)) }}% dusuk yukseklik</span>
+            {% else %}
+            <span class="badge badge-yellow">DBLF en iyi</span>
+            {% endif %}
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Algoritma</th>
+                        <th>Yukseklik (mm)</th>
+                        <th>Doluluk</th>
+                        <th>Sure (s)</th>
+                        <th>DBLF'ye Kazanc%</th>
+                        <th>Sonuc</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in port.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background: #f0fff4; font-weight: 600;"{% endif %}>
+                        <td>{{ row.get('solver', '?') }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0)) }}</td>
+                        <td>{{ "%.1f"|format(row.get('density', 0.0) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0)) }}</td>
+                        <td>
+                            {% if row.get('solver') == 'dblf' %}
+                                <span style="color: var(--color-text-muted);">referans</span>
+                            {% elif row.get('gain_pct', 0.0) > 0.01 %}
+                                <span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0)) }}%</span>
+                            {% else %}
+                                <span style="color: var(--color-text-muted);">0%</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.get('winner') %}
+                                <span class="badge badge-green">KAZANDI</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Fiyat dokumu -->
     <div style="border-top: 1px solid var(--color-border); padding-top: 16px;">

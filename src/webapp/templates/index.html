@@ -26,6 +26,19 @@
     </div>
 
     <form method="POST" action="/run" id="run-form" style="margin-top: 16px;">
+        {% if not pool_is_custom %}
+        <div style="margin-bottom: 12px; font-size: 14px; color: var(--color-text-muted);">
+            <label style="margin-right: 16px; font-weight: 600;">Demo senaryosu:</label>
+            <label style="margin-right: 12px; cursor: pointer;">
+                <input type="radio" name="scenario_type" value="rich" checked>
+                Zengin (~20 parca, 3 siparis &mdash; 4 algoritma ayirt eder)
+            </label>
+            <label style="cursor: pointer;">
+                <input type="radio" name="scenario_type" value="standard">
+                Standart (5 siparis, orjinal demo)
+            </label>
+        </div>
+        {% endif %}
         <button type="submit" class="btn btn-primary" id="run-btn">
             Pipeline&#39;i Calistir
         </button>

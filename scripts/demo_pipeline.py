@@ -4,13 +4,17 @@ Zincir:
     1. Sipariş havuzu → rank_orders (EDD ağırlıklı önceliklendirme)
     2. build_batches (allow_mixing=False) → parti planı
     3. check_feasibility → termin uyarıları
-    4. Her parti için: NestingInstance kur → to_voxel_parts → DBLF yerleşimi
-       → yükseklik + doluluk metrikleri
+    4. Her parti için: NestingInstance kur → suggest_pitch (adaptif) →
+       to_voxel_parts → PORTFÖY (DBLF + SA + GA + Tabu) yerleşimi
+       → yükseklik + doluluk metrikleri + portföy karşılaştırma tablosu
     5. Her parti için: PricingEngine → fiyat dökümü
     6. results/demo_pipeline_report.md → bölümlü markdown raporu
     7. Konsola özet bas
 
 Deterministik: sabit ref_date + seed; iki koşu aynı raporu üretir.
+
+Portföy: dblf + sa + ga + tabu çözücüleri her parti için aynı budget/seed
+ile koşar; en iyi yerleşim kullanılır; kıyas tablosu rapora eklenir.
 
 Kullanım:
     python scripts/demo_pipeline.py
@@ -55,9 +59,11 @@ SCENARIO: Dict[str, Any] = {
         "width_mm": 335.0,
         "depth_mm": 250.0,
     },
-    # Kaba pitch: hız için 15 mm (2-3 dk içinde tüm senaryo bitmeli)
+    # pitch artık suggest_pitch ile instance'tan türetilir; bu alan fallback
     "pitch": 15.0,
     "n_orientations": 4,
+    # Portföy bütçesi: her çözücü başına iterasyon (demo hızı için 120)
+    "portfolio_budget": 120,
     # Sipariş havuzu — her siparişe kutu parça listesi eklendi
     "orders": [
         {
@@ -125,7 +131,116 @@ SCENARIO: Dict[str, Any] = {
             ],
         },
     ],
+    # Portföy varsayılan senaryo: "küçük" — eski senaryoya benzer
+    # (webapp'te ikon ile ayırt edilir; daha sıkı senaryo RICH_SCENARIO)
+    "scenario_label": "standard",
     # Örnek fiyatlama kural seti
+    "pricing_rules": {
+        "version": "1.0",
+        "name": "Demo kural seti v1",
+        "rules": [
+            {
+                "id": "r_volume",
+                "type": "unit_price",
+                "input_field": "hacim_m3",
+                "unit_price": 8000.0,
+                "description": "Hacim bazlı birim fiyat (8000 $/m3)",
+            },
+            {
+                "id": "r_konteyner",
+                "type": "unit_price",
+                "input_field": "konteyner_sayisi",
+                "unit_price": 50.0,
+                "description": "Konteyner kullanım ücreti (50 $/konteyner)",
+            },
+            {
+                "id": "r_doluluk_bonus",
+                "type": "conditional_multiplier",
+                "condition_field": "doluluk_oran",
+                "operator": ">=",
+                "threshold": 0.6,
+                "multiplier": 0.95,
+                "description": "Yüksek doluluk indirimi (%5)",
+            },
+            {
+                "id": "r_min",
+                "type": "min_clamp",
+                "min_price": 200.0,
+                "description": "Minimum parti fiyatı",
+            },
+        ],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Zengin demo senaryosu — portföyün ayırt edici olduğu yoğun vaka
+# ~20 parça, sıkı taban (335×250), karışık boyutlar
+# ---------------------------------------------------------------------------
+
+RICH_SCENARIO: Dict[str, Any] = {
+    "ref_date": date(2026, 6, 13),
+    "seed": 42,
+    "capacity": {
+        "num_machines": 1,
+        "batch_duration_hours": 8.0,
+        "shifts_per_day": 1,
+        "max_volume_per_batch_cm3": 200_000.0,
+    },
+    "container": {
+        "width_mm": 335.0,
+        "depth_mm": 250.0,
+    },
+    "pitch": 12.0,
+    "n_orientations": 4,
+    "portfolio_budget": 120,
+    "scenario_label": "rich",
+    "orders": [
+        {
+            "order_id": "RICH-FORD-A1",
+            "customer": "FORD",
+            "deadline": "2026-06-18",
+            "priority_class": 1,
+            "parts": [
+                {"id": "r_f_p1", "name": "ford_bracket_L", "qty": 3, "source": "box",
+                 "width_mm": 90.0, "depth_mm": 70.0, "height_mm": 40.0},
+                {"id": "r_f_p2", "name": "ford_cover_lg", "qty": 2, "source": "box",
+                 "width_mm": 110.0, "depth_mm": 85.0, "height_mm": 30.0},
+                {"id": "r_f_p3", "name": "ford_seal_sm", "qty": 4, "source": "box",
+                 "width_mm": 45.0, "depth_mm": 45.0, "height_mm": 18.0},
+                {"id": "r_f_p4", "name": "ford_flange", "qty": 2, "source": "box",
+                 "width_mm": 75.0, "depth_mm": 75.0, "height_mm": 28.0},
+            ],
+        },
+        {
+            "order_id": "RICH-ASEL-A1",
+            "customer": "ASELSAN",
+            "deadline": "2026-06-20",
+            "priority_class": 1,
+            "parts": [
+                {"id": "r_a_p1", "name": "asel_housing_lg", "qty": 2, "source": "box",
+                 "width_mm": 130.0, "depth_mm": 95.0, "height_mm": 55.0},
+                {"id": "r_a_p2", "name": "asel_plate_thin", "qty": 3, "source": "box",
+                 "width_mm": 160.0, "depth_mm": 110.0, "height_mm": 18.0},
+                {"id": "r_a_p3", "name": "asel_bracket_sm", "qty": 4, "source": "box",
+                 "width_mm": 55.0, "depth_mm": 40.0, "height_mm": 22.0},
+            ],
+        },
+        {
+            "order_id": "RICH-BAYK-C1",
+            "customer": "BAYKAR",
+            "deadline": "2026-06-25",
+            "priority_class": 2,
+            "parts": [
+                {"id": "r_b_p1", "name": "bayk_rib_lg", "qty": 4, "source": "box",
+                 "width_mm": 100.0, "depth_mm": 50.0, "height_mm": 24.0},
+                {"id": "r_b_p2", "name": "bayk_spar_long", "qty": 2, "source": "box",
+                 "width_mm": 220.0, "depth_mm": 35.0, "height_mm": 28.0},
+                {"id": "r_b_p3", "name": "bayk_clip", "qty": 5, "source": "box",
+                 "width_mm": 38.0, "depth_mm": 30.0, "height_mm": 20.0},
+            ],
+        },
+    ],
     "pricing_rules": {
         "version": "1.0",
         "name": "Demo kural seti v1",
@@ -276,15 +391,25 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     from src.scheduling.batcher import build_batches
     from src.scheduling.feasibility import check_feasibility
     from src.nesting3d.instances.format import to_voxel_parts
-    from src.nesting3d.dblf import dblf
+    from src.nesting3d.instances.pitch import suggest_pitch
+    from src.nesting3d.solvers.dblf_solver import DBLFSolver
+    from src.nesting3d.solvers.sa_solver import SASolver
+    from src.nesting3d.solvers.ga_solver import GASolver
+    from src.nesting3d.solvers.tabu_solver import TabuSolver
+    from src.nesting3d.solvers.portfolio import run_portfolio
     from src.pricing.schema import RuleSet
     from src.pricing.engine import PricingEngine
 
     t0 = time.perf_counter()
     today = scenario["ref_date"]
     container = scenario["container"]
-    pitch = float(scenario["pitch"])
+    pitch_fallback = float(scenario.get("pitch", 15.0))
     n_orient = int(scenario.get("n_orientations", 4))
+    portfolio_budget = int(scenario.get("portfolio_budget", 120))
+    seed = int(scenario.get("seed", 42))
+
+    # Portföy çözücü listesi (sabit sıra — tablo sırası buna bağlı)
+    _solvers = [DBLFSolver(), SASolver(), GASolver(), TabuSolver()]
 
     # --- 1. Sipariş nesnelerini kur + doğrula ---
     orders: List[Order] = []
@@ -347,7 +472,13 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         # NestingInstance kur
         instance = _build_nesting_instance(all_parts, container)
 
-        # Voxelize (kaba pitch — hız için)
+        # Adaptif pitch: instance'tan türet, fallback = senaryo değeri
+        try:
+            pitch = suggest_pitch(instance)
+        except Exception:
+            pitch = pitch_fallback
+
+        # Voxelize (adaptif pitch)
         t_nest_start = time.perf_counter()
         try:
             voxel_parts = to_voxel_parts(
@@ -358,28 +489,104 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
                 "height_mm": 0.0, "density": 0.0, "n_parts": len(all_parts),
                 "elapsed_sec": 0.0,
                 "note": f"Voxelization hatasi: {exc}",
+                "portfolio": None,
             }
             pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
             continue
 
-        # DBLF yerleşimi
+        # Portföy: 4 çözücü aynı budget/seed ile yarışır
         factory = _bin_factory(container, pitch)
         try:
-            _placements, bin3d = dblf(voxel_parts, factory)
+            port_result = run_portfolio(
+                voxel_parts,
+                factory,
+                solvers=_solvers,
+                budget=portfolio_budget,
+                seed=seed,
+            )
         except Exception as exc:
-            nesting_results[batch.batch_id] = {
-                "height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
-                "elapsed_sec": 0.0,
-                "note": f"DBLF hatasi: {exc}",
-            }
-            pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
+            # Zarif düşüş: portföy başarısız → DBLF tek başına
+            try:
+                from src.nesting3d.dblf import dblf as _dblf
+                _placements, bin3d = _dblf(voxel_parts, factory)
+                t_nest_elapsed = time.perf_counter() - t_nest_start
+                nesting_results[batch.batch_id] = {
+                    "height_mm": bin3d.max_height_mm(),
+                    "density": bin3d.packing_density(),
+                    "n_parts": len(_placements),
+                    "elapsed_sec": round(t_nest_elapsed, 3),
+                    "note": f"Portfoy hatasi (DBLF fallback): {exc}",
+                    "portfolio": None,
+                }
+            except Exception as exc2:
+                nesting_results[batch.batch_id] = {
+                    "height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
+                    "elapsed_sec": 0.0,
+                    "note": f"Portfoy hatasi: {exc}; DBLF fallback hatasi: {exc2}",
+                    "portfolio": None,
+                }
+                pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
+                continue
+            pricing_inputs = _build_pricing_inputs(
+                batch_volume_cm3=batch.total_volume_cm3,
+                height_mm=nesting_results[batch.batch_id]["height_mm"],
+                density=nesting_results[batch.batch_id]["density"],
+                n_containers=1,
+            )
+            try:
+                p_result = pricing_engine.calculate(pricing_inputs)
+                breakdown_lines = [str(line) for line in p_result.breakdown]
+                pricing_results[batch.batch_id] = {
+                    "total_price": p_result.total_price,
+                    "breakdown": breakdown_lines,
+                    "inputs": pricing_inputs,
+                }
+            except Exception as exc3:
+                pricing_results[batch.batch_id] = {
+                    "total_price": 0.0,
+                    "breakdown": [f"Fiyatlama hatasi: {exc3}"],
+                    "inputs": pricing_inputs,
+                }
+            batch_nesting_elapsed[batch.batch_id] = nesting_results[batch.batch_id]["elapsed_sec"]
             continue
 
         t_nest_elapsed = time.perf_counter() - t_nest_start
+        winner = port_result.winner
+        height_mm = winner.height_mm
+        density = winner.density
+        n_placed = len(winner.placements)
 
-        height_mm = bin3d.max_height_mm()
-        density = bin3d.packing_density()
-        n_placed = len(_placements)
+        # DBLF yüksekliğini bul (karşılaştırma için)
+        dblf_height = next(
+            (r.height_mm for r in port_result.results
+             if r.meta.get("solver") == "dblf"),
+            height_mm,
+        )
+        winner_name = winner.meta.get("solver", "?")
+        gain_pct = (
+            (dblf_height - height_mm) / dblf_height * 100.0
+            if dblf_height > 0 and winner_name != "dblf"
+            else 0.0
+        )
+
+        # Portföy kıyas verisi (her çözücü için satır)
+        portfolio_rows = []
+        for r in port_result.results:
+            s_name = r.meta.get("solver", "?")
+            is_win = r is winner
+            row_gain = (
+                (dblf_height - r.height_mm) / dblf_height * 100.0
+                if dblf_height > 0 and s_name != "dblf"
+                else 0.0
+            )
+            portfolio_rows.append({
+                "solver": s_name,
+                "height_mm": round(r.height_mm, 2),
+                "density": round(r.density, 4),
+                "time_s": round(r.time_s, 3),
+                "winner": is_win,
+                "gain_pct": round(row_gain, 2),
+            })
 
         nesting_results[batch.batch_id] = {
             "height_mm": height_mm,
@@ -387,6 +594,14 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "n_parts": n_placed,
             "elapsed_sec": round(t_nest_elapsed, 3),
             "note": "",
+            "pitch_mm": round(pitch, 2),
+            "portfolio": {
+                "winner": winner_name,
+                "dblf_height_mm": round(dblf_height, 2),
+                "gain_pct": round(gain_pct, 2),
+                "table_md": port_result.table_md,
+                "rows": portfolio_rows,
+            },
         }
         batch_nesting_elapsed[batch.batch_id] = t_nest_elapsed
 
@@ -518,10 +733,10 @@ def _build_report_markdown(
     lines.append("## 3. Nesting Sonuclari")
     lines.append("")
     lines.append(
-        "| Parti | Yukseklik (mm) | Doluluk (%) | Parca Sayisi | Sure (s) | Not |"
+        "| Parti | Pitch (mm) | Yukseklik (mm) | Doluluk (%) | Parca | Sure (s) | Kazanan | DBLF'ye Kazanc% | Not |"
     )
     lines.append(
-        "|-------|----------------|-------------|--------------|----------|-----|"
+        "|-------|------------|----------------|-------------|-------|----------|---------|-----------------|-----|"
     )
     for b in batches:
         nr = nesting_results.get(b.batch_id, {})
@@ -530,11 +745,36 @@ def _build_report_markdown(
         n = nr.get("n_parts", 0)
         t = nr.get("elapsed_sec", 0.0)
         note = nr.get("note", "")
+        pitch_mm = nr.get("pitch_mm", "-")
+        port = nr.get("portfolio") or {}
+        winner_name = port.get("winner", "dblf")
+        gain_pct = port.get("gain_pct", 0.0)
         lines.append(
-            f"| {b.batch_id} | {h:.1f} | {d * 100:.1f} "
-            f"| {n} | {t:.2f} | {note} |"
+            f"| {b.batch_id} | {pitch_mm} | {h:.1f} | {d * 100:.1f} "
+            f"| {n} | {t:.2f} | {winner_name} | {gain_pct:.1f}% | {note} |"
         )
     lines.append("")
+
+    # --- Bölüm 3b: Portföy kıyas tabloları ---
+    lines.append("## 3b. Portfoy Kiyaslama (4 Algoritma Yarisi)")
+    lines.append("")
+    for b in batches:
+        nr = nesting_results.get(b.batch_id, {})
+        port = nr.get("portfolio")
+        if not port:
+            lines.append(f"### Parti {b.batch_id}: portfoy verisi yok")
+            lines.append("")
+            continue
+        winner_name = port.get("winner", "?")
+        dblf_h = port.get("dblf_height_mm", 0.0)
+        gain = port.get("gain_pct", 0.0)
+        lines.append(f"### Parti {b.batch_id} — {b.customer}")
+        lines.append(f"**Kazanan: `{winner_name}` | DBLF: {dblf_h:.2f} mm | Kazanc: {gain:.1f}%**")
+        lines.append("")
+        table_md = port.get("table_md", "")
+        if table_md:
+            lines.append(table_md)
+        lines.append("")
 
     # --- Bölüm 4: Fiyat dökümü ---
     lines.append("## 4. Fiyat Dokumu")
@@ -609,10 +849,14 @@ def _print_console_summary(
         d = nr.get("density", 0.0)
         price = pr.get("total_price", 0.0)
         total_rev += price
+        port = nr.get("portfolio") or {}
+        winner_name = port.get("winner", "dblf")
+        gain_pct = port.get("gain_pct", 0.0)
+        gain_str = f" | kazanc={gain_pct:.1f}%" if gain_pct > 0.0 else ""
         print(
             f"  {b.batch_id}: {b.customer:12s} | "
             f"yukseklik={h:.1f}mm | doluluk={d * 100:.1f}% | "
-            f"fiyat={price:.2f}$"
+            f"kazanan={winner_name}{gain_str} | fiyat={price:.2f}$"
         )
     print()
     print(f"Toplam ciro onerisi : {total_rev:.2f} $")
@@ -625,5 +869,13 @@ def _print_console_summary(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    result = run_pipeline(SCENARIO)
+    import argparse as _argparse
+    _ap = _argparse.ArgumentParser(description="Demo pipeline")
+    _ap.add_argument(
+        "--scenario", choices=["standard", "rich"], default="rich",
+        help="Senaryo secimi: 'standard' (5 siparis) veya 'rich' (yogun, 3 siparis ~20 parca)",
+    )
+    _args = _ap.parse_args()
+    _scenario = RICH_SCENARIO if _args.scenario == "rich" else SCENARIO
+    result = run_pipeline(_scenario)
     print(f"\nRapor: {result['report_path']}")

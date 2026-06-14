@@ -274,8 +274,11 @@ def _register_routes(
 
     @app.route("/run", methods=["POST"])
     def run():
-        """Havuz doluysa havuz senaryosunu, bos ise demo senaryosunu kosturur."""
-        from scripts.demo_pipeline import SCENARIO, run_pipeline
+        """Havuz doluysa havuz senaryosunu, bos ise demo senaryosunu kosturur.
+
+        Form parametresi: scenario_type = 'standard' | 'rich' (varsayilan 'rich')
+        """
+        from scripts.demo_pipeline import SCENARIO, RICH_SCENARIO, run_pipeline
         from src.webapp.orders_store import load_orders, orders_to_scenario
 
         _opath = app.config.get("ORDERS_PATH")
@@ -285,7 +288,9 @@ def _register_routes(
             scenario = orders_to_scenario(pool_orders)
             used_demo = False
         else:
-            scenario = SCENARIO
+            # Senaryo tipi: form'dan al; default = zengin senaryo
+            scenario_type = (request.form.get("scenario_type") or "rich").strip()
+            scenario = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
             used_demo = True
 
         result = run_pipeline(scenario)
@@ -334,6 +339,10 @@ def _register_routes(
             llm_ozet_hata=None,
             sohbet=app.config.get("CONVERSATION_TURNS", []),
             used_demo=used_demo,
+            has_portfolio=any(
+                nesting_results.get(b.batch_id, {}).get("portfolio") is not None
+                for b in batches
+            ),
         )
 
     @app.route("/ozet", methods=["POST"])

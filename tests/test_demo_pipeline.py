@@ -6,6 +6,8 @@ Kapsam:
     - results/demo_pipeline_report.md oluşmalı
     - Rapor bölümleri mevcut olmalı
     - Deterministik: iki koşu aynı raporu üretmeli
+    - Portföy: nesting_results portföy kıyas verisi içermeli
+    - RICH_SCENARIO: zengin senaryo smoke testi (yavaş olduğu için slow ile işaretli)
 
 Koşu: pytest tests/test_demo_pipeline.py -q
 """
@@ -24,7 +26,9 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from scripts.demo_pipeline import run_pipeline, SCENARIO, RESULTS_DIR  # noqa: E402
+from scripts.demo_pipeline import (  # noqa: E402
+    run_pipeline, SCENARIO, RICH_SCENARIO, RESULTS_DIR,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +50,8 @@ SMOKE_SCENARIO = {
     },
     "pitch": 20.0,
     "n_orientations": 2,
+    # Küçük budget: testler dakika sürmemeli (DBLF deterministic, SA/GA/Tabu 10 iter)
+    "portfolio_budget": 10,
     "orders": [
         {
             "order_id": "SMOKE-A",
@@ -119,6 +125,7 @@ class TestSmokePipeline:
             "Siparis Oncelik Tablosu",
             "Parti Plani",
             "Nesting Sonuclari",
+            "Portfoy Kiyaslama",
             "Fiyat Dokumu",
             "Ozet",
         ]
@@ -141,6 +148,24 @@ class TestSmokePipeline:
             assert "height_mm" in nr, f"{batch_id} için height_mm eksik"
             assert "density" in nr, f"{batch_id} için density eksik"
             assert nr["height_mm"] >= 0.0
+
+    def test_nesting_results_have_portfolio(self):
+        """Nesting sonuçları portföy kıyas verisi içermeli."""
+        result = run_pipeline(SMOKE_SCENARIO)
+        for batch_id, nr in result["nesting_results"].items():
+            # portfolio None olabilir (parça yok / hata), ama anahtar var olmalı
+            assert "portfolio" in nr, f"{batch_id} için 'portfolio' anahtarı eksik"
+            port = nr["portfolio"]
+            if port is not None:
+                assert "winner" in port, f"{batch_id} portfolio'da 'winner' eksik"
+                assert "rows" in port, f"{batch_id} portfolio'da 'rows' eksik"
+                assert isinstance(port["rows"], list)
+                # 4 çözücü: dblf, sa, ga, tabu
+                assert len(port["rows"]) == 4, (
+                    f"{batch_id} portfolio'da {len(port['rows'])} satır var, 4 beklendi"
+                )
+                solvers_found = {r["solver"] for r in port["rows"]}
+                assert "dblf" in solvers_found, f"{batch_id}: dblf satırı eksik"
 
     def test_pipeline_result_has_pricing(self):
         """Her parti için fiyat sonucu olmalı."""
@@ -178,3 +203,38 @@ class TestSmokePipeline:
         content = REPORT_PATH.read_text(encoding="utf-8")
         assert "Toplam Ciro" in content
         assert "Uyari Sayisi" in content
+
+    def test_adaptif_pitch_used(self):
+        """Adaptif pitch kullanıldığında pitch_mm nesting sonucunda görünmeli."""
+        result = run_pipeline(SMOKE_SCENARIO)
+        found_pitch = False
+        for batch_id, nr in result["nesting_results"].items():
+            if nr.get("pitch_mm") is not None:
+                found_pitch = True
+                assert nr["pitch_mm"] > 0.0, f"{batch_id} pitch_mm sıfır veya negatif"
+        # En az bir parti adaptif pitch almış olmalı
+        assert found_pitch, "Hiçbir partide pitch_mm bulunamadı (adaptif pitch çalışmıyor olabilir)"
+
+
+@pytest.mark.slow
+class TestRichScenario:
+    """Zengin senaryo smoke testi — portföyün ayırt ettiği yoğun vaka.
+
+    pytest -m slow ile çalıştırılır (CI'da atlanır).
+    """
+
+    def test_rich_pipeline_runs(self):
+        """Zengin senaryo hatasız tamamlanmalı."""
+        result = run_pipeline(RICH_SCENARIO)
+        assert result is not None
+        assert len(result["batches"]) >= 1
+
+    def test_rich_has_portfolio(self):
+        """Zengin senaryo her partide portföy kıyas tablosu üretmeli."""
+        result = run_pipeline(RICH_SCENARIO)
+        for batch_id, nr in result["nesting_results"].items():
+            assert "portfolio" in nr, f"{batch_id} portfolio eksik"
+            port = nr["portfolio"]
+            if port is not None:
+                assert len(port["rows"]) == 4
+                assert port["winner"] in {"dblf", "sa", "ga", "tabu"}
