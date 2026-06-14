@@ -276,6 +276,42 @@ genel-yol drop_map hızlandırma (numune).
 
 ---
 
+## 2.5 — R1 + R2/R4 uygulandı; paralel-dispatch dersi (2026-06-14)
+
+### Uygulanan (commit d41c18c, 4aa11e5; 887 test yeşil)
+
+- **R1 — 24 eksen-hizalı poz:** `voxelize.rotation_matrices` 24 rotasyonun
+  tamamına genişledi (eski indeks 0-11 sabit, yeni 16 poz 12-27; N_MASTER_POSES
+  28). DEĞER: long_rods'ta 8 poz→46.8, **24 poz→41.6 (%11, Ry ile yatırma)**.
+- **R2 — adaptif t0:** `sa3d` `t0="auto"` → ilk 50 komşu delta istatistiğinden
+  türetilir; sayısal t0=3.0 birebir eski sonuç (numune 181.5 korunur).
+- **R4 — MultiStartSA:** N start, deterministik seed türetme, median/best/std.
+  DEĞER (few_large): tek-start sabit-t0 SA lokal optimumda takılı (269.3=DBLF);
+  **multistart5 ve auto-t0 ikisi de 211.6 (%21)** — takıldığı yerden kaçıyor.
+
+### ⚠️ Paralel-dispatch dersi (orkestrasyon hatası + düzeltme)
+
+R1/R2-R4/drop_map 3 paralel builder agent'ına `isolation: worktree` ile verildi.
+**HATA:** worktree izolasyonu güncel HEAD (app-demo-build 489aa30) yerine `main`
+(8070c61, app iskeletinden 2 commit önce) branch'inden dallandı. Agent'lar eski
+dünyada çalışıp zaten var olan altyapıyı (solvers/, pitch.py, benchmark) sıfırdan
+yazdı (96 test gördüler, 867 değil). Agent'ların mantık hatası DEĞİL — yanlış
+başlangıç noktası (orkestratör worktree base'ini pin'lemeli/doğrulamalıydı).
+Kurtarma: Lane A (R1, dosyalar main≈HEAD) temiz cherry-pick; Lane B (R2/R4)
+mantığı mevcut ağaca ELLE entegre; Lane D REDDEDİLDİ.
+
+**Lane D (drop_map genel-yol vektörizasyonu) reddi:** agent `sliding_window_view`
+kullandı; numune-ölçeğinde (220×220 grid, 55×55 footprint) ölçüldü → **12× YAVAŞ
++ 0.33GB ara dizi** (büyük footprint'te OOM). Agent'ın "1.5-2.5× hızlı"sı sadece
+minik footprint'lerdeydi. Doğru genel-yol yaklaşımı (scipy grey_dilation,
+materyalize etmeyen) backlog'da; numune rekoru riski → dikkatli doğrulama şart.
+
+**Ders (gelecek paralel dispatch):** worktree base'ini dispatch öncesi doğrula
+VEYA agent brief'ine "başlamadan app iskeletinin (pitch.py/solvers/) varlığını
+teyit et, yoksa DUR" guard'ı koy.
+
+---
+
 ## 3. Motor geliştirme listesi (genel — app motoru hedefleri)
 
 1. **Ry dahil 24 eksen-hizalı poz** (R1).
