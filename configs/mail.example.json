@@ -16,14 +16,17 @@
     "use_ssl": true
   },
 
-  "imap_duz_ssl_ornek": {
+  "_guvenlik_notu_143": "use_ssl=false (port 143) yalnizca STARTTLS icindir: kod login ONCESI STARTTLS ile sifreler; sunucu STARTTLS desteklemiyorsa FAIL-CLOSED (cleartext parola ASLA gonderilmez). Tercih edilen: use_ssl=true / IMAPS (993).",
+
+  "imap_starttls_ornek": {
     "source": "imap",
     "host": "mail.sirket.com.tr",
     "port": 143,
     "user": "siparis@sirket.com.tr",
     "password": "PLACEHOLDER_BURAYA_GERCEK_PAROLA_KOYMA",
     "folder": "INBOX",
-    "use_ssl": false
+    "use_ssl": false,
+    "_aciklama": "143 + STARTTLS: login oncesi sifrelenir, STARTTLS yoksa baglanti reddedilir"
   },
 
   "_not": [

@@ -240,11 +240,25 @@ class ImapMailbox(MailSource):
     # ------------------------------------------------------------------
 
     def _connect(self) -> imaplib.IMAP4:
-        """IMAP baglantisi ac ve login yap. Hata firlatabilir."""
+        """IMAP baglantisi ac ve login yap. Hata firlatabilir.
+
+        Guvenlik: kimlik bilgileri ASLA cleartext gonderilmez. use_ssl=True ->
+        dogrudan IMAPS (993). use_ssl=False (143 STARTTLS senaryosu) -> login
+        ONCESI STARTTLS ile sifrele; sunucu STARTTLS desteklemiyorsa FAIL-CLOSED
+        (login yapmadan hata firlat) — duz parola asla gonderilmez.
+        """
         if self.use_ssl:
             conn = imaplib.IMAP4_SSL(self.host, self.port)
         else:
             conn = imaplib.IMAP4(self.host, self.port)
+            # STARTTLS zorunlu — desteklenmiyorsa kapali kal (cleartext login YOK)
+            if "STARTTLS" not in getattr(conn, "capabilities", ()):
+                conn.logout()
+                raise RuntimeError(
+                    "IMAP sunucu STARTTLS desteklemiyor; cleartext login engellendi "
+                    "(use_ssl=True / IMAPS kullanin)."
+                )
+            conn.starttls()
         conn.login(self.user, self._password)
         return conn
 
