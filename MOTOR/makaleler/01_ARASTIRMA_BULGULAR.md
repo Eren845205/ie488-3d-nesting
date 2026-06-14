@@ -57,8 +57,40 @@
    *Neden sonra:* decoder'ın kendisini iyileştirir (R5 overhang sınırına da dokunabilir) ama
    yüksek efor. **Efor: yüksek. Değer: yüksek ama uzun vade.**
 
+## Adım B — Repodaki makaleler okundu (Gap 3-5, bedava tur, 2026-06-14)
+
+> Workflow yerine elimizdeki PDF'lerin `.txt` çıkarımları tarandı. Doğrulanmış
+> workflow değil, makale-içi okuma — ama temelleri netleştiriyor.
+
+- **Review 2025 (Nesting Problems in AM — Classification & Review):**
+  - Çarpışma/temsil yöntemleri: orthogonal polyhedra, **voxel (BİZİM)** — "küçük
+    voxel = daha iyi fidelity ama çok daha yavaş" (tam bizim pitch takası);
+    **sphere tree** (hiyerarşik, HIZLI çarpışma/yakınlık — hız için alternatif
+    temsil); OCCS kodlama.
+  - Algoritma manzarası: metaheuristik (GA, SA), heuristik, **ML+heuristik
+    hibrit** (Industry 4.0 frontier = bizim algoritma-seçim işimiz).
+- **Taxonomy/Dataset (IJPR 2019, Wäscher ekolü):**
+  - **DBL (Deepest Bottom-Left) 3DIP'in BASKIN tekniği** — "çoğu çözüm DBL
+    varyantı kullanır". → bizim DBLF seçimi alan STANDARDI (doğrulandı, özür
+    gerektirmez); overhang sınırı (R5) alanın geneline ait, bize özel zayıflık değil.
+  - D|C|B|A taksonomisi (instance sınıflandırma) — feature/selection için faydalı.
+  - Yeni A2018 dataset'i (önceki <20-parça setlerinden zengin); 3DIP benchmark'ları
+    KIT (R7 dürüst doğrulandı).
+
+**Step B sonucu (dürüst):** repo makaleleri TEMELLERİMİZİ DOĞRULUYOR (voxel + DBLF
+= alan standardı) ve frontier'i gösteriyor: (1) ML-hibrit = algoritma-seçim
+[şu an kuruluyor], (2) sphere-tree = çarpışma hızı [drop_map/numune hız alternatifi].
+AMA turnkey "daha iyi taban çözücü" VERMİYORLAR — somut yeni-çözücü teknikleri
+(ALNS, extreme-point) OR literatüründe (Gap-4, henüz doğrulanmadı).
+
+**→ Adım A kararı:** en net additive/güvenli kazanç = **ALNS** (Adaptive Large
+Neighborhood Search) — plain SA/GA'yı geçen bilinen metaheuristik, `Solver`
+protokolüyle YENİ çözücü olarak eklenir (motor bozulmaz), benchmark kapısı
+doğrular. Extreme-point (R5) Gap-4 araştırmasına bağlı + yüksek efor → sonra.
+
 ## Sonraki araştırma turu (açık)
 
 Gap 3 (modern ALNS/3D operatör), Gap 4 (extreme-point/maximal-space — Martello-Pisinger-Vigo
 OR 2000, Crainic-Perboli-Tadei IJOC adayları), Gap 5 (voxel/SDF AM nesting + dataset) için
-ikinci deep-research turu. Her doğrulanan makale → 03_GENISLETME.md "makale→kod" kapısı.
+DAR deep-research turu (geniş değil — ilk tur 5 boşluğa yayılıp bütçe Gap 3-5'te bitti).
+Her doğrulanan makale → 03_GENISLETME.md "makale→kod" kapısı.
