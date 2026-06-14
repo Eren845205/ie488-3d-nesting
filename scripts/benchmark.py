@@ -63,6 +63,7 @@ from src.nesting3d.solvers.dblf_solver import DBLFSolver
 from src.nesting3d.solvers.sa_solver import SASolver, MultiStartSA
 from src.nesting3d.solvers.ga_solver import GASolver
 from src.nesting3d.solvers.tabu_solver import TabuSolver
+from src.nesting3d.solvers.alns_solver import ALNSSolver
 from src.nesting3d.telemetry import append_run
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ _SOLVER_REGISTRY: Dict[str, Any] = {
     "ga": GASolver,
     "tabu": TabuSolver,
     "multistart": MultiStartSA,  # R4: çok-start SA (median/best/std raporlar)
+    "alns": ALNSSolver,           # ALNS — adaptive destroy/repair metaheuristic
 }
 
 _FAMILY_BUILDERS = {
