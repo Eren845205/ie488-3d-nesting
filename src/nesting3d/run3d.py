@@ -63,9 +63,10 @@ def _parse_args(argv=None):
     p.add_argument("--plate", type=float, default=None,
                    help="kare taban kenarı mm (default 220, numune 335)")
     p.add_argument("--rotations", type=int, default=4,
-                   choices=[1, 2, 3, 4, 6, 8],
+                   choices=[1, 2, 3, 4, 6, 8, 24],
                    help="poz sayısı; 5+ = 180°/270° + ters çevirme "
-                        "(plaka geçişmesi için, toz yataklı üretim)")
+                        "(plaka geçişmesi için, toz yataklı üretim); "
+                        "24 = tüm eksen-hizalı rotasyonlar (R1)")
     p.add_argument("--margin", type=int, default=None,
                    help="parça arası boşluk (voxel, dilation; numune default 1 "
                         "= garantili >=1 mm gerçek mesafe)")

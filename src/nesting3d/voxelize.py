@@ -44,19 +44,60 @@ def rotation_matrices(n_orientations: int = 4) -> List[np.ndarray]:
     iner (n3 25° ≈ 168, n8 35° ≈ 166) ve paralel eğik plakalar raf gibi
     sık dizilebilir.  Yalnız allowed_orientations ile seçilir;
     n_orientations'lı eski çağrılar ilk 8 pozu görür.
+
+    İndeks 12..27: Kalan 16 eksen-hizalı rotasyon (Ry dahil) — küpün 24
+    simetri grubu tamamlanır (R1, APP_YOL_HARITASI.md §2).  İndeks 0..7
+    AYNEN korunur; yeni pozlar sona eklenir.  Yüz yönü × rulo ayrışımı:
+      Yüz -y (Rx):    Rz2@Rx, Rz3@Rx          (12..13, 0..7'de 2,3 var)
+      Yüz -z (Rx2):   Rz2@Rx2, Rz3@Rx2        (14..15, 0..7'de 6,7 var)
+      Yüz +x (Ry):    Ry, Rz@Ry, Rz2@Ry, Rz3@Ry   (16..19)
+      Yüz +y (Rx3):   Rx3, Rz@Rx3, Rz2@Rx3, Rz3@Rx3 (20..23)
+      Yüz -x (Ry3):   Ry3, Rz@Ry3, Rz2@Ry3, Rz3@Ry3 (24..27)
     """
     rz = trimesh.transformations.rotation_matrix(math.pi / 2, (0, 0, 1))
     rz2 = rz @ rz
+    rz3 = rz2 @ rz
     rx = trimesh.transformations.rotation_matrix(math.pi / 2, (1, 0, 0))
     rx2 = rx @ rx
+    rx3 = rx2 @ rx
+    ry = trimesh.transformations.rotation_matrix(math.pi / 2, (0, 1, 0))
+    ry3 = ry @ ry @ ry
     tilt = [trimesh.transformations.rotation_matrix(math.radians(a), (1, 0, 0))
             for a in (70.0, 65.0, 60.0, 55.0)]  # dikten 20°/25°/30°/35°
-    mats = [np.eye(4), rz, rx, rz @ rx,
-            rz2, rz2 @ rz, rx2, rz @ rx2, *tilt]
+    mats = [
+        # ---- Eski 8 eksen-hizali (0..7) — DEGISMEZ ----
+        np.eye(4),     # 0: dik, 0°
+        rz,            # 1: dik, Rz 90°
+        rx,            # 2: yan (-y yüzü), 0°
+        rz @ rx,       # 3: yan (-y yüzü), Rz 90°
+        rz2,           # 4: dik, Rz 180°
+        rz2 @ rz,      # 5: dik, Rz 270°
+        rx2,           # 6: ters (-z yüzü), 0°
+        rz @ rx2,      # 7: ters (-z yüzü), Rz 90°
+        # ---- Egik 4 (8..11) — DEGISMEZ ----
+        *tilt,
+        # ---- Yeni 16 eksen-hizali (12..27, R1) ----
+        rz2 @ rx,      # 12: yan (-y yüzü), Rz 180°
+        rz3 @ rx,      # 13: yan (-y yüzü), Rz 270°
+        rz2 @ rx2,     # 14: ters (-z yüzü), Rz 180°
+        rz3 @ rx2,     # 15: ters (-z yüzü), Rz 270°
+        ry,            # 16: +x yüzü, 0°
+        rz @ ry,       # 17: +x yüzü, Rz 90°
+        rz2 @ ry,      # 18: +x yüzü, Rz 180°
+        rz3 @ ry,      # 19: +x yüzü, Rz 270°
+        rx3,           # 20: +y yüzü, 0°
+        rz @ rx3,      # 21: +y yüzü, Rz 90°
+        rz2 @ rx3,     # 22: +y yüzü, Rz 180°
+        rz3 @ rx3,     # 23: +y yüzü, Rz 270°
+        ry3,           # 24: -x yüzü, 0°
+        rz @ ry3,      # 25: -x yüzü, Rz 90°
+        rz2 @ ry3,     # 26: -x yüzü, Rz 180°
+        rz3 @ ry3,     # 27: -x yüzü, Rz 270°
+    ]
     return mats[: max(1, min(n_orientations, len(mats)))]
 
 
-N_MASTER_POSES = 12  # 8 eksen-hizalı + 4 eğik (allowed_orientations indeksleri)
+N_MASTER_POSES = 28  # 8 eksen-hizali + 4 egik + 16 yeni eksen-hizali (R1)
 
 
 @dataclass
