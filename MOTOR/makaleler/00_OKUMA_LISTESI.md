@@ -1,5 +1,8 @@
 # Makaleler — Okuma Listesi + Araştırma Planı
 
+> **2026-06-14 deep-research turu tamamlandı → [01_ARASTIRMA_BULGULAR.md](01_ARASTIRMA_BULGULAR.md)**
+> (Gap 1-2 doğrulanmış 9 makale + "önce entegre et" top-3; Gap 3-5 ikinci tur bekliyor).
+
 > "Makale → KOD" hattı (§5.1): makale yüklenir → okunur → çözücü/operatör kodu
 > yazılır → benchmark'tan geçer. Makale doğrudan modele yüklenmez; tekniği
 > kodlanır. Geçemeyen teknik MERGE EDİLMEZ (makale iddiası ≠ bizim veride iyi).
