@@ -211,9 +211,12 @@ def run_benchmark(
         family = inst_spec["family"]
         split = inst_spec["split"]
 
-        # NestingInstance: dogrudan verilmisse kullan, yoksa uret
+        # NestingInstance: dogrudan verilmisse kullan; lazy factory varsa cagir
+        # (ornek: numune STL yuklemesi import'ta degil kosuda); yoksa uret.
         if "instance" in inst_spec:
             nesting_inst = inst_spec["instance"]
+        elif "instance_factory" in inst_spec:
+            nesting_inst = inst_spec["instance_factory"]()
         else:
             nesting_inst = _build_instance(inst_spec)
 

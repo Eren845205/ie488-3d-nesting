@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from src.nesting3d.instances.format import ContainerSpec
+from src.nesting3d.instances.numune_loader import build_numune_instance
 
 
 def _sq(side: float) -> ContainerSpec:
@@ -189,6 +190,20 @@ HOLDOUT_INSTANCES: List[Dict[str, Any]] = [
         "family": "bischoff_ratcliff",
         "split": "holdout",
         "params": {"class_name": "BR12", "instance_idx": 0},
+    },
+    # Numune holdout: hocanin gercek STL parcalari — overfit kanitlama.
+    # El-ayarli hibrit poz seti (NUMUNE_ORIENTATIONS_HYBRID) KULLANILMAZ;
+    # generic motor (adaptif pitch, n_orientations=8) gercek geometride kosulur.
+    # Pitch: suggest_pitch(inst) ~ bbox min_dim / 2.5; voxel/eksen bütçe içinde
+    # kalmazsa benchmark ATLAR + LOGLAR (bu da gecerli sonuc — raporla).
+    {
+        "id": "numune_real",
+        "family": "numune",
+        "split": "holdout",
+        # LAZY: factory, import sırasında 8 STL yüklenmesin (~30s). Benchmark
+        # koşusu çağırır. Tam numune adaptif pitch'te vpa>170 → ATLANIR+LOGLANIR
+        # (n4 1.6mm ince plaka → pitch 0.64; HPC/A14 işareti, honest).
+        "instance_factory": build_numune_instance,
     },
 ]
 
