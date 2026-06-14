@@ -200,6 +200,16 @@
         {% endif %}
     </div>
 
+    <!-- 3D Onizleme (VİTRİN A) -->
+    <div id="viewer-container-{{ batch.batch_id }}" class="viewer-container" style="margin-bottom: 20px;">
+        <div class="viewer-placeholder" id="viewer-placeholder-{{ batch.batch_id }}">
+            <span style="color: var(--color-text-muted); font-size: 13px;">
+                3D onizleme yukluyor...
+            </span>
+        </div>
+        <canvas id="viewer-canvas-{{ batch.batch_id }}" class="viewer-canvas" style="display:none;"></canvas>
+    </div>
+
     <!-- Nesting metrikleri -->
     <div class="info-grid" style="margin-bottom: 20px;">
         <div class="info-item">
@@ -382,6 +392,27 @@
 </div>
 {% endfor %}
 
+<!-- Musteri Yanit Taslagi (VİTRİN B) -->
+{% if llm_active %}
+<div class="card" id="teklif-card">
+    <div class="card-title">Musteri Yanit Taslagi (LLM)</div>
+    <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
+        Nesting ve fiyat sonuclarindan musteri mail taslagi olusturulur.
+        Yerel model (llama3) kullanilir.
+    </p>
+    <div id="teklif-content">
+        <button class="btn btn-primary" id="teklif-btn" onclick="teklifOlustur()">
+            Teklif Taslagi Olustur
+        </button>
+    </div>
+    <div id="teklif-loading" style="display:none; padding: 12px 0;">
+        <span style="color: var(--color-text-muted);">Taslak hazirlaniyor...</span>
+    </div>
+    <div id="teklif-result" style="display:none;"></div>
+    <div id="teklif-hata" style="display:none;" class="alert alert-warning"></div>
+</div>
+{% endif %}
+
 <!-- LLM Asistan Soru-Cevap -->
 {% if llm_active %}
 <div class="card" id="llm-asistan-card">
@@ -450,6 +481,14 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- import-map: three.js offline (on-prem, CDN bagimsiz) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "{{ url_for('static', filename='three.min.js') }}"
+  }
+}
+</script>
 <style>
 .sohbet-soru {
     background: #f0f4ff;
@@ -473,6 +512,40 @@
     font-size: 15px;
     line-height: 1.7;
     margin-top: 12px;
+}
+.viewer-container {
+    position: relative;
+    width: 100%;
+    height: 280px;
+    background: #0f172a;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.viewer-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+}
+.viewer-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.teklif-body {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
+    padding: 14px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.7;
+    margin-top: 12px;
+    white-space: pre-wrap;
 }
 </style>
 
@@ -605,6 +678,151 @@
                 }
             });
         }
+    });
+
+    // Teklif taslagi (VİTRİN B)
+    function teklifOlustur() {
+        const btn = document.getElementById('teklif-btn');
+        const loading = document.getElementById('teklif-loading');
+        const result = document.getElementById('teklif-result');
+        const hata = document.getElementById('teklif-hata');
+
+        btn.disabled = true;
+        btn.textContent = 'Olusturuluyor...';
+        loading.style.display = 'block';
+        result.style.display = 'none';
+        hata.style.display = 'none';
+
+        fetch('/teklif', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+            .then(r => r.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yeniden Olustur';
+
+                if (data.hata) {
+                    hata.style.display = 'block';
+                    hata.textContent = 'Hata: ' + data.hata;
+                    return;
+                }
+                result.style.display = 'block';
+                result.innerHTML = '<div class="teklif-body">' +
+                    '<strong>' + escapeHtml(data.baslik || 'Musteri Yanit Taslagi') + '</strong>' +
+                    '<br><br>' +
+                    escapeHtml(data.taslak || '') +
+                    '</div>';
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Teklif Taslagi Olustur';
+                hata.style.display = 'block';
+                hata.textContent = 'Baglanti hatasi: ' + err;
+            });
+    }
+</script>
+
+<!-- 3D Viewer -- ES module (three.js offline) (VİTRİN A) -->
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from '{{ url_for("static", filename="OrbitControls.js") }}';
+    import { GLTFLoader } from '{{ url_for("static", filename="GLTFLoader.js") }}';
+
+    // batch_ids: Jinja render zamaninda enjekte edilir
+    const batchIds = [{% for batch in batches %}'{{ batch.batch_id }}'{% if not loop.last %},{% endif %}{% endfor %}];
+
+    function initViewer(batchId) {
+        const container = document.getElementById('viewer-container-' + batchId);
+        const placeholder = document.getElementById('viewer-placeholder-' + batchId);
+        const canvas = document.getElementById('viewer-canvas-' + batchId);
+
+        if (!container || !canvas) return;
+
+        fetch('/geometri/' + batchId)
+            .then(resp => {
+                if (!resp.ok) {
+                    placeholder.innerHTML =
+                        '<span style="color:#64748b; font-size:12px;">3D onizleme hazir degil</span>';
+                    return null;
+                }
+                return resp.arrayBuffer();
+            })
+            .then(buffer => {
+                if (!buffer) return;
+
+                // Show canvas, hide placeholder
+                placeholder.style.display = 'none';
+                canvas.style.display = 'block';
+                canvas.width = container.clientWidth || 600;
+                canvas.height = container.clientHeight || 280;
+
+                // Three.js sahne kur
+                const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true});
+                renderer.setSize(canvas.width, canvas.height);
+                renderer.setClearColor(0x0f172a);
+
+                const scene = new THREE.Scene();
+                const camera = new THREE.PerspectiveCamera(45, canvas.width / canvas.height, 1, 10000);
+                camera.position.set(300, 300, 400);
+
+                // Isik
+                scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+                const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+                dir.position.set(200, 400, 300);
+                scene.add(dir);
+
+                // OrbitControls
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+
+                // GLB yukle
+                const loader = new GLTFLoader();
+                loader.parse(buffer, '', gltf => {
+                    const model = gltf.scene;
+
+                    // Renk uygula (materyal varsa koru; yoksa yesil-gri)
+                    model.traverse(child => {
+                        if (child.isMesh && !child.material.color) {
+                            child.material = new THREE.MeshLambertMaterial({color: 0x4ade80});
+                        }
+                    });
+
+                    // Merkeze al
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.sub(center);
+                    scene.add(model);
+
+                    // Kamera fit
+                    const size = box.getSize(new THREE.Vector3()).length();
+                    camera.position.set(size, size * 0.8, size * 1.2);
+                    camera.lookAt(0, 0, 0);
+                    controls.update();
+
+                    // Render dongusu
+                    function animate() {
+                        requestAnimationFrame(animate);
+                        controls.update();
+                        renderer.render(scene, camera);
+                    }
+                    animate();
+                }, err => {
+                    placeholder.style.display = 'flex';
+                    canvas.style.display = 'none';
+                    placeholder.innerHTML =
+                        '<span style="color:#ef4444; font-size:12px;">GLB parse hatasi</span>';
+                });
+            })
+            .catch(() => {
+                if (placeholder) {
+                    placeholder.innerHTML =
+                        '<span style="color:#64748b; font-size:12px;">3D onizleme hazir degil</span>';
+                }
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        batchIds.forEach(id => initViewer(id));
     });
 </script>
 {% endblock %}

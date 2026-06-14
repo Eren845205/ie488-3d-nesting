@@ -87,11 +87,18 @@ def _make_serializable(result: Dict[str, Any]) -> Dict[str, Any]:
     ranked = result.get("ranked_orders", [])
     batches = result.get("batches", [])
     warnings = result.get("warnings", [])
+    # nesting_results 3D-önizleme için OBJE anahtarları taşıyabilir (placements,
+    # voxel_parts) — JSON-serileştirilemez; çıkar (yalnız in-memory webapp kullanır).
+    _GEOM_KEYS = ("placements", "voxel_parts")
+    nr_clean = {
+        bid: {k: v for k, v in nr.items() if k not in _GEOM_KEYS}
+        for bid, nr in result.get("nesting_results", {}).items()
+    }
     return {
         "ranked_orders": [_serialize_order(o) for o in ranked],
         "batches": [_serialize_batch(b) for b in batches],
         "warnings": [_serialize_warning(w) for w in warnings],
-        "nesting_results": result.get("nesting_results", {}),
+        "nesting_results": nr_clean,
         "pricing_results": result.get("pricing_results", {}),
         "elapsed_sec": result.get("elapsed_sec", 0.0),
         "report_path": result.get("report_path", ""),

@@ -691,6 +691,11 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
                 "rows": tuner_rows,
             },
             "selection": selection_pred,
+            # 3D önizleme (gerçek geometri) için: webapp /geometri rotası bunları
+            # build_result_scene'e geçirir. OBJE'ler — JSON'a girmez (pipeline_job
+            # _make_serializable bu iki anahtarı çıkarır); yalnız in-memory webapp.
+            "placements": winner_result.placements,
+            "voxel_parts": {p.id: p for p in voxel_parts},
         }
         batch_nesting_elapsed[batch.batch_id] = t_nest_elapsed
 

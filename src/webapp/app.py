@@ -486,6 +486,152 @@ def _register_routes(
             return jsonify({"hata": f"Sistem hatasi: {exc}", "cevap": None}), 500
 
     # -----------------------------------------------------------------------
+    # 3D Geometri rotasi (VİTRİN A)
+    # -----------------------------------------------------------------------
+
+    @app.route("/geometri/<batch_id>", methods=["GET"])
+    def geometri(batch_id: str):
+        """3D yerlesim sahnesini GLB olarak dondurur.
+
+        Yanit: model/gltf-binary (GLB) veya 503 (export hazir degil).
+
+        Zarif dusus: build_result_scene / scene_to_glb_bytes import HATASI
+        veya batch_id bulunamadi -> 503 JSON.
+        """
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({
+                "hata": "Once pipeline calistirin.",
+                "preview": "hazir_degil",
+            }), 503
+
+        nesting_results = result.get("nesting_results", {})
+        if batch_id not in nesting_results:
+            return jsonify({
+                "hata": f"Parti {batch_id!r} bulunamadi.",
+                "preview": "hazir_degil",
+            }), 503
+
+        nr = nesting_results[batch_id]
+
+        # Placements verisi: paralel builder export_stl.py'e ekleyince hazir olacak.
+        # Simdilik nesting_results icinde 'placements' veya 'voxel_parts' YOK.
+        placements = nr.get("placements")
+        voxel_parts = nr.get("voxel_parts")
+        pitch = nr.get("pitch_mm") or nr.get("pitch", 10.0)
+
+        if placements is None or voxel_parts is None:
+            return jsonify({
+                "hata": "3D export verisi henuz hazir degil.",
+                "preview": "hazir_degil",
+            }), 503
+
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene,
+                scene_to_glb_bytes,
+            )
+        except ImportError as exc:
+            logger.warning("GLB export import hatasi: %s", exc)
+            return jsonify({
+                "hata": "3D export modulu yuklenemedi.",
+                "preview": "hazir_degil",
+            }), 503
+
+        try:
+            scene = build_result_scene(placements, voxel_parts, pitch=float(pitch))
+            glb_bytes = scene_to_glb_bytes(scene)
+        except Exception as exc:
+            logger.warning("GLB export hatasi batch=%s: %s", batch_id, exc)
+            return jsonify({
+                "hata": f"3D export hatasi: {exc}",
+                "preview": "hazir_degil",
+            }), 503
+
+        return Response(
+            glb_bytes,
+            mimetype="model/gltf-binary",
+            headers={
+                "Content-Disposition": f"inline; filename={batch_id}.glb",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    # -----------------------------------------------------------------------
+    # Teklif taslagi rotasi (VİTRİN B)
+    # -----------------------------------------------------------------------
+
+    @app.route("/teklif", methods=["POST"])
+    def teklif():
+        """LLM ile musteri yanit maili taslagi uret.
+
+        Yanit JSON: {taslak, baslik, hata}
+        LLM aktif degil -> 503.
+        Pipeline kosulmamis -> 400.
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
+
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin.", "taslak": None}), 400
+
+        try:
+            from src.llm.roles.report import ReportInput
+            from src.llm.structured import ValidationStatus
+
+            context = _build_grounded_context(result)
+
+            pricing_results = result.get("pricing_results", {})
+            total_revenue = sum(
+                pr.get("total_price", 0.0) for pr in pricing_results.values()
+            )
+
+            report_input = ReportInput(
+                is_id="demo-teklif",
+                n_orders=len(result.get("ranked_orders", [])),
+                n_batches=len(result.get("batches", [])),
+                n_warnings=len(result.get("warnings", [])),
+                total_revenue_usd=total_revenue,
+                context=context,
+            )
+
+            report_role = llm_components["report_role"]
+            report_result = report_role.run(report_input)
+
+            if report_result.grounding_blocked:
+                return jsonify({
+                    "taslak": None,
+                    "hata": None,
+                    "topraklama_uyarisi": (
+                        "Sayi-topraklama dogrulanamadi. "
+                        f"Sayilar: {report_result.grounding_detail}."
+                    ),
+                }), 200
+
+            if report_result.status == ValidationStatus.INVALID or report_result.fallback:
+                raw = ""
+                if report_result.fallback:
+                    raw = report_result.fallback.raw_text[:300]
+                return jsonify({
+                    "taslak": None,
+                    "hata": "LLM gecerli taslak uretemedi. Tekrar deneyin.",
+                    "ham_cikti": raw,
+                }), 200
+
+            data = report_result.data or {}
+            return jsonify({
+                "taslak": data.get("govde_md", ""),
+                "baslik": data.get("baslik", ""),
+                "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                "hata": None,
+            }), 200
+
+        except Exception as exc:
+            logger.exception("Teklif taslagi hatasi: %s", exc)
+            return jsonify({"hata": f"Sistem hatasi: {exc}", "taslak": None}), 500
+
+    # -----------------------------------------------------------------------
     # Mail parser rotasi
     # -----------------------------------------------------------------------
 
