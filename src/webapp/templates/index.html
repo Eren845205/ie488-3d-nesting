@@ -109,6 +109,46 @@
     </div>
 </div>
 
+{% if llm_active %}
+<!-- Mail Parser Bolumu (yalnizca LLM aktifse goster) -->
+<div class="card" id="mail-parser-card">
+    <div class="card-title">Siparis Mailini Yapistir &mdash; LLM Okusun</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom: 12px;">
+        Daginik bir siparis maili veya serbest metin yapistirin.
+        Sistem LLM ile siparis yapisini cikarir; onay verdikten sonra
+        havuza ekleyebilir veya direkt pipeline'a besleyebilirsiniz.
+    </p>
+    <textarea
+        id="mail-text-input"
+        rows="6"
+        placeholder="Orn: FORD icin 4 adet braket, 80x60x30mm, termin 2026-07-10..."
+        style="width:100%; padding:8px; font-family:inherit; font-size:14px;
+               border:1px solid var(--color-border); border-radius:4px;
+               resize:vertical; background:var(--color-bg); color:var(--color-text);"
+    ></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button
+            id="parse-btn"
+            class="btn btn-primary"
+            onclick="parseMail()"
+        >Maili Oku (LLM)</button>
+        <span id="parse-spinner" style="display:none; font-size:14px; color:var(--color-text-muted);">
+            Isleniyor...
+        </span>
+    </div>
+    <div id="parse-result" style="margin-top:14px; display:none;">
+        <div id="parse-hata" style="color:#c0392b; display:none; margin-bottom:8px; font-size:14px;"></div>
+        <div id="parse-uyari" style="color:#e67e22; display:none; margin-bottom:8px; font-size:14px;"></div>
+        <div id="parse-eksik" style="color:#7f8c8d; display:none; margin-bottom:8px; font-size:13px;"></div>
+        <div id="parse-siparis-kutu" style="display:none; background:var(--color-bg-alt,#f8f8f8);
+             border:1px solid var(--color-border); border-radius:4px; padding:12px;">
+            <strong style="font-size:14px;">Cikan Siparis:</strong>
+            <pre id="parse-siparis-json" style="margin:8px 0 0; font-size:13px; overflow-x:auto; white-space:pre-wrap;"></pre>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Yukleniyor overlay -->
 <div id="loading-overlay">
     <div class="spinner"></div>
@@ -124,5 +164,70 @@
         document.getElementById('run-btn').disabled = true;
         document.getElementById('run-btn').textContent = 'Kosturuluyor...';
     });
+
+    {% if llm_active %}
+    function parseMail() {
+        var mailText = document.getElementById('mail-text-input').value.trim();
+        if (!mailText) {
+            alert('Lutfen bir siparis metni yapistirin.');
+            return;
+        }
+
+        var btn = document.getElementById('parse-btn');
+        var spinner = document.getElementById('parse-spinner');
+        var resultDiv = document.getElementById('parse-result');
+        var hataDiv = document.getElementById('parse-hata');
+        var uyariDiv = document.getElementById('parse-uyari');
+        var eksikDiv = document.getElementById('parse-eksik');
+        var siparisKutu = document.getElementById('parse-siparis-kutu');
+        var siparisJson = document.getElementById('parse-siparis-json');
+
+        btn.disabled = true;
+        spinner.style.display = 'inline';
+        resultDiv.style.display = 'none';
+        hataDiv.style.display = 'none';
+        uyariDiv.style.display = 'none';
+        eksikDiv.style.display = 'none';
+        siparisKutu.style.display = 'none';
+
+        fetch('/parse', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mail_text: mailText}),
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            resultDiv.style.display = 'block';
+
+            if (data.status === 'ok') {
+                if (data.injection_suphesi) {
+                    uyariDiv.textContent = 'Uyari: Girdide guvenlik suptesi tespit edildi. Ciktiyi dikkatlice kontrol edin.';
+                    uyariDiv.style.display = 'block';
+                }
+                if (data.eksik_alanlar && data.eksik_alanlar.length > 0) {
+                    eksikDiv.textContent = 'Eksik alanlar: ' + data.eksik_alanlar.join(', ');
+                    eksikDiv.style.display = 'block';
+                }
+                siparisJson.textContent = JSON.stringify(data.siparis, null, 2);
+                siparisKutu.style.display = 'block';
+            } else if (data.status === 'llm_yok') {
+                hataDiv.textContent = data.mesaj || 'LLM aktif degil. Elle giris yapiniz.';
+                hataDiv.style.display = 'block';
+            } else {
+                hataDiv.textContent = (data.mesaj || 'Parse hatasi. Lutfen tekrar deneyin veya elle girin.');
+                hataDiv.style.display = 'block';
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            resultDiv.style.display = 'block';
+            hataDiv.textContent = 'Ag hatasi: ' + err;
+            hataDiv.style.display = 'block';
+        });
+    }
+    {% endif %}
 </script>
 {% endblock %}

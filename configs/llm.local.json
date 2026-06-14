@@ -12,6 +12,14 @@
     }
   },
   "roles": {
+    "parser": {
+      "provider": "local",
+      "model": "qwen2.5:3b",
+      "temperature": 0.0,
+      "max_tokens": 1024,
+      "schema_retry": 2,
+      "payload_logging": "none"
+    },
     "report": {
       "provider": "local",
       "model": "qwen2.5:3b",

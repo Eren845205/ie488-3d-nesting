@@ -1,0 +1,25 @@
+{
+  "musteri": {"ad": "ASELSAN", "iletisim": null},
+  "termin": {"tarih": null, "ham_ifade": "En son ne zaman teslim edilebilir?"},
+  "parcalar": [
+    {
+      "ad": "housing",
+      "adet": 2,
+      "boyut_mm": [130, 95, 55],
+      "agirlik_kg": null,
+      "kaynak": "govde",
+      "guven": "yuksek"
+    },
+    {
+      "ad": "ince_plaka",
+      "adet": 3,
+      "boyut_mm": [160, 110, 18],
+      "agirlik_kg": null,
+      "kaynak": "govde",
+      "guven": "yuksek"
+    }
+  ],
+  "eksik_alanlar": ["termin.tarih", "musteri.iletisim"],
+  "notlar": "Teslim tarihi belirsiz; musteri soruyor",
+  "injection_suphesi": false
+}

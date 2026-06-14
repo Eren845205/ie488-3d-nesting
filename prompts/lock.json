@@ -2,7 +2,7 @@
   "_comment": "Sablon hash kayit defteri. Her sablon yuklemesinde content_hash dogrulani. Yeni/degisen sablon icin: versiyonu artir + eval kos + update_lock() cagir.",
   "parser-v1": {
     "version": "1.0",
-    "content_hash": "6c98cbcc50004dbf560437744574396ba6e8ad04b4953d989f2aadb3c8e17288",
+    "content_hash": "710b689381e58f56f8ba41c2b295c3b79505fce024e21d5f1cff3ed8b083e167",
     "last_eval_ref": ""
   },
   "report-v1": {

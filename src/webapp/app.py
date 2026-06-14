@@ -61,6 +61,7 @@ def _load_llm_components(
         from src.llm.prompts import PromptRegistry
         from src.llm.roles.report import ReportRole
         from src.llm.roles.assistant import AssistantRole, Conversation
+        from src.llm.roles.parser import ParserRole
 
         cfg_path = _ROOT / "configs" / "llm.local.json"
         if not cfg_path.exists():
@@ -109,9 +110,17 @@ def _load_llm_components(
             conversation=Conversation(),
         )
 
+        parser_role = ParserRole(
+            provider=provider,
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("parser"),
+        )
+
         return {
             "report_role": report_role,
             "assistant_role": assistant_role,
+            "parser_role": parser_role,
             "llm_active": True,
         }
 
@@ -475,6 +484,80 @@ def _register_routes(
         except Exception as exc:
             logger.exception("LLM soru hatasi: %s", exc)
             return jsonify({"hata": f"Sistem hatasi: {exc}", "cevap": None}), 500
+
+    # -----------------------------------------------------------------------
+    # Mail parser rotasi
+    # -----------------------------------------------------------------------
+
+    @app.route("/parse", methods=["POST"])
+    def parse_mail():
+        """Serbest metin/mail -> yapilandirilmis siparis JSON.
+
+        Istek JSON : {"mail_text": "<serbest siparis metni>"}
+        Yanit JSON :
+          - Basarili  : {"status": "ok", "siparis": {...}, "eksik_alanlar": [...],
+                         "injection_suphesi": bool}
+          - LLM yok   : {"status": "llm_yok", "mesaj": "..."}
+          - Parse hata: {"status": "parse_hatasi", "mesaj": "..."}
+          - Bos girdi : {"status": "hata", "mesaj": "..."} (400)
+        """
+        body = request.get_json(silent=True) or {}
+        mail_text = (body.get("mail_text") or "").strip()
+
+        if not mail_text:
+            return jsonify({
+                "status": "hata",
+                "mesaj": "mail_text bos olamaz.",
+            }), 400
+
+        if not llm_active or llm_components is None:
+            return jsonify({
+                "status": "llm_yok",
+                "mesaj": (
+                    "LLM aktif degil. Ollama calismiyor olabilir. "
+                    "Siparis bilgilerini elle girin."
+                ),
+            }), 200
+
+        try:
+            from src.llm.roles.parser import parsed_to_order
+            from src.llm.structured import ValidationStatus
+
+            parser_role = llm_components.get("parser_role")
+            if parser_role is None:
+                return jsonify({
+                    "status": "llm_yok",
+                    "mesaj": "Parser rolu yuklenemedi. Elle girin.",
+                }), 200
+
+            parse_result = parser_role.parse(mail_text)
+
+            if parse_result.status == ValidationStatus.INVALID or parse_result.fallback:
+                raw = ""
+                if parse_result.fallback:
+                    raw = parse_result.fallback.raw_text[:300]
+                return jsonify({
+                    "status": "parse_hatasi",
+                    "mesaj": (
+                        "LLM siparis yapisini cikartamadiSimdi deneyin veya "
+                        "bilgileri elle girin."
+                    ),
+                    "ham_cikti": raw,
+                }), 200
+
+            return jsonify({
+                "status": "ok",
+                "siparis": parse_result.order_dict,
+                "eksik_alanlar": parse_result.eksik_alanlar or [],
+                "injection_suphesi": parse_result.injection_suphesi,
+            }), 200
+
+        except Exception as exc:
+            logger.exception("Mail parse hatasi: %s", exc)
+            return jsonify({
+                "status": "parse_hatasi",
+                "mesaj": f"Sistem hatasi: {exc}",
+            }), 500
 
     # -----------------------------------------------------------------------
     # Siparis havuzu rotalar
