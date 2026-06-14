@@ -60,7 +60,7 @@ from src.nesting3d.instances.synthetic import (
 from src.nesting3d.instances.br_loader import load_br_instance
 from src.nesting3d.bin3d import Bin3D
 from src.nesting3d.solvers.dblf_solver import DBLFSolver
-from src.nesting3d.solvers.sa_solver import SASolver
+from src.nesting3d.solvers.sa_solver import SASolver, MultiStartSA
 from src.nesting3d.solvers.ga_solver import GASolver
 from src.nesting3d.solvers.tabu_solver import TabuSolver
 from src.nesting3d.telemetry import append_run
@@ -74,6 +74,7 @@ _SOLVER_REGISTRY: Dict[str, Any] = {
     "sa3d": SASolver,
     "ga": GASolver,
     "tabu": TabuSolver,
+    "multistart": MultiStartSA,  # R4: çok-start SA (median/best/std raporlar)
 }
 
 _FAMILY_BUILDERS = {
