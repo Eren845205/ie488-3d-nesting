@@ -25,6 +25,7 @@ from src.nesting3d.telemetry import load_telemetry
 from src.nesting3d.selection.dataset import build_training_table
 from src.nesting3d.selection.prefilter import EasyInstancePrefilter
 from src.nesting3d.selection.model import AlgorithmSelector
+from src.nesting3d.selection.persistence import save_selection_model
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +135,7 @@ def _split(table, holdout_ratio: float = 0.2):
 # Ana
 # ---------------------------------------------------------------------------
 
-def main(jsonl_path: Path) -> None:
+def main(jsonl_path: Path, save_path: Path | None = None) -> None:
     print("=" * 70)
     print("build_selection_model.py — Algoritma Secim Modeli Olusturucu")
     print("=" * 70)
@@ -201,6 +202,11 @@ def main(jsonl_path: Path) -> None:
     print(f"    Prefilter: {prefilter.explain()}")
     print(f"    Model:     {model.explain()}")
 
+    # 4b. Kaydet (--save verilmisse)
+    if save_path is not None:
+        save_selection_model(prefilter, model, save_path)
+        print(f"\n[4b] Artefakt kaydedildi: {save_path}")
+
     # 5. Hold-out degerlendirmesi
     if holdout_table:
         holdout_ids = {r.instance_id for r in holdout_table}
@@ -261,5 +267,12 @@ if __name__ == "__main__":
         default=DEFAULT_JSONL,
         help=f"Telemetri JSONL dosyasi (varsayilan: {DEFAULT_JSONL})",
     )
+    parser.add_argument(
+        "--save",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Egitilmis modeli JSON artefaktina kaydet (ornek: data/selection_model.json)",
+    )
     args = parser.parse_args()
-    main(args.jsonl)
+    main(args.jsonl, save_path=args.save)

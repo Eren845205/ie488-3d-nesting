@@ -233,42 +233,117 @@
         {% endif %}
     </div>
 
-    <!-- Portföy kıyas tablosu -->
+    <!-- Algoritma-Seçim Tahmini Rozeti -->
+    {% set sel = nr.get('selection') %}
+    {% if sel %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #6366f1;">
+        <strong style="font-size: 13px; color: #4338ca;">Algoritma-Secim Tahmini</strong>
+        &nbsp;
+        {% if sel.get('is_easy') %}
+            <span class="badge badge-yellow">KOLAY instance</span>
+            <span class="badge badge-blue">Tahmin: DBLF yeterli</span>
+        {% else %}
+            <span class="badge badge-red">ZOR instance</span>
+            <span class="badge badge-blue">Tahmin: {{ sel.get('predicted_winner', '?') }}</span>
+        {% endif %}
+        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+            {{ sel.get('explain', '') }}
+        </div>
+        <div style="font-size: 11px; color: #9ca3af; margin-top: 2px; font-style: italic;">
+            Not: Cozum her zaman Instance-Tuner'dan gelir; tahmin yalnizca bilgilendirme icin gosterilir.
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Instance-Tuner Konfig Kıyas Tablosu -->
+    {% set tuner_data = nr.get('tuner') %}
     {% set port = nr.get('portfolio') %}
-    {% if port %}
+    {% if tuner_data %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;">
+            <strong style="font-size: 15px;">Instance-Tuner Konfig Yarisi</strong>
+            <span class="badge badge-green">Kazanan: {{ tuner_data.get('winning_config', '?') }}</span>
+            {% if tuner_data.get('gain_vs_baseline_pct', 0.0) > 0.01 %}
+            <span class="badge badge-blue">Portfoy baseline'a +{{ "%.1f"|format(tuner_data.get('gain_vs_baseline_pct', 0.0)) }}% kazanc</span>
+            <span class="badge badge-green">{{ "%.2f"|format(tuner_data.get('improvement_mm', 0.0)) }} mm iyilesme</span>
+            {% else %}
+            <span class="badge badge-yellow">Portfoy baseline zaten en iyi</span>
+            {% endif %}
+            <span style="font-size: 12px; color: var(--color-text-muted);">
+                {{ tuner_data.get('configs_tried', 0) }} konfig x budget={{ tuner_data.get('budget', 0) }}
+            </span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Konfig</th>
+                        <th>Yukseklik (mm)</th>
+                        <th>Doluluk</th>
+                        <th>Sure (s)</th>
+                        <th>Baseline'a Kazanc%</th>
+                        <th>Sonuc</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in tuner_data.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background: #f0fff4; font-weight: 600;"{% endif %}>
+                        <td>{{ row.get('config', '?') }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0)) }}</td>
+                        <td>{{ "%.1f"|format(row.get('density', 0.0) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0)) }}</td>
+                        <td>
+                            {% if row.get('config') == 'baseline' %}
+                                <span style="color: var(--color-text-muted);">referans</span>
+                            {% elif row.get('gain_pct', 0.0) > 0.01 %}
+                                <span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0)) }}%</span>
+                            {% else %}
+                                <span style="color: var(--color-text-muted);">0%</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.get('winner') %}
+                                <span class="badge badge-green">KAZANDI</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif port %}
     <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 20px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-            <strong style="font-size: 15px;">4 Algoritma Yarisi</strong>
+            <strong style="font-size: 15px;">Algoritma Karsilastirma</strong>
             <span class="badge badge-green">Kazanan: {{ port.get('winner', '?') }}</span>
             {% if port.get('gain_pct', 0.0) > 0.01 %}
-            <span class="badge badge-blue">DBLF'ye gore +{{ "%.1f"|format(port.get('gain_pct', 0.0)) }}% dusuk yukseklik</span>
+            <span class="badge badge-blue">+{{ "%.1f"|format(port.get('gain_pct', 0.0)) }}% kazanc</span>
             {% else %}
-            <span class="badge badge-yellow">DBLF en iyi</span>
+            <span class="badge badge-yellow">Baseline en iyi</span>
             {% endif %}
         </div>
         <div class="table-wrapper">
             <table>
                 <thead>
                     <tr>
-                        <th>Algoritma</th>
+                        <th>Konfig / Algoritma</th>
                         <th>Yukseklik (mm)</th>
                         <th>Doluluk</th>
                         <th>Sure (s)</th>
-                        <th>DBLF'ye Kazanc%</th>
+                        <th>Kazanc%</th>
                         <th>Sonuc</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in port.get('rows', []) %}
                     <tr {% if row.get('winner') %}style="background: #f0fff4; font-weight: 600;"{% endif %}>
-                        <td>{{ row.get('solver', '?') }}</td>
+                        <td>{{ row.get('config', row.get('solver', '?')) }}</td>
                         <td>{{ "%.2f"|format(row.get('height_mm', 0.0)) }}</td>
                         <td>{{ "%.1f"|format(row.get('density', 0.0) * 100) }}%</td>
                         <td>{{ "%.3f"|format(row.get('time_s', 0.0)) }}</td>
                         <td>
-                            {% if row.get('solver') == 'dblf' %}
-                                <span style="color: var(--color-text-muted);">referans</span>
-                            {% elif row.get('gain_pct', 0.0) > 0.01 %}
+                            {% if row.get('gain_pct', 0.0) > 0.01 %}
                                 <span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0)) }}%</span>
                             {% else %}
                                 <span style="color: var(--color-text-muted);">0%</span>

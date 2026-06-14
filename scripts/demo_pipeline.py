@@ -5,16 +5,22 @@ Zincir:
     2. build_batches (allow_mixing=False) → parti planı
     3. check_feasibility → termin uyarıları
     4. Her parti için: NestingInstance kur → suggest_pitch (adaptif) →
-       to_voxel_parts → PORTFÖY (DBLF + SA + GA + Tabu) yerleşimi
-       → yükseklik + doluluk metrikleri + portföy karşılaştırma tablosu
+       to_voxel_parts → Instance-Tuner (portföy + menü konfigleri) yerleşimi
+       → yükseklik + doluluk metrikleri + tuner konfig kıyası
+       + Algoritma-seçim tahmini (artefakt varsa; yoksa gizlenir)
     5. Her parti için: PricingEngine → fiyat dökümü
     6. results/demo_pipeline_report.md → bölümlü markdown raporu
     7. Konsola özet bas
 
 Deterministik: sabit ref_date + seed; iki koşu aynı raporu üretir.
 
-Portföy: dblf + sa + ga + tabu çözücüleri her parti için aynı budget/seed
-ile koşar; en iyi yerleşim kullanılır; kıyas tablosu rapora eklenir.
+Tuner: build_menu() konfigleri (baseline portföy + 6 ek konfig) her parti
+için aynı TUNER_BUDGET/seed ile koşar; en iyi monoton kabul garantisi ile
+seçilir; kazanan konfig + DBLF'ye kazanç% rapora eklenir.
+
+Selection: data/selection_model.json artefaktı varsa yüklenir; her parti için
+is_easy + predicted_winner + explain bilgisi nesting_results'a eklenir
+(BİLGİLENDİRME — çözüm her zaman tuner'dan gelir).
 
 Kullanım:
     python scripts/demo_pipeline.py
@@ -39,6 +45,12 @@ if str(_ROOT) not in sys.path:
 
 RESULTS_DIR = _ROOT / "results"
 REPORT_FILENAME = "demo_pipeline_report.md"
+
+# Instance-Tuner demo bütçesi: demo süresi < ~15 s kalsın
+TUNER_BUDGET = 70
+
+# Algoritma-seçim model artefaktı
+SELECTION_MODEL_PATH = _ROOT / "data" / "selection_model.json"
 
 # ---------------------------------------------------------------------------
 # Senaryo fixture — Ford/Baykar/ASELSAN havuzu + parça listeleri
@@ -371,6 +383,67 @@ def _build_pricing_inputs(
 
 
 # ---------------------------------------------------------------------------
+# Yardımcı: selection model zarif yükleme
+# ---------------------------------------------------------------------------
+
+def _load_selection_model_safe():
+    """SELECTION_MODEL_PATH varsa (prefilter, model) yukle; yoksa (None, None).
+
+    Zarif düşüş: dosya yoksa veya hata oluşursa sessizce (None, None) döner.
+    Demo bu durumda selection tahminini gizler; tuner her zaman çalışır.
+    """
+    if not SELECTION_MODEL_PATH.exists():
+        return None, None
+    try:
+        from src.nesting3d.selection.persistence import load_selection_model
+        return load_selection_model(SELECTION_MODEL_PATH)
+    except Exception:
+        return None, None
+
+
+def _predict_selection(
+    prefilter,
+    model,
+    instance,
+) -> Optional[Dict[str, Any]]:
+    """Instance için selection tahmini üret.
+
+    Zarif düşüş: prefilter/model None ise None döner.
+    Dönüş: {"is_easy": bool, "predicted_winner": str, "explain": str} veya None.
+    """
+    if prefilter is None or model is None:
+        return None
+    try:
+        from src.nesting3d.instances.features import extract_features
+        from src.nesting3d.selection.selector import EASY_CONFIDENCE_THRESHOLD
+
+        fv = extract_features(instance)
+        features = fv.values
+
+        is_easy, easy_conf = prefilter.predict(features)
+        pf_explain = prefilter.explain()
+
+        if is_easy and easy_conf >= EASY_CONFIDENCE_THRESHOLD:
+            predicted_winner = "dblf"
+            explain = f"KOLAY instance (prefilter guven={easy_conf:.1%}). {pf_explain}"
+        else:
+            solver_name, model_conf = model.predict(features)
+            model_explain = model.explain()
+            predicted_winner = solver_name
+            explain = (
+                f"ZOR instance; model tahmini={solver_name} "
+                f"(guven={model_conf:.1%}). {model_explain}"
+            )
+        return {
+            "is_easy": is_easy and easy_conf >= EASY_CONFIDENCE_THRESHOLD,
+            "predicted_winner": predicted_winner,
+            "explain": explain,
+        }
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Ana pipeline
 # ---------------------------------------------------------------------------
 
@@ -392,11 +465,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     from src.scheduling.feasibility import check_feasibility
     from src.nesting3d.instances.format import to_voxel_parts
     from src.nesting3d.instances.pitch import suggest_pitch
-    from src.nesting3d.solvers.dblf_solver import DBLFSolver
-    from src.nesting3d.solvers.sa_solver import SASolver
-    from src.nesting3d.solvers.ga_solver import GASolver
-    from src.nesting3d.solvers.tabu_solver import TabuSolver
-    from src.nesting3d.solvers.portfolio import run_portfolio
+    from src.nesting3d.tuner import tune as tuner_tune
     from src.pricing.schema import RuleSet
     from src.pricing.engine import PricingEngine
 
@@ -405,11 +474,10 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     container = scenario["container"]
     pitch_fallback = float(scenario.get("pitch", 15.0))
     n_orient = int(scenario.get("n_orientations", 4))
-    portfolio_budget = int(scenario.get("portfolio_budget", 120))
     seed = int(scenario.get("seed", 42))
 
-    # Portföy çözücü listesi (sabit sıra — tablo sırası buna bağlı)
-    _solvers = [DBLFSolver(), SASolver(), GASolver(), TabuSolver()]
+    # Algoritma-seçim model zarif yükleme (model yoksa None, None)
+    _sel_prefilter, _sel_model = _load_selection_model_safe()
 
     # --- 1. Sipariş nesnelerini kur + doğrula ---
     orders: List[Order] = []
@@ -465,6 +533,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             nesting_results[batch.batch_id] = {
                 "height_mm": 0.0, "density": 0.0, "n_parts": 0,
                 "elapsed_sec": 0.0, "note": "Parça yok",
+                "portfolio": None, "tuner": None, "selection": None,
             }
             pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
             continue
@@ -478,6 +547,9 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             pitch = pitch_fallback
 
+        # Algoritma-seçim tahmini (artefakt varsa; bilgilendirme amaçlı)
+        selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
+
         # Voxelize (adaptif pitch)
         t_nest_start = time.perf_counter()
         try:
@@ -490,22 +562,23 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
                 "elapsed_sec": 0.0,
                 "note": f"Voxelization hatasi: {exc}",
                 "portfolio": None,
+                "tuner": None,
+                "selection": selection_pred,
             }
             pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
             continue
 
-        # Portföy: 4 çözücü aynı budget/seed ile yarışır
+        # Instance-Tuner: TUNER_BUDGET ile portföy + menü konfigleri koşar
         factory = _bin_factory(container, pitch)
         try:
-            port_result = run_portfolio(
+            tune_result = tuner_tune(
                 voxel_parts,
                 factory,
-                solvers=_solvers,
-                budget=portfolio_budget,
+                budget=TUNER_BUDGET,
                 seed=seed,
             )
         except Exception as exc:
-            # Zarif düşüş: portföy başarısız → DBLF tek başına
+            # Zarif düşüş: tuner başarısız → DBLF tek başına
             try:
                 from src.nesting3d.dblf import dblf as _dblf
                 _placements, bin3d = _dblf(voxel_parts, factory)
@@ -515,15 +588,19 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
                     "density": bin3d.packing_density(),
                     "n_parts": len(_placements),
                     "elapsed_sec": round(t_nest_elapsed, 3),
-                    "note": f"Portfoy hatasi (DBLF fallback): {exc}",
+                    "note": f"Tuner hatasi (DBLF fallback): {exc}",
                     "portfolio": None,
+                    "tuner": None,
+                    "selection": selection_pred,
                 }
             except Exception as exc2:
                 nesting_results[batch.batch_id] = {
                     "height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
                     "elapsed_sec": 0.0,
-                    "note": f"Portfoy hatasi: {exc}; DBLF fallback hatasi: {exc2}",
+                    "note": f"Tuner hatasi: {exc}; DBLF fallback hatasi: {exc2}",
                     "portfolio": None,
+                    "tuner": None,
+                    "selection": selection_pred,
                 }
                 pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
                 continue
@@ -551,42 +628,50 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         t_nest_elapsed = time.perf_counter() - t_nest_start
-        winner = port_result.winner
-        height_mm = winner.height_mm
-        density = winner.density
-        n_placed = len(winner.placements)
+        winner_result = tune_result.result
+        height_mm = winner_result.height_mm
+        density = winner_result.density
+        n_placed = len(winner_result.placements)
+        winner_config = tune_result.winning_config_name
+        baseline_height = tune_result.baseline_height_mm  # portföy (DBLF+SA+GA+Tabu) en iyisi
 
-        # DBLF yüksekliğini bul (karşılaştırma için)
-        dblf_height = next(
-            (r.height_mm for r in port_result.results
-             if r.meta.get("solver") == "dblf"),
-            height_mm,
-        )
-        winner_name = winner.meta.get("solver", "?")
+        # DBLF yüksekliğini bul: baseline konfigin içindeki DBLF sonucundan
+        # Tuner all_results'ta "baseline" entry var; baseline = portföy winner.
+        # Eski UI uyumu için dblf_height = baseline (portföy, yani eski karşılaştırma)
+        dblf_height = baseline_height
         gain_pct = (
             (dblf_height - height_mm) / dblf_height * 100.0
-            if dblf_height > 0 and winner_name != "dblf"
+            if dblf_height > 0
             else 0.0
         )
 
-        # Portföy kıyas verisi (her çözücü için satır)
-        portfolio_rows = []
-        for r in port_result.results:
-            s_name = r.meta.get("solver", "?")
-            is_win = r is winner
-            row_gain = (
-                (dblf_height - r.height_mm) / dblf_height * 100.0
-                if dblf_height > 0 and s_name != "dblf"
+        # Tuner konfig kıyas verisi (her konfig için satır)
+        tuner_rows = []
+        for cfg_name, cfg_result in tune_result.all_results:
+            is_win = cfg_result is winner_result
+            cfg_gain = (
+                (dblf_height - cfg_result.height_mm) / dblf_height * 100.0
+                if dblf_height > 0
                 else 0.0
             )
-            portfolio_rows.append({
-                "solver": s_name,
-                "height_mm": round(r.height_mm, 2),
-                "density": round(r.density, 4),
-                "time_s": round(r.time_s, 3),
+            tuner_rows.append({
+                "config": cfg_name,
+                "height_mm": round(cfg_result.height_mm, 2),
+                "density": round(cfg_result.density, 4),
+                "time_s": round(cfg_result.time_s, 3),
                 "winner": is_win,
-                "gain_pct": round(row_gain, 2),
+                "gain_pct": round(cfg_gain, 2),
             })
+
+        # Geriye-uyum: "portfolio" anahtarını tuner baseline'dan sentetik olarak koru
+        # (webapp/test uyumu; "rows" listesi tuner konfiglerinden üretilir)
+        portfolio_data = {
+            "winner": winner_config,
+            "dblf_height_mm": round(dblf_height, 2),
+            "gain_pct": round(gain_pct, 2),
+            "table_md": "",
+            "rows": tuner_rows,
+        }
 
         nesting_results[batch.batch_id] = {
             "height_mm": height_mm,
@@ -595,13 +680,17 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "elapsed_sec": round(t_nest_elapsed, 3),
             "note": "",
             "pitch_mm": round(pitch, 2),
-            "portfolio": {
-                "winner": winner_name,
-                "dblf_height_mm": round(dblf_height, 2),
-                "gain_pct": round(gain_pct, 2),
-                "table_md": port_result.table_md,
-                "rows": portfolio_rows,
+            "portfolio": portfolio_data,
+            "tuner": {
+                "winning_config": winner_config,
+                "baseline_height_mm": round(baseline_height, 2),
+                "improvement_mm": round(tune_result.improvement_mm, 2),
+                "gain_vs_baseline_pct": round(gain_pct, 2),
+                "budget": TUNER_BUDGET,
+                "configs_tried": len(tune_result.all_results),
+                "rows": tuner_rows,
             },
+            "selection": selection_pred,
         }
         batch_nesting_elapsed[batch.batch_id] = t_nest_elapsed
 
@@ -755,26 +844,79 @@ def _build_report_markdown(
         )
     lines.append("")
 
-    # --- Bölüm 3b: Portföy kıyas tabloları ---
-    lines.append("## 3b. Portfoy Kiyaslama (4 Algoritma Yarisi)")
+    # --- Bölüm 3b: Instance-Tuner konfig kıyas tabloları ---
+    lines.append("## 3b. Instance-Tuner Konfig Kiyasi")
     lines.append("")
     for b in batches:
         nr = nesting_results.get(b.batch_id, {})
-        port = nr.get("portfolio")
-        if not port:
-            lines.append(f"### Parti {b.batch_id}: portfoy verisi yok")
+        tuner_data = nr.get("tuner")
+        if not tuner_data:
+            port = nr.get("portfolio")
+            if not port:
+                lines.append(f"### Parti {b.batch_id}: tuner verisi yok")
+                lines.append("")
+                continue
+            # Eski format / fallback
+            lines.append(f"### Parti {b.batch_id} — {b.customer}")
+            lines.append(f"**Kazanan: `{port.get('winner','?')}` (fallback)**")
             lines.append("")
             continue
-        winner_name = port.get("winner", "?")
-        dblf_h = port.get("dblf_height_mm", 0.0)
-        gain = port.get("gain_pct", 0.0)
+        winner_cfg = tuner_data.get("winning_config", "?")
+        baseline_h = tuner_data.get("baseline_height_mm", 0.0)
+        improvement = tuner_data.get("improvement_mm", 0.0)
+        gain = tuner_data.get("gain_vs_baseline_pct", 0.0)
+        n_configs = tuner_data.get("configs_tried", 0)
+        budget = tuner_data.get("budget", 0)
         lines.append(f"### Parti {b.batch_id} — {b.customer}")
-        lines.append(f"**Kazanan: `{winner_name}` | DBLF: {dblf_h:.2f} mm | Kazanc: {gain:.1f}%**")
+        lines.append(
+            f"**Kazanan konfig: `{winner_cfg}` | "
+            f"Portfoy baseline: {baseline_h:.2f} mm | "
+            f"Kazanc: {improvement:.2f} mm ({gain:.1f}%) | "
+            f"Denenen konfig: {n_configs} x budget={budget}**"
+        )
         lines.append("")
-        table_md = port.get("table_md", "")
-        if table_md:
-            lines.append(table_md)
+        # Konfig kıyas tablosu
+        rows = tuner_data.get("rows", [])
+        if rows:
+            lines.append("| Konfig | Yukseklik (mm) | Doluluk | Sure (s) | Baseline'a Kazanc% | Sonuc |")
+            lines.append("|--------|----------------|---------|----------|---------------------|-------|")
+            for row in rows:
+                win_mark = "KAZANDI" if row.get("winner") else ""
+                cfg_gain = row.get("gain_pct", 0.0)
+                gain_str = f"+{cfg_gain:.1f}%" if cfg_gain > 0.01 else "0%"
+                lines.append(
+                    f"| {row['config']} | {row['height_mm']:.2f} | "
+                    f"{row['density'] * 100:.1f}% | {row['time_s']:.3f} | "
+                    f"{gain_str} | {win_mark} |"
+                )
         lines.append("")
+
+    # --- Bölüm 3c: Algoritma-seçim tahmini ---
+    has_selection = any(
+        nesting_results.get(b.batch_id, {}).get("selection") is not None
+        for b in batches
+    )
+    if has_selection:
+        lines.append("## 3c. Algoritma-Secim Tahmini (Bilgilendirme)")
+        lines.append("")
+        lines.append(
+            "> NOT: Tahmin yalnizca bilgilendirme icin gosterilir. "
+            "Cozum her zaman Instance-Tuner'dan gelir."
+        )
+        lines.append("")
+        for b in batches:
+            nr = nesting_results.get(b.batch_id, {})
+            sel = nr.get("selection")
+            if sel is None:
+                continue
+            is_easy_str = "KOLAY" if sel.get("is_easy") else "ZOR"
+            predicted = sel.get("predicted_winner", "?")
+            explain = sel.get("explain", "")
+            lines.append(f"**{b.batch_id} ({b.customer})**: {is_easy_str} — "
+                         f"tahmin={predicted}")
+            if explain:
+                lines.append(f"  _{explain}_")
+            lines.append("")
 
     # --- Bölüm 4: Fiyat dökümü ---
     lines.append("## 4. Fiyat Dokumu")
@@ -841,7 +983,7 @@ def _print_console_summary(
     print()
 
     total_rev = 0.0
-    print("--- Parti Ozeti ---")
+    print("--- Parti Ozeti (Instance-Tuner) ---")
     for b in batches:
         nr = nesting_results.get(b.batch_id, {})
         pr = pricing_results.get(b.batch_id, {})
@@ -849,18 +991,25 @@ def _print_console_summary(
         d = nr.get("density", 0.0)
         price = pr.get("total_price", 0.0)
         total_rev += price
-        port = nr.get("portfolio") or {}
-        winner_name = port.get("winner", "dblf")
-        gain_pct = port.get("gain_pct", 0.0)
-        gain_str = f" | kazanc={gain_pct:.1f}%" if gain_pct > 0.0 else ""
+        tuner_data = nr.get("tuner") or {}
+        winner_cfg = tuner_data.get("winning_config", nr.get("portfolio", {}) and nr["portfolio"].get("winner", "?") or "?")
+        gain_pct = tuner_data.get("gain_vs_baseline_pct", 0.0)
+        improvement_mm = tuner_data.get("improvement_mm", 0.0)
+        gain_str = f" | kazanc={improvement_mm:.2f}mm ({gain_pct:.1f}%)" if gain_pct > 0.01 else ""
+        sel = nr.get("selection")
+        sel_str = ""
+        if sel is not None:
+            easy_tag = "kolay" if sel.get("is_easy") else "zor"
+            sel_str = f" | secim-tahmin={sel.get('predicted_winner','?')}({easy_tag})"
         print(
             f"  {b.batch_id}: {b.customer:12s} | "
             f"yukseklik={h:.1f}mm | doluluk={d * 100:.1f}% | "
-            f"kazanan={winner_name}{gain_str} | fiyat={price:.2f}$"
+            f"kazanan-konfig={winner_cfg}{gain_str}{sel_str} | fiyat={price:.2f}$"
         )
     print()
     print(f"Toplam ciro onerisi : {total_rev:.2f} $")
     print(f"Pipeline suresi     : {elapsed_total:.2f} s")
+    print(f"Tuner budget        : {TUNER_BUDGET} iter/konfig")
     print(sep)
 
 

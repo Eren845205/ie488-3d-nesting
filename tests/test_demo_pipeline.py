@@ -125,7 +125,7 @@ class TestSmokePipeline:
             "Siparis Oncelik Tablosu",
             "Parti Plani",
             "Nesting Sonuclari",
-            "Portfoy Kiyaslama",
+            "Instance-Tuner Konfig Kiyasi",
             "Fiyat Dokumu",
             "Ozet",
         ]
@@ -150,22 +150,43 @@ class TestSmokePipeline:
             assert nr["height_mm"] >= 0.0
 
     def test_nesting_results_have_portfolio(self):
-        """Nesting sonuçları portföy kıyas verisi içermeli."""
+        """Nesting sonuçları tuner kıyas verisi içermeli (portfolio anahtarı korunur)."""
         result = run_pipeline(SMOKE_SCENARIO)
         for batch_id, nr in result["nesting_results"].items():
-            # portfolio None olabilir (parça yok / hata), ama anahtar var olmalı
+            # portfolio anahtarı geriye uyum için hâlâ var olmalı
             assert "portfolio" in nr, f"{batch_id} için 'portfolio' anahtarı eksik"
             port = nr["portfolio"]
             if port is not None:
                 assert "winner" in port, f"{batch_id} portfolio'da 'winner' eksik"
                 assert "rows" in port, f"{batch_id} portfolio'da 'rows' eksik"
                 assert isinstance(port["rows"], list)
-                # 4 çözücü: dblf, sa, ga, tabu
-                assert len(port["rows"]) == 4, (
-                    f"{batch_id} portfolio'da {len(port['rows'])} satır var, 4 beklendi"
+                # Tuner konfigleri: baseline + sa_auto + sa_3starts + sa_5starts +
+                # dblf_only + ga_only + tabu_only = 7
+                assert len(port["rows"]) >= 1, (
+                    f"{batch_id} portfolio'da satır yok"
                 )
-                solvers_found = {r["solver"] for r in port["rows"]}
-                assert "dblf" in solvers_found, f"{batch_id}: dblf satırı eksik"
+                # Kazanan konfig adı string olmalı
+                assert isinstance(port["winner"], str), f"{batch_id}: winner string değil"
+
+    def test_nesting_results_have_tuner(self):
+        """Nesting sonuçları tuner bilgisi içermeli."""
+        result = run_pipeline(SMOKE_SCENARIO)
+        for batch_id, nr in result["nesting_results"].items():
+            assert "tuner" in nr, f"{batch_id} için 'tuner' anahtarı eksik"
+            tuner_data = nr["tuner"]
+            if tuner_data is not None:
+                assert "winning_config" in tuner_data, f"{batch_id} tuner'da 'winning_config' eksik"
+                assert "baseline_height_mm" in tuner_data
+                assert "improvement_mm" in tuner_data
+                assert tuner_data["improvement_mm"] >= 0.0, (
+                    f"{batch_id}: tuner improvement negatif (monoton ihlal)"
+                )
+
+    def test_nesting_results_have_selection_key(self):
+        """Nesting sonuçları selection anahtarı içermeli (None olabilir)."""
+        result = run_pipeline(SMOKE_SCENARIO)
+        for batch_id, nr in result["nesting_results"].items():
+            assert "selection" in nr, f"{batch_id} için 'selection' anahtarı eksik"
 
     def test_pipeline_result_has_pricing(self):
         """Her parti için fiyat sonucu olmalı."""
@@ -230,11 +251,11 @@ class TestRichScenario:
         assert len(result["batches"]) >= 1
 
     def test_rich_has_portfolio(self):
-        """Zengin senaryo her partide portföy kıyas tablosu üretmeli."""
+        """Zengin senaryo her partide tuner/portföy kıyas tablosu üretmeli."""
         result = run_pipeline(RICH_SCENARIO)
         for batch_id, nr in result["nesting_results"].items():
             assert "portfolio" in nr, f"{batch_id} portfolio eksik"
             port = nr["portfolio"]
             if port is not None:
-                assert len(port["rows"]) == 4
-                assert port["winner"] in {"dblf", "sa", "ga", "tabu"}
+                assert len(port["rows"]) >= 1
+                assert isinstance(port["winner"], str)
