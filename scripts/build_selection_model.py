@@ -72,20 +72,21 @@ def _evaluate(
             sel_path = "easy_dblf"
         else:
             sol_name, conf = model.predict(row.feature_vector)
+            psh = row.per_solver_heights or {}
             if conf < 0.6:
-                sel_h = vbs_h  # guvensiz: tam portfoy -> oracle gibi en iyi
+                # Guvensiz: gercek uretimde TUM portfoy kosar ve en iyiyi alir.
+                # Sparse telemetride best_height (oracle) yaniltici-dusuk olur;
+                # bu yol VBS savunulabilir AMA kosulan cozuculerin GERCEK min'ini
+                # kullaniyoruz -- olmayan cozucu skorunu kredilendirmiyoruz.
+                sel_h = min(psh.values()) if psh else vbs_h
                 sel_path = "full_portfolio"
             else:
-                # Secili cozucu simulation: gercek height'i biliyoruz
-                # (telemetri zaten tum cozuculeri iceriyor)
+                # Secili cozucu: O COZUCUNUN GERCEK kaydedilmis yuksekligini kullan
+                # (oracle-best DEGIL -- aksi halde selector_mean yapay duser ve
+                # kapi kotu modeli promote edebilir). Cozucu telemetride yoksa
+                # konservatif DBLF baseline'a (sbs_h) dusulur.
                 sel_path = f"selected:{sol_name}"
-                # En iyi bilinen sonucu al (hold-out simulation)
-                if sol_name in {
-                    s for s in ["dblf", "sa3d", "ga", "tabu"]
-                }:
-                    sel_h = row.best_height  # portfoy icinde zaten en iyisi
-                else:
-                    sel_h = sbs_h  # bilinmeyen cozucu -> DBLF fallback
+                sel_h = psh.get(sol_name, sbs_h)
 
         details.append({
             "instance_id": row.instance_id,

@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import secrets
 import sys
 import time
 from pathlib import Path
@@ -278,7 +280,7 @@ def create_app(
         template_folder="templates",
         static_folder="static",
     )
-    app.secret_key = "konteyner-nesting-demo-secret-2026"
+    app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
     app.config["TESTING"] = testing
 
     # Durum: her create_app() cagrisinda sifirlanir (test izolasyonu)
@@ -751,6 +753,16 @@ def _register_routes(
                     "ham_cikti": raw,
                 }), 200
 
+            if parse_result.injection_suphesi:
+                return jsonify({
+                    "status": "guvenlik_suptesi",
+                    "mesaj": (
+                        "Guvenlik suptesi nedeniyle siparis islenmedi. "
+                        "Lutfen icerik kontrolu yapin."
+                    ),
+                    "injection_suphesi": True,
+                }), 422
+
             return jsonify({
                 "status": "ok",
                 "siparis": parse_result.order_dict,
@@ -843,6 +855,7 @@ def _register_routes(
         parser_role = llm_components.get("parser_role")
         parsed_orders: List[Dict[str, Any]] = []
         parse_hatalar: List[str] = []
+        parse_karantina: List[str] = []
         parse_kaynak_sayac: Dict[str, int] = {"attachment_excel": 0, "attachment_csv": 0, "llm_text": 0}
 
         for mail in raw_mails:
@@ -872,7 +885,11 @@ def _register_routes(
 
                     parsed_orders.append(order)
                 else:
-                    parse_hatalar.append(f"{mail.gonderen}: parse basarisiz")
+                    # None donus: injection suphesi karantina veya parse basarisiz.
+                    # Ek yoksa LLM yolu denendiginden, parse_result'a erisim yok;
+                    # ingest_order zaten karantina logunu yazmis olur — ozet icin
+                    # gonderen bazli kayit yapiyoruz.
+                    parse_hatalar.append(f"{mail.gonderen}: parse basarisiz veya karantinaya alindi")
             except Exception as exc:
                 logger.warning("Otonom: Parse hatasi (mail=%s): %s", mail.gonderen, exc)
                 parse_hatalar.append(f"{mail.gonderen}: {exc}")

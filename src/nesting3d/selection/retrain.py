@@ -8,6 +8,7 @@ DEGiSMEZ-D: promote yoksa artifact BYTE-AYNI kalir.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -91,37 +92,59 @@ def run_retrain(
     artifact_path = Path(artifact_path)
     archive_dir = Path(archive_dir)
 
-    # --- 1. Karar al ---
-    decision = evaluate_candidate(telemetry_path, artifact_path, gain_mm=gain_mm)
-
-    if not decision.promote:
-        return decision
-
-    # --- 2a. Mevcut artifact arsivle ---
-    if artifact_path.exists():
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        version = _next_archive_version(archive_dir)
-        archive_path = archive_dir / f"selection_model.v{version}.json"
-        # Shutil kullanmadan okuma-yazma ile kopyala (pure stdlib)
-        archive_path.write_bytes(artifact_path.read_bytes())
-
-    # --- 2b. Aday modeli egit ve atomik swap ile yaz ---
+    # --- 0. Telemetri SNAPSHOT (TOCTOU kapatma) ---
+    # C4 fix: kapinin gordugu veri ile diske yazilan modelin egitildigi veri
+    # AYNI olmali. Telemetriyi BIR KEZ oku ve degismez bir snapshot dosyasina
+    # yaz; hem evaluate_candidate hem de yazilan model bu snapshot'tan beslenir.
+    # Iki ayri load_telemetry arasinda telemetri dosyasi degisirse (TOCTOU)
+    # artefakt kapinin gormedigi veriyle egitilebilirdi -- snapshot bunu onler.
     rows = load_telemetry(telemetry_path)
-    table = build_training_table(rows)
-    train_table, _ = _split(table)
+    snapshot_path = Path(str(artifact_path) + ".telemetry.snapshot.jsonl")
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    with snapshot_path.open("w", encoding="utf-8") as _fh:
+        for _r in rows:
+            _fh.write(json.dumps(_r, ensure_ascii=False) + "\n")
 
-    pf = EasyInstancePrefilter()
-    pf.fit(train_table)
-    sel = AlgorithmSelector()
-    sel.fit(train_table)
+    try:
+        # --- 1. Karar al (snapshot uzerinden) ---
+        decision = evaluate_candidate(snapshot_path, artifact_path, gain_mm=gain_mm)
 
-    # Atomik yazma: once TMP, sonra os.replace
-    tmp_path = Path(str(artifact_path) + ".tmp")
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    save_selection_model(pf, sel, tmp_path)
-    os.replace(str(tmp_path), str(artifact_path))
+        if not decision.promote:
+            return decision
 
-    return decision
+        # --- 2. Aday modeli egit (snapshot ile AYNI rows; kapi ile ozdes girdi) ---
+        # evaluate_candidate ile bire bir ayni egitim girdisi: ayni rows ->
+        # ayni build_training_table -> ayni _split -> ayni (deterministik)
+        # prefilter/selector. Boylece diske yazilan NESNE = kapinin onayladigi.
+        table = build_training_table(rows)
+        train_table, _ = _split(table)
+
+        pf = EasyInstancePrefilter()
+        pf.fit(train_table)
+        sel = AlgorithmSelector()
+        sel.fit(train_table)
+
+        # --- 3. Mevcut artifact arsivle (promote kesinlestikten sonra) ---
+        if artifact_path.exists():
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            version = _next_archive_version(archive_dir)
+            archive_path = archive_dir / f"selection_model.v{version}.json"
+            # Shutil kullanmadan okuma-yazma ile kopyala (pure stdlib)
+            archive_path.write_bytes(artifact_path.read_bytes())
+
+        # --- 4. Atomik yazma: once TMP, sonra os.replace ---
+        tmp_path = Path(str(artifact_path) + ".tmp")
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        save_selection_model(pf, sel, tmp_path)
+        os.replace(str(tmp_path), str(artifact_path))
+
+        return decision
+    finally:
+        # Snapshot gecicidir; promote olsun olmasin temizle.
+        try:
+            snapshot_path.unlink()
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------

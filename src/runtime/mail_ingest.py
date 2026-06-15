@@ -560,6 +560,19 @@ def ingest_order(
     parse_result = parser_role.parse(mail.govde)
     if parse_result is None:
         return None
+
+    # injection_suphesi kontrolu — fail-closed: karantinaya al, pipeline'a sokma
+    injection = False
+    if hasattr(parse_result, "injection_suphesi"):
+        injection = bool(parse_result.injection_suphesi)
+    if injection:
+        logger.warning(
+            "ingest_order: injection_suphesi=True — siparis karantinaya alindi, "
+            "pipeline'a sokulmadi. gonderen=%r",
+            mail.gonderen,
+        )
+        return None
+
     # ParserResult veya dogrudan dict kontrolu
     if hasattr(parse_result, "order_dict"):
         order = parse_result.order_dict

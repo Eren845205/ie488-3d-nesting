@@ -83,6 +83,10 @@ class ParserResult:
 
 _BOYUT_EKSIK_DEGER = 1.0  # mm cinsinden placeholder
 
+# Makul ust sinir: en buyuk endustriyel konteyner ~40 ft ISO = ~12192 mm ic uzunluk.
+# Parcalarin hicbiri konteyneri asamayacagindan 5000 mm genis bir guvensizlik tampon.
+MAX_BOYUT_MM = 5000.0
+
 
 def parsed_to_order(
     data: Dict[str, Any],
@@ -120,11 +124,34 @@ def parsed_to_order(
 
     parcalar = data.get("parcalar") or []
     parts: List[Dict[str, Any]] = []
+    eksik_alanlar_boyut: List[str] = []
+
+    def _safe_boyut(raw_val: Any, alan_adi: str) -> float:
+        """raw_val'i float'a cevirir; hata veya aralik disi -> _BOYUT_EKSIK_DEGER."""
+        try:
+            v = float(raw_val)
+        except (ValueError, TypeError):
+            logger.warning(
+                "parsed_to_order: %s float'a donusturulemedi (%r) — placeholder kullanildi.",
+                alan_adi, raw_val,
+            )
+            eksik_alanlar_boyut.append(alan_adi)
+            return _BOYUT_EKSIK_DEGER
+        if not (0 < v <= MAX_BOYUT_MM):
+            logger.warning(
+                "parsed_to_order: %s aralik disi (%.3g, beklenen 0 < boyut <= %.3g) "
+                "— placeholder kullanildi.",
+                alan_adi, v, MAX_BOYUT_MM,
+            )
+            eksik_alanlar_boyut.append(alan_adi)
+            return _BOYUT_EKSIK_DEGER
+        return v
+
     for i, p in enumerate(parcalar):
         boyut = p.get("boyut_mm") or []
-        en = float(boyut[0]) if len(boyut) > 0 else _BOYUT_EKSIK_DEGER
-        boy = float(boyut[1]) if len(boyut) > 1 else _BOYUT_EKSIK_DEGER
-        yuk = float(boyut[2]) if len(boyut) > 2 else _BOYUT_EKSIK_DEGER
+        en = _safe_boyut(boyut[0], f"parcalar[{i}].boyut_mm[0]") if len(boyut) > 0 else _BOYUT_EKSIK_DEGER
+        boy = _safe_boyut(boyut[1], f"parcalar[{i}].boyut_mm[1]") if len(boyut) > 1 else _BOYUT_EKSIK_DEGER
+        yuk = _safe_boyut(boyut[2], f"parcalar[{i}].boyut_mm[2]") if len(boyut) > 2 else _BOYUT_EKSIK_DEGER
         parts.append({
             "id": f"parsed_{i+1}",
             "name": (p.get("ad") or f"parca_{i+1}").strip(),

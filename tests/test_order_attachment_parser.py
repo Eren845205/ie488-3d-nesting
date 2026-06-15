@@ -462,10 +462,11 @@ class TestFakeMailboxWithAttachment(unittest.TestCase):
 
 class TestIngestOrderRouting(unittest.TestCase):
 
-    def _make_fake_parser_role(self, order_dict):
+    def _make_fake_parser_role(self, order_dict, injection_suphesi=False):
         """ParserRole'u taklit eden minimum Fake nesne."""
         mock_result = MagicMock()
         mock_result.order_dict = order_dict
+        mock_result.injection_suphesi = injection_suphesi
 
         mock_role = MagicMock()
         mock_role.parse.return_value = mock_result

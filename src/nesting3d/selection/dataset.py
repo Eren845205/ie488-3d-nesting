@@ -21,7 +21,7 @@ is_easy tanimlamasi (Renau & Hart 2024):
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 
@@ -41,6 +41,12 @@ class TrainingRow:
     feature_vector: List[float]
     feature_names: List[str]
     aile: str
+    # Her cozucunun bu instance'taki GERCEK (kaydedilmis) en iyi yuksekligi.
+    # Oracle-best (best_height) sizintisini onlemek icin _evaluate bunu kullanir:
+    # isimli bir cozucu secildiginde O cozucunun gercek skoru kredilendirilir.
+    # Default bos: persistence.load_selection_model bu alani set etmeden
+    # TrainingRow insa edebilsin (artefakt prediction icin kullanilir, _evaluate icin degil).
+    per_solver_heights: Dict[str, float] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +137,7 @@ def build_training_table(
                 feature_vector=list(meta["feature_vector"]),
                 feature_names=list(meta["feature_names"]),
                 aile=meta["aile"],
+                per_solver_heights=dict(best_per_solver),
             )
         )
 
