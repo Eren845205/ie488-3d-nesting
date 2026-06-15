@@ -141,7 +141,8 @@ class TestExplainerInput:
         inp = _algoritma_input()
         doc = inp.to_source_doc()
         assert doc.id == "sistem_ciktisi#input"
-        assert doc.tip == "termin"
+        # algoritma -> telemetri (karar_tipi esleme kurali)
+        assert doc.tip == "telemetri"
         assert "187.5" in doc.icerik
         assert "GA" in doc.icerik
 

@@ -11,5 +11,6 @@ scipy
 fast-simplification
 pillow
 pytest
+flask-limiter
 # sunum üretimi (opsiyonel)
 python-pptx

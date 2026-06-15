@@ -242,9 +242,11 @@ class AuditLogger:
                 "max_tokens": req.max_tokens,
                 "temperature": req.temperature,
             }
-            # Yanit govdesi de maskelenir (e-posta/telefon) ama icerigi korunur
+            # Yanit govdesi: redacted modda govde icerigi yerine ozet (PII koruması)
+            resp_text_chars = len(resp.text)
+            resp_text_preview = resp.text[:50] if resp.text else ""
             response_block: Dict[str, Any] = {
-                "text": resp.text,
+                "text_summary": f"{resp_text_preview}… ({resp_text_chars} karakter)",
                 "model_id": resp.model_id,
             }
             payload_data: Dict[str, Any] = {

@@ -32,8 +32,17 @@ from typing import Any, Dict, List, Optional
 
 from flask import (
     Flask, Response, jsonify, redirect, render_template,
-    request, url_for,
+    request, session, url_for,
 )
+
+# Rate limiting — optional dep; no-op if flask-limiter not installed
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    _LIMITER_AVAILABLE = True
+except ImportError:
+    _LIMITER_AVAILABLE = False
+    Limiter = None  # type: ignore
 
 # Proje kokunu sys.path'e ekle (dogrudan calistirma icin)
 _ROOT = Path(__file__).resolve().parent.parent.parent
@@ -41,6 +50,37 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# SSRF allowlist — Ollama base_url yalnizca localhost'a izin verilir
+# ---------------------------------------------------------------------------
+import re as _re
+
+_ALLOWED_BASE_URL_PATTERN = _re.compile(
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?(/.*)?$"
+)
+
+
+def _validate_ollama_base_url(url: str) -> bool:
+    """base_url'in localhost/127.0.0.1 ile sinirli oldugunu dogrular (SSRF korumasi)."""
+    return bool(_ALLOWED_BASE_URL_PATTERN.match(url))
+
+
+# ---------------------------------------------------------------------------
+# Paylasilan seri-hale-getirici yardimci (Bulgu 6: /otonom tutarli projeksiyon)
+# ---------------------------------------------------------------------------
+
+def _nesting_result_projection(nr: dict) -> dict:
+    """Nesting sonuc dict'inden guvenli scalar alanlar cikarir.
+
+    /otonom ve /run yanit yollari bu ortak helper'i kullanir;
+    buyuk/seri-edilemeyen nesneler disarda kalir.
+    """
+    return {
+        "height_mm": nr.get("height_mm", 0.0),
+        "density": nr.get("density", 0.0),
+        "n_parts": nr.get("n_parts", 0),
+    }
 
 
 def _load_llm_components(
@@ -91,8 +131,16 @@ def _load_llm_components(
             from src.llm.providers.openai_compat import OpenAICompatProvider
 
             prov_cfg = cfg.provider_for_role("report")
+            _base_url = prov_cfg.base_url or "http://localhost:11434"
+            # SSRF allowlist: yalnizca localhost / 127.0.0.1 kabul edilir (Bulgu 4)
+            if not _validate_ollama_base_url(_base_url):
+                logger.error(
+                    "Ollama base_url SSRF allowlist'i disinda: %r — LLM devre disi.",
+                    _base_url,
+                )
+                return None
             provider = OpenAICompatProvider(
-                base_url=prov_cfg.base_url or "http://localhost:11434",
+                base_url=_base_url,
                 model=cfg.role("report").model,
                 timeout_s=prov_cfg.timeout_s,
             )
@@ -229,7 +277,7 @@ def _normalize_deadline(deadline_str: str, mail_tarih: str = "") -> str:
             date.fromisoformat(s[:10])
             return s[:10]
         except ValueError:
-            pass
+            logger.debug("_normalize_deadline: ISO parse basarisiz: %r", s[:10])
 
     # Turkce "GG Ay YYYY" formatini dene
     if s:
@@ -243,7 +291,10 @@ def _normalize_deadline(deadline_str: str, mail_tarih: str = "") -> str:
                     date.fromisoformat(candidate)
                     return candidate
                 except ValueError:
-                    pass
+                    logger.debug(
+                        "_normalize_deadline: Turkce tarih parse basarisiz: %r",
+                        s,
+                    )
 
     # Fallback: mail tarihinden +30 gun veya bugunden +30 gun
     try:
@@ -283,8 +334,14 @@ def create_app(
     app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
     app.config["TESTING"] = testing
 
+    # Yuklem buyuklugu siniri — yükleme DoS'a karsi (Bulgu 1)
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
+
     # Durum: her create_app() cagrisinda sifirlanir (test izolasyonu)
     app.config["LAST_RESULT"] = None
+    # NOT: CONVERSATION_TURNS artik Flask session'da (per-kullanici); bu kaldir.
+    # Geriye donuk uyumluluk: app.config["CONVERSATION_TURNS"] diger testler
+    # ile cakismamasi icin bos liste olarak baslatilmaya devam eder.
     app.config["CONVERSATION_TURNS"] = []
 
     # Siparis havuzu yolu
@@ -302,7 +359,18 @@ def create_app(
     )
     llm_active = _llm is not None
 
-    _register_routes(app, llm_components=_llm, llm_active=llm_active)
+    # Rate limiter (Bulgu 2) — flask-limiter yuklu degilse no-op
+    if _LIMITER_AVAILABLE and Limiter is not None:
+        _limiter = Limiter(
+            app=app,
+            key_func=get_remote_address,
+            default_limits=[],
+            storage_uri="memory://",
+        )
+    else:
+        _limiter = None
+
+    _register_routes(app, llm_components=_llm, llm_active=llm_active, limiter=_limiter)
     return app
 
 
@@ -310,8 +378,18 @@ def _register_routes(
     app: Flask,
     llm_components: Optional[Dict[str, Any]] = None,
     llm_active: bool = False,
+    limiter: Any = None,
 ) -> None:
     """Tum rotalari app'e kaydeder."""
+
+    # Rate-limit dekorator yardimcisi — limiter None ise gecmis decorator doner
+    def _limit(limit_string: str):
+        if limiter is not None:
+            return limiter.limit(limit_string)
+        # no-op: ayni fonksiyonu olduğu gibi döndürür
+        def _passthrough(f):
+            return f
+        return _passthrough
 
     @app.route("/", methods=["GET"])
     def index():
@@ -367,7 +445,9 @@ def _register_routes(
         result = run_pipeline(scenario)
         result["used_demo"] = used_demo
         app.config["LAST_RESULT"] = result
-        app.config["CONVERSATION_TURNS"] = []
+        # Sohbet gecmisi: session'a sifirla (per-kullanici izolasyonu, Bulgu 5)
+        session["conversation_turns"] = []
+        app.config["CONVERSATION_TURNS"] = []  # geriye-donuk uyumluluk
         return redirect(url_for("sonuc"))
 
     @app.route("/sonuc", methods=["GET"])
@@ -393,6 +473,9 @@ def _register_routes(
 
         used_demo = result.get("used_demo", False)
 
+        # Sohbet gecmisi: once session'dan oku (per-kullanici); fallback app.config
+        _sohbet = session.get("conversation_turns", app.config.get("CONVERSATION_TURNS", []))
+
         return render_template(
             "sonuc.html",
             ranked=ranked,
@@ -408,7 +491,7 @@ def _register_routes(
             llm_active=llm_active,
             llm_ozet=None,
             llm_ozet_hata=None,
-            sohbet=app.config.get("CONVERSATION_TURNS", []),
+            sohbet=_sohbet,
             used_demo=used_demo,
             has_portfolio=any(
                 nesting_results.get(b.batch_id, {}).get("portfolio") is not None
@@ -417,6 +500,7 @@ def _register_routes(
         )
 
     @app.route("/ozet", methods=["POST"])
+    @_limit("10 per minute")
     def ozet():
         """LLM yonetici ozeti olustur.
 
@@ -484,9 +568,10 @@ def _register_routes(
 
         except Exception as exc:
             logger.exception("LLM ozet hatasi: %s", exc)
-            return jsonify({"hata": f"Sistem hatasi: {exc}", "ozet": None}), 500
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "ozet": None}), 500
 
     @app.route("/sor", methods=["POST"])
+    @_limit("10 per minute")
     def sor():
         """LLM asistan sorusu.
 
@@ -526,12 +611,13 @@ def _register_routes(
             cevap_md = data.get("cevap_md", "")
             ret = data.get("ret", False)
 
-            # Sohbet gecmisini guncelle
-            turns = app.config.get("CONVERSATION_TURNS", [])
+            # Sohbet gecmisini guncelle — session (per-kullanici, Bulgu 5)
+            turns = list(session.get("conversation_turns", []))
             turns.append({"soru": soru, "cevap": cevap_md})
             if len(turns) > 6:
                 turns = turns[-6:]
-            app.config["CONVERSATION_TURNS"] = turns
+            session["conversation_turns"] = turns
+            app.config["CONVERSATION_TURNS"] = turns  # geriye-donuk uyumluluk
 
             return jsonify({
                 "cevap": cevap_md,
@@ -545,7 +631,7 @@ def _register_routes(
 
         except Exception as exc:
             logger.exception("LLM soru hatasi: %s", exc)
-            return jsonify({"hata": f"Sistem hatasi: {exc}", "cevap": None}), 500
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "cevap": None}), 500
 
     # -----------------------------------------------------------------------
     # 3D Geometri rotasi (VİTRİN A)
@@ -624,6 +710,7 @@ def _register_routes(
     # -----------------------------------------------------------------------
 
     @app.route("/teklif", methods=["POST"])
+    @_limit("10 per minute")
     def teklif():
         """LLM ile musteri yanit maili taslagi uret.
 
@@ -691,13 +778,14 @@ def _register_routes(
 
         except Exception as exc:
             logger.exception("Teklif taslagi hatasi: %s", exc)
-            return jsonify({"hata": f"Sistem hatasi: {exc}", "taslak": None}), 500
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "taslak": None}), 500
 
     # -----------------------------------------------------------------------
     # Mail parser rotasi
     # -----------------------------------------------------------------------
 
     @app.route("/parse", methods=["POST"])
+    @_limit("20 per minute")
     def parse_mail():
         """Serbest metin/mail -> yapilandirilmis siparis JSON.
 
@@ -774,7 +862,7 @@ def _register_routes(
             logger.exception("Mail parse hatasi: %s", exc)
             return jsonify({
                 "status": "parse_hatasi",
-                "mesaj": f"Sistem hatasi: {exc}",
+                "mesaj": "Sistem hatasi olustu, lutfen tekrar deneyin.",
             }), 500
 
     # -----------------------------------------------------------------------
@@ -782,6 +870,7 @@ def _register_routes(
     # -----------------------------------------------------------------------
 
     @app.route("/otonom", methods=["POST"])
+    @_limit("2 per minute")
     def otonom():
         """Mail-cek → parse → onceliklendir → nesting → fiyat → acikla → teklif taslagi.
 
@@ -846,8 +935,8 @@ def _register_routes(
             })
         except Exception as exc:
             logger.warning("Otonom: Mail-Cek hatasi: %s", exc)
-            asamalar.append({"ad": "Mail-Cek", "durum": "hata", "cikti": str(exc)})
-            return jsonify({"hata": f"Mail cekme hatasi: {exc}", "asamalar": asamalar}), 500
+            asamalar.append({"ad": "Mail-Cek", "durum": "hata", "cikti": "Mail cekme basarisiz."})
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}), 500
 
         # ------------------------------------------------------------------
         # ASAMA 2: Parse (her mail icin — ek varsa deterministik, yoksa LLM)
@@ -936,15 +1025,14 @@ def _register_routes(
         # ------------------------------------------------------------------
         # ASAMA 3-5: Onceliklendir + Nesting + Fiyat (run_pipeline)
         # ------------------------------------------------------------------
-        import copy
-        scenario = copy.deepcopy(RICH_SCENARIO)
-        scenario["orders"] = parsed_orders
+        # Bulgu 7: deepcopy yerine shallow + tek anahtar override (daha hizli)
+        scenario = {**RICH_SCENARIO, "orders": parsed_orders}
 
         try:
             pipeline_result = run_pipeline(scenario)
         except Exception as exc:
             logger.exception("Otonom: pipeline hatasi: %s", exc)
-            return jsonify({"hata": f"Pipeline hatasi: {exc}", "asamalar": asamalar}), 500
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}), 500
 
         ranked = pipeline_result.get("ranked_orders", [])
         batches = pipeline_result.get("batches", [])
@@ -1140,12 +1228,9 @@ def _register_routes(
         # ------------------------------------------------------------------
         return jsonify({
             "asamalar": asamalar,
+            # Bulgu 6: paylasilan helper ile tutarli projeksiyon
             "nesting_results": {
-                bid: {
-                    "height_mm": nr.get("height_mm", 0.0),
-                    "density": nr.get("density", 0.0),
-                    "n_parts": nr.get("n_parts", 0),
-                }
+                bid: _nesting_result_projection(nr)
                 for bid, nr in nesting_results.items()
             },
             "pricing_results": {
@@ -1167,6 +1252,10 @@ def _register_routes(
     # -----------------------------------------------------------------------
     # Siparis havuzu rotalar
     # -----------------------------------------------------------------------
+    # CSRF (Bulgu 8): /siparisler, /siparisler/csv, /siparisler/sil state-mutating
+    # form rotalaridir. flask-wtf CSRF token eklenmesi template degisikliği
+    # gerektirir ve localhost demo'yu kırabilir.
+    # ERTELENDI: localhost demo — SaaS fazinda flask-wtf CSRFProtect ekle.
 
     @app.route("/siparisler", methods=["GET"])
     def siparisler():

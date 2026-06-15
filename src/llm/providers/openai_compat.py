@@ -51,7 +51,8 @@ class OpenAICompatProvider:
         self._model = model
         self._api_key_env = api_key_env
         self._timeout_s = timeout_s
-        self._http_client = http_client
+        self._http_client = http_client  # test injection; None ise lazy-init kullanilir
+        self._lazy_http_client: Optional[Any] = None  # cached httpx.Client
 
     def complete(self, req: LLMRequest) -> LLMResponse:
         """OpenAI-uyumlu API'ye istek gonder."""
@@ -137,13 +138,16 @@ class OpenAICompatProvider:
     def _get_http_client(self) -> Any:
         if self._http_client is not None:
             return self._http_client
-        try:
-            import httpx
-            return httpx.Client()
-        except ImportError as exc:
-            raise ImportError(
-                "OpenAICompatProvider icin 'httpx' gerekli: pip install httpx"
-            ) from exc
+        # Lazy-init: ilk cagrida olusturulur, sonraki cagrilarda yeniden kullanilir
+        if self._lazy_http_client is None:
+            try:
+                import httpx
+                self._lazy_http_client = httpx.Client()
+            except ImportError as exc:
+                raise ImportError(
+                    "OpenAICompatProvider icin 'httpx' gerekli: pip install httpx"
+                ) from exc
+        return self._lazy_http_client
 
     @staticmethod
     def _parse_response(data: Dict[str, Any], latency: float) -> LLMResponse:

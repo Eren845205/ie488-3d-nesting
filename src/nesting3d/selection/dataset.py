@@ -141,4 +141,10 @@ def build_training_table(
             )
         )
 
+    # Deterministik siralama: groups dict ekleme sirasi telemetri satir sirasina
+    # baglidir (eszamanli yazim / yeniden siralama -> kararsiz). Hold-out split
+    # son %20'yi alir; bu nedenle tablonun sirasi sabit OLMALI. instance_id'ye
+    # gore sirala -> ayni telemetri her zaman ayni train/holdout bolunmesi verir.
+    result.sort(key=lambda r: r.instance_id)
+
     return result

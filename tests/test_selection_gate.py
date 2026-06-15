@@ -87,6 +87,49 @@ def _make_telemetry_rows(n_instances: int, *, winner: str = "sa3d") -> list:
     return rows
 
 
+def _make_overfit_telemetry_rows(n_instances: int = 10) -> list:
+    """Overfit tetikleyen telemetri uret (gengap kapisi entegrasyon testi icin).
+
+    instance_id'ye gore siralandiginda (dataset.build_training_table) son %20
+    hold-out olur. Train kumesindeki tum instance'lar 'sa3d' kazaniyor; hold-out
+    instance'lari ise 'dblf' kazaniyor AMA feature'lari train kumesine COK YAKIN.
+    1-NN train'i ezberler (train_acc=1.0) ama hold-out'u yanlis tahmin eder
+    (holdout_acc dusuk) -> gap > 0.2 -> overfit_flag=True.
+
+    Her instance'in 'dblf' ve 'sa3d' satiri vardir; kazanan = en dusuk height.
+    """
+    feature_names = [f"f{i}" for i in range(20)]
+    rows = []
+    n_holdout = max(1, round(n_instances * 0.2))
+    train_end = n_instances - n_holdout
+
+    for i in range(n_instances):
+        iid = f"inst_{i:04d}"
+        # Train: feature'lar i'ye gore kumelenmis; hold-out: ayni kumeye yakin
+        # ama farkli kazanan -> 1-NN yaniltilir.
+        if i < train_end:
+            fv = [10.0 + float(i)] + [0.0] * 19
+            sa3d_h, dblf_h = 100.0, 200.0   # sa3d kazanir
+        else:
+            # hold-out: feature train kumesinin icine yakin (ayni komsuluk)
+            fv = [10.0 + float(i - train_end)] + [0.001] * 19
+            sa3d_h, dblf_h = 200.0, 100.0   # dblf kazanir (train'in tersi)
+
+        rows.append({
+            "instance_id": iid, "aile": "test",
+            "feature_names": feature_names, "feature_vector": list(fv),
+            "cozucu": "dblf", "height_mm": dblf_h, "winner_flag": dblf_h < sa3d_h,
+            "seed": 42, "budget": 30, "density": 0.5, "time_s": 0.1,
+        })
+        rows.append({
+            "instance_id": iid, "aile": "test",
+            "feature_names": feature_names, "feature_vector": list(fv),
+            "cozucu": "sa3d", "height_mm": sa3d_h, "winner_flag": sa3d_h < dblf_h,
+            "seed": 42, "budget": 30, "density": 0.5, "time_s": 1.0,
+        })
+    return rows
+
+
 def _write_telemetry(tmp_path: Path, rows: list) -> Path:
     """Telemetri satirlarini gecici JSONL dosyasina yaz, yolu dondur."""
     p = tmp_path / "runs.jsonl"
@@ -482,25 +525,108 @@ class TestMotorPurity:
     def test_gate_does_not_import_motor_modules(self):
         """gate.py motor modullerini import etmemeli (DEGiSMEZ-A).
 
-        Sadece 'import <modul>' ve 'from <modul>' satirlari kontrol edilir,
-        yorum veya docstring satirlari sayilmaz.
+        AST tabanli kontrol: yalnizca gercek import ifadeleri (ast.Import /
+        ast.ImportFrom) incelenir. Yorum, docstring veya degisken adlarinda
+        gecen 'sa3d' gibi alt-dizgiler YANLIS POZITIF uretmez.
         """
+        import ast
+
         import src.nesting3d.selection.gate as gate_mod
 
-        forbidden_modules = ["bin3d", "sa3d", "dblf", "voxelize"]
-        gate_file = Path(gate_mod.__file__).read_text(encoding="utf-8")
+        forbidden_modules = {"bin3d", "sa3d", "dblf", "voxelize"}
+        source = Path(gate_mod.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
 
-        for line in gate_file.splitlines():
-            stripped = line.strip()
-            # Yorum veya docstring satirlarini atla
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'"):
-                continue
-            for mod in forbidden_modules:
-                # Sadece import ifadeleri: 'import X' veya 'from X'
-                is_import_line = (
-                    stripped.startswith("import ") or stripped.startswith("from ")
-                )
-                if is_import_line and mod in stripped:
-                    raise AssertionError(
-                        f"gate.py motor modulu import ediyor: {mod}\n  Satir: {line}"
-                    )
+        violations = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                parts = set(module.split("."))
+                if parts & forbidden_modules:
+                    violations.append(f"from {module} import ...")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    parts = set(alias.name.split("."))
+                    if parts & forbidden_modules:
+                        violations.append(f"import {alias.name}")
+
+        assert not violations, (
+            f"gate.py motor modulu import ediyor (DEGiSMEZ-A ihlali): {violations}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Overfit kapisi entegrasyon testi (gengap -> gate wiring; DEGiSMEZ-D)
+# ---------------------------------------------------------------------------
+
+class TestOverfitGateIntegration:
+    """gengap genelleme-acigi -> evaluate_candidate promote BLOKU.
+
+    Reviewer bulgusu #2: overfit_flag eskiden olu koddu (hesaplaniyor ama
+    promote kararina baglanmiyordu). Bu testler wiring'in CANLI oldugunu ve
+    kotu/ezberleyen adayin GERCEKTEN reddedildigini dogrular.
+    """
+
+    def test_overfit_candidate_blocked_even_without_current(self, tmp_path):
+        """Ilk model bile olsa overfit aday promote EDILMEZ (DEGiSMEZ-D).
+
+        Normalde 'ilk model -> promote=True'. Ama gengap overfit tespit
+        ederse hold-out kapisi gecmis olsa bile promote BLOKLANIR.
+        """
+        rows = _make_overfit_telemetry_rows(10)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "nonexistent.json"  # ilk model
+
+        decision = evaluate_candidate(tel_path, artifact_path)
+
+        assert decision.overfit_flag is True, (
+            f"gengap overfit tespit etmeliydi; karar={decision}"
+        )
+        assert decision.promote is False, (
+            "Overfit aday ilk model olsa bile promote EDILMEMELI (DEGiSMEZ-D)"
+        )
+        assert "overfit" in decision.reason.lower()
+
+    def test_overfit_block_logged(self, tmp_path):
+        """Overfit bloku log'a yazilir + overfit_flag round-trip okunur."""
+        rows = _make_overfit_telemetry_rows(10)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "nonexistent.json"
+        log_path = tmp_path / "gate_log.jsonl"
+
+        evaluate_candidate(tel_path, artifact_path, log_path=log_path)
+
+        lines = [l for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["promote"] is False
+        assert entry["overfit_flag"] is True
+
+    def test_healthy_candidate_not_blocked_by_overfit_gate(self, tmp_path):
+        """Saglikli aday (ezber yok) -> overfit_flag False, promote engellenmez."""
+        rows = _make_telemetry_rows(12)  # tek kazanan, kumelenmemis -> saglikli
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "nonexistent.json"
+
+        decision = evaluate_candidate(tel_path, artifact_path)
+
+        assert decision.overfit_flag is False
+        assert decision.promote is True
+
+    def test_overfit_block_via_run_retrain_keeps_artifact(self, tmp_path):
+        """run_retrain yolu: overfit aday promote=False -> artifact yazilmaz."""
+        from src.nesting3d.selection.retrain import run_retrain
+
+        rows = _make_overfit_telemetry_rows(10)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "selection_model.json"
+
+        decision = run_retrain(
+            tel_path, artifact_path,
+            archive_dir=str(tmp_path / "archive"),
+        )
+
+        assert decision.promote is False
+        assert decision.overfit_flag is True
+        # Overfit blokundan dolayi ilk model bile yazilmamali
+        assert not artifact_path.exists()

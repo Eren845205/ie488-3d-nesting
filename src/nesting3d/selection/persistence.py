@@ -44,12 +44,16 @@ Format (JSON)
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Tuple, Union
 
 from src.nesting3d.selection.prefilter import EasyInstancePrefilter
 from src.nesting3d.selection.model import AlgorithmSelector
 from src.nesting3d.selection.dataset import TrainingRow
+from src.nesting3d.instances.features import FEATURE_NAMES
+
+logger = logging.getLogger(__name__)
 
 
 _SCHEMA_VERSION = 1
@@ -166,8 +170,32 @@ def load_selection_model(
     sel.n_train = int(model_data["n_train"])
     sel._solver_counts = {str(k): int(v) for k, v in model_data["solver_counts"].items()}
 
+    expected_len = len(FEATURE_NAMES)
     rows = []
     for rd in model_data["training"]:
+        feature_vector = [float(x) for x in rd["feature_vector"]]
+        feature_names = [str(n) for n in rd["feature_names"]]
+
+        # Sema drift korumasi: feature_vector / feature_names tutarsizligi
+        # KESIN bozulmadir (artefakt icindeki iki alan birbiriyle uyumsuz).
+        if len(feature_vector) != len(feature_names):
+            raise ValueError(
+                f"Artefakt sema drift: instance '{rd.get('instance_id')}' "
+                f"feature_vector uzunlugu ({len(feature_vector)}) != "
+                f"feature_names uzunlugu ({len(feature_names)})"
+            )
+        # Canonical FEATURE_NAMES ile uyusmazlik: kod tarafindaki ozellik seti
+        # degismis olabilir (drift). Sessizce kabul etme -- uyar.
+        if len(feature_vector) != expected_len:
+            logger.warning(
+                "Selection artefakt sema drift: instance '%s' feature_vector "
+                "uzunlugu %d, beklenen (FEATURE_NAMES) %d. Model eski semayla "
+                "egitilmis olabilir -- yeniden egitim onerilir.",
+                rd.get("instance_id"),
+                len(feature_vector),
+                expected_len,
+            )
+
         rows.append(
             TrainingRow(
                 instance_id=str(rd["instance_id"]),
@@ -175,8 +203,8 @@ def load_selection_model(
                 winner=str(rd["winner"]),
                 dblf_height=rd.get("dblf_height"),
                 best_height=float(rd.get("best_height", 0.0)),
-                feature_vector=[float(x) for x in rd["feature_vector"]],
-                feature_names=[str(n) for n in rd["feature_names"]],
+                feature_vector=feature_vector,
+                feature_names=feature_names,
                 aile=str(rd.get("aile", "")),
             )
         )

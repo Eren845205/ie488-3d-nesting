@@ -309,6 +309,11 @@ def run_structured_chain(
         last_resp = resp
         last_text = resp.text
 
+        if getattr(resp, "finish_reason", "stop") == "length":
+            last_errors = ["Yanıt kesildi (finish_reason=length) — max_tokens artırın veya girdi kısaltın."]
+            logger.warning("Deneme %d: finish_reason=length, yanıt kesildi.", attempt + 1)
+            continue
+
         parsed = tolerant_json_extract(last_text)
         if parsed is None:
             last_errors = [f"JSON parse hatasi: gecerli JSON objesi bulunamadi. Metin: {last_text[:200]}"]

@@ -12,7 +12,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union, overload
 
 from src.nesting3d.selection.gate import (
     GateDecision,
@@ -151,31 +151,70 @@ def run_retrain(
 # should_retrain
 # ---------------------------------------------------------------------------
 
+@overload
+def should_retrain(
+    telemetry_path: Union[str, Path],
+    last_trained_count: int,
+    *,
+    batch_size: int = ...,
+    return_count: bool = ...,
+) -> bool: ...
+
+
+@overload
+def should_retrain(
+    telemetry_path: Union[str, Path],
+    last_trained_count: int,
+    *,
+    batch_size: int = ...,
+    return_count: bool = ...,
+) -> Tuple[bool, int]: ...
+
+
 def should_retrain(
     telemetry_path: Union[str, Path],
     last_trained_count: int,
     *,
     batch_size: int = 20,
-) -> bool:
+    return_count: bool = False,
+):
     """Mevcut telemetri sayisi >= last_trained_count + batch_size ise True.
 
     Batch-tetikli strateji: belli miktar yeni veri birikince retrain tetiklenir.
     Per-instance retrain DEGiL.
+
+    TOCTOU notu (return_count)
+    --------------------------
+    Caginın `should_retrain` ile gozlemledigi instance sayisi ile, sonradan
+    `run_retrain`'in egittigi telemetri SNAPSHOT'inin sayisi arasinda dosya
+    yine degisebilir. Cagiranin retrain SONRASI last_trained_count'u DOGRU
+    deger ile checkpoint'lemesi icin -- yani should_retrain'in gordugu sayiyla --
+    `return_count=True` ile (tetik, current_count) ikilisi dondurulur. Boylece
+    cagiran `last_trained_count = current_count` atayabilir ve ayni veri ile
+    sonsuz re-trigger olmaz (current_count >= last + batch kosulu bir daha
+    saglanmaz).
 
     Parameters
     ----------
     telemetry_path:     JSONL telemetri dosyasi.
     last_trained_count: Son retrain anindaki instance sayisi.
     batch_size:         Tetik icin gereken yeni instance adedi (varsayilan 20).
+    return_count:       True -> (bool, current_count) dondur (TOCTOU-guvenli
+                        checkpoint icin). False (varsayilan) -> sadece bool
+                        (geriye-uyumlu).
 
     Returns
     -------
-    bool -- True = retrain tetiklenmeli.
+    bool                  (return_count=False)
+    Tuple[bool, int]      (return_count=True) -- (tetik, gozlemlenen instance sayisi)
     """
     telemetry_path = Path(telemetry_path)
     rows = load_telemetry(telemetry_path)
     if not rows:
-        return False
+        return (False, 0) if return_count else False
     table = build_training_table(rows)
     current_count = len(table)
-    return current_count >= last_trained_count + batch_size
+    trigger = current_count >= last_trained_count + batch_size
+    if return_count:
+        return (trigger, current_count)
+    return trigger

@@ -337,6 +337,62 @@ class TestShouldRetrain:
         result = should_retrain(tel_path, last_trained_count=0, batch_size=20)
         assert result is False
 
+    # --- return_count API (TOCTOU-guvenli checkpoint) ---
+
+    def test_return_count_gives_tuple(self, tmp_path):
+        """return_count=True -> (bool, current_count) ikilisi dondurur."""
+        rows = _make_telemetry_rows(25)
+        tel_path = _write_telemetry(tmp_path, rows)
+
+        trigger, count = should_retrain(
+            tel_path, last_trained_count=5, batch_size=20, return_count=True
+        )
+        assert trigger is True
+        assert count == 25
+
+    def test_return_count_default_false_still_bool(self, tmp_path):
+        """return_count varsayilan False -> sadece bool (geriye-uyumlu)."""
+        rows = _make_telemetry_rows(25)
+        tel_path = _write_telemetry(tmp_path, rows)
+
+        result = should_retrain(tel_path, last_trained_count=5, batch_size=20)
+        assert result is True
+        assert not isinstance(result, tuple)
+
+    def test_return_count_empty_telemetry(self, tmp_path):
+        """Bos telemetri + return_count=True -> (False, 0)."""
+        tel_path = tmp_path / "empty.jsonl"
+        tel_path.write_text("", encoding="utf-8")
+
+        trigger, count = should_retrain(
+            tel_path, last_trained_count=0, batch_size=20, return_count=True
+        )
+        assert trigger is False
+        assert count == 0
+
+    def test_return_count_checkpoint_prevents_infinite_retrigger(self, tmp_path):
+        """Cagiran return_count ile checkpoint'lerse ayni veri tekrar tetiklemez.
+
+        TOCTOU/sonsuz re-trigger senaryosu: should_retrain True dondurur,
+        cagiran current_count ile last_trained_count'u guncellerse, telemetri
+        degismeden ikinci cagri False olmali.
+        """
+        rows = _make_telemetry_rows(25)
+        tel_path = _write_telemetry(tmp_path, rows)
+
+        trigger1, count1 = should_retrain(
+            tel_path, last_trained_count=0, batch_size=20, return_count=True
+        )
+        assert trigger1 is True
+        # Cagiran gozlemledigi sayiyi checkpoint'ler:
+        last_trained_count = count1
+        # Telemetri degismedi -> ikinci cagri tetiklememeli (25 < 25+20)
+        trigger2, _ = should_retrain(
+            tel_path, last_trained_count=last_trained_count, batch_size=20,
+            return_count=True,
+        )
+        assert trigger2 is False
+
 
 # ---------------------------------------------------------------------------
 # Motor safligi testi (DEGiSMEZ-A)
@@ -346,22 +402,31 @@ class TestMotorPurityRetrain:
     def test_retrain_does_not_import_motor_modules(self):
         """retrain.py motor modullerini import etmemeli (DEGiSMEZ-A).
 
-        Sadece import satirlari kontrol edilir, yorum/docstring sayilmaz.
+        AST tabanli kontrol: yalnizca gercek import ifadeleri (ast.Import /
+        ast.ImportFrom) incelenir; yorum/docstring/degisken adlarinda gecen
+        alt-dizgiler yanlis pozitif uretmez.
         """
+        import ast
+
         import src.nesting3d.selection.retrain as retrain_mod
 
-        forbidden = ["bin3d", "sa3d", "dblf", "voxelize"]
-        retrain_file = Path(retrain_mod.__file__).read_text(encoding="utf-8")
-        for line in retrain_file.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'"):
-                continue
-            is_import_line = (
-                stripped.startswith("import ") or stripped.startswith("from ")
-            )
-            if is_import_line:
-                for mod in forbidden:
-                    if mod in stripped:
-                        raise AssertionError(
-                            f"retrain.py motor modulu import ediyor: {mod}\n  Satir: {line}"
-                        )
+        forbidden = {"bin3d", "sa3d", "dblf", "voxelize"}
+        source = Path(retrain_mod.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        violations = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                parts = set(module.split("."))
+                if parts & forbidden:
+                    violations.append(f"from {module} import ...")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    parts = set(alias.name.split("."))
+                    if parts & forbidden:
+                        violations.append(f"import {alias.name}")
+
+        assert not violations, (
+            f"retrain.py motor modulu import ediyor (DEGiSMEZ-A ihlali): {violations}"
+        )

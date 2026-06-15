@@ -203,6 +203,11 @@ class PromptRegistry:
             )
             return
         recorded_hash = self._lock[tpl.id].get("content_hash", "")
+        last_eval_ref = self._lock[tpl.id].get("last_eval_ref", "")
+        if not last_eval_ref:
+            logger.warning(
+                "Sablon %r icin eval referansi bos — lock.json'da last_eval_ref eksik.", tpl.id
+            )
         if not recorded_hash:
             raise PromptHashMismatchError(
                 f"Sablon {tpl.id!r} icin lock.json'da content_hash bos veya eksik. "

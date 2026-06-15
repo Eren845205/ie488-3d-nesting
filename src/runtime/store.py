@@ -182,6 +182,7 @@ class SqliteJobStore(JobStore):
 
     def _init_schema(self) -> None:
         conn = self._conn()
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_DDL)
         conn.commit()
 

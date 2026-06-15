@@ -72,7 +72,7 @@ class TestFakeMailbox(unittest.TestCase):
 
     def test_fetch_returns_at_least_three_mails(self):
         mails = self.fb.fetch_new()
-        self.assertGreaterEqual(len(mails), 3)
+        self.assertEqual(len(mails), 5)  # Fix-8: FakeMailbox kesinlikle 5 mail dondurur
 
     def test_mails_have_nonempty_govde(self):
         mails = self.fb.fetch_new()

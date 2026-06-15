@@ -253,6 +253,11 @@ class AssistantRole:
             last_resp = resp
             last_text = resp.text
 
+            if getattr(resp, "finish_reason", "stop") == "length":
+                last_errors = ["Yanıt kesildi (finish_reason=length) — max_tokens artırın veya girdi kısaltın."]
+                logger.warning("Asistan deneme %d: finish_reason=length, yanit kesildi.", attempt_count)
+                continue
+
             parsed = tolerant_json_extract(last_text)
             if parsed is None:
                 last_errors = [

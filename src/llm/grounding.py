@@ -302,7 +302,12 @@ def verify_number_grounding(
     grounded = []
     ungrounded = []
     for num in text_numbers:
+        # Tek haneli tamsayilar (0-9) sira no / adet gibi yaygin kullanim —
+        # yanlış-pozitif hallüsinasyon maskelememesi icin grounding'den muaf tutulur.
         f = _to_float(num)
+        if f is not None and f == int(f) and int(f) < 10:
+            grounded.append(num)
+            continue
         if f is not None:
             matched = f in source_floats
         else:

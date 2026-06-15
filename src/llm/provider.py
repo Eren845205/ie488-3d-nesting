@@ -13,9 +13,12 @@ FakeProvider anahtarlama kurali:
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +147,10 @@ class FakeProvider:
         responses = self._fixtures[key]
         idx = self._call_counts.get(key, 0)
         if idx >= len(responses):
+            logger.warning(
+                "FakeProvider: fixture tükendi (key=%r, istek=%d, fixture_sayisi=%d) — son yanit tekrar.",
+                key, idx + 1, len(responses),
+            )
             idx = len(responses) - 1
         text = responses[idx]
         self._call_counts[key] = idx + 1

@@ -8,6 +8,7 @@ Kapsam:
     - Deterministik: iki koşu aynı raporu üretmeli
     - Portföy: nesting_results portföy kıyas verisi içermeli
     - RICH_SCENARIO: zengin senaryo smoke testi (yavaş olduğu için slow ile işaretli)
+    - Timing guard: toplam süre < 60 sn (reviewer bulgu #4 — sessiz yavaşlama koruması)
 
 Koşu: pytest tests/test_demo_pipeline.py -q
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -235,6 +237,22 @@ class TestSmokePipeline:
                 assert nr["pitch_mm"] > 0.0, f"{batch_id} pitch_mm sıfır veya negatif"
         # En az bir parti adaptif pitch almış olmalı
         assert found_pitch, "Hiçbir partide pitch_mm bulunamadı (adaptif pitch çalışmıyor olabilir)"
+
+    def test_pipeline_total_elapsed_under_budget(self):
+        """Toplam pipeline süresi 60 sn altında olmalı (timing regression guard).
+
+        SMOKE_SCENARIO portfolio_budget=10 + pitch=20mm ile tasarlandı; bu
+        bütçede 60 sn çok rahatlıkla yetmeli. Test gelecekte sessiz yavaşlamaları
+        (örn. yanlışlıkla büyütülen iter sayısı, fazladan senkron I/O) erken yakalar.
+        """
+        _ELAPSED_LIMIT_SEC = 60.0
+        t0 = time.perf_counter()
+        run_pipeline(SMOKE_SCENARIO)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < _ELAPSED_LIMIT_SEC, (
+            f"Pipeline {elapsed:.1f}s sürdü, sınır {_ELAPSED_LIMIT_SEC}s "
+            f"(SMOKE_SCENARIO budget=10 + pitch=20mm ile bu süre aşılmamalı)"
+        )
 
 
 @pytest.mark.slow

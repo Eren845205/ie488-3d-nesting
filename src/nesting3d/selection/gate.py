@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from src.nesting3d.selection.dataset import build_training_table
+from src.nesting3d.selection.gengap import compute_generalization_gap
 from src.nesting3d.selection.persistence import load_selection_model, save_selection_model
 from src.nesting3d.selection.prefilter import EasyInstancePrefilter
 from src.nesting3d.selection.model import AlgorithmSelector
@@ -75,10 +76,16 @@ class GateDecision:
     n_holdout: int
     """Hold-out set buyuklugu."""
 
+    overfit_flag: bool = False
+    """gengap genelleme-acigi tespiti True ise aday overfit -> promote BLOKLU.
+    DEGiSMEZ-D enforcement: sistem ogrenirken kotulesemez."""
+
     def to_dict(self) -> dict:
-        """JSON-serializasyona uygun sozluk. inf degerler null'a donusur."""
+        """JSON-serializasyona uygun sozluk. inf/nan degerler null'a donusur."""
         def _safe(val: float):
-            if isinstance(val, float) and math.isinf(val):
+            # inf-inf=nan senaryosu: delta = cur_holdout(inf) - cand_holdout(inf)
+            # NaN'i json.dumps allow_nan=False altinda patlatmamak icin None'a cevir.
+            if isinstance(val, float) and (math.isinf(val) or math.isnan(val)):
                 return None
             return val
 
@@ -90,6 +97,7 @@ class GateDecision:
             "delta": _safe(self.delta),
             "n_instances": self.n_instances,
             "n_holdout": self.n_holdout,
+            "overfit_flag": self.overfit_flag,
         }
 
 
@@ -207,7 +215,7 @@ def evaluate_candidate(
         cur_eval = _evaluate(table, cur_prefilter, cur_model, holdout_ids=holdout_ids)
         cur_holdout = cur_eval.get("selector_mean", math.inf)
 
-    # --- 5. Promote karari ---
+    # --- 5. Promote karari (hold-out monoton kapisi) ---
     delta = cur_holdout - cand_holdout  # pozitif = aday daha iyi
 
     if is_first_model:
@@ -226,6 +234,25 @@ def evaluate_candidate(
             f"cand={cand_holdout:.4f} mm, cur={cur_holdout:.4f} mm; yururluk korundu"
         )
 
+    # --- 5b. Genelleme-acigi (overfit) kapisi (DEGiSMEZ-D enforcement) ---
+    # gengap, adayin egitildigi AYNI tablo uzerinde train_acc vs holdout_acc
+    # (+ prequential) acigini olcer. overfit_flag=True ise aday ezber yapmis
+    # demektir; hold-out skoru iyi gorunse bile promote'u BLOKLA. Boylece
+    # "sistem ogrenirken kotulesemez" sadece hold-out delta'siyla degil,
+    # overfit tespitiyle de ENFORCE edilir.
+    # NOT: gengap motor modullerini (bin3d/sa3d/dblf/voxelize) IMPORT ETMEZ
+    # -> DEGiSMEZ-A korunur (gate -> gengap -> sadece selection meta-layer).
+    gengap_report = compute_generalization_gap(table)
+    overfit_flag = gengap_report.overfit_flag
+
+    if promote and overfit_flag:
+        promote = False
+        reason = (
+            f"OVERFIT BLOKU: hold-out kapisi gecti AMA genelleme-acigi tespit "
+            f"edildi -> {gengap_report.reason}. Yururluk korundu (DEGiSMEZ-D). "
+            f"[onceki karar: {reason}]"
+        )
+
     decision = GateDecision(
         promote=promote,
         reason=reason,
@@ -234,6 +261,7 @@ def evaluate_candidate(
         delta=delta,
         n_instances=n_instances,
         n_holdout=n_holdout,
+        overfit_flag=overfit_flag,
     )
 
     # --- 6. Logla ---

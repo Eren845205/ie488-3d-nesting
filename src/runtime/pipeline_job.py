@@ -90,10 +90,11 @@ def _make_serializable(result: Dict[str, Any]) -> Dict[str, Any]:
     # nesting_results 3D-önizleme için OBJE anahtarları taşıyabilir (placements,
     # voxel_parts) — JSON-serileştirilemez; çıkar (yalnız in-memory webapp kullanır).
     _GEOM_KEYS = ("placements", "voxel_parts")
-    nr_clean = {
-        bid: {k: v for k, v in nr.items() if k not in _GEOM_KEYS}
-        for bid, nr in result.get("nesting_results", {}).items()
-    }
+    nr_clean = {}
+    for bid, nr in result.get("nesting_results", {}).items():
+        if not isinstance(nr, dict):
+            continue
+        nr_clean[bid] = {k: v for k, v in nr.items() if k not in _GEOM_KEYS}
     return {
         "ranked_orders": [_serialize_order(o) for o in ranked],
         "batches": [_serialize_batch(b) for b in batches],

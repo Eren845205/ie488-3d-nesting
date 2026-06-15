@@ -28,6 +28,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ _HEIGHT_ALIASES = {"yukseklik", "yukseklik_mm", "height", "height_mm", "h_mm", "
 _QTY_ALIASES = {"adet", "miktar", "qty", "quantity", "adet_no", "count"}
 
 _EKSIK_BOYUT = 1.0   # mm — eksik boyut icin placeholder
+MAX_ROWS = 10_000    # Fix-2: xlsx/csv satir sayisi ust siniri (zip-bomb / asiri bellek)
 
 
 def _resolve_headers(raw_headers: List[str]) -> Dict[str, str]:
@@ -92,6 +94,8 @@ def _rows_to_parts(
     for i, row in enumerate(rows, 1):
         raw_name = row.get(mapping.get("name", ""), f"parca_{i}")
         name = str(raw_name).strip() if raw_name else f"parca_{i}"
+        # Fix-5: uzunluk siniri + kontrol karakterlerini ayıkla
+        name = re.sub(r"[\x00-\x1f\x7f]", "", name)[:256] or f"parca_{i}"
 
         width_mm = _safe_float(row.get(mapping.get("width_mm", ""), _EKSIK_BOYUT))
         depth_mm = _safe_float(row.get(mapping.get("depth_mm", ""), _EKSIK_BOYUT))
@@ -128,7 +132,16 @@ def _parse_xlsx(icerik: bytes) -> List[Dict[str, Any]]:
     try:
         wb = openpyxl.load_workbook(io.BytesIO(icerik), read_only=True, data_only=True)
         ws = wb.active
-        all_rows = list(ws.iter_rows(values_only=True))
+        # Fix-2: MAX_ROWS+1 satir okumak yeterli (baslik + veri); fazlasini atla
+        all_rows = []
+        for _row in ws.iter_rows(values_only=True):
+            all_rows.append(_row)
+            if len(all_rows) > MAX_ROWS + 1:
+                logger.warning(
+                    "order_attachment_parser: xlsx satir sayisi MAX_ROWS (%d) asildi — kesiliyor.",
+                    MAX_ROWS,
+                )
+                break
     except Exception as exc:
         logger.warning("order_attachment_parser: xlsx acma hatasi — %s", exc)
         return []
@@ -193,7 +206,16 @@ def _parse_csv(icerik: bytes) -> List[Dict[str, Any]]:
             )
             return []
 
-        data_rows = list(reader)
+        # Fix-2: MAX_ROWS satir siniri
+        data_rows = []
+        for _r in reader:
+            data_rows.append(_r)
+            if len(data_rows) >= MAX_ROWS:
+                logger.warning(
+                    "order_attachment_parser: csv satir sayisi MAX_ROWS (%d) asildi — kesiliyor.",
+                    MAX_ROWS,
+                )
+                break
     except Exception as exc:
         logger.warning("order_attachment_parser: csv parse hatasi — %s", exc)
         return []

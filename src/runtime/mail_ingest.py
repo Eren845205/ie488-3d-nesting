@@ -28,9 +28,12 @@ Sirlar: parola KODDA DEGİL. ImapMailbox konfig sozlugundan veya env'den alir.
 from __future__ import annotations
 
 import email
+import email.utils
+import hashlib
 import imaplib
 import io
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
@@ -312,9 +315,18 @@ class ImapMailbox(MailSource):
         self.port: int = int(config.get("port", 993))
         self.user: str = config["user"]
         self._password: str = config.get("password", "")
+        # Fix-3: bos parola sessizce kabul edilmez (cleartext gonderilmeden once hata)
+        if not self._password:
+            raise ValueError(
+                "ImapMailbox: 'password' konfig'de eksik veya bos — "
+                "IMAP kimlik dogrulamasi icin parola zorunludur."
+            )
         self.folder: str = config.get("folder", "INBOX")
         self.use_ssl: bool = bool(config.get("use_ssl", True))
         self._seen_uids: Set[str] = set()
+        # Fix-4: kalici idempotency deposu (SqliteIdempotencyStore ile)
+        from src.runtime.idempotency import SqliteIdempotencyStore
+        self._idem_store = SqliteIdempotencyStore()
 
     # ------------------------------------------------------------------
     # Internal: baglanti kur
@@ -332,8 +344,10 @@ class ImapMailbox(MailSource):
             conn = imaplib.IMAP4_SSL(self.host, self.port)
         else:
             conn = imaplib.IMAP4(self.host, self.port)
-            # STARTTLS zorunlu — desteklenmiyorsa kapali kal (cleartext login YOK)
-            if "STARTTLS" not in getattr(conn, "capabilities", ()):
+            # STARTTLS zorunlu: taze capability listesini sunucudan cek (Fix-1)
+            _status, _caps = conn.capability()
+            cap_str = (_caps[0].decode() if _caps and _caps[0] else "").upper()
+            if "STARTTLS" not in cap_str:
                 conn.logout()
                 raise RuntimeError(
                     "IMAP sunucu STARTTLS desteklemiyor; cleartext login engellendi "
@@ -353,7 +367,12 @@ class ImapMailbox(MailSource):
         msg = email.message_from_bytes(raw_bytes)
         gonderen = msg.get("From", "")
         konu = msg.get("Subject", "")
-        tarih = msg.get("Date", "")
+        # Fix-6: RFC 2822 Date basligini ISO 8601'e donustur
+        _raw_date = msg.get("Date", "")
+        try:
+            tarih = email.utils.parsedate_to_datetime(_raw_date).isoformat()
+        except Exception:
+            tarih = _raw_date  # parse basarisizsa ham deger koru
         message_id = msg.get("Message-ID", f"<uid-{uid}>")
         govde = _extract_text_body(msg)
         ekler = _extract_attachments(msg)
@@ -370,14 +389,22 @@ class ImapMailbox(MailSource):
     # Internal: yeni UID'leri bul
     # ------------------------------------------------------------------
 
+    def _idem_key(self, uid: str) -> str:
+        """imap:{user}:{uid} formatinda kalici idempotency anahtari uretir (Fix-4)."""
+        return f"imap:{self.user}:{uid}"
+
     def _fetch_uids(self, conn: imaplib.IMAP4) -> List[str]:
-        """Klasordeki tum UID'leri dondurur."""
+        """Klasordeki tum UID'leri dondurur; kalici store'da kayitli olanlari atlar."""
         conn.select(self.folder, readonly=True)
         status, data = conn.uid("SEARCH", None, "ALL")
         if status != "OK" or not data or not data[0]:
             return []
         uid_list = data[0].decode().split()
-        return [u for u in uid_list if u not in self._seen_uids]
+        # Fix-4: in-memory set VE kalici store kontrolu
+        return [
+            u for u in uid_list
+            if u not in self._seen_uids and not self._idem_store.is_registered(self._idem_key(u))
+        ]
 
     # ------------------------------------------------------------------
     # Public
@@ -413,6 +440,11 @@ class ImapMailbox(MailSource):
                     raw_mail = self._extract_raw_mail(uid, raw_bytes)
                     result.append(raw_mail)
                     self._seen_uids.add(uid)
+                    # Fix-4: kalici store'a kaydet
+                    try:
+                        self._idem_store.register(self._idem_key(uid))
+                    except Exception:
+                        pass  # DuplicateKeyError veya store hatasi — in-memory set yeterli
                 except Exception as fetch_exc:
                     logger.warning(
                         "ImapMailbox: UID %s isleme hatasi — %s", uid, fetch_exc
@@ -467,10 +499,14 @@ def _extract_text_body(msg: email.message.Message) -> str:
 # Ek cikarici yardimci
 # ---------------------------------------------------------------------------
 
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024  # 5 MB — Fix-2
+
+
 def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
     """email.Message'dan ekleri cikarir.
 
     Kriter: Content-Disposition 'attachment' olan veya dosya adi olan MIME parcalari.
+    Fix-2: Ek payload MAX_ATTACHMENT_BYTES (5 MB) sinirini asarsa atlanir.
     Dondurur: List[Attachment] — ek bulunamazsa bos liste.
     """
     attachments: List[Attachment] = []
@@ -484,6 +520,13 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
         if content_disposition.lower() == "attachment" or filename:
             payload = part.get_payload(decode=True)
             if payload is None:
+                continue
+            # Fix-2: boyut siniri kontrol
+            if len(payload) > MAX_ATTACHMENT_BYTES:
+                logger.warning(
+                    "_extract_attachments: ek boyutu siniri asildi (%d bayt > %d) — atlanıyor: %s",
+                    len(payload), MAX_ATTACHMENT_BYTES, filename or "isimsiz",
+                )
                 continue
             mime = part.get_content_type() or "application/octet-stream"
             dosya_adi = filename or f"ek_{len(attachments)+1}"
@@ -546,9 +589,11 @@ def ingest_order(
                 structured_att.dosya_adi,
             )
         source_tag = "attachment_excel" if ext in (".xlsx", ".xls", ".xlsm") else "attachment_csv"
-        import uuid
+        # Fix-7: deterministik order_id — uuid4 yerine sha256(message_id + dosya_adi)
+        _det_raw = (mail.message_id + structured_att.dosya_adi).encode("utf-8")
+        _det_hex = hashlib.sha256(_det_raw).hexdigest()[:8].upper()
         return {
-            "order_id": f"ATT-{uuid.uuid4().hex[:8].upper()}",
+            "order_id": f"ATT-{_det_hex}",
             "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
             "deadline": "",
             "priority_class": 2,

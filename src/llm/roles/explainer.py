@@ -75,11 +75,23 @@ class ExplainerInput:
         }
 
     def to_source_doc(self) -> SourceDoc:
-        """Topraklama dogrulamasi icin sistem_ciktisi -> SourceDoc."""
+        """Topraklama dogrulamasi icin sistem_ciktisi -> SourceDoc.
+
+        tip esleme:
+          "fiyat"               -> "fiyat"
+          "algoritma"|"oncelik" -> "telemetri"
+          diger                 -> "termin"
+        """
+        _TIP_MAP = {
+            "fiyat": "fiyat",
+            "algoritma": "telemetri",
+            "oncelik": "telemetri",
+        }
+        tip = _TIP_MAP.get(self.karar_tipi, "termin")
         icerik = json.dumps(self.sistem_ciktisi, ensure_ascii=False, indent=2)
         return SourceDoc(
             id="sistem_ciktisi#input",
-            tip="termin",
+            tip=tip,
             icerik=icerik,
             uretici="explainer.input",
         )
@@ -177,6 +189,10 @@ class ExplainerRole:
             return ExplainerResult(role_result=role_result)
 
         data = role_result.data or {}
+        # Fail-closed: topraklama_uyarisi yoksa uyari VAR say (True)
+        if "topraklama_uyarisi" not in data:
+            data = dict(data)
+            data["topraklama_uyarisi"] = True
         aciklama_md = data.get("aciklama_md", "")
 
         source_doc = explainer_input.to_source_doc()
@@ -256,6 +272,13 @@ class ExplainerRole:
             resp = br._provider.complete(req)
             last_resp = resp
             last_text = resp.text
+
+            if getattr(resp, "finish_reason", "stop") == "length":
+                last_errors = ["Yanıt kesildi (finish_reason=length) — max_tokens artırın veya girdi kısaltın."]
+                logger.warning(
+                    "Aciklayici deneme %d: finish_reason=length, yanit kesildi.", attempt_count
+                )
+                continue
 
             parsed = tolerant_json_extract(last_text)
             if parsed is None:
