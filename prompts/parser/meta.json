@@ -1,8 +1,9 @@
 {
   "id": "parser-v1",
-  "version": "1.0",
+  "version": "2.0",
   "model_hint": "haiku-class",
   "changelog": [
-    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — sintetik few-shot ile"}
+    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — sintetik few-shot ile"},
+    {"version": "2.0", "date": "2026-06-15", "note": "prompt-architect RISE-IE + Do/Don't yukseltmesi: rol/girdi-karakteristik/adimlar/YAP/YAPMA, domain dili, kucuk-model saglamligi, §6.1 ust+alt tekrar"}
   ]
 }

@@ -1,8 +1,9 @@
 {
   "id": "assistant-v1",
-  "version": "1.0",
+  "version": "2.0",
   "model_hint": "sonnet-class",
   "changelog": [
-    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — topraklanmis Turkce yardimci; alinti zorunlu; baglam-disi ret"}
+    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — topraklanmis Turkce yardimci; alinti zorunlu; baglam-disi ret"},
+    {"version": "2.0", "date": "2026-06-15", "note": "prompt-architect CARE yukseltmesi: baglam/istenen/kurallar/ornekler, numarali kurallar, §6.1 ust+alt tekrar"}
   ]
 }

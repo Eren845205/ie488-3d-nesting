@@ -456,7 +456,7 @@ class TestExplainerPrompt:
         registry = _make_registry()
         tpl = registry.load("explainer")
         assert tpl.id == "explainer-v1"
-        assert tpl.version == "1.0"
+        assert tpl.version == "2.0"
         assert len(tpl.examples) == 3
 
     def test_few_shot_uc_ornek(self):

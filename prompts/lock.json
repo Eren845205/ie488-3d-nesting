@@ -1,23 +1,23 @@
 {
   "_comment": "Sablon hash kayit defteri. Her sablon yuklemesinde content_hash dogrulani. Yeni/degisen sablon icin: versiyonu artir + eval kos + update_lock() cagir.",
   "parser-v1": {
-    "version": "1.0",
-    "content_hash": "710b689381e58f56f8ba41c2b295c3b79505fce024e21d5f1cff3ed8b083e167",
+    "version": "2.0",
+    "content_hash": "1b6bdb799b8794f56c917e2c12329199a26cc984c4b45e1740643c4263f66be6",
     "last_eval_ref": ""
   },
   "report-v1": {
-    "version": "1.0",
-    "content_hash": "b9a32f6d27a8dfdc70b41075abd329132fd46671865ccc9b4897b2d28e72eb67",
+    "version": "2.0",
+    "content_hash": "81d990168d14fb69e7096f72e0b8b5edb04186bd761fa4e918c6492669ced16a",
     "last_eval_ref": ""
   },
   "assistant-v1": {
-    "version": "1.0",
-    "content_hash": "bfb677d3b4f8bbe0ef4fe5d331a08c10396037f3b2628a81a79f15a53be8b6a9",
+    "version": "2.0",
+    "content_hash": "c8076e07cf98660cbe597f128d73c599b356127c6eaf1d5f560b9f7d79c09f9e",
     "last_eval_ref": ""
   },
   "explainer-v1": {
-    "version": "1.0",
-    "content_hash": "08d7e595d5ccf4c0d1efd6efc1f0c283d76f31a82ddce18f2799c57e2c5a74ec",
+    "version": "2.0",
+    "content_hash": "900594346261bfe7a3a5541524804d6ebed7260e69692fa5294399335d5ad9aa",
     "last_eval_ref": ""
   }
 }
