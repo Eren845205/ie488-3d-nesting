@@ -51,6 +51,8 @@ if str(_ROOT) not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+MAX_SORU_LEN = 2000  # /sor soru uzunluk siniri (DoS korumasi)
+
 # ---------------------------------------------------------------------------
 # SSRF allowlist — Ollama base_url yalnizca localhost'a izin verilir
 # ---------------------------------------------------------------------------
@@ -473,8 +475,8 @@ def _register_routes(
 
         used_demo = result.get("used_demo", False)
 
-        # Sohbet gecmisi: once session'dan oku (per-kullanici); fallback app.config
-        _sohbet = session.get("conversation_turns", app.config.get("CONVERSATION_TURNS", []))
+        # Sohbet gecmisi: session'dan oku (per-kullanici)
+        _sohbet = session.get("conversation_turns", [])
 
         return render_template(
             "sonuc.html",
@@ -573,10 +575,19 @@ def _register_routes(
     @app.route("/sor", methods=["POST"])
     @_limit("10 per minute")
     def sor():
-        """LLM asistan sorusu.
+        """LLM sorgu asistani paneli — niyet-yonlendirici ile rol secimi.
 
         Istek JSON: {soru: "..."}
-        Yanit JSON: {cevap, alintilar, ret, sayi_bayragi, hata}
+        Yanit JSON: {cevap_md, alintilar|kaynaklar, ret, topraklama_uyarisi|sayi_bayragi,
+                     kullanilan_rol, hata}
+
+        Niyet-yonlendirici (deterministik, LLM degil):
+          - "ozet/rapor/teklif/yonetici"  -> report rolu
+          - "neden/nicin/hangi algoritma" -> explainer rolu
+          - eslesme yok                   -> assistant rolu (default)
+
+        READ-ONLY garantisi: LAST_RESULT hicbir rol cagirisinda degistirilmez.
+        LLM kapali -> 503 (mevcut desen).
         """
         if not llm_active or llm_components is None:
             return jsonify({"hata": "LLM aktif degil.", "cevap": None}), 503
@@ -589,11 +600,146 @@ def _register_routes(
         soru = (body.get("soru") or "").strip()
         if not soru:
             return jsonify({"hata": "Soru bos olamaz.", "cevap": None}), 400
+        if len(soru) > MAX_SORU_LEN:
+            return jsonify({"hata": "Soru cok uzun.", "cevap": None}), 400
 
         try:
             from src.llm.structured import ValidationStatus
+            from src.webapp.intent_router import route_intent
 
+            # Niyet-yonlendirici: deterministik, LLM cagirisi yok
+            intent = route_intent(soru)
+
+            # TAZE baglam: her cagri aninda yeniden kurulur (bayat baglam yok)
             context = _build_grounded_context(result)
+
+            # --- REPORT rolu ---
+            if intent.rol == "report":
+                from src.llm.roles.report import ReportInput
+
+                pricing_results = result.get("pricing_results", {})
+                total_revenue = sum(
+                    pr.get("total_price", 0.0) for pr in pricing_results.values()
+                )
+                report_input = ReportInput(
+                    is_id="sorgu-report",
+                    n_orders=len(result.get("ranked_orders", [])),
+                    n_batches=len(result.get("batches", [])),
+                    n_warnings=len(result.get("warnings", [])),
+                    total_revenue_usd=total_revenue,
+                    context=context,
+                )
+                report_role = llm_components["report_role"]
+                report_result = report_role.run(report_input)
+
+                if report_result.grounding_blocked:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": (
+                            "Sayi-topraklama dogrulanamadi. "
+                            f"Sayilar: {report_result.grounding_detail}."
+                        ),
+                        "sayi_bayragi": True,
+                        "kullanilan_rol": "report",
+                        "hata": None,
+                    }), 200
+
+                if report_result.status == ValidationStatus.INVALID or report_result.fallback:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": None,
+                        "sayi_bayragi": False,
+                        "kullanilan_rol": "report",
+                        "hata": "LLM gecerli rapor uretemedi. Tekrar deneyin.",
+                    }), 200
+
+                data = report_result.data or {}
+                return jsonify({
+                    "cevap_md": data.get("govde_md", ""),
+                    "baslik": data.get("baslik", ""),
+                    "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                    "ret": False,
+                    "topraklama_uyarisi": None,
+                    "sayi_bayragi": False,
+                    "kullanilan_rol": "report",
+                    "hata": None,
+                }), 200
+
+            # --- EXPLAINER rolu ---
+            if intent.rol == "explainer":
+                from src.llm.roles.explainer import ExplainerInput
+
+                # Sistem ciktisini ilk batch'ten veya genel metriklerden derliyoruz
+                nesting_results = result.get("nesting_results", {})
+                pricing_results = result.get("pricing_results", {})
+                batches = result.get("batches", [])
+                toplam_fiyat = sum(
+                    pr.get("total_price", 0.0) for pr in pricing_results.values()
+                )
+
+                if batches:
+                    first_batch = batches[0]
+                    nr_first = nesting_results.get(first_batch.batch_id, {})
+                    port_first = nr_first.get("portfolio") or nr_first.get("tuner") or {}
+                    winner_name = (
+                        port_first.get("winner")
+                        or port_first.get("winning_config")
+                        or "dblf"
+                    )
+                    sistem_ciktisi: Dict[str, Any] = {
+                        "kazanan_algoritma": winner_name,
+                        "height_mm": nr_first.get("height_mm", 0.0),
+                        "density": nr_first.get("density", 0.0),
+                        "n_parts": nr_first.get("n_parts", 0),
+                        "toplam_fiyat": toplam_fiyat,
+                        "n_orders": len(result.get("ranked_orders", [])),
+                        "n_batches": len(batches),
+                    }
+                else:
+                    sistem_ciktisi = {
+                        "toplam_fiyat": toplam_fiyat,
+                        "n_orders": len(result.get("ranked_orders", [])),
+                    }
+
+                exp_input = ExplainerInput(
+                    karar_tipi=intent.karar_tipi or "algoritma",
+                    sistem_ciktisi=sistem_ciktisi,
+                )
+                explainer_role = llm_components["explainer_role"]
+                exp_result = explainer_role.explain(exp_input)
+
+                if exp_result.status == ValidationStatus.INVALID or exp_result.fallback:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": None,
+                        "sayi_bayragi": False,
+                        "kullanilan_rol": "explainer",
+                        "hata": "LLM gecerli aciklama uretemedi. Tekrar deneyin.",
+                    }), 200
+
+                exp_data = exp_result.data or {}
+                return jsonify({
+                    "cevap_md": exp_data.get("aciklama_md", ""),
+                    "karar_tipi": exp_data.get("karar_tipi", intent.karar_tipi),
+                    "alintilar": [],
+                    "kaynaklar": exp_data.get("kullanilan_girdiler", []),
+                    "ret": False,
+                    "topraklama_uyarisi": (
+                        "Aciklamada sistem ciktisinda olmayan rakam var."
+                        if exp_result.number_flag else None
+                    ),
+                    "sayi_bayragi": exp_result.number_flag,
+                    "kullanilan_rol": "explainer",
+                    "hata": None,
+                }), 200
+
+            # --- ASSISTANT rolu (default) ---
             assistant_role = llm_components["assistant_role"]
             ask_result = assistant_role.ask(soru=soru, context=context)
 
@@ -602,7 +748,9 @@ def _register_routes(
                 if ask_result.fallback:
                     fallback_text = ask_result.fallback.raw_text
                 return jsonify({
+                    "cevap_md": None,
                     "cevap": None,
+                    "kullanilan_rol": "assistant",
                     "hata": "LLM gecerli yanit uretemedi.",
                     "fallback": fallback_text[:300] if fallback_text else "",
                 }), 200
@@ -617,15 +765,17 @@ def _register_routes(
             if len(turns) > 6:
                 turns = turns[-6:]
             session["conversation_turns"] = turns
-            app.config["CONVERSATION_TURNS"] = turns  # geriye-donuk uyumluluk
 
             return jsonify({
-                "cevap": cevap_md,
+                "cevap_md": cevap_md,
+                "cevap": cevap_md,  # geriye-donuk uyumluluk
                 "alintilar": data.get("alintilar", []),
                 "ret": ret,
                 "ret_nedeni": data.get("ret_nedeni"),
+                "topraklama_uyarisi": None,
                 "sayi_bayragi": ask_result.number_flag,
                 "topraklanamayan_sayilar": ask_result.ungrounded_numbers,
+                "kullanilan_rol": "assistant",
                 "hata": None,
             }), 200
 

@@ -413,14 +413,35 @@
 </div>
 {% endif %}
 
-<!-- LLM Asistan Soru-Cevap -->
+<!-- Sorgu Asistani Paneli -->
 {% if llm_active %}
 <div class="card" id="llm-asistan-card">
-    <div class="card-title">Sisteme Soru Sor (LLM Asistan)</div>
+    <div class="card-title">Sorgu Asistani Paneli</div>
     <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
-        Yalnizca bu kosunun sonuclari (nesting, fiyat, termin) hakkinda soru sorabilirsiniz.
-        Asistan baglamdaki verilere dayanarak Turkce yanit uretir.
+        Bu kosunun sonuclari (nesting, fiyat, termin, algoritma kararlari) hakkinda
+        serbest soru sorun. Sistem otomatik olarak dogru rolu secer:
+        ozet sorulari &rarr; Rapor, &ldquo;neden&rdquo; sorulari &rarr; Aciklayici,
+        genel sorular &rarr; Asistan.
     </p>
+
+    <!-- Hazir-soru dugmeleri -->
+    <div id="hazir-sorular" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Bana bir ozet ver')"
+        >Ozet cikar</button>
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Neden bu algoritmay sectiniz?')"
+        >Neden bu algoritma?</button>
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Fiyat nereden geldi?')"
+        >Fiyat nereden ciKti?</button>
+    </div>
 
     <!-- Sohbet gecmisi -->
     <div id="sohbet-container" style="margin-bottom: 16px;">
@@ -453,9 +474,10 @@
 </div>
 {% else %}
 <div class="card">
-    <div class="card-title">Sisteme Soru Sor (LLM Asistan)</div>
+    <div class="card-title">Sorgu Asistani Paneli</div>
     <p style="color: var(--color-text-muted);">
-        <em>LLM kapali</em> — asistan devre disi.
+        <em>LLM kapali</em> — sorgu paneli devre disi
+        (<code>configs/llm.local.json</code> eksik veya Ollama calismıyor).
     </p>
 </div>
 {% endif %}
@@ -589,7 +611,7 @@
                 }
                 result.style.display = 'block';
                 result.innerHTML = '<div class="ozet-body">' +
-                    '<strong>' + (data.baslik || '') + '</strong><br><br>' +
+                    '<strong>' + escapeHtml(data.baslik || '') + '</strong><br><br>' +
                     escapeHtml(data.ozet || '') + '</div>';
             })
             .catch(err => {
@@ -599,6 +621,15 @@
                 hata.style.display = 'block';
                 hata.textContent = 'Baglanti hatasi: ' + err;
             });
+    }
+
+    // Hazir soru dugmesi: metni kutuya doldur ve gonder
+    function sorguHazir(soru) {
+        const input = document.getElementById('soru-input');
+        if (input) {
+            input.value = soru;
+            soruSor();
+        }
     }
 
     function soruSor() {
@@ -640,13 +671,45 @@
 
             const cevapDiv = document.createElement('div');
             cevapDiv.className = 'sohbet-cevap';
-            let cevapHtml = '<strong>Asistan:</strong> ' + escapeHtml(data.cevap || '');
-            if (data.sayi_bayragi) {
-                cevapHtml += ' <span style="color:#b45309; font-size:12px;">[Sayi-topraklama uyarisi]</span>';
+
+            // cevap_md (yeni) veya cevap (geriye-donuk uyumluluk)
+            const cevapMetni = data.cevap_md || data.cevap || '';
+
+            // Kullanilan rol etiketi
+            const rolRenk = {'report': '#0891b2', 'explainer': '#7c3aed', 'assistant': '#16a34a'};
+            const rolAdi = data.kullanilan_rol || 'assistant';
+            const rolEtiketi = '<span style="font-size:11px; padding:2px 7px; border-radius:4px; '
+                + 'background:' + (rolRenk[rolAdi] || '#6b7280') + '22; '
+                + 'color:' + (rolRenk[rolAdi] || '#6b7280') + '; '
+                + 'border:1px solid ' + (rolRenk[rolAdi] || '#6b7280') + '44; margin-left:6px;">'
+                + escapeHtml(rolAdi) + '</span>';
+
+            let cevapHtml = '<strong>Asistan</strong>' + rolEtiketi + ': ' + escapeHtml(cevapMetni);
+
+            // Sayi-topraklama uyarisi
+            if (data.sayi_bayragi || data.topraklama_uyarisi) {
+                cevapHtml += ' <span style="color:#b45309; font-size:12px; background:#fef3c7; padding:1px 5px; border-radius:3px;">'
+                    + '[Sayi-topraklama uyarisi]</span>';
             }
+
+            // Ret rozeti — "bilgi yok"
             if (data.ret) {
-                cevapHtml += ' <span style="color:#6b7280; font-size:12px;">[Baglam-disi soru]</span>';
+                cevapHtml += ' <span style="color:#6b7280; font-size:12px; background:#f3f4f6; padding:1px 5px; border-radius:3px;">'
+                    + '[Bilgi yok — baglam disi]</span>';
             }
+
+            // Kaynak rozetleri (report/explainer'dan gelen kaynaklar)
+            const kaynaklar = data.kaynaklar || data.alintilar || [];
+            if (kaynaklar.length > 0 && !data.ret) {
+                const kaynakMetin = kaynaklar.slice(0, 3).map(function(k) {
+                    const id = (typeof k === 'string') ? k : (k.kaynak_id || k.id || '?');
+                    return '<span style="font-size:11px; color:#0369a1; background:#e0f2fe; '
+                        + 'padding:1px 5px; border-radius:3px; margin-left:3px;">'
+                        + escapeHtml(String(id)) + '</span>';
+                }).join('');
+                cevapHtml += ' ' + kaynakMetin;
+            }
+
             cevapDiv.innerHTML = cevapHtml;
             container.appendChild(cevapDiv);
 
