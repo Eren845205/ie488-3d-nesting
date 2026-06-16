@@ -4,7 +4,7 @@
       "asama": "nest",
       "kod": "NEST_DOLULUK_DUSUK",
       "severity": "med",
-      "baslik": "Doluluk beklenenin altinda",
+      "baslik": "Doluluk beklenenin altında",
       "ham_detay": "density=0.22, beklenen_min=0.25"
     }
   ]

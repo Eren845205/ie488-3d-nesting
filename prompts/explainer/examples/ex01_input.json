@@ -9,6 +9,6 @@
       {"algoritma": "GA", "yukseklik_mm": 187.5, "doluluk": 0.81},
       {"algoritma": "DBLF", "yukseklik_mm": 215.0, "doluluk": 0.69}
     ],
-    "sebep_notlari": "Cok sayida tekrar parca — GA icin ideal"
+    "sebep_notlari": "Çok sayıda tekrar parça — GA için ideal"
   }
 }

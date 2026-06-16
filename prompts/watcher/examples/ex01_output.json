@@ -1,5 +1,5 @@
 {
-  "anlatim_md": "Sistem bu parti icin 850.0 USD fiyat hesapladi; bu deger gecmis benzer islerin medyani olan 320.0 USD'nin yaklasik 2.66 kati. Oran beklenen sinir olan 2.0'in uzerinde. Fiyatlama girdilerini ve kural setini gozden geciriniz.",
+  "anlatim_md": "Sistem bu parti için 850.0 USD fiyat hesapladı; bu değer geçmiş benzer işlerin medyanı olan 320.0 USD'nin yaklaşık 2.66 katı. Oran beklenen sınır olan 2.0'in üzerinde. Fiyatlama girdilerini ve kural setini gözden geçiriniz.",
   "kapsanan_bulgular": ["FIYAT_ORAN_YUKSEK"],
   "topraklama_uyarisi": false
 }

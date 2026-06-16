@@ -102,28 +102,39 @@ class TeklifInput:
         )
 
     def augmented_context(self) -> GroundedContext:
-        """Context'e teklif#ozet SourceDoc'u ekleyerek geri dondurur."""
+        """Yalnizca teklif#ozet SourceDoc'unu tasiyan context dondurur.
+
+        VERI MINIMIZASYONU: nesting ic dokumanlari (yerlesim#..., yukseklik/
+        doluluk/voxel iceren kaynaklar) teklif rolune HIC beslenmez. LLM girdisi
+        ve grounding YALNIZCA musteriye-uygun teklif#ozet dokumanini gorur —
+        ic-detay sizintisi yapisal olarak engellenir.
+        """
         summary_doc = self._build_summary_doc()
         return GroundedContext(
             is_id=self.context.is_id,
-            kaynaklar=[summary_doc] + list(self.context.kaynaklar),
+            kaynaklar=[summary_doc],
             olusturma_zamani=self.context.olusturma_zamani,
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """LLM girdisi icin serializeable dict.
 
-        Augmented context kaynaklarini da dahil eder.
+        VERI MINIMIZASYONU: yalnizca musteri-uygun alanlar (musteri_adi,
+        parcalar, toplam_fiyat_usd, termin_ifadesi) + teklif#ozet kaynagi
+        serilesir. Nesting ic context'i (yukseklik/doluluk/voxel) HIC gitmez.
         """
-        aug_ctx = self.augmented_context()
+        summary_doc = self._build_summary_doc()
         return {
             "musteri_adi": self.musteri_adi,
             "parcalar": self.parca_ozeti,
             "toplam_fiyat_usd": self.toplam_fiyat_usd,
             "termin_ifadesi": self.termin_ifadesi,
             "kaynaklar": [
-                {"id": doc.id, "tip": doc.tip, "icerik": doc.icerik}
-                for doc in aug_ctx.kaynaklar
+                {
+                    "id": summary_doc.id,
+                    "tip": summary_doc.tip,
+                    "icerik": summary_doc.icerik,
+                }
             ],
         }
 

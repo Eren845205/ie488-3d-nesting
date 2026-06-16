@@ -1,6 +1,6 @@
 {
-  "baslik": "Pipeline Sonucu: 1 Siparis, 1 Parti, 890.75 USD",
-  "govde_md": "Tek siparislik bu kosuda 8 parca tek partide basariyla nesting yapildi. Nesting yuksekligi 145.0 mm, doluluk orani %88.5 ile oldukca verimli bir yerlesim elde edildi. Toplam fiyat onerisi 890.75 USD olup termin asimi bulunmuyor.",
+  "baslik": "Pipeline Sonucu: 1 Sipariş, 1 Parti, 890.75 USD",
+  "govde_md": "Tek siparişlik bu koşuda 8 parça tek partide başarıyla nesting yapıldı. Nesting yüksekliği 145.0 mm, doluluk oranı %88.5 ile oldukça verimli bir yerleşim elde edildi. Toplam fiyat önerisi 890.75 USD olup termin aşımı bulunmuyor.",
   "kullanilan_kaynaklar": ["yerlesim#B001", "fiyat#B001"],
   "eksik_bilgi": []
 }

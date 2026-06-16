@@ -1,5 +1,5 @@
 {
-  "anlatim_md": "Nesting asamasinda konteyner doluluk orani 0.22 olarak hesaplandi; bu deger beklenen minimum olan 0.25'in biraz altinda. Bu durum normale yakin bir sapma olup kritik degil, ancak yerlesim parametrelerini gozden gecirmek faydali olabilir.",
+  "anlatim_md": "Nesting aşamasında konteyner doluluk oranı 0.22 olarak hesaplandı; bu değer beklenen minimum olan 0.25'in biraz altında. Bu durum normale yakın bir sapma olup kritik değil, ancak yerleşim parametrelerini gözden geçirmek faydalı olabilir.",
   "kapsanan_bulgular": ["NEST_DOLULUK_DUSUK"],
   "topraklama_uyarisi": false
 }

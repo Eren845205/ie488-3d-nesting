@@ -6,7 +6,7 @@
       {"sira": 2, "siparis_id": "ASELSAN-2024-12", "termin_gun": 14, "gecikme_riski": "dusuk"},
       {"sira": 3, "siparis_id": "ROKETSAN-2024-09", "termin_gun": 21, "gecikme_riski": "dusuk"}
     ],
-    "oncelik_kurali": "EDF — En Erken Termin Once",
-    "kritik_uyari": "BAYKAR-2024-07 termini 5 gun kaldi; gecikme riski yuksek"
+    "oncelik_kurali": "EDF — En Erken Termin Önce",
+    "kritik_uyari": "BAYKAR-2024-07 termini 5 gün kaldı; gecikme riski yüksek"
   }
 }

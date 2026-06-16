@@ -20,6 +20,6 @@
     }
   ],
   "eksik_alanlar": ["musteri.iletisim"],
-  "notlar": "Acil siparis",
+  "notlar": "Acil sipariş",
   "injection_suphesi": false
 }

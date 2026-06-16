@@ -1,5 +1,5 @@
 {
-  "soru": "B001 partisinin nesting yuksekligi nedir?",
+  "soru": "B001 partisinin nesting yüksekliği nedir?",
   "baglam_kaynaklari": ["yerlesim#B001"],
-  "baglam_metni": "### [yerlesim#B001] (yerlesim)\nYukseklik: 180.0 mm\nDoluluk: %72.3\nCozucu: DBLF (seed=42)\n\n| part_id | name | x | y | z | orientation |\n|---|---|---|---|---|---|\n| p1 | ford_bracket | 0 | 0 | 0 | 0 |"
+  "baglam_metni": "### [yerlesim#B001] (yerlesim)\nYükseklik: 180.0 mm\nDoluluk: %72.3\nÇözücü: DBLF (seed=42)\n\n| part_id | name | x | y | z | orientation |\n|---|---|---|---|---|---|\n| p1 | ford_bracket | 0 | 0 | 0 | 0 |"
 }

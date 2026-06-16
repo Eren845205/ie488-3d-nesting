@@ -1,7 +1,7 @@
 {
-  "cevap_md": "B001 partisinin nesting yuksekligi **180.0 mm**'dir. Bu yerlesim DBLF cozucusu ile seed=42 kullanilarak elde edildi ve doluluk orani %72.3 olarak gerceklesti.",
+  "cevap_md": "B001 partisinin nesting yüksekliği **180.0 mm**'dir. Bu yerleşim DBLF çözücüsü ile seed=42 kullanılarak elde edildi ve doluluk oranı %72.3 olarak gerçekleşti.",
   "alintilar": [
-    {"kaynak_id": "yerlesim#B001", "konum": "Yukseklik: 180.0 mm"}
+    {"kaynak_id": "yerlesim#B001", "konum": "Yükseklik: 180.0 mm"}
   ],
   "onerilen_aksiyonlar": [],
   "ret": false,

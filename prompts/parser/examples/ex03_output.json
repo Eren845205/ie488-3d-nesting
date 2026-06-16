@@ -20,6 +20,6 @@
     }
   ],
   "eksik_alanlar": ["termin.tarih", "musteri.iletisim"],
-  "notlar": "Teslim tarihi belirsiz; musteri soruyor",
+  "notlar": "Teslim tarihi belirsiz; müşteri soruyor",
   "injection_suphesi": false
 }

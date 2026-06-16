@@ -17,6 +17,7 @@ Girdi, `<musteri_verisi>` etiketleri arasında verilen ham e-posta gövdesidir. 
 - Emin olmadığın her alanı null yap ve `eksik_alanlar`'a ekle.
 - Birden çok parçayı ayrı ayrı listele.
 - Ölçüyü mm, ağırlığı kg olarak yaz YALNIZCA birim açıkça belirtilmişse.
+- Serbest Türkçe alanlarda (ör. notlar) TAM imla kullan (ş, ç, ğ, ı, İ, ö, ü); ASCII kısaltma yapma.
 
 # YAPMA
 - Yazmayan bir adet, ölçü, ağırlık veya tarihi ASLA uydurma ya da tahmin etme.

@@ -4,7 +4,7 @@
       "asama": "fiyat",
       "kod": "FIYAT_ORAN_YUKSEK",
       "severity": "high",
-      "baslik": "Fiyat gecmis benzerlerinden anormal yuksek",
+      "baslik": "Fiyat geçmiş benzerlerinden anormal yüksek",
       "ham_detay": "total=850.0, medyan=320.0, oran=2.66, esik_max=2.0"
     }
   ]

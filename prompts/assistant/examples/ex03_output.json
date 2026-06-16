@@ -1,7 +1,7 @@
 {
-  "cevap_md": "Bu bilgi elimdeki sistem ciktilarinda yok.",
+  "cevap_md": "Bu bilgi elimdeki sistem çıktılarında yok.",
   "alintilar": [],
   "onerilen_aksiyonlar": [],
   "ret": true,
-  "ret_nedeni": "Soru Bitcoin fiyatiyla ilgili; bu bilgi nesting sistemi ciktilarinda yer almiyor."
+  "ret_nedeni": "Soru Bitcoin fiyatıyla ilgili; bu bilgi nesting sistemi çıktılarında yer almıyor."
 }

@@ -8,12 +8,12 @@
     {
       "id": "yerlesim#B001",
       "tip": "yerlesim",
-      "icerik": "Yukseklik: 220.5 mm\nDoluluk: %68.1\nCozucu: SA\n5 parca yerlesti"
+      "icerik": "Yükseklik: 220.5 mm\nDoluluk: %68.1\nÇözücü: SA\n5 parça yerleşti"
     },
     {
       "id": "termin#cizelge",
       "tip": "termin",
-      "icerik": "Uyarilar:\n- ORD-FORD-A2: 3 gun gecikme\n- ORD-BAYKAR-B1: 1 gun gecikme"
+      "icerik": "Uyarılar:\n- ORD-FORD-A2: 3 gün gecikme\n- ORD-BAYKAR-B1: 1 gün gecikme"
     },
     {
       "id": "fiyat#B001",

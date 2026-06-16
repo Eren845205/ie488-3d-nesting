@@ -4,8 +4,8 @@
     "nihai_fiyat_usd": 2340.0,
     "fiyat_kalemleri": [
       {"kalem": "temel_fiyat", "tutar_usd": 1200.0, "aciklama": "Baz fiyat"},
-      {"kalem": "mesafe_kademesi", "tutar_usd": 840.0, "aciklama": "1200 km ustunde %70 ek"},
-      {"kalem": "aci_surcharge", "tutar_usd": 300.0, "aciklama": "45 derece egim kurali"}
+      {"kalem": "mesafe_kademesi", "tutar_usd": 840.0, "aciklama": "1200 km üstünde %70 ek"},
+      {"kalem": "aci_surcharge", "tutar_usd": 300.0, "aciklama": "45 derece eğim kuralı"}
     ],
     "toplam_agirlik_kg": 520.0,
     "mesafe_km": 1450
