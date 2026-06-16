@@ -322,3 +322,108 @@ def verify_number_grounding(
         ungrounded=ungrounded,
         is_clean=len(ungrounded) == 0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Icerik-ortusme dogrulayicisi (alinti-topraklama kapisi)
+# ---------------------------------------------------------------------------
+
+# Anlamli olmayan cok yaygin Turkce dolgu kelimeleri — ortusme orani
+# hesabinda sayilmaz (her cevapta + her kaynakta gecebilen kelimeler
+# yanlis-pozitif ortusme uretmesin). Konservatif tutuldu: yalnizca en
+# yaygin baglaclar/edatlar/zamirler. Domain terimleri (fiyat, yukseklik,
+# kural, parti, doluluk...) BILEREK disarida birakildi — onlar mesru
+# cevapla kaynagi eslestiren sinyaldir.
+_STOPWORDS = frozenset(
+    {
+        "ve", "veya", "ile", "ama", "fakat", "ancak", "icin", "gibi",
+        "bir", "bu", "su", "o", "ki", "de", "da", "den", "dan",
+        "ise", "ya", "hem", "her", "cok", "daha", "en", "olan", "olarak",
+        "var", "yok", "the", "and", "for", "with", "bunu", "sunu",
+    }
+)
+
+
+def _meaningful_tokens(text: str) -> List[str]:
+    """Metni kucuk harf 3+ harfli token'lara ayirir, stopword'leri eler.
+
+    Yalniz harf (Turkce dahil) dizilerini token sayar; sayilar/noktalama
+    bolen. Sayilar zaten verify_number_grounding ile ayri kontrol edilir.
+    """
+    lowered = text.casefold()
+    raw = re.findall(r"[a-zçğıöşü]{3,}", lowered)
+    return [t for t in raw if t not in _STOPWORDS]
+
+
+@dataclass
+class ContentOverlapResult:
+    """Cevap-kaynak icerik ortusme sonucu.
+
+    overlap_ratio : cevap token'larinin kac orani atif kaynaklarinda geciyor (0-1)
+    overlapping   : kaynaklarda da gecen token kumesi (siralanmis)
+    answer_tokens : cevaptaki anlamli (essiz) token sayisi
+    """
+
+    overlap_ratio: float
+    overlapping: List[str]
+    answer_tokens: int
+
+
+# Turkce sondan-eklemeli bir dil: "yukseklik" ~ "yuksekligi" ~ "yuksekligin".
+# Tam token esitligi yanlis-negatif uretir (mesru cevabi konu-disi sanir).
+# Bu nedenle ortusme PREFIX-tabanli: iki token bu uzunlukta ortak on-ek
+# paylasiyorsa ayni kok sayilir. Konservatif (genis) kabul — amac mesru
+# cevabi REDDETMEMEK; sadece tamamen-alakasiz cevabi yakalamak.
+_OVERLAP_PREFIX_LEN = 5
+
+
+def _tokens_match(a: str, b: str) -> bool:
+    """Iki token ayni kok mu? Tam esitlik VEYA ortak _OVERLAP_PREFIX_LEN on-ek.
+
+    Token'lardan en az biri prefix uzunlugundan kisaysa tam esitlik aranir.
+    """
+    if a == b:
+        return True
+    n = _OVERLAP_PREFIX_LEN
+    if len(a) >= n and len(b) >= n:
+        return a[:n] == b[:n]
+    return False
+
+
+def verify_content_overlap(
+    text: str,
+    cited_sources: List["SourceDoc"],
+) -> ContentOverlapResult:
+    """Cevap metninin atif yapilan kaynak icerikleriyle kelime ortusmesini olcer.
+
+    Amac: kaynak_id'leri gercek olsa bile cevabin tamamen konu-disi olmasini
+    (uydurma 'konum', hava-durumu gibi halusinasyon) yakalamak. Cevap
+    token'larinin atif kaynaklarinin icerik token'lariyla (prefix-tabanli)
+    kesisim orani esasen sifirsa cevap topraklanmamis demektir.
+
+    Konservatif: stopword'ler elenir; sayilar token sayilmaz (onlar ayri
+    number-grounding ile bakilir); 3+ harfli kelimeler esas alinir; Turkce
+    sondan-eklemeli yapi icin prefix-eslestirme kullanilir.
+
+    Donen overlap_ratio = (kaynakta da kok-eslesen essiz cevap token) /
+    (cevaptaki essiz anlamli token). Cevap anlamli token icermiyorsa ratio=1.0
+    (sinyal yok, reddetme — number-grounding ve diger kapilar devrede).
+    """
+    answer_tokens = sorted(set(_meaningful_tokens(text)))
+    if not answer_tokens:
+        return ContentOverlapResult(overlap_ratio=1.0, overlapping=[], answer_tokens=0)
+
+    source_tokens = set()
+    for doc in cited_sources:
+        source_tokens.update(_meaningful_tokens(doc.icerik))
+
+    overlapping = [
+        tok for tok in answer_tokens
+        if any(_tokens_match(tok, src) for src in source_tokens)
+    ]
+    ratio = len(overlapping) / len(answer_tokens)
+    return ContentOverlapResult(
+        overlap_ratio=ratio,
+        overlapping=overlapping,
+        answer_tokens=len(answer_tokens),
+    )

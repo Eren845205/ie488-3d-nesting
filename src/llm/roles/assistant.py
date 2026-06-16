@@ -24,7 +24,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.llm.audit import AuditLogger
 from src.llm.config import RoleConfig
-from src.llm.grounding import GroundedContext, SourceDoc, verify_number_grounding
+from src.llm.grounding import (
+    GroundedContext,
+    SourceDoc,
+    verify_content_overlap,
+    verify_number_grounding,
+)
 from src.llm.prompts import PromptRegistry
 from src.llm.provider import LLMProvider, LLMRequest, LLMResponse
 from src.llm.roles.base import LLMRole, RoleResult
@@ -38,6 +43,15 @@ from src.llm.structured import (
 logger = logging.getLogger(__name__)
 
 _MAX_HISTORY_TURNS = 6
+
+# Alinti-topraklama kapisi: ret=False cevaplarda cevap_md ile ATIF YAPILAN
+# kaynaklarin icerigi arasindaki kelime-ortusme orani bu esigin ALTINDA ise
+# cevap konu-disi/halusinasyon sayilir ve ret=True'ya cevrilir.
+# KONSERVATIF (dusuk) esik: amac hava-durumu gibi tamamen-alakasiz cevabi
+# yakalamak; ozet/neden/kac-parti gibi mesru cevaplar kaynak terimleriyle
+# bol bol ortustugu icin bu esigin cok uzerinde kalir. Supheli durumda
+# REDDETME — yanlis-pozitif riskini minimize etmek icin %5 secildi.
+_MIN_CONTENT_OVERLAP = 0.05
 
 
 # ---------------------------------------------------------------------------
@@ -96,12 +110,15 @@ class AssistantResult:
     number_flag          : True ise sayi-topraklama UYARI bayragi
     ungrounded_numbers   : topraklanamayan sayilar listesi
     unknown_citation_ids : baglam disindaki kaynak_id'ler (yumusak uyari)
+    grounding_override    : True ise alinti-topraklama kapisi ret=False'u
+                           ret=True'ya ZORLA cevirdi (izlenebilirlik)
     """
 
     role_result: RoleResult
     number_flag: bool = False
     ungrounded_numbers: List[str] = field(default_factory=list)
     unknown_citation_ids: List[str] = field(default_factory=list)
+    grounding_override: bool = False
 
     @property
     def status(self) -> ValidationStatus:
@@ -383,13 +400,63 @@ class AssistantRole:
                 "Asistan: kaynak_id'ler baglamda yok (yumusak uyari): %s", unknown_ids
             )
 
-        # Sayi-topraklama (UYARI + bayrak; blok degil)
         cevap_md = data.get("cevap_md", "")
         cited_ids = [a.get("kaynak_id", "") for a in alintilar]
         cited_sources = [
             doc for doc in context.kaynaklar
             if doc.id in cited_ids
         ]
+
+        # ----------------------------------------------------------------
+        # ALINTI-TOPRAKLAMA KAPISI (deterministik, LLM-sonrasi; §6.1 felsefe)
+        # Yalniz ret=False cevaplarda calisir. Iki katman:
+        #   (1) Gecerli kaynak_id var mi? (context'te bulunan)
+        #   (2) Cevap, atif yapilan kaynak icerigiyle anlamca ortusuyor mu?
+        # Ihlal -> ret=True'ya ZORLA cevir (uydurma alinti / konu-disi halusinasyon).
+        # ----------------------------------------------------------------
+        grounding_override = False
+        if not ret_flag:
+            valid_cited_ids = [cid for cid in cited_ids if cid in context_ids]
+
+            override_reason: Optional[str] = None
+            if not valid_cited_ids:
+                # (1) Tum alintilarin kaynak_id'leri uydurma -> topraklanmamis
+                override_reason = "topraklanamadi: geçerli kaynak yok"
+            else:
+                # (2) Icerik-ortusme: kaynak_id gercek ama cevap alakasiz mi?
+                overlap = verify_content_overlap(cevap_md, cited_sources)
+                if (
+                    overlap.answer_tokens > 0
+                    and overlap.overlap_ratio < _MIN_CONTENT_OVERLAP
+                ):
+                    override_reason = "topraklanamadi: cevap kaynak içeriğiyle örtüşmüyor"
+
+            if override_reason is not None:
+                logger.warning(
+                    "Asistan alinti-topraklama kapisi: ret=False -> ret=True "
+                    "(%s); cited=%s, valid=%s",
+                    override_reason, cited_ids, valid_cited_ids,
+                )
+                data = dict(data)
+                data["ret"] = True
+                data["ret_nedeni"] = override_reason
+                data["cevap_md"] = "Bu bilgi elimdeki sistem çıktılarında yok."
+                data["alintilar"] = []
+                role_result = RoleResult(
+                    status=role_result.status,
+                    data=data,
+                    fallback=role_result.fallback,
+                    audit_ref=role_result.audit_ref,
+                    attempt_count=role_result.attempt_count,
+                    errors=role_result.errors,
+                )
+                ret_flag = True
+                alintilar = []
+                cevap_md = data["cevap_md"]
+                cited_sources = []
+                grounding_override = True
+
+        # Sayi-topraklama (UYARI + bayrak; blok degil)
         grounding = verify_number_grounding(cevap_md, cited_sources)
         number_flag = not grounding.is_clean
         if number_flag:
@@ -407,6 +474,7 @@ class AssistantRole:
             number_flag=number_flag,
             ungrounded_numbers=grounding.ungrounded,
             unknown_citation_ids=unknown_ids,
+            grounding_override=grounding_override,
         )
 
     # ------------------------------------------------------------------

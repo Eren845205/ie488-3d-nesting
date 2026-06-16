@@ -383,6 +383,134 @@ def test_assistant_normalization_dict_kaynak_id_accepted(tmp_path):
     assert alintilar[0]["kaynak_id"] == "yerlesim#B001"
 
 
+# ---------------------------------------------------------------------------
+# Test 9: Alinti-topraklama kapisi — baglam-disi halusinasyon ret=True'ya cevrilir
+# ---------------------------------------------------------------------------
+
+
+def test_assistant_grounding_gate_hallucination_overridden(tmp_path):
+    """Canli bug: 'Bugun hava nasil?' -> gercek kaynak_id ama alakasiz cevap +
+    ret=False. Kapi cevabin kaynak icerigiyle ortusmedigini gorur ve
+    ret=True'ya ZORLA cevirir."""
+    registry = _make_registry()
+    audit = _make_audit(tmp_path)
+    role_cfg = _make_role_cfg()
+
+    # Kaynak_id GERCEK (yerlesim#B001 baglamda var) ama cevap tamamen konu-disi
+    # ve konum uydurma — tipik kucuk-model halusinasyonu.
+    hallucinated = json.dumps({
+        "cevap_md": "Bugun hava surtunmeyle karakterize edilir, ruzgar guneyden eser.",
+        "alintilar": [
+            {"kaynak_id": "yerlesim#B001", "konum": "**Soru 3:** Bugun hava nasil?"}
+        ],
+        "onerilen_aksiyonlar": [],
+        "ret": False,
+        "ret_nedeni": None,
+    }, ensure_ascii=False)
+
+    provider = FakeProvider(
+        fixture_map={("assistant-v1", "_any_"): [hallucinated]}
+    )
+
+    role = AssistantRole(
+        provider=provider, registry=registry, audit=audit, role_cfg=role_cfg
+    )
+    result = role.ask(soru="Bugun hava nasil?", context=_make_context())
+
+    # Kapi devreye girmeli: ret False -> True
+    assert result.status == ValidationStatus.VALID
+    assert result.data is not None
+    assert result.data["ret"] is True, "Alakasiz cevap ret=True'ya cevrilmeli"
+    assert result.grounding_override is True
+    assert result.data["ret_nedeni"] is not None
+    assert result.data["alintilar"] == []
+    # Konu-disi halusinasyon sohbete eklenmemeli
+    assert len(role.conversation.turns) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test 10: Alinti-topraklama kapisi — uydurma kaynak_id ret=True'ya cevrilir
+# ---------------------------------------------------------------------------
+
+
+def test_assistant_grounding_gate_fabricated_source_id(tmp_path):
+    """alinti kaynak_id baglamda YOK (yok#999) -> gecerli kaynak kalmaz ->
+    ret=True'ya cevrilir."""
+    registry = _make_registry()
+    audit = _make_audit(tmp_path)
+    role_cfg = _make_role_cfg()
+
+    fabricated = json.dumps({
+        "cevap_md": "B001 yuksekligi 180.0 mm.",  # icerik makul ama kaynak uydurma
+        "alintilar": [
+            {"kaynak_id": "yok#999", "konum": "Yukseklik: 180.0 mm"}
+        ],
+        "onerilen_aksiyonlar": [],
+        "ret": False,
+        "ret_nedeni": None,
+    }, ensure_ascii=False)
+
+    provider = FakeProvider(
+        fixture_map={("assistant-v1", "_any_"): [fabricated]}
+    )
+
+    role = AssistantRole(
+        provider=provider, registry=registry, audit=audit, role_cfg=role_cfg
+    )
+    result = role.ask(soru="B001 yuksekligi nedir?", context=_make_context())
+
+    assert result.status == ValidationStatus.VALID
+    assert result.data is not None
+    assert result.data["ret"] is True
+    assert result.grounding_override is True
+    assert "topraklanamadi" in result.data["ret_nedeni"]
+    assert len(role.conversation.turns) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test 11: REGRESYON KORUMASI — mesru cevap kapidan gecer, reddedilmez
+# ---------------------------------------------------------------------------
+
+
+def test_assistant_grounding_gate_keeps_legitimate_answer(tmp_path):
+    """Kaynak icerigiyle ortusen gercek bir cevap + gecerli alinti + ret=False
+    -> ret=False KALIR. Kapi mesru cevabi REDDETMEMELI."""
+    registry = _make_registry()
+    audit = _make_audit(tmp_path)
+    role_cfg = _make_role_cfg()
+
+    # Cevap kaynak terimleriyle (yukseklik, doluluk, cozucu) bol bol ortusur.
+    legit = json.dumps({
+        "cevap_md": (
+            "B001 yerlesiminin yuksekligi 180.0 mm, doluluk orani %72.3 ve "
+            "cozucu DBLF olarak gorunuyor."
+        ),
+        "alintilar": [
+            {"kaynak_id": "yerlesim#B001", "konum": "Yukseklik: 180.0 mm"}
+        ],
+        "onerilen_aksiyonlar": [],
+        "ret": False,
+        "ret_nedeni": None,
+    }, ensure_ascii=False)
+
+    provider = FakeProvider(
+        fixture_map={("assistant-v1", "_any_"): [legit]}
+    )
+
+    role = AssistantRole(
+        provider=provider, registry=registry, audit=audit, role_cfg=role_cfg
+    )
+    result = role.ask(soru="B001 yerlesim ozeti nedir?", context=_make_context())
+
+    assert result.status == ValidationStatus.VALID
+    assert result.data is not None
+    assert result.data["ret"] is False, "Mesru cevap reddedilmemeli"
+    assert result.grounding_override is False
+    assert len(result.data["alintilar"]) == 1
+    # Mesru cevap sohbete eklenmeli
+    assert len(role.conversation.turns) == 1
+
+
 def test_assistant_normalization_idless_kaynak_id_stays_invalid(tmp_path):
     """kaynak_id id'siz dict ise normalizasyon dokunmaz -> schema hatasi surmeli."""
     registry = _make_registry()
