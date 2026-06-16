@@ -407,8 +407,8 @@ class TestTeklifRoleEntegrasyon:
         # Topraklama uyarisi isaretlenmeli
         assert data.get("topraklama_uyarisi") is True
 
-    def test_teklif_3x_bozuk_json_200_taslak_none_hata(self):
-        """LLM 3 kez bozuk JSON -> 200 taslak=None + hata mesaji."""
+    def test_teklif_3x_bozuk_json_502_taslak_none_hata(self):
+        """LLM 3 kez bozuk JSON -> 502 taslak=None + hata mesaji."""
         from src.llm.provider import FakeProvider
         from src.webapp.app import create_app
 
@@ -434,7 +434,7 @@ class TestTeklifRoleEntegrasyon:
         client.post("/run", follow_redirects=True)
 
         resp = client.post("/teklif", content_type="application/json")
-        assert resp.status_code == 200
+        assert resp.status_code == 502
         data = resp.get_json()
         assert data.get("taslak") is None
         assert data.get("hata") not in (None, "")

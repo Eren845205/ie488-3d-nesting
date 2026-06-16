@@ -128,8 +128,11 @@ def _load_llm_components(
 
         if provider_override is not None:
             provider = provider_override
+
+            def _provider_for(role_name: str):  # noqa: E306
+                return provider_override
         else:
-            # Gercek Ollama saglayicisi
+            # Gercek Ollama saglayicisi — model bazli provider cache
             from src.llm.providers.openai_compat import OpenAICompatProvider
 
             prov_cfg = cfg.provider_for_role("report")
@@ -141,25 +144,36 @@ def _load_llm_components(
                     _base_url,
                 )
                 return None
-            provider = OpenAICompatProvider(
-                base_url=_base_url,
-                model=cfg.role("report").model,
-                timeout_s=prov_cfg.timeout_s,
-            )
+
+            _prov_cache: Dict[str, Any] = {}
+
+            def _provider_for(role_name: str):  # noqa: E306
+                rc = cfg.roles.get(role_name)
+                model = rc.model if rc is not None else cfg.role("report").model
+                if model not in _prov_cache:
+                    _prov_cache[model] = OpenAICompatProvider(
+                        base_url=_base_url,
+                        model=model,
+                        timeout_s=prov_cfg.timeout_s,
+                    )
+                return _prov_cache[model]
+
+            # Geriye donuk uyum: 'provider' degiskeni ilk provider'a bakar
+            provider = _provider_for("report")
 
         from src.llm.roles.explainer import ExplainerRole
         from src.llm.roles.watcher import WatcherRole
         from src.llm.roles.teklif import TeklifRole
 
         report_role = ReportRole(
-            provider=provider,
+            provider=_provider_for("report"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("report"),
         )
 
         assistant_role = AssistantRole(
-            provider=provider,
+            provider=_provider_for("assistant"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("assistant"),
@@ -167,28 +181,28 @@ def _load_llm_components(
         )
 
         parser_role = ParserRole(
-            provider=provider,
+            provider=_provider_for("parser"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("parser"),
         )
 
         explainer_role = ExplainerRole(
-            provider=provider,
+            provider=_provider_for("explainer"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("explainer"),
         )
 
         watcher_role = WatcherRole(
-            provider=provider,
+            provider=_provider_for("watcher"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("watcher"),
         )
 
         teklif_role = TeklifRole(
-            provider=provider,
+            provider=_provider_for("teklif"),
             registry=registry,
             audit=audit,
             role_cfg=cfg.roles.get("teklif"),
@@ -962,14 +976,14 @@ def _register_routes(
 
             teklif_result = teklif_role.draft(teklif_input)
 
-            # INVALID+fallback -> 200 taslak=None+hata (dead-end yok ama LLM basarisiz)
+            # INVALID+fallback -> 502 taslak=None+hata (dead-end yok ama LLM basarisiz)
             if teklif_result.status == ValidationStatus.INVALID or teklif_result.fallback:
                 return jsonify({
                     "taslak": None,
                     "hata": "LLM gecerli taslak uretemedi. Tekrar deneyin.",
                     "topraklama_uyarisi": False,
                     "ungrounded": [],
-                }), 200
+                }), 502
 
             # VALID/PARTIAL — her zaman taslak dolu (BLOK YOK)
             data = teklif_result.data or {}
