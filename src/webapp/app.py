@@ -925,7 +925,7 @@ def _register_routes(
             )
 
             ranked_orders = result.get("ranked_orders", [])
-            musteri_adi = "Degerli Musterimiz"
+            musteri_adi = "Değerli Müşterimiz"
             if ranked_orders:
                 # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
                 # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
@@ -939,7 +939,7 @@ def _register_routes(
                         musteri_adlari.add(_m)
                 if len(musteri_adlari) == 1:
                     musteri_adi = musteri_adlari.pop()
-                # >1 farkli musteri: musteri_adi "Degerli Musterimiz" olarak kalir
+                # >1 farkli musteri: musteri_adi "Değerli Müşterimiz" olarak kalir
 
             batches = result.get("batches", [])
             parca_ozeti = []
@@ -960,7 +960,7 @@ def _register_routes(
             if not parca_ozeti:
                 parca_ozeti = [{"ad": "konteyner parcalari", "adet": len(ranked_orders)}]
 
-            termin_ifadesi = "belirtilmemis"
+            termin_ifadesi = "sipariş onayını takiben tarafınıza bildirilecektir"
             if ranked_orders:
                 first = ranked_orders[0]
                 if isinstance(first, dict):
@@ -1551,7 +1551,7 @@ def _register_routes(
 
                 context = _build_grounded_context(pipeline_result)
 
-                musteri_adi = "Degerli Musterimiz"
+                musteri_adi = "Değerli Müşterimiz"
                 if ranked:
                     # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
                     # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
@@ -1565,7 +1565,7 @@ def _register_routes(
                             _otonom_musteri_adlari.add(_m)
                     if len(_otonom_musteri_adlari) == 1:
                         musteri_adi = _otonom_musteri_adlari.pop()
-                    # >1 farkli musteri: musteri_adi "Degerli Musterimiz" olarak kalir
+                    # >1 farkli musteri: musteri_adi "Değerli Müşterimiz" olarak kalir
 
                 parca_ozeti_list = []
                 for b in batches:
@@ -1585,7 +1585,7 @@ def _register_routes(
                         {"ad": "konteyner parcalari", "adet": len(ranked)}
                     ]
 
-                termin_ifadesi = "belirtilmemis"
+                termin_ifadesi = "sipariş onayını takiben tarafınıza bildirilecektir"
                 if ranked:
                     first = ranked[0]
                     if isinstance(first, dict):
