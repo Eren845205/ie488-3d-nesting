@@ -1,0 +1,15 @@
+{
+  "musteri_adi": "Sayin Mehmet Celik",
+  "parcalar": [
+    {"ad": "Tasiyici Profil", "adet": 30}
+  ],
+  "toplam_fiyat_usd": 2100.0,
+  "termin_ifadesi": "15 is gunu (yogun kapasite nedeniyle)",
+  "kaynaklar": [
+    {
+      "id": "teklif#ozet",
+      "tip": "termin",
+      "icerik": "musteri: Mehmet Celik; parca: Tasiyici Profil x30; fiyat: 2100.0 USD; termin: 15 is gunu (yogun kapasite)"
+    }
+  ]
+}

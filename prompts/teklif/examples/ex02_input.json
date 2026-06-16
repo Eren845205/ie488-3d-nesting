@@ -1,0 +1,16 @@
+{
+  "musteri_adi": "Sayin Zeynep Kaya",
+  "parcalar": [
+    {"ad": "Motor Braketi", "adet": 50},
+    {"ad": "Vida Takozu", "adet": 200}
+  ],
+  "toplam_fiyat_usd": 4750.0,
+  "termin_ifadesi": "10 is gunu",
+  "kaynaklar": [
+    {
+      "id": "teklif#ozet",
+      "tip": "termin",
+      "icerik": "musteri: Zeynep Kaya; parcalar: Motor Braketi x50, Vida Takozu x200; fiyat: 4750.0 USD; termin: 10 is gunu"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "teklif-v1",
+  "version": "1.0",
+  "model_hint": "haiku-class",
+  "changelog": [
+    {
+      "version": "1.0",
+      "date": "2026-06-16",
+      "note": "Musteri-yanit mail taslagi rolu; topraklama UYARI modu; rapor rolunden ayri"
+    }
+  ]
+}

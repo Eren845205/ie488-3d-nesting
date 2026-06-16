@@ -1,0 +1,15 @@
+{
+  "musteri_adi": "Sayin Ahmet Yilmaz",
+  "parcalar": [
+    {"ad": "Flanş Kapagi", "adet": 12}
+  ],
+  "toplam_fiyat_usd": 980.0,
+  "termin_ifadesi": "5 is gunu",
+  "kaynaklar": [
+    {
+      "id": "teklif#ozet",
+      "tip": "termin",
+      "icerik": "musteri: Ahmet Yilmaz; parca: Flans Kapagi x12; fiyat: 980.0 USD; termin: 5 is gunu"
+    }
+  ]
+}

@@ -397,8 +397,9 @@
 <div class="card" id="teklif-card">
     <div class="card-title">Musteri Yanit Taslagi (LLM)</div>
     <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
+        Bu taslak <strong>MUSTERIYE gidecek mail icindir</strong>; ic muhendislik detayi icermez.
         Nesting ve fiyat sonuclarindan musteri mail taslagi olusturulur.
-        Yerel model (llama3) kullanilir.
+        Yerel model kullanilir. Gondermeden once operatör onaylar.
     </p>
     <div id="teklif-content">
         <button class="btn btn-primary" id="teklif-btn" onclick="teklifOlustur()">
@@ -743,7 +744,7 @@
         }
     });
 
-    // Teklif taslagi (VİTRİN B)
+    // Teklif taslagi (VİTRİN B) — TeklifRole, UYARI modu
     function teklifOlustur() {
         const btn = document.getElementById('teklif-btn');
         const loading = document.getElementById('teklif-loading');
@@ -763,17 +764,30 @@
                 btn.disabled = false;
                 btn.textContent = 'Yeniden Olustur';
 
-                if (data.hata) {
+                if (data.hata && !data.taslak) {
                     hata.style.display = 'block';
-                    hata.textContent = 'Hata: ' + data.hata;
+                    hata.textContent = 'Hata: ' + escapeHtml(data.hata);
                     return;
                 }
-                result.style.display = 'block';
-                result.innerHTML = '<div class="teklif-body">' +
-                    '<strong>' + escapeHtml(data.baslik || 'Musteri Yanit Taslagi') + '</strong>' +
-                    '<br><br>' +
+
+                let html = '<div class="teklif-body">';
+
+                // Topraklama uyarisi rozeti — taslak yine de gosterilir
+                if (data.topraklama_uyarisi) {
+                    html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#92400e;">' +
+                        '<strong>Uyari:</strong> Gondermeden once sayilari kontrol edin — model bazi sayilari baglamdan uretmis olabilir.' +
+                        '</div>';
+                }
+
+                if (data.baslik) {
+                    html += '<div style="font-weight:600;margin-bottom:8px;">Konu: ' + escapeHtml(data.baslik) + '</div>';
+                }
+                html += '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">' +
                     escapeHtml(data.taslak || '') +
-                    '</div>';
+                    '</pre></div>';
+
+                result.style.display = 'block';
+                result.innerHTML = html;
             })
             .catch(err => {
                 loading.style.display = 'none';

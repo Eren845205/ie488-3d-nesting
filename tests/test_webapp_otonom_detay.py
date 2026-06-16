@@ -72,6 +72,15 @@ def _make_report_response() -> str:
     }, ensure_ascii=False)
 
 
+def _make_teklif_response() -> str:
+    return json.dumps({
+        "konu": "Siparis Teklifiniz — Ford Motor Braketi",
+        "mail_govde_md": "Sayin Ford Turkiye, siparisleriniz degerlendirildi.",
+        "kullanilan_kaynaklar": ["teklif#ozet"],
+        "topraklama_uyarisi": False,
+    }, ensure_ascii=False)
+
+
 def _make_full_fake_provider() -> Any:
     from src.llm.provider import FakeProvider
     return FakeProvider(
@@ -79,6 +88,7 @@ def _make_full_fake_provider() -> Any:
             ("parser-v1", "_any_"): [_make_parser_response()] * 6,
             ("explainer-v1", "_any_"): [_make_explainer_response()] * 6,
             ("report-v1", "_any_"): [_make_report_response()] * 4,
+            ("teklif-v1", "_any_"): [_make_teklif_response()] * 4,
             ("assistant-v1", "_any_"): [json.dumps({
                 "cevap_md": "Test",
                 "alintilar": [],
@@ -258,6 +268,33 @@ class TestTeklifDetay:
     def test_toplevel_teklif_onay_gerekli_true(self, otonom_data):
         """Ust duzey teklif_onay_gerekli=True olmali."""
         assert otonom_data.get("teklif_onay_gerekli") is True, "ust teklif_onay_gerekli True degil"
+
+    def test_teklif_durum_taslak_hazir_veya_flagli(self, otonom_data):
+        """Teklif-Taslagi asama durumu 'taslak_hazir' veya 'flagli_taslak' olmali (dead-end yok)."""
+        stage = _stage(otonom_data, "Teklif-Taslagi")
+        durum = stage.get("durum", "")
+        assert durum in ("taslak_hazir", "flagli_taslak"), (
+            f"Beklenen 'taslak_hazir' veya 'flagli_taslak', gelen: {durum!r}"
+        )
+
+    def test_teklif_detay_taslak_dolu(self, otonom_data):
+        """Teklif detay 'taslak' alani dolu olmali (LLM aktif)."""
+        stage = _stage(otonom_data, "Teklif-Taslagi")
+        detay = stage.get("detay", {})
+        taslak = detay.get("taslak", "")
+        assert taslak not in (None, ""), f"Teklif taslak bos: {detay}"
+
+    def test_teklif_detay_has_topraklama_uyarisi(self, otonom_data):
+        """Teklif detay 'topraklama_uyarisi' alani olmali."""
+        stage = _stage(otonom_data, "Teklif-Taslagi")
+        detay = stage.get("detay", {})
+        assert "topraklama_uyarisi" in detay, f"topraklama_uyarisi yok: {list(detay.keys())}"
+
+    def test_teklif_detay_has_konu(self, otonom_data):
+        """Teklif detay 'konu' alani olmali."""
+        stage = _stage(otonom_data, "Teklif-Taslagi")
+        detay = stage.get("detay", {})
+        assert "konu" in detay, f"konu yok: {list(detay.keys())}"
 
 
 # ---------------------------------------------------------------------------
@@ -489,6 +526,7 @@ def _make_partial_fail_provider() -> Any:
             ("parser-v1", "_any_"): [invalid],
             ("explainer-v1", "_any_"): [_make_explainer_response()] * 6,
             ("report-v1", "_any_"): [_make_report_response()] * 4,
+            ("teklif-v1", "_any_"): [_make_teklif_response()] * 4,
             ("assistant-v1", "_any_"): [json.dumps({
                 "cevap_md": "Test",
                 "alintilar": [],

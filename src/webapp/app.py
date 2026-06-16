@@ -149,6 +149,7 @@ def _load_llm_components(
 
         from src.llm.roles.explainer import ExplainerRole
         from src.llm.roles.watcher import WatcherRole
+        from src.llm.roles.teklif import TeklifRole
 
         report_role = ReportRole(
             provider=provider,
@@ -186,12 +187,20 @@ def _load_llm_components(
             role_cfg=cfg.roles.get("watcher"),
         )
 
+        teklif_role = TeklifRole(
+            provider=provider,
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("teklif"),
+        )
+
         return {
             "report_role": report_role,
             "assistant_role": assistant_role,
             "parser_role": parser_role,
             "explainer_role": explainer_role,
             "watcher_role": watcher_role,
+            "teklif_role": teklif_role,
             "llm_active": True,
         }
 
@@ -871,11 +880,12 @@ def _register_routes(
     @app.route("/teklif", methods=["POST"])
     @_limit("10 per minute")
     def teklif():
-        """LLM ile musteri yanit maili taslagi uret.
+        """LLM ile musteri-yanit mail taslagi uret (TeklifRole — UYARI modu).
 
-        Yanit JSON: {taslak, baslik, hata}
+        Yanit JSON: {taslak, baslik, kaynaklar, topraklama_uyarisi, ungrounded, hata}
         LLM aktif degil -> 503.
         Pipeline kosulmamis -> 400.
+        DEAD-END YOK: number_flag=True olsa bile taslak dolu, 200 doner.
         """
         if not llm_active or llm_components is None:
             return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
@@ -884,9 +894,14 @@ def _register_routes(
         if result is None:
             return jsonify({"hata": "Once pipeline calistirin.", "taslak": None}), 400
 
+        teklif_role = llm_components.get("teklif_role") if llm_components else None
+        if teklif_role is None:
+            return jsonify({"hata": "Teklif bileşeni yuklenemedi.", "taslak": None}), 503
+
         try:
-            from src.llm.roles.report import ReportInput
+            from src.llm.roles.teklif import TeklifInput
             from src.llm.structured import ValidationStatus
+            from src.llm.grounding import GroundedContext
 
             context = _build_grounded_context(result)
 
@@ -895,43 +910,75 @@ def _register_routes(
                 pr.get("total_price", 0.0) for pr in pricing_results.values()
             )
 
-            report_input = ReportInput(
-                is_id="demo-teklif",
-                n_orders=len(result.get("ranked_orders", [])),
-                n_batches=len(result.get("batches", [])),
-                n_warnings=len(result.get("warnings", [])),
-                total_revenue_usd=total_revenue,
+            ranked_orders = result.get("ranked_orders", [])
+            musteri_adi = "Degerli Musterimiz"
+            if ranked_orders:
+                # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
+                # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
+                musteri_adlari = set()
+                for _o in ranked_orders:
+                    if isinstance(_o, dict):
+                        _m = _o.get("customer", "")
+                    else:
+                        _m = getattr(_o, "customer", "")
+                    if _m:
+                        musteri_adlari.add(_m)
+                if len(musteri_adlari) == 1:
+                    musteri_adi = musteri_adlari.pop()
+                # >1 farkli musteri: musteri_adi "Degerli Musterimiz" olarak kalir
+
+            batches = result.get("batches", [])
+            parca_ozeti = []
+            for b in batches:
+                if isinstance(b, dict):
+                    bid = b.get("batch_id", "")
+                    orders = b.get("orders", [])
+                    for o in orders:
+                        if isinstance(o, dict):
+                            parts = o.get("parts", [])
+                            for p in parts:
+                                if isinstance(p, dict):
+                                    parca_ozeti.append({
+                                        "ad": p.get("name", p.get("part_id", bid)),
+                                        "adet": p.get("quantity", 1),
+                                    })
+
+            if not parca_ozeti:
+                parca_ozeti = [{"ad": "konteyner parcalari", "adet": len(ranked_orders)}]
+
+            termin_ifadesi = "belirtilmemis"
+            if ranked_orders:
+                first = ranked_orders[0]
+                if isinstance(first, dict):
+                    termin_ifadesi = first.get("deadline", termin_ifadesi)
+
+            teklif_input = TeklifInput(
+                musteri_adi=musteri_adi,
+                parca_ozeti=parca_ozeti,
+                toplam_fiyat_usd=total_revenue,
+                termin_ifadesi=str(termin_ifadesi),
                 context=context,
             )
 
-            report_role = llm_components["report_role"]
-            report_result = report_role.run(report_input)
+            teklif_result = teklif_role.draft(teklif_input)
 
-            if report_result.grounding_blocked:
-                return jsonify({
-                    "taslak": None,
-                    "hata": None,
-                    "topraklama_uyarisi": (
-                        "Sayi-topraklama dogrulanamadi. "
-                        f"Sayilar: {report_result.grounding_detail}."
-                    ),
-                }), 200
-
-            if report_result.status == ValidationStatus.INVALID or report_result.fallback:
-                raw = ""
-                if report_result.fallback:
-                    raw = report_result.fallback.raw_text[:300]
+            # INVALID+fallback -> 200 taslak=None+hata (dead-end yok ama LLM basarisiz)
+            if teklif_result.status == ValidationStatus.INVALID or teklif_result.fallback:
                 return jsonify({
                     "taslak": None,
                     "hata": "LLM gecerli taslak uretemedi. Tekrar deneyin.",
-                    "ham_cikti": raw,
+                    "topraklama_uyarisi": False,
+                    "ungrounded": [],
                 }), 200
 
-            data = report_result.data or {}
+            # VALID/PARTIAL — her zaman taslak dolu (BLOK YOK)
+            data = teklif_result.data or {}
             return jsonify({
-                "taslak": data.get("govde_md", ""),
-                "baslik": data.get("baslik", ""),
+                "taslak": data.get("mail_govde_md", ""),
+                "baslik": data.get("konu", ""),
                 "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                "topraklama_uyarisi": teklif_result.number_flag,
+                "ungrounded": teklif_result.ungrounded_numbers,
                 "hata": None,
             }), 200
 
@@ -1072,7 +1119,6 @@ def _register_routes(
         from src.llm.roles.parser import parsed_to_order
         from src.llm.roles.explainer import ExplainerInput
         from src.llm.structured import ValidationStatus
-        from src.llm.roles.report import ReportInput
 
         asamalar: List[Dict[str, Any]] = []
 
@@ -1477,31 +1523,79 @@ def _register_routes(
         })
 
         # ------------------------------------------------------------------
-        # ASAMA 7: Teklif Taslagi (LLM -- INSAN ONAY KAPISI)
+        # ASAMA 7: Teklif Taslagi (TeklifRole -- UYARI modu, INSAN ONAY KAPISI)
         # ------------------------------------------------------------------
         teklif_taslagi = ""
+        teklif_konu = ""
         teklif_durum = "llm_yok"
+        teklif_number_flag = False
 
-        report_role = llm_components.get("report_role")
-        if report_role is not None:
+        _teklif_role = llm_components.get("teklif_role")
+        if _teklif_role is not None:
             try:
+                from src.llm.roles.teklif import TeklifInput
+
                 context = _build_grounded_context(pipeline_result)
-                report_input = ReportInput(
-                    is_id="otonom-pipeline",
-                    n_orders=len(ranked),
-                    n_batches=n_batches,
-                    n_warnings=len(warnings),
-                    total_revenue_usd=toplam_fiyat,
+
+                musteri_adi = "Degerli Musterimiz"
+                if ranked:
+                    # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
+                    # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
+                    _otonom_musteri_adlari = set()
+                    for _o in ranked:
+                        if isinstance(_o, dict):
+                            _m = _o.get("customer", "")
+                        else:
+                            _m = getattr(_o, "customer", "")
+                        if _m:
+                            _otonom_musteri_adlari.add(_m)
+                    if len(_otonom_musteri_adlari) == 1:
+                        musteri_adi = _otonom_musteri_adlari.pop()
+                    # >1 farkli musteri: musteri_adi "Degerli Musterimiz" olarak kalir
+
+                parca_ozeti_list = []
+                for b in batches:
+                    if isinstance(b, dict):
+                        bid = b.get("batch_id", "")
+                        for o in b.get("orders", []):
+                            if isinstance(o, dict):
+                                for p in o.get("parts", []):
+                                    if isinstance(p, dict):
+                                        parca_ozeti_list.append({
+                                            "ad": p.get("name", p.get("part_id", bid)),
+                                            "adet": p.get("quantity", 1),
+                                        })
+
+                if not parca_ozeti_list:
+                    parca_ozeti_list = [
+                        {"ad": "konteyner parcalari", "adet": len(ranked)}
+                    ]
+
+                termin_ifadesi = "belirtilmemis"
+                if ranked:
+                    first = ranked[0]
+                    if isinstance(first, dict):
+                        termin_ifadesi = str(first.get("deadline", termin_ifadesi))
+
+                teklif_input = TeklifInput(
+                    musteri_adi=musteri_adi,
+                    parca_ozeti=parca_ozeti_list,
+                    toplam_fiyat_usd=toplam_fiyat,
+                    termin_ifadesi=termin_ifadesi,
                     context=context,
                 )
-                report_result = report_role.run(report_input)
+                teklif_result = _teklif_role.draft(teklif_input)
 
-                if not report_result.grounding_blocked and report_result.data:
-                    teklif_taslagi = report_result.data.get("govde_md", "")
-                    teklif_durum = "taslak_hazir"
+                from src.llm.structured import ValidationStatus as _VS
+                if teklif_result.status in (_VS.VALID, _VS.PARTIAL) and teklif_result.data:
+                    teklif_taslagi = teklif_result.data.get("mail_govde_md", "")
+                    teklif_konu = teklif_result.data.get("konu", "")
+                    teklif_number_flag = teklif_result.number_flag
+                    # flagli_taslak: taslak DOLU ama uyari var (dead-end yok)
+                    teklif_durum = "flagli_taslak" if teklif_number_flag else "taslak_hazir"
                 else:
                     teklif_taslagi = ""
-                    teklif_durum = "topraklama_hatasi"
+                    teklif_durum = "hata"
             except Exception as exc:
                 logger.warning("Otonom: Teklif taslagi hatasi: %s", exc)
                 teklif_taslagi = ""
@@ -1512,13 +1606,15 @@ def _register_routes(
             "durum": teklif_durum,
             "cikti": (
                 "Taslak hazir — insan onay gerekli, otomatik gonderilmez"
-                if teklif_durum == "taslak_hazir"
+                if teklif_durum in ("taslak_hazir", "flagli_taslak")
                 else "Teklif taslagi uretilemedi"
             ),
             "detay": {
                 "taslak": teklif_taslagi,
                 "onay_gerekli": True,
                 "otomatik_gonderildi": False,
+                "topraklama_uyarisi": teklif_number_flag,
+                "konu": teklif_konu,
             },
         })
 

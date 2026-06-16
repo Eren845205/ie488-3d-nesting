@@ -35,13 +35,14 @@ if str(_ROOT) not in sys.path:
 def _make_fake_provider(
     report_text: str | None = None,
     assistant_text: str | None = None,
+    teklif_text: str | None = None,
 ) -> Any:
     from src.llm.provider import FakeProvider
 
     if report_text is None:
         report_text = json.dumps({
-            "baslik": "Test Teklif Taslagi",
-            "govde_md": "Sayin Musteri, 5 konteyner, toplam 1500 USD.",
+            "baslik": "Test Rapor Basligi",
+            "govde_md": "Yonetici ozeti: 5 konteyner, toplam 1500 USD.",
             "kullanilan_kaynaklar": [],
             "eksik_bilgi": [],
         }, ensure_ascii=False)
@@ -55,10 +56,19 @@ def _make_fake_provider(
             "ret_nedeni": None,
         }, ensure_ascii=False)
 
+    if teklif_text is None:
+        teklif_text = json.dumps({
+            "konu": "Siparis Teklifiniz",
+            "mail_govde_md": "Sayin Musterimiz, siparisiniz islendi.",
+            "kullanilan_kaynaklar": ["teklif#ozet"],
+            "topraklama_uyarisi": False,
+        }, ensure_ascii=False)
+
     return FakeProvider(
         fixture_map={
-            ("report-v1", "_any_"): [report_text],
-            ("assistant-v1", "_any_"): [assistant_text],
+            ("report-v1", "_any_"): [report_text] * 4,
+            ("assistant-v1", "_any_"): [assistant_text] * 4,
+            ("teklif-v1", "_any_"): [teklif_text] * 4,
         }
     )
 
@@ -344,3 +354,98 @@ class TestCreateAppVitrin:
         from src.webapp.app import create_app
         app = create_app(testing=True, llm_provider_override=_make_fake_provider())
         assert app is not None
+
+
+# ---------------------------------------------------------------------------
+# G) TeklifRole entegrasyon: /teklif VALID -> 200 taslak dolu (dead-end yok)
+# ---------------------------------------------------------------------------
+
+class TestTeklifRoleEntegrasyon:
+    """TeklifRole entegrasyon testleri — report sema DEGIL, teklif sema."""
+
+    def test_teklif_valid_200_taslak_dolu(self, client_llm_after_run):
+        """/teklif VALID -> 200 + taslak dolu (musteri-mail sema)."""
+        resp = client_llm_after_run.post(
+            "/teklif", content_type="application/json"
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data is not None
+        assert data.get("taslak") not in (None, ""), f"Taslak bos: {data}"
+        assert data.get("hata") is None
+
+    def test_teklif_response_has_baslik(self, client_llm_after_run):
+        """/teklif yaniti 'baslik' (konu) icermeli."""
+        resp = client_llm_after_run.post(
+            "/teklif", content_type="application/json"
+        )
+        data = resp.get_json()
+        assert "baslik" in data
+
+    def test_teklif_number_flag_scenaryo_200_taslak_dolu(self):
+        """number_flag=True senaryosu: 200 + taslak DOLU + topraklama_uyarisi=True (dead-end yok)."""
+        flagli_teklif = json.dumps({
+            "konu": "Siparis Teklifiniz",
+            "mail_govde_md": "Sayin Musterimiz, fiyat 99999.0 USD.",
+            "kullanilan_kaynaklar": ["teklif#ozet"],
+            "topraklama_uyarisi": True,
+        }, ensure_ascii=False)
+
+        from src.webapp.app import create_app
+        app = create_app(
+            testing=True,
+            llm_provider_override=_make_fake_provider(teklif_text=flagli_teklif),
+        )
+        client = app.test_client()
+        client.post("/run", follow_redirects=True)
+
+        resp = client.post("/teklif", content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # Dead-end yok: taslak DOLU
+        assert data.get("taslak") not in (None, ""), f"Dead-end hatasi: taslak bos: {data}"
+        # Topraklama uyarisi isaretlenmeli
+        assert data.get("topraklama_uyarisi") is True
+
+    def test_teklif_3x_bozuk_json_200_taslak_none_hata(self):
+        """LLM 3 kez bozuk JSON -> 200 taslak=None + hata mesaji."""
+        from src.llm.provider import FakeProvider
+        from src.webapp.app import create_app
+
+        provider = FakeProvider(
+            fixture_map={
+                ("report-v1", "_any_"): [json.dumps({
+                    "baslik": "R", "govde_md": "G",
+                    "kullanilan_kaynaklar": [], "eksik_bilgi": [],
+                })] * 4,
+                ("assistant-v1", "_any_"): [json.dumps({
+                    "cevap_md": "T", "alintilar": [],
+                    "onerilen_aksiyonlar": [], "ret": False, "ret_nedeni": None,
+                })] * 4,
+                ("teklif-v1", "_any_"): [
+                    "bozuk JSON {{",
+                    "hala gecersiz",
+                    "hala gecersiz 2",
+                ],
+            }
+        )
+        app = create_app(testing=True, llm_provider_override=provider)
+        client = app.test_client()
+        client.post("/run", follow_redirects=True)
+
+        resp = client.post("/teklif", content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data.get("taslak") is None
+        assert data.get("hata") not in (None, "")
+
+    def test_teklif_llm_kapali_503(self, client_no_llm):
+        """LLM kapali -> 503."""
+        client_no_llm.post("/run", follow_redirects=True)
+        resp = client_no_llm.post("/teklif", content_type="application/json")
+        assert resp.status_code == 503
+
+    def test_teklif_pipeline_yok_400(self, client_llm):
+        """Pipeline kosulmadan /teklif -> 400."""
+        resp = client_llm.post("/teklif", content_type="application/json")
+        assert resp.status_code == 400

@@ -35,6 +35,14 @@
       "max_tokens": 1024,
       "schema_retry": 2,
       "payload_logging": "none"
+    },
+    "teklif": {
+      "provider": "local",
+      "model": "qwen2.5:3b",
+      "temperature": 0.1,
+      "max_tokens": 1280,
+      "schema_retry": 2,
+      "payload_logging": "none"
     }
   },
   "audit": {
