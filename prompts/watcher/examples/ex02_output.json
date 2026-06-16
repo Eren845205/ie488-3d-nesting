@@ -1,0 +1,5 @@
+{
+  "anlatim_md": "Parse asamasinda 1 adet parca boyutunun diger parcalara gore beklenmedik sekilde buyuk oldugu tespit edildi. Parcalar arasindaki medyan hacim 52500.0 mm3 iken bu parca bu degerin oldukca ustunde. Parca listesini gozden gecirip olcumlerin dogru girildigini kontrol edin.",
+  "kapsanan_bulgular": ["PARSE_SIGMA_SAPMA"],
+  "topraklama_uyarisi": false
+}

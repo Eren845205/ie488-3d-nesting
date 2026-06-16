@@ -19,5 +19,10 @@
     "version": "2.0",
     "content_hash": "900594346261bfe7a3a5541524804d6ebed7260e69692fa5294399335d5ad9aa",
     "last_eval_ref": ""
+  },
+  "watcher-v1": {
+    "version": "1.0",
+    "content_hash": "112f971da88ee5c180bbd298f317410be64a1c844f7819b9a38c157b6ebe6c73",
+    "last_eval_ref": ""
   }
 }

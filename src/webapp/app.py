@@ -148,6 +148,7 @@ def _load_llm_components(
             )
 
         from src.llm.roles.explainer import ExplainerRole
+        from src.llm.roles.watcher import WatcherRole
 
         report_role = ReportRole(
             provider=provider,
@@ -178,11 +179,19 @@ def _load_llm_components(
             role_cfg=cfg.roles.get("explainer"),
         )
 
+        watcher_role = WatcherRole(
+            provider=provider,
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("watcher"),
+        )
+
         return {
             "report_role": report_role,
             "assistant_role": assistant_role,
             "parser_role": parser_role,
             "explainer_role": explainer_role,
+            "watcher_role": watcher_role,
             "llm_active": True,
         }
 
@@ -1190,6 +1199,134 @@ def _register_routes(
         nesting_results = pipeline_result.get("nesting_results", {})
         pricing_results = pipeline_result.get("pricing_results", {})
 
+        # ------------------------------------------------------------------
+        # WATCHER: deterministik kontroller + opsiyonel LLM anlatimi
+        # run_pipeline'a dokunmaz; READ-ONLY.
+        # ------------------------------------------------------------------
+        from src.watcher.checks import (
+            check_parse, check_nest, check_price, check_priority,
+        )
+
+        watcher_role = (llm_components or {}).get("watcher_role") if llm_active else None
+
+        def _watcher_narrate(findings):
+            """Finding listesini LLM ile Turkce'ye cevirir; LLM yoksa ham bulgu."""
+            if not findings:
+                return []
+            if watcher_role is not None:
+                try:
+                    wr = watcher_role.narrate(findings)
+                    if wr is not None and wr.status.value != "INVALID" and wr.data:
+                        return {
+                            "anlatim_md": wr.data.get("anlatim_md", ""),
+                            "kapsanan_bulgular": wr.data.get("kapsanan_bulgular", []),
+                            "number_flag": wr.number_flag,
+                            "kaynak": "llm",
+                        }
+                except Exception as exc:
+                    logger.warning("Watcher LLM anlatim hatasi: %s", exc)
+            # LLM yok veya basarisiz -> ham bulgu
+            return {
+                "anlatim_md": " ".join(
+                    f"[{f.severity.upper()}] {f.baslik}: {f.ham_detay}"
+                    for f in findings
+                ),
+                "kapsanan_bulgular": [f.kod for f in findings],
+                "number_flag": False,
+                "kaynak": "ham_bulgu",
+            }
+
+        # Parse watcher verisi: parsed_orders'tan parca listesi derle.
+        # missing_field_ratio: parse edilemeyen mail orani (parse_hatalar / n_mail).
+        # Her basarisiz/karantina mail eksik-veri sinyalidir; sabit 0.0 yerine
+        # gercek oran beslenir ki PARSE_EKSIK_ALAN kontrolu canli yolda yasasin.
+        _missing_field_ratio = (len(parse_hatalar) / n_mail) if n_mail > 0 else 0.0
+        _parse_check_data = {
+            "parts": [
+                p
+                for o in parsed_orders
+                for p in o.get("parts", [])
+            ],
+            "missing_field_ratio": _missing_field_ratio,
+        }
+        _parse_findings = check_parse(_parse_check_data)
+
+        # Istenen parca sayisi: order_id -> qty-toplami haritasi.
+        # nesting_results[*]["n_parts"] motorda len(placements) ile doldurulur
+        # (scripts/demo_pipeline.py: n_placed), yani YERLESEN sayidir. Istenen
+        # sayi ise her parcanin adet (qty) toplamidir; voxel pipeline parcalari
+        # qty kadar cogaltir (to_voxel_parts -> expand_quantities), bu yuzden
+        # istenen-yerlesen kiyasi qty-toplami uzerinden dogru olur.
+        _order_requested_parts = {
+            o.get("order_id"): sum(int(p.get("qty", 1) or 1) for p in o.get("parts", []))
+            for o in parsed_orders
+        }
+
+        # Nesting + Fiyat watcher verisi: her parti icin; kumulatif
+        _nest_findings_all = []
+        _price_findings_all = []
+        for _b in batches:
+            _nr = nesting_results.get(_b.batch_id, {})
+            _pr = pricing_results.get(_b.batch_id, {})
+            # Bu partinin icerdigi siparislerden ISTENEN toplam parca sayisi
+            _requested_parts = sum(
+                _order_requested_parts.get(_o.order_id, 0)
+                for _o in getattr(_b, "orders", [])
+            )
+            # YERLESEN sayi: motorun n_parts anahtari (= len(placements)).
+            _placed_parts = int(_nr.get("n_parts", 0))
+            _nest_data = {
+                "density": _nr.get("density", 0.0),
+                "height_mm": _nr.get("height_mm", 0.0),
+                "container_height_mm": parsed_orders[0].get("container_height_mm") if parsed_orders else None,
+                "n_parts": _requested_parts,
+                "n_placed": _placed_parts,
+            }
+            _nest_findings_all.extend(check_nest(_nest_data))
+            _price_data = {
+                "total_price": _pr.get("total_price", 0.0),
+                "breakdown": [
+                    {"rule_id": line.split(":")[0] if ":" in str(line) else str(line),
+                     "subtotal_after": _pr.get("total_price", 0.0)}
+                    for line in _pr.get("breakdown", [])
+                ],
+            }
+            _price_findings_all.extend(check_price(_price_data))
+
+        # Oncelik watcher verisi
+        _priority_classes = [o.get("priority_class", 2) for o in parsed_orders]
+        _priority_check_data = {
+            "warnings": warnings,
+            "priority_classes": _priority_classes,
+        }
+        _priority_findings = check_priority(_priority_check_data)
+
+        # LLM anlatim (varsa)
+        _watcher_parse = _watcher_narrate(_parse_findings)
+        _watcher_nest = _watcher_narrate(_nest_findings_all)
+        _watcher_price = _watcher_narrate(_price_findings_all)
+        _watcher_priority = _watcher_narrate(_priority_findings)
+
+        def _findings_to_serial(findings):
+            return [
+                {
+                    "kod": f.kod,
+                    "severity": f.severity,
+                    "baslik": f.baslik,
+                    "ham_detay": f.ham_detay,
+                }
+                for f in findings
+            ]
+
+        # Parse asamasini geriye donuk guncelle (watcher bilgisi ekle)
+        for _i, _s in enumerate(asamalar):
+            if _s.get("ad") == "Parse":
+                _s["watcher"] = {
+                    "bulgular": _findings_to_serial(_parse_findings),
+                    "anlatim": _watcher_parse,
+                }
+                break
+
         # Onceliklendirme ozeti
         if ranked:
             ilk = ranked[0]
@@ -1216,6 +1353,10 @@ def _register_routes(
                     for i, o in enumerate(ranked)
                 ],
                 "uyari_sayisi": len(warnings),
+            },
+            "watcher": {
+                "bulgular": _findings_to_serial(_priority_findings),
+                "anlatim": _watcher_priority,
             },
         })
 
@@ -1256,6 +1397,10 @@ def _register_routes(
                     for b in batches
                 ],
             },
+            "watcher": {
+                "bulgular": _findings_to_serial(_nest_findings_all),
+                "anlatim": _watcher_nest,
+            },
         })
 
         # Fiyat ozeti
@@ -1273,6 +1418,10 @@ def _register_routes(
                     bid: {"total_price": pr.get("total_price", 0.0)}
                     for bid, pr in pricing_results.items()
                 },
+            },
+            "watcher": {
+                "bulgular": _findings_to_serial(_price_findings_all),
+                "anlatim": _watcher_price,
             },
         })
 

@@ -357,6 +357,35 @@
                     }
                 }
 
+                // Watcher bulgulari — severity rozeti + anlatim balonu
+                var watcherData = asama.watcher || null;
+                if (watcherData && watcherData.bulgular && watcherData.bulgular.length > 0) {
+                    var bulgular = watcherData.bulgular;
+                    // En yuksek severity belirle
+                    var maxSev = 'low';
+                    bulgular.forEach(function(b) {
+                        if (b.severity === 'high') maxSev = 'high';
+                        else if (b.severity === 'med' && maxSev !== 'high') maxSev = 'med';
+                    });
+                    var sevColor = maxSev === 'high' ? '#dc2626' : maxSev === 'med' ? '#d97706' : '#6b7280';
+                    var sevBg    = maxSev === 'high' ? '#fef2f2' : maxSev === 'med' ? '#fffbeb' : '#f3f4f6';
+                    var sevLabel = maxSev === 'high' ? 'YUKSEK' : maxSev === 'med' ? 'ORTA' : 'DUSUK';
+                    html += '<div style="margin-top:5px;display:flex;align-items:center;gap:6px;">';
+                    html += '<span style="font-size:10px;padding:1px 7px;border-radius:9999px;background:' + sevBg + ';color:' + sevColor + ';border:1px solid ' + sevColor + ';font-weight:700;">DENETCI: ' + sevLabel + '</span>';
+                    html += '<span style="font-size:11px;color:#6b7280;">' + bulgular.length + ' bulgu</span>';
+                    html += '</div>';
+                    // LLM anlatim balonu veya ham bulgu
+                    var anlatim = watcherData.anlatim;
+                    if (anlatim && typeof anlatim === 'object' && anlatim.anlatim_md) {
+                        var hamRozet = anlatim.kaynak === 'ham_bulgu'
+                            ? '<span style="font-size:10px;color:#9ca3af;margin-left:4px;">(dil katmani kapali)</span>'
+                            : '';
+                        html += '<div style="margin-top:4px;background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:6px 8px;border-radius:0 4px 4px 0;font-size:11px;color:#374151;line-height:1.5;">';
+                        html += escapeHtml(anlatim.anlatim_md) + hamRozet;
+                        html += '</div>';
+                    }
+                }
+
                 html += '</div></div>';
             });
             html += '</div>';

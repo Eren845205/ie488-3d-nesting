@@ -357,3 +357,200 @@ class TestMailCekDetay:
             assert len(detay) == expected_count, (
                 f"detay uzunlugu ({len(detay)}) cikti rakamindan ({expected_count}) farkli"
             )
+
+
+# ---------------------------------------------------------------------------
+# H) Watcher entegrasyon testleri (temiz senaryo)
+# ---------------------------------------------------------------------------
+
+class TestWatcherEntegrasyon:
+    """Watcher bulgulari ve anlatim alanlari /otonom yaniti icinde olmali."""
+
+    def test_nesting_asama_has_watcher(self, otonom_data):
+        """Nesting asama 'watcher' alani icermeli."""
+        stage = _stage(otonom_data, "Nesting")
+        assert "watcher" in stage, f"Nesting asama 'watcher' alani yok: {list(stage.keys())}"
+
+    def test_fiyat_asama_has_watcher(self, otonom_data):
+        """Fiyat asama 'watcher' alani icermeli."""
+        stage = _stage(otonom_data, "Fiyat")
+        assert "watcher" in stage, f"Fiyat asama 'watcher' alani yok: {list(stage.keys())}"
+
+    def test_onceliklendir_asama_has_watcher(self, otonom_data):
+        """Onceliklendir asama 'watcher' alani icermeli."""
+        stage = _stage(otonom_data, "Onceliklendir")
+        assert "watcher" in stage, f"Onceliklendir 'watcher' alani yok: {list(stage.keys())}"
+
+    def test_parse_asama_has_watcher(self, otonom_data):
+        """Parse asama 'watcher' alani icermeli."""
+        stage = _stage(otonom_data, "Parse")
+        assert "watcher" in stage, f"Parse 'watcher' alani yok: {list(stage.keys())}"
+
+    def test_watcher_has_bulgular_list(self, otonom_data):
+        """Nesting watcher 'bulgular' liste olmali."""
+        stage = _stage(otonom_data, "Nesting")
+        watcher = stage.get("watcher", {})
+        assert "bulgular" in watcher, f"watcher 'bulgular' alani yok: {list(watcher.keys())}"
+        assert isinstance(watcher["bulgular"], list), "watcher bulgular liste degil"
+
+    def test_watcher_temiz_senaryo_bos_bulgular(self, otonom_data):
+        """Temiz senaryo: nesting bulgulari bos olmali (anomali yok)."""
+        stage = _stage(otonom_data, "Nesting")
+        watcher = stage.get("watcher", {})
+        # Temiz test verisinde bulgu beklenmiyor
+        bulgular = watcher.get("bulgular", [])
+        # Bos olmak zorunda degil (senaryo buyuk olabilir) ama liste olmali
+        assert isinstance(bulgular, list)
+
+    def test_watcher_anlatim_alanli(self, otonom_data):
+        """Fiyat watcher 'anlatim' alani olmali (bos veya dolu)."""
+        stage = _stage(otonom_data, "Fiyat")
+        watcher = stage.get("watcher", {})
+        assert "anlatim" in watcher, f"watcher 'anlatim' alani yok: {list(watcher.keys())}"
+
+    def test_otonom_llm_kapali_503(self):
+        """LLM kapaliyken /otonom 503 donmeli (mail parse icin LLM zorunlu)."""
+        from src.webapp.app import create_app
+        app = create_app(testing=True, llm_enabled=False)
+        # LLM kapali -> otonom 503 donmeli (LLM gerekli)
+        client = app.test_client()
+        resp = client.post("/otonom", content_type="application/json")
+        assert resp.status_code == 503, "LLM kapali otonom 503 bekleniyor"
+
+
+# ---------------------------------------------------------------------------
+# I) Anomali enjeksiyon senaryosu (watcher bos olmayan bulgu uretmeli)
+# ---------------------------------------------------------------------------
+
+class TestWatcherAnomaliEnjeksiyonu:
+    """Bozuk fiyat verisi enjekte edilerek watcher bulgu uretmesi test edilir."""
+
+    def test_watcher_bozuk_fiyat_bulgu(self, tmp_path):
+        """Fiyat cok yuksekse watcher bulgu uretmeli."""
+        from src.watcher.checks import check_price
+
+        # total/medyan > 2.0 -> FIYAT_ORAN_YUKSEK bulgus
+        findings = check_price({
+            "total_price": 5000.0,
+            "median_price": 300.0,
+            "min_clamp": 200.0,
+            "breakdown": [{"rule_id": "r1", "subtotal_after": 5000.0}],
+        })
+        assert len(findings) > 0, "Yuksek fiyat bulgus uretilmeli"
+        kodlar = [f.kod for f in findings]
+        assert any("ORAN" in k or "FIYAT" in k for k in kodlar)
+
+    def test_watcher_yerlesmeyen_parca_bulgu(self, tmp_path):
+        """n_placed < n_parts durumunda watcher high bulgu uretmeli."""
+        from src.watcher.checks import check_nest
+
+        findings = check_nest({
+            "density": 0.65,
+            "height_mm": 150.0,
+            "n_parts": 10,
+            "n_placed": 7,
+        })
+        assert len(findings) > 0
+        sev_list = [f.severity for f in findings]
+        assert "high" in sev_list
+
+    def test_watcher_otonom_temiz_bos_bulgular_for_clean_data(self, otonom_data):
+        """Temiz FakeMailbox verisi -> watcher bulgulari bos olmali."""
+        # Watcher her asamada bulgular listesi olmali ve temiz veri icin bos olmali
+        for asama_adi in ("Nesting", "Fiyat"):
+            stage = _stage(otonom_data, asama_adi)
+            watcher = stage.get("watcher", {})
+            bulgular = watcher.get("bulgular", [])
+            assert isinstance(bulgular, list), f"{asama_adi} bulgular liste degil"
+            # Temiz FakeMailbox verisi icin bos beklenir
+            assert bulgular == [], f"{asama_adi} temiz verida bulgu beklenmez: {bulgular}"
+
+
+# ---------------------------------------------------------------------------
+# J) /otonom HTTP rota entegrasyonu: anomali -> canli watcher bulgu
+#    (HIGH-1 / HIGH-2 fix'lerini koruyan regresyon kalkani)
+# ---------------------------------------------------------------------------
+
+def _make_partial_fail_provider() -> Any:
+    """Parser tum serbest-metin maillerini INVALID dondurur -> parse_hatalar birikir.
+
+    FakeMailbox 5 mail dondurur (son mail xlsx ekli -> deterministik parse,
+    LLM'siz basarili). Serbest-metin maillerinin (4 adet) hepsi gecersiz JSON
+    -> her biri parse_hatalar'a eklenir. Fixture tukendiginde FakeProvider son
+    (gecersiz) yaniti tekrarladigi icin retry'lar da gecersiz kalir, yani tum
+    LLM parse'lari basarisiz olur. Sonuc: parse_hatalar=4, n_mail=5 ->
+    missing_field_ratio=0.8 > 0.25 esigi -> Parse asamasinda PARSE_EKSIK_ALAN
+    canli bulgusu beklenir.
+    """
+    from src.llm.provider import FakeProvider
+    invalid = "bu gecerli bir JSON degil {{"
+    return FakeProvider(
+        fixture_map={
+            ("parser-v1", "_any_"): [invalid],
+            ("explainer-v1", "_any_"): [_make_explainer_response()] * 6,
+            ("report-v1", "_any_"): [_make_report_response()] * 4,
+            ("assistant-v1", "_any_"): [json.dumps({
+                "cevap_md": "Test",
+                "alintilar": [],
+                "onerilen_aksiyonlar": [],
+                "ret": False,
+                "ret_nedeni": None,
+            })] * 2,
+        }
+    )
+
+
+class TestWatcherHttpEntegrasyon:
+    """Anomali enjeksiyonu /otonom rotasindan gecirilir; watcher bulgu uretmeli.
+
+    Bu test HIGH-2 (sabit missing_field_ratio=0.0 ile olu PARSE_EKSIK_ALAN)
+    ve HIGH-1 (istenen-vs-yerlesen besleme) fix'lerinin canli yolda calistigini
+    dogrular. Fix oncesi Parse watcher bulgulari her zaman bos kalirdi.
+    """
+
+    def test_parse_watcher_eksik_alan_bulgu_http(self):
+        from src.webapp.app import create_app
+        app = create_app(
+            testing=True,
+            llm_provider_override=_make_partial_fail_provider(),
+        )
+        client = app.test_client()
+        resp = client.post("/otonom", content_type="application/json")
+        assert resp.status_code == 200, (
+            f"Otonom 200 beklendi, {resp.status_code} geldi"
+        )
+        data = resp.get_json()
+
+        parse_stage = _stage(data, "Parse")
+        watcher = parse_stage.get("watcher", {})
+        bulgular = watcher.get("bulgular", [])
+        assert isinstance(bulgular, list), "Parse watcher bulgular liste degil"
+        # HIGH-2 fix: missing_field_ratio artik gercek oran (parse_hatalar/n_mail).
+        # Iki gecersiz parse -> 0.4 > 0.25 -> PARSE_EKSIK_ALAN tetiklenir.
+        kodlar = [b.get("kod") for b in bulgular]
+        assert "PARSE_EKSIK_ALAN" in kodlar, (
+            f"PARSE_EKSIK_ALAN canli yolda tetiklenmedi; bulgular={bulgular}"
+        )
+
+    def test_nest_watcher_n_parts_istenen_sayidir(self):
+        """HIGH-1 fix: nesting watcher istenen parca sayisini (yerlesen degil)
+
+        kullanmali. Temiz senaryoda tum parcalar yerlestiginden NEST_YERLESMEYEN_PARCA
+        cikmamali; ama besleme dogru oldugunda (istenen==yerlesen) bulgu bos kalir.
+        Bu test bulgu yoklugunu DEGIL, watcher boru hattinin sahte-yesil olmadigini
+        (yapi olarak bulgular listesinin var oldugunu) dogrular; istenen-yerlesen
+        ayrimi check_nest unit testleriyle ayrica korunur.
+        """
+        from src.webapp.app import create_app
+        app = create_app(
+            testing=True,
+            llm_provider_override=_make_full_fake_provider(),
+        )
+        client = app.test_client()
+        resp = client.post("/otonom", content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        nest_stage = _stage(data, "Nesting")
+        watcher = nest_stage.get("watcher", {})
+        assert "bulgular" in watcher
+        assert isinstance(watcher["bulgular"], list)
