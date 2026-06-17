@@ -54,6 +54,45 @@ class OpenAICompatProvider:
         self._http_client = http_client  # test injection; None ise lazy-init kullanilir
         self._lazy_http_client: Optional[Any] = None  # cached httpx.Client
 
+    def health_check(self, timeout_s: float = 5.0) -> "tuple[bool, str]":
+        """Canli probe: servis ayakta mi + model yuklu mu (demo oncesi kontrol).
+
+        `/v1/models` GET ile sorgular (Ollama + vLLM + LM Studio destekler).
+        Demo'nun "LLM hazir mi" kapisi: Ollama kapaliysa veya model cekilmemisse
+        demo sirasinda degil ONCEDEN yakalanir.
+
+        Returns:
+            (ok, detail) -- ok False ise detail cozum onerisi tasir.
+            Hicbir exception sizdirmaz (probe asla cagriyani patlatmaz).
+        """
+        url = self._base_url + "/v1/models"
+        try:
+            client = self._get_http_client()
+            resp = client.get(url, timeout=timeout_s)
+            status = getattr(resp, "status_code", 0)
+            if status != 200:
+                return (
+                    False,
+                    f"Servis {self._base_url} yanit verdi ama HTTP {status}. "
+                    f"Ollama saglikli mi?",
+                )
+            data = resp.json()
+            models = [m.get("id", "") for m in data.get("data", [])]
+            if self._model in models:
+                return (True, f"Hazir: '{self._model}' yuklu ({self._base_url}).")
+            return (
+                False,
+                f"Servis ayakta ama model '{self._model}' YUKLU DEGIL. "
+                f"Yuklu modeller: {models[:8]}. "
+                f"Cozum: `ollama pull {self._model}`",
+            )
+        except Exception as exc:  # noqa: BLE001 — probe asla patlamaz
+            return (
+                False,
+                f"Servise ERISILEMIYOR ({self._base_url}): {exc}. "
+                f"Ollama calisiyor mu? `ollama serve` ile baslatin.",
+            )
+
     def complete(self, req: LLMRequest) -> LLMResponse:
         """OpenAI-uyumlu API'ye istek gonder."""
         payload = self._build_payload(req)

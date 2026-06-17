@@ -216,6 +216,8 @@ def _load_llm_components(
             "watcher_role": watcher_role,
             "teklif_role": teklif_role,
             "llm_active": True,
+            # /health probe icin provider referansi (canli Ollama saglik kontrolu)
+            "health_provider": provider,
         }
 
     except Exception as exc:
@@ -392,6 +394,8 @@ def create_app(
         enabled=_effective_enabled,
     )
     llm_active = _llm is not None
+    # Baslangic saglik raporu (_startup_health_report) icin erisim
+    app.config["LLM_COMPONENTS"] = _llm
 
     # Rate limiter (Bulgu 2) — flask-limiter yuklu degilse no-op
     if _LIMITER_AVAILABLE and Limiter is not None:
@@ -424,6 +428,39 @@ def _register_routes(
         def _passthrough(f):
             return f
         return _passthrough
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        """Demo oncesi saglik kontrolu: web ayakta + LLM (Ollama) hazir mi.
+
+        Demo'dan ONCE `GET /health` ile LLM'in canli oldugu dogrulanir; Ollama
+        kapaliysa veya model cekilmemisse demo sirasinda degil burada yakalanir.
+        HTTP 200 = her sey hazir; 503 = LLM aktif ama probe basarisiz.
+        """
+        out: Dict[str, Any] = {"web": "ok", "llm_active": llm_active}
+
+        if not llm_active:
+            # LLM kapali (config yok / devre disi). Web calisiyor; LLM gerektiren
+            # ozellikler (asistan, teklif, aciklama) calismaz.
+            out["llm"] = "disabled"
+            out["detail"] = (
+                "LLM devre disi (configs/llm.local.json yok veya yuklenemedi). "
+                "Nesting calisir; asistan/teklif/aciklama calismaz."
+            )
+            return jsonify(out), 200
+
+        provider = (llm_components or {}).get("health_provider")
+        checker = getattr(provider, "health_check", None)
+        if not callable(checker):
+            # Provider probe desteklemiyor (or. sahte saglayici) — aktif say.
+            out["llm"] = "ok"
+            out["detail"] = "LLM aktif (probe desteklenmeyen saglayici)."
+            return jsonify(out), 200
+
+        ok, detail = checker()
+        out["llm"] = "ok" if ok else "fail"
+        out["detail"] = detail
+        return jsonify(out), (200 if ok else 503)
 
     @app.route("/", methods=["GET"])
     def index():
@@ -1885,10 +1922,43 @@ def _build_summaries(orders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return summaries
 
 
+def _startup_health_report(app: Flask) -> None:
+    """Sunucu acilirken konsola net 'demo hazir mi' raporu bas (canli probe).
+
+    Demo'dan ONCE Ollama kapaliysa/model cekilmemisse burada gorunur — demo
+    sirasinda surpriz olmaz. Probe asla baslatmayi engellemez (sadece uyarir).
+    """
+    llm = app.config.get("LLM_COMPONENTS")
+    print("-" * 60)
+    if not llm:
+        print("  LLM: DEVRE DISI (configs/llm.local.json yok/yuklenemedi).")
+        print("  -> Nesting calisir; asistan/teklif/aciklama calismaz.")
+        print("-" * 60)
+        return
+    provider = llm.get("health_provider")
+    checker = getattr(provider, "health_check", None)
+    if not callable(checker):
+        print("  LLM: aktif (saglayici probe desteklemiyor).")
+        print("-" * 60)
+        return
+    try:
+        ok, detail = checker()
+    except Exception as exc:  # noqa: BLE001
+        ok, detail = False, str(exc)
+    if ok:
+        print(f"  LLM HAZIR ✓  {detail}")
+    else:
+        print(f"  ⚠ LLM PROBE BASARISIZ: {detail}")
+        print("  -> Demo asistan/teklif ozellikleri calismayabilir.")
+        print("  -> Durumu sonra kontrol: http://127.0.0.1:8765/health")
+    print("-" * 60)
+
+
 def _main() -> None:
     """Sunucuyu dogrudan baslatir (python -m src.webapp.app)."""
     logging.basicConfig(level=logging.INFO)
     app = create_app(testing=False, llm_enabled=True)
+    _startup_health_report(app)
     app.run(host="127.0.0.1", port=8765, debug=False)
 
 

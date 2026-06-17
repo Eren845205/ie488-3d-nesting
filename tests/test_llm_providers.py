@@ -71,6 +71,59 @@ class MockHttpClient:
         return resp
 
 
+class MockGetClient:
+    """health_check icin GET destekli mock (status + body veya exception)."""
+
+    def __init__(self, resp: MockResponse = None, raise_exc: Exception = None):
+        self._resp = resp
+        self._raise = raise_exc
+
+    def get(self, url: str, **kwargs: Any) -> MockResponse:
+        if self._raise is not None:
+            raise self._raise
+        return self._resp
+
+
+def _openai_models_body(*models: str) -> Dict[str, Any]:
+    return {"object": "list", "data": [{"id": m} for m in models]}
+
+
+class TestOpenAICompatHealthCheck:
+    """Canli probe: servis ayakta mi + model yuklu mu."""
+
+    def _provider(self, client, model="qwen2.5:14b"):
+        from src.llm.providers.openai_compat import OpenAICompatProvider
+        return OpenAICompatProvider(
+            base_url="http://localhost:11434", model=model, http_client=client
+        )
+
+    def test_ok_when_model_present(self):
+        client = MockGetClient(MockResponse(200, _openai_models_body("qwen2.5:14b", "llama3")))
+        ok, detail = self._provider(client).health_check()
+        assert ok is True
+        assert "Hazir" in detail
+
+    def test_fail_when_model_absent(self):
+        client = MockGetClient(MockResponse(200, _openai_models_body("llama3")))
+        ok, detail = self._provider(client).health_check()
+        assert ok is False
+        assert "YUKLU DEGIL" in detail
+        assert "ollama pull" in detail
+
+    def test_fail_on_non_200(self):
+        client = MockGetClient(MockResponse(500, {}))
+        ok, detail = self._provider(client).health_check()
+        assert ok is False
+        assert "500" in detail
+
+    def test_fail_on_connection_error_does_not_raise(self):
+        client = MockGetClient(raise_exc=ConnectionError("baglanti reddedildi"))
+        ok, detail = self._provider(client).health_check()
+        assert ok is False
+        assert "ERISILEMIYOR" in detail
+        assert "ollama serve" in detail
+
+
 def _anthropic_ok_body(text: str = "merhaba") -> Dict[str, Any]:
     return {
         "id": "msg_test",
