@@ -16,9 +16,10 @@ bir bakışta görülsün; (2) yeni algoritma/makale **sistemi bozmadan** eklens
 
 | Dosya | Ne var |
 |---|---|
+| [00_DEGISIKLIK_GUNLUGU.md](00_DEGISIKLIK_GUNLUGU.md) | **Karar kaydı:** ne eklendi/çıkarıldı/denendi-reddedildi, neden, benchmark etkisi (zaman çizelgesi). "Denedik, beğenmedik, çıkardık" buraya yazılır |
 | [01_ALGORITMALAR.md](01_ALGORITMALAR.md) | Her algoritma ayrı ayrı: ne yapar, nerede (dosya), parametreler, güçlü/zayıf yön, durum |
 | [02_PERFORMANS.md](02_PERFORMANS.md) | Veri seti başına benchmark sonuçları + EVRİM (nereden nereye getirildi) |
-| [03_GENISLETME.md](03_GENISLETME.md) | Yeni algoritma / makale EKLEME sözleşmesi — sistemi bozmadan nasıl |
+| [03_GENISLETME.md](03_GENISLETME.md) | Algoritma/makale EKLEME + ÇIKARMA/geri-alma sözleşmesi — sistemi bozmadan nasıl |
 | [makaleler/00_OKUMA_LISTESI.md](makaleler/00_OKUMA_LISTESI.md) | Mevcut makaleler + araştırılacak makaleler + makale→kod hattı |
 
 ## 🥇 ALTIN KURAL — algoritma değişikliği yapmadan önce
@@ -28,8 +29,10 @@ bir bakışta görülsün; (2) yeni algoritma/makale **sistemi bozmadan** eklens
    yeni şey **eklenir** veya bir parametre/varyant olarak açılır.
 3. **Benchmark kapısından geçir:** `python scripts/benchmark.py` — değişiklik
    benchmark ortalamasını bozuyorsa MERGE EDİLMEZ (tek-konfig kuralı, §5).
-4. **Sonucu buraya işle:** 01 + 02 güncellenir; büyük değişiklik
-   `APP_YOL_HARITASI.md`'ye de not düşülür.
+4. **Sonucu buraya işle:** `00_DEGISIKLIK_GUNLUGU.md`'ye bir satır (ne/neden/
+   etki/durum) + 01 + 02 güncellenir; büyük değişiklik `APP_YOL_HARITASI.md`'ye
+   de not düşülür. **Reddettiysen/geri aldıysan da yaz** (00'ın 🧪 bölümü) —
+   "bunu zaten denedik" bilgisi tekrar çıkmaza girmeyi önler.
 
 ## İlgili kök dokümanlar
 

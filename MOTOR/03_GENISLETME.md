@@ -57,6 +57,32 @@ KORU; `models.py` `NUMUNE_*` ve numune 181.5 yoluna dokunma.
 3. **Benchmark kapısı:** ortalama bozulmamalı.
 4. Sonucu 01 + 02'ye işle.
 
+## B'. Bir algoritmayı ÇIKARMA / GERİ-ALMA — adımlar
+
+> Örnek: hoca "şu çözücüyü beğenmedim, kaldır" dedi; ya da bir deneme benchmark
+> kapısından geçemedi. "Sistemi bozmadan ekleme" kadar "bozmadan çıkarma" da
+> sözleşmeli olmalı.
+
+1. **Önce ÇIKAR, silme:** çözücüyü `benchmark_config.SOLVER_NAMES` / portföy
+   listesinden ve `selection/selector.py` `_solver_by_name`'den ÇIKAR (artık
+   seçilmez/koşulmaz). Dosyayı (`solvers/<x>_solver.py`) HEMEN silme — önce
+   devre dışı bırak, bir süre dursun (geri istenebilir).
+2. **Bağ kontrolü:** çıkarılan çözücü başka yerin tohumu/bağımlısı mı? DBLF
+   ASLA çıkarılamaz (herkesin decode tabanı + monoton garanti). SA `_neighbour`
+   GA/Tabu/ALNS tarafından yeniden kullanılıyor — SA mantığını silmek onları kırar.
+3. **Benchmark kapısı:** çıkarınca portföy ortalaması bozuluyor mu? O çözücü bazı
+   instance'larda TEK kazanan mıydı (02 tablo)? Bozuyorsa hoca'ya bunu göster,
+   kararı birlikte ver.
+4. **Telemetri/model etkisi:** çıkarılan çözücü `selection_model.json`'da kazanan
+   olarak varsa, model onu hâlâ önerebilir → `_solver_by_name` fallback DBLF'ye
+   düşer (zararsız) ama temizlik için telemetriden retrain önerilir (manuel).
+5. **Kaydet:** `00_DEGISIKLIK_GUNLUGU.md`'ye ➖ ÇIKARILDI satırı + neden. Tamamen
+   reddedildiyse 🧪 bölümüne taşı (tekrar denenmesin). 01'den durumunu güncelle.
+
+**Geri-alma (⏪):** son commit'i `git revert` ile geri al VEYA devre dışı
+bıraktığın satırları geri aç. Günlüğe ⏪ satırı düş. Çözücü dosyası hâlâ
+duruyorsa geri-alma tek satır (registry'ye tekrar ekle).
+
 ## C. Bir MAKALE'yi entegre etme — "makale → KOD" hattı (§5.1 mekanizma 1)
 
 > "Eğitme" = dosyayı modele yüklemek DEĞİL. Makale → okunur → çözücü/operatör
