@@ -1,7 +1,16 @@
-"""selection/retrain.py -- Otomatik retrain orkestratoru (Faz O1.3 + O1.5).
+"""selection/retrain.py -- Retrain orkestratoru (saf fonksiyon).
 
-Saf fonksiyon -- Flask/cron/kuyruk bilmez. PLAN_SERVIS scheduler'i
-run_retrain'i periyodik veya batch-tetikli olarak cagirabilir.
+POLITIKA (2026-06-17): Bu fonksiyonlar ASLA otomatik/periyodik tetiklenmez.
+Eski tasarim (PLAN_OGRENME Faz O1) "scheduler periyodik cagirir" niyetindeydi;
+bu niyet IPTAL edildi. Gerekce: model kendini sessizce yanlis egitip (overfit)
+bozarsa risk uygulamada kalir -- kabul edilemez. Gercek egitim YALNIZ kullanicinin
+acik komutuyla olur (`python -m scripts.retrain_selection`). Otomatik bir
+scheduler/cron/queue'ya BAGLANMAZ. Kullaniciya retrain GEREKIP gerekmedigi
+`selection/advisor.py` (read-only oneri) ile sunulur; karar kullanicinindir.
+
+- run_retrain    : gercek egitim + atomik artefakt swap (SADECE manuel komut).
+- should_retrain : "yeterli yeni veri birikti mi" SINYALI -- otomatik tetik DEGIL,
+                   yalniz advisor/CLI'in kullaniciya oneri gostermesi icin.
 
 DEGiSMEZ-A: motor modullerini (bin3d/sa3d/dblf/voxelize) import etmez.
 DEGiSMEZ-D: promote yoksa artifact BYTE-AYNI kalir.

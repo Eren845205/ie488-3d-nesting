@@ -86,6 +86,7 @@ def _solver_by_name(name: str) -> object:
     from src.nesting3d.solvers.sa_solver import SASolver
     from src.nesting3d.solvers.ga_solver import GASolver
     from src.nesting3d.solvers.tabu_solver import TabuSolver
+    from src.nesting3d.solvers.alns_solver import ALNSSolver
 
     mapping = {
         "dblf": DBLFSolver,
@@ -93,6 +94,7 @@ def _solver_by_name(name: str) -> object:
         "sa": SASolver,
         "ga": GASolver,
         "tabu": TabuSolver,
+        "alns": ALNSSolver,
     }
     cls = mapping.get(name.lower())
     if cls is None:

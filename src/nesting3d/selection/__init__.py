@@ -20,6 +20,10 @@ from src.nesting3d.selection.persistence import (
     save_selection_model,
     load_selection_model,
 )
+from src.nesting3d.selection.advisor import (
+    RetrainSuggestion,
+    build_retrain_suggestion,
+)
 
 __all__ = [
     "TrainingRow",
@@ -31,4 +35,6 @@ __all__ = [
     "select_and_solve",
     "save_selection_model",
     "load_selection_model",
+    "RetrainSuggestion",
+    "build_retrain_suggestion",
 ]

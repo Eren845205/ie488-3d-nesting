@@ -95,6 +95,19 @@ Bu sözleşme sayesinde yeni algoritma eklemek motoru bozmaz (bkz 03_GENISLETME)
 - **DEĞER:** few_large'da multistart5 → 211.6 (tek-start 269.3'ten %21 iyi).
 - **Durum:** ✅ registry'de `"multistart"`.
 
+## 5b. ALNS — Adaptive Large Neighborhood Search ✅
+
+- **Dosya:** `src/nesting3d/solvers/alns_solver.py` (`ALNSSolver`)
+- **Ne yapar:** DBLF decoder üstünde büyük-komşuluk araması: her turda çözümün
+  bir kısmını **yık (destroy)** + **onar (repair)**; operatörler adaptif ağırlıkla
+  seçilir (başarılı operatör daha çok kullanılır). Kabul kriteri SA-benzeri
+  (t0→t_min). DBLF tohum + best-so-far (baseline altına düşmez).
+- **Parametreler:** `budget`, `seed`, `t0`, `t_min`, `order_key`.
+- **Durum:** ✅ benchmark registry'de (`benchmark.py` `_SOLVER_REGISTRY["alns"]`) +
+  `tests/test_solvers_alns.py`. Seçim modeli haritasına bağlı
+  (`selection/selector.py` `_solver_by_name`, 2026-06-17). Şu an telemetride
+  henüz kazanan değil — zorlu instance ailelerinde (Task B) kazanması beklenir.
+
 ## 6. Portföy — hepsini koş, en iyiyi seç ✅
 
 - **Dosya:** `src/nesting3d/solvers/portfolio.py`
@@ -129,13 +142,47 @@ Bu sözleşme sayesinde yeni algoritma eklemek motoru bozmaz (bkz 03_GENISLETME)
 - **Voxel bütçesi skip** (`benchmark.py`, `MAX_VOXELS_PER_AXIS=170`) ✅ — aşırı
   ince parça benchmark'ı patlatmasın; aşan instance ATLA+LOGLA.
 
-## 9. ❌ Henüz YOK (plan)
+## 9. Algoritma-seçim modeli ✅ (KURULU + üretimde — eski "YOK" notu bayattı)
 
-- **MLP / sinir ağı:** YOK ve **planda doğrudan yerleştirme için YOK** (kasıtlı).
-  "Öğrenme" = düz istatistik + okunabilir kural (karar ağacı), kara-kutu değil.
-- **Algoritma-seçim modeli** (§6.3.1): özellik vektörü → kazanan algoritma tahmini
-  (karar ağacı/random forest). Veri temeli (telemetri) birikiyor; model YOK.
+> **DÜZELTME 2026-06-17:** Bu bölüm önceden "model YOK" diyordu; **yanlıştı.**
+> Model kurulu, eğitilmiş, üretim hattına bağlı ve test edilmiş.
+
+- **Dosya:** `src/nesting3d/selection/` (dataset, prefilter, model, selector,
+  gate, gengap, retrain, persistence, **splits**) — artefakt
+  `data/selection_model.json` (**69 instance** telemetriden eğitilebilir;
+  yürürlükteki artefakt periyodik retrain ile güncellenir).
+- **Ne yapar:** özellik vektörü → kazanan çözücü tahmini. **1-NN prototip**
+  (yorumlanabilir; kara-kutu/sklearn yok). Kolay-instance ön-filtresi
+  (Renau & Hart 2024) kolay örneklerde sadece DBLF koşar. Düşük güvende tam
+  portföye düşer. **Monoton garanti:** sonuç asla DBLF'den kötü olamaz.
+- **Üretim:** `demo_pipeline.py` her parti için artefaktı yükleyip kullanır.
+- **Öğrenme döngüsü + overfit koruması (sertleştirildi 2026-06-17):**
+  - **Stratified-by-family split** (`splits.py`): hold-out her aileden orantılı
+    pay alır → instance ismiyle (z_*/a_*) manipüle edilemez, aile-dengeli.
+  - **LOO-CV tabanlı overfit kapısı** (`gengap.py`): 1-NN'in yapısal
+    `train_acc≈1.0` ezber tuzağı `cv_gap` (leave-one-out vs hold-out) ile
+    değiştirildi → kapı artık yanlış-pozitif "overfit" demiyor; gerçek
+    genelleme açığını yakalar.
+  - **Leave-one-family-out (LOFO):** yeni AİLE eklendiğinde gerçek genelleme
+    kanıtı (`splits.leave_one_family_out`).
+  - **Hold-out monoton kapı** (`gate.py`): aday sadece hold-out'ta `MIN_GAIN_MM`
+    kadar geçerse promote; overfit_flag varsa promote BLOKLU; karar append-only
+    `gate_log.jsonl`'e loglanır; promote yoksa artefakt BYTE-AYNI.
+- **🔴 Öğrenme POLİTİKASI (2026-06-17): MANUEL + ÖNERİ — otomatik retrain YOK.**
+  Model kendini sessizce yanlış eğitip (overfit) bozmasın diye retrain ASLA
+  otomatik/periyodik çalışmaz. Gerçek eğitim yalnız kullanıcı komutuyla
+  (`python -m scripts.retrain_selection`). Sistem read-only ÖNERİ sunar
+  (`--suggest` → `selection/advisor.py`): "şu kadar veri var, overfit riski şu,
+  şu çözücüler eksik, şu yönde geliştir; karar senin." Tüm güvenlik kapısı
+  (stratified split + LOO-CV + monoton garanti) kuruludur ama yalnız manuel
+  retrain anında devreye girer. Detay: `PLAN_OGRENME.md` politika banner'ı.
+- **Açık geliştirme cepheleri:** karar ağacı seçici (1-NN yanına, KURULDU —
+  `DecisionTreeSelector`), tabu/multistart/alns'i kazanan kümeye sokacak zorlu
+  telemetri (`scripts/generate_hard_instances.py`).
+
+## 9b. Hâlâ YOK (plan)
+
+- **MLP / sinir ağı:** YOK ve **kasıtlı yok** (yorumlanabilirlik ilkesi).
 - **Instance-Tuner LLM önericisi:** menü pluggable, LLM katmanı YOK.
 - **MILP / kesin çözüm** (küçük instance): YOK (A1/A12'ye bağlı).
-- **Genel-yol drop_map hızı** (numune): YOK (temiz numpy/scipy çözümü yok; numba
-  gerekir — dep yükü).
+- **Genel-yol drop_map hızı** (numune): YOK (numba gerekir — dep yükü).

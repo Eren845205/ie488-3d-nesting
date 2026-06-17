@@ -1,5 +1,31 @@
 # PLAN_OGRENME.md — Kendini-Optimize Eden Öğrenme Döngüsü: Overfit-Güvenli + Root-Cause Akıllı
 
+> ## 🔴 POLİTİKA DEĞİŞİKLİĞİ (2026-06-17): OTOMATİK retrain İPTAL — MANUEL + ÖNERİ
+>
+> **Kullanıcı kararı:** Öğrenme döngüsü **otomatik/periyodik ÇALIŞMAZ.** Bu
+> belgedeki "otomatik, periyodik döngü", "scheduler periyodik tetikler" (Ö1.5),
+> "should_retrain → otomatik tetik" niyetleri **artık geçerli değildir.**
+>
+> **Gerekçe:** Uygulama kendini sessizce yanlış eğitip (overfit) bozarsa
+> sorumluluk üreticide (bizde) kalır — kabul edilemez. Hoca/müşteri bu davranışı
+> istemeyebilir. Bu riski taşımıyoruz/taşımamalıyız.
+>
+> **Yürürlükteki model:**
+> - Gerçek eğitim (`run_retrain` / artefakt yazma) YALNIZ kullanıcının açık
+>   komutuyla: `python -m scripts.retrain_selection`.
+> - Hiçbir scheduler/cron/queue retrain'e BAĞLANMAZ. `should_retrain` bir
+>   "yeterli yeni veri birikti mi" SİNYALİDİR — otomatik tetik değil.
+> - Sistem kullanıcıya **ÖNERİ** sunar (read-only, eğitmez):
+>   `python -m scripts.retrain_selection --suggest` → `src/nesting3d/selection/advisor.py`.
+>   "Şu kadar veri toplandı, overfit riski şu, şu çözücüler eksik, şu yönde
+>   geliştir; karar senin."
+> - Tüm güvenlik altyapısı (stratified split, LOO-CV kapısı, monoton garanti,
+>   overfit bloğu) **kuruludur ve durur** — ama kapı yalnız MANUEL retrain
+>   anında devreye girer.
+>
+> Aşağıdaki orijinal "otomatik" plan metni REFERANS olarak korunmuştur; tetik
+> mekanizması kısımları (Ö1.3 CLI hariç) **uygulanmaz.**
+
 > Tarih: 2026-06-15. Kaynaklar: `APP_YOL_HARITASI.md` (§6 intro monoton-kabul
 > ilkesi, **§6.3** kullanıldıkça-akıllanan üç-seviye, **§6.3.1** algoritma-seçim
 > modeli + "neden"in mekanistik seviyesi + sentetik karşı-deney, §6.6 Ajan-3

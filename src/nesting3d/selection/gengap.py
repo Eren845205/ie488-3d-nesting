@@ -23,6 +23,7 @@ from typing import List, Union
 
 from src.nesting3d.selection.dataset import TrainingRow, build_training_table
 from src.nesting3d.selection.model import AlgorithmSelector
+from src.nesting3d.selection.splits import stratified_holdout_split
 from src.nesting3d.telemetry import load_telemetry
 
 
@@ -35,6 +36,23 @@ OVERFIT_GAP_THRESHOLD: float = 0.2
 
 MIN_INSTANCES: int = 6
 """Minimum rows for meaningful statistics.  Below this: early return."""
+
+# ---------------------------------------------------------------------------
+# 1-NN ozel not (overfit dongusu sertlestirme, 2026-06-17)
+# ---------------------------------------------------------------------------
+# AlgorithmSelector 1-NN tabanli: egitim noktalarini saklar, her noktanin kendine
+# en yakini KENDISIDIR (mesafe 0). Bu yuzden in-sample `train_acc` 1-NN icin
+# YAPISAL olarak ~1.0'dir -- "ezber" degil, algoritmanin dogasi. Eski kapida
+# overfit_flag = (train_acc - holdout_acc) > esik idi; bu, train_acc=1.0 sabiti
+# yuzunden 1-NN'de SUREKLI yanlis-pozitif uretiyordu (gercek cesitli veride
+# holdout_acc nadiren >= 0.8 olur -> model ASLA promote edilemezdi).
+#
+# Cozum: overfit_flag artik LEAVE-ONE-OUT cross-validation dogrulugu (`cv_acc`)
+# ile hold-out dogrulugu (`holdout_acc`) arasindaki acik (`cv_gap`) uzerinden
+# hesaplanir. LOO in-sample ezberi ICERMEZ (her nokta kendi disindaki komsuya
+# bakar) -> 1-NN icin DOGRU genelleme tahmini. `train_acc`/`gap`/`prequential`
+# alanlari raporda BILGI olarak kalir (geriye-uyum), ama flag'i artik cv_gap
+# (ve veri-sizintisi sentineli olarak prequential) belirler.
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +85,20 @@ class GenGapReport:
     """Number of instances in the holdout split."""
 
     overfit_flag: bool
-    """True if gap > OVERFIT_GAP_THRESHOLD or prequential_gap > OVERFIT_GAP_THRESHOLD."""
+    """True if cv_gap > OVERFIT_GAP_THRESHOLD or prequential_gap > OVERFIT_GAP_THRESHOLD.
+
+    NOT: artik train_acc-tabanli `gap` DEGIL, LOO-CV tabanli `cv_gap` birincil
+    sinyaldir (1-NN yapisal train_acc=1.0 yanlis-pozitifini onler)."""
 
     reason: str
     """Human-readable explanation of the verdict."""
+
+    cv_acc: float = 0.0
+    """Leave-one-out cross-validation accuracy (split-bagimsiz genelleme tahmini).
+    1-NN icin in-sample ezberi ICERMEZ -> dogru overfit metrigi."""
+
+    cv_gap: float = 0.0
+    """cv_acc - holdout_acc.  overfit_flag'in birincil belirleyicisi."""
 
     def to_dict(self) -> dict:
         """Return a JSON-serializable dictionary."""
@@ -84,6 +112,8 @@ class GenGapReport:
             "n_holdout": self.n_holdout,
             "overfit_flag": self.overfit_flag,
             "reason": self.reason,
+            "cv_acc": self.cv_acc,
+            "cv_gap": self.cv_gap,
         }
 
 
@@ -121,6 +151,33 @@ def _accuracy(
         if predicted_solver == row.winner:
             correct += 1
     return correct / len(rows)
+
+
+def _loo_cv_accuracy(
+    table: List[TrainingRow],
+) -> float:
+    """Leave-one-out cross-validation dogrulugu (1-NN icin dogru genelleme metrigi).
+
+    Her satir SIRAYLA test edilir: o satir CIKARILIR, kalan tum satirlarla
+    AlgorithmSelector egitilir, cikarilan satir tahmin edilir. In-sample ezberi
+    (1-NN'in kendine-mesafe-0 dogasi) ICERMEZ -> train_acc=1.0 yanlis-pozitifini
+    onler.
+
+    Bos veya tek satir -> 0.0 (anlamsiz).
+    Determinizm: sira sabit, rastgelelik yok.
+    """
+    n = len(table)
+    if n < 2:
+        return 0.0
+    n_correct = 0
+    for i in range(n):
+        train_slice = table[:i] + table[i + 1:]
+        model = AlgorithmSelector()
+        model.fit(train_slice)
+        predicted, _conf = model.predict(table[i].feature_vector)
+        if predicted == table[i].winner:
+            n_correct += 1
+    return n_correct / n
 
 
 def _prequential_accuracy(
@@ -206,9 +263,10 @@ def compute_generalization_gap(
         )
 
     # ------------------------------------------------------------------
-    # Train / holdout split
+    # Train / holdout split -- STRATIFIED (aile-dengeli, isim-bagimsiz).
+    # Tek aile + sirali tabloda eski _split ile ozdes (geriye-uyum).
     # ------------------------------------------------------------------
-    train, holdout = _split(table, holdout_ratio=0.2)
+    train, holdout = stratified_holdout_split(table, holdout_ratio=0.2)
     n_train = len(train)
     n_holdout = len(holdout)
 
@@ -219,43 +277,58 @@ def compute_generalization_gap(
     model.fit(train)
 
     # ------------------------------------------------------------------
-    # In-sample and out-of-sample accuracy
+    # In-sample (train_acc) -- 1-NN'de YAPISAL ~1.0 (bilgi amacli, flag'de DEGIL).
+    # Out-of-sample (holdout_acc) -- stratified hold-out genelleme tahmini.
     # ------------------------------------------------------------------
     train_acc = _accuracy(model, train)
     holdout_acc = _accuracy(model, holdout)
     gap = train_acc - holdout_acc
 
     # ------------------------------------------------------------------
-    # Prequential accuracy (uses full table sequence)
+    # LOO-CV (cv_acc) -- split-bagimsiz, in-sample ezberi ICERMEYEN genelleme.
+    # overfit_flag'in BIRINCIL belirleyicisi (1-NN icin dogru metrik).
+    # ------------------------------------------------------------------
+    cv_acc = _loo_cv_accuracy(table)
+    cv_gap = cv_acc - holdout_acc
+
+    # ------------------------------------------------------------------
+    # Prequential accuracy (uses full table sequence) -- veri-sizintisi senteneli
     # ------------------------------------------------------------------
     prequential_acc = _prequential_accuracy(table)
     prequential_gap = train_acc - prequential_acc
 
     # ------------------------------------------------------------------
     # Overfit flag and reason
+    #
+    # Birincil: cv_gap (LOO vs hold-out) -- iki bagimsiz genelleme tahmini
+    # arasinda buyuk acik = veri/aile sizintisi veya gercek overfit.
+    # Ikincil: prequential_gap -- yine LOO-benzeri test-then-train; in-sample
+    # train_acc'a gore degil, dusuk mutlak deger + cv_acc'tan kopus suphesi.
+    # train_acc-tabanli `gap` artik flag'i BELIRLEMEZ (1-NN yapisal 1.0).
     # ------------------------------------------------------------------
-    gap_overfit = gap > OVERFIT_GAP_THRESHOLD
-    preq_overfit = prequential_gap > OVERFIT_GAP_THRESHOLD
-    overfit_flag = gap_overfit or preq_overfit
+    cv_overfit = cv_gap > OVERFIT_GAP_THRESHOLD
+    preq_overfit = (cv_acc - prequential_acc) > OVERFIT_GAP_THRESHOLD
+    overfit_flag = cv_overfit or preq_overfit
 
     if overfit_flag:
         parts = []
-        if gap_overfit:
+        if cv_overfit:
             parts.append(
-                f"train_acc={train_acc:.3f} holdout_acc={holdout_acc:.3f} "
-                f"gap={gap:.3f}; esik {OVERFIT_GAP_THRESHOLD} asildi -> overfit"
+                f"cv_acc(LOO)={cv_acc:.3f} holdout_acc={holdout_acc:.3f} "
+                f"cv_gap={cv_gap:.3f}; esik {OVERFIT_GAP_THRESHOLD} asildi -> overfit"
             )
         if preq_overfit:
             parts.append(
-                f"prequential_acc={prequential_acc:.3f} "
-                f"prequential_gap={prequential_gap:.3f}; esik asildi -> overfit"
+                f"cv_acc(LOO)={cv_acc:.3f} prequential_acc={prequential_acc:.3f}; "
+                f"esik asildi -> overfit (sizinti/drift suphesi)"
             )
         reason = "; ".join(parts)
     else:
         reason = (
-            f"train_acc={train_acc:.3f} holdout_acc={holdout_acc:.3f} "
-            f"gap={gap:.3f}; esik {OVERFIT_GAP_THRESHOLD} altinda, overfit yok. "
-            f"prequential_acc={prequential_acc:.3f} prequential_gap={prequential_gap:.3f}."
+            f"cv_acc(LOO)={cv_acc:.3f} holdout_acc={holdout_acc:.3f} "
+            f"cv_gap={cv_gap:.3f}; esik {OVERFIT_GAP_THRESHOLD} altinda, overfit yok. "
+            f"(bilgi: train_acc={train_acc:.3f} gap={gap:.3f} 1-NN yapisal; "
+            f"prequential_acc={prequential_acc:.3f})."
         )
 
     return GenGapReport(
@@ -268,6 +341,8 @@ def compute_generalization_gap(
         n_holdout=n_holdout,
         overfit_flag=overfit_flag,
         reason=reason,
+        cv_acc=cv_acc,
+        cv_gap=cv_gap,
     )
 
 

@@ -60,9 +60,35 @@ Tek-konfig (TÜM örnekler aynı parametre), adaptif pitch, budget 200, 4 çöz�
 6. **Instance-Tuner çekirdeği** (örneğe özel ince ayar, monoton kabul).
 7. **Numune generic motorda benchmark'a** (gerçek-veri overfit kanıtı %3.1).
 
-### Faz 3+ — Sonraki (plan)
-- Algoritma-seçim modeli (telemetri → karar ağacı), Instance-Tuner LLM önericisi,
-- Hocanın geçmiş gerçek nesting'leri (A11) = çoklu gerçek-veri = tam genellik kanıtı,
+### Faz 3 — Algoritma-seçim katmanı + overfit döngüsü (2026-06-17)
+1. **Seçim modeli KURULU olduğu netleşti** (eski doküman "yok" diyordu, bayattı):
+   `selection/` modülü — 1-NN prototip + kolay-instance ön-filtresi + monoton
+   garanti + üretim hattına bağlı (`demo_pipeline.py`). Artefakt 69 instance'a
+   kadar telemetriden eğitilebilir.
+2. **Overfit döngüsü SERTLEŞTİRİLDİ (2 kök sorun çözüldü):**
+   - *İsim-bağımlı hold-out:* eski "alfabetik son %20" → hold-out instance ismine
+     bağlıydı (z_*/a_* ile manipüle edilebilir, aile-dengesiz). Yeni
+     **stratified-by-family split** (`splits.py`): her aileden orantılı pay →
+     6 ailenin hepsi temsil edilir. Tek-aile durumunda eski davranışla özdeş.
+   - *1-NN yapısal yanlış-overfit:* `train_acc≈1.0` (1-NN ezber doğası) yüzünden
+     `gap=train_acc−holdout_acc` daima yüksekti → kapı HER retrain'i bloklardı.
+     **LOO-CV tabanlı kapı** (`gengap.py`): `cv_gap = cv_acc(LOO) − holdout_acc`
+     → in-sample ezberi içermez → yanlış-pozitif bitti (gerçek veride
+     overfit_flag True→False, cv_gap=0.105). Gerçek overfit koruması korundu.
+   - **LOFO** eklendi (yeni aile genelleme kanıtı): model görmediği aileye
+     %25–67 genelliyor (veri arttıkça yükselir).
+3. **Karar ağacı seçici** eklendi (`model.py` `DecisionTreeSelector`, stdlib):
+   LOO-CV %53.6 vs 1-NN %52.2; `max_depth=2` (depth=4 → %44.9 = overfit kanıtı).
+4. **ALNS** seçim haritasına bağlandı + dokümante edildi (zaten benchmark'taydı).
+   Zorlu instance üreticisinde (`generate_hard_instances.py`) **alns 4/4 kazandı**
+   (ort. dblf 151.9 → alns 132.6 mm, %14.6) → tabu/multistart/alns'i kazanan
+   kümeye sokma yolu açık.
+5. **Öğretme akışı:** `scripts/retrain_selection.py --dry-run` + okunabilir kapı
+   raporu (promote/overfit_flag/cv_gap/delta). Tek komutla "instance → öğret".
+
+### Faz 4+ — Sonraki (plan)
+- Instance-Tuner LLM önericisi, hocanın geçmiş gerçek nesting'leri (A11) =
+  çoklu gerçek-veri = tam genellik kanıtı,
 - Genel-yol drop_map hızı (numune), R3 (enerji ağırlığı taraması).
 
 ## 4. Overfit durumu — dürüst özet

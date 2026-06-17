@@ -395,6 +395,134 @@ class TestShouldRetrain:
 
 
 # ---------------------------------------------------------------------------
+# --dry-run CLI testleri
+# ---------------------------------------------------------------------------
+
+class TestDryRunCLI:
+    """retrain_selection.py --dry-run: artefakt yazilmamali, karar doner."""
+
+    def test_dry_run_does_not_create_artifact(self, tmp_path):
+        """--dry-run: artefakt dosyasi olusturulmamali."""
+        import subprocess
+
+        rows = _make_telemetry_rows(12)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "selection_model.json"
+
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "scripts.retrain_selection",
+                "--jsonl", str(tel_path),
+                "--artifact", str(artifact_path),
+                "--archive-dir", str(tmp_path / "archive"),
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(_ROOT),
+        )
+        assert result.returncode == 0, f"CLI hata: {result.stderr}"
+        # Artefakt yazilmamali
+        assert not artifact_path.exists(), "dry-run modunda artefakt yazilamaz"
+
+    def test_dry_run_prints_decision(self, tmp_path):
+        """--dry-run: cikti 'DRY-RUN' etiketi ve 'Karar' icermeli."""
+        import subprocess
+
+        rows = _make_telemetry_rows(12)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "selection_model.json"
+
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "scripts.retrain_selection",
+                "--jsonl", str(tel_path),
+                "--artifact", str(artifact_path),
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(_ROOT),
+        )
+        assert result.returncode == 0, f"CLI hata: {result.stderr}"
+        output = result.stdout
+        assert "DRY-RUN" in output or "dry-run" in output.lower(), (
+            "Cikti 'DRY-RUN' etiketini icermeli"
+        )
+        assert "Karar" in output, "Cikti karar satirini icermeli"
+
+    def test_dry_run_existing_artifact_not_modified(self, tmp_path):
+        """--dry-run: mevcut artefakt byte-ayni kalmali."""
+        import subprocess
+
+        rows = _make_telemetry_rows(15)
+        artifact_path = _make_artifact(tmp_path, rows)
+        original_bytes = artifact_path.read_bytes()
+        tel_path = _write_telemetry(tmp_path, rows)
+
+        subprocess.run(
+            [
+                sys.executable, "-m", "scripts.retrain_selection",
+                "--jsonl", str(tel_path),
+                "--artifact", str(artifact_path),
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(_ROOT),
+        )
+        assert artifact_path.read_bytes() == original_bytes, (
+            "dry-run mevcut artefakti degistirmemeli"
+        )
+
+    def test_dry_run_prints_overfit_flag(self, tmp_path):
+        """--dry-run: cikti 'Overfit flag' satirini icermeli."""
+        import subprocess
+
+        rows = _make_telemetry_rows(12)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "selection_model.json"
+
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "scripts.retrain_selection",
+                "--jsonl", str(tel_path),
+                "--artifact", str(artifact_path),
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(_ROOT),
+        )
+        assert result.returncode == 0
+        assert "Overfit" in result.stdout or "overfit" in result.stdout.lower()
+
+    def test_normal_run_prints_decision_fields(self, tmp_path):
+        """Normal calistirma: cikti Aday holdout, Cur holdout, Delta icermeli."""
+        import subprocess
+
+        rows = _make_telemetry_rows(12)
+        tel_path = _write_telemetry(tmp_path, rows)
+        artifact_path = tmp_path / "selection_model.json"
+
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "scripts.retrain_selection",
+                "--jsonl", str(tel_path),
+                "--artifact", str(artifact_path),
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(_ROOT),
+        )
+        assert result.returncode == 0
+        output = result.stdout
+        assert "holdout" in output.lower(), "Cikti holdout bilgisi icermeli"
+        assert "Delta" in output or "delta" in output.lower()
+        assert "Karar" in output
+
+
+# ---------------------------------------------------------------------------
 # Motor safligi testi (DEGiSMEZ-A)
 # ---------------------------------------------------------------------------
 

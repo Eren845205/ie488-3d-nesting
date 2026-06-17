@@ -122,14 +122,16 @@ def _evaluate(
 # ---------------------------------------------------------------------------
 
 def _split(table, holdout_ratio: float = 0.2):
-    n = len(table)
-    if n == 0:
-        return [], []
-    n_holdout = max(1, round(n * holdout_ratio))
-    # Son n_holdout instance -> hold-out (sirali, deterministik)
-    train = table[: n - n_holdout]
-    holdout = table[n - n_holdout:]
-    return train, holdout
+    """Aile-dengeli, isim-bagimsiz train/hold-out bolme.
+
+    Overfit dongusu sertlestirme (2026-06-17): eski "alfabetik son %20" bolme
+    hold-out'u instance ISMINE baglardi (kullanici z_* -> hep hold-out, a_* ->
+    hep train; aile-dengesiz). Artik stratified_holdout_split: her aileden
+    orantili pay. Tek aile + sirali tabloda eski davranisla ozdes (geriye-uyum).
+    gate.py, retrain.py ve gengap.py hepsi bu ayni bolmeyi kullanir.
+    """
+    from src.nesting3d.selection.splits import stratified_holdout_split
+    return stratified_holdout_split(table, holdout_ratio=holdout_ratio)
 
 
 # ---------------------------------------------------------------------------
