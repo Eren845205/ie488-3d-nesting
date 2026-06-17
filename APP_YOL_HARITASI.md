@@ -730,3 +730,42 @@ doğru: önce ürün + demo + tek müşteri memnuniyeti, hayal sonra.
   katmanını belirler, sonradan eklenmesi pahalı.
 
 Cevaplar geldikçe `APP_SORULAR.md` C tablosuna işlenecek.
+
+## 9. IP Koruma / Lisanslama (2026-06-18 — kullanıcı kaygısı, TESLİM ÖNCESİ alınacak önlem)
+
+> **Bağlam:** Ürün müşteriye on-prem `.exe`/paket olarak verilecek (SaaS/abonelik
+> yok, senin sunucunda çalışmıyor). **Risk:** müşteri kodu/dosyaları kopyalar,
+> kendi kullanır, başkalarına satar. Demo aşamasında önlem GEREKMEZ (kontrollü);
+> **gerçek teslimde mutlaka alınmalı.** Zamanı gelince bu bölüm uygulanır.
+
+**Acı gerçek:** Müşteri makinesinde çalışan kod %100 korunamaz; amaç "imkânsız"
+değil **"zahmete değmez + yasal riskli"** yapmak. ⚠️ Sıradan PyInstaller `.exe`
+KORUMA DEĞİL — içindeki Python bytecode açık araçlarla (`pyinstxtractor` +
+decompiler) geri çıkarılır. Bu yanılgıya düşülmemeli.
+
+**Üç katman (kademeli, teslimde HEPSİ uygulanır):**
+
+1. **Yasal (en ucuz, en güçlü caydırıcı):** Lisans sözleşmesi/EULA — müşteri
+   *kullanım hakkı* alır, kod mülkiyeti SENDE kalır; tersine mühendislik /
+   kopyalama / yeniden satış yasak; ihlal → yasal yaptırım. Hocayla IP/ortaklık
+   sözleşmesinde netleşmeli (§0.1 ortaklık sinyali + §7).
+2. **Lisans kilidi (teknik kontrol):** Makineye bağlı lisans (disk seri / MAC /
+   CPU id parmak izi → o makineye kilitli, kopyalanınca çalışmaz) + **süreli
+   lisans** (yenileme gerekir; RSA-imzalı, offline üretilebilir: müşteri
+   makine-id yollar, sen imzalı lisans üretirsin). Süreli lisans = yumuşak
+   abonelik → hem koruma hem sürekli gelir.
+3. **Kod sertleştirme (decompile zorlaştırma):** **Nuitka** (Python→gerçek C,
+   bytecode yok) veya kritik **nesting motorunu Cython** ile `.pyd`'ye derle
+   (asıl ticari değer en çok burada). Alternatif: PyArmor (bytecode şifreleme +
+   lisans, ticari).
+
+**En güçlü koruma = mimari (gerilim notu):** Kodun hiç müşteriye gitmemesi (motor
+senin sunucunda, müşteriye ince istemci) mutlak korur AMA internet + senin sunucun
+gerektirir → "on-prem + abonelik yok" tercihiyle ÇELİŞİR. **En çok koruma isteyen
+senaryo ile en az altyapı isteyen senaryo zıt çeker; denge bilinçli seçilmeli.**
+
+**Karar/aksiyon listesi (teslim öncesi):**
+- [ ] Hocayla IP sahipliği + lisans modeli + sözleşme şartlarını netleştir (ortaklık yapısıyla birlikte).
+- [ ] "Süreli lisans = hafif abonelik" seçeneğini değerlendir (abonelik-yok kararını gözden geçir).
+- [ ] Paketleme: Nuitka/Cython + makineye-bağlı süreli lisans iskeleti kur (demo SONRASI).
+- [ ] EULA/sözleşme metni hazırla (hukuki destek).
