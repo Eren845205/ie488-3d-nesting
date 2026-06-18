@@ -14,9 +14,26 @@ Yöntem: (1) elimizdekileri sınıflandır → motorun hangi parçasını besliy
 (2) eksik aileler için en iyi okulların (MIT/Stanford/ETH/TU Delft/Lancaster OR
 ekolü vb.) makalelerini araştır; (3) her birini kodla + benchmark kapısı.
 
-## A. Repoda MEVCUT makaleler (proje kökünde `.pdf`)
+## A. Repoda MEVCUT makaleler (`MOTOR/makaleler/pdf/`)
 
-> Şimdilik proje kökündeler; istenirse `MOTOR/makaleler/` altına taşınır.
+> ✅ 2026-06-18: 8 PDF + çıkarılmış `.pdf.txt` metinleri proje kökünden
+> `MOTOR/makaleler/pdf/` altına taşındı (motor bölümünde toplandı).
+>
+> ⚠️ **Bu 8 PDF önceden-var (workflow ÖNCESİ) makalelerdir** — eklemeli üretim
+> nesting'i konulu. Deep-research workflow'unun BULDUĞU makaleler ayrı (aşağıda).
+
+### A.2 Araştırma WORKFLOW'undan inen makaleler (`WORKFLOW_*.pdf`)
+
+> ✅ 2026-06-18: 01_ARASTIRMA_BULGULAR'da doğrulanan 9 künyenin açık-erişimli
+> (arXiv) 4'ü indirildi → workflow'un ürettiği makaleler artık fiziksel olarak da
+> elde. Geri kalan 5 künye dergi-erişimli (DOI ile 01 dosyasında).
+
+| Dosya | Künye | Motora karşılığı (kodda) |
+|---|---|---|
+| `WORKFLOW_SATzilla_Xu2008_algorithm-selection.pdf` | Xu ve ark. 2008 (arXiv 1111.2249) | Algoritma-seçim modeli `selection/` |
+| `WORKFLOW_Kerschke2019_algorithm-selection-survey.pdf` | Kerschke ve ark. 2019 (arXiv 1811.11597) | Özellik mühendisliği / tasarım |
+| `WORKFLOW_RenauHart2024_easy-instance-prefilter.pdf` | Renau & Hart 2024 (arXiv 2406.16999) | Kolay-instance ön-filtresi `selection/prefilter.py` |
+| `WORKFLOW_Kostovska2023_portfolio-selection.pdf` | Kostovska ve ark. 2023 (arXiv 2310.10685) | Çözücü-seti budama yön (kavramsal) |
 
 | Makale | Konu | Motorun neyini besler | Durum |
 |---|---|---|---|
