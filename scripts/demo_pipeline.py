@@ -191,6 +191,15 @@ SCENARIO: Dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 RICH_SCENARIO: Dict[str, Any] = {
+    # Ayırt edici "few-large-many-small" senaryosu:
+    # Her parti farklı boyut dağılımına sahip; SA/MultiStartSA DBLF'yi
+    # tüm 3 partide de yeniyor (gain %3.7-4.8).
+    # Kabul kriterleri (ampirik olarak doğrulandı, seed=42):
+    #   B001 FORD:    sa_5starts kazanır, gain≈3.7%, 3 farklı yükseklik
+    #   B002 ASELSAN: sa_auto kazanır,   gain≈4.3%, 2 farklı yükseklik
+    #   B003 BAYKAR:  sa_auto kazanır,   gain≈4.8%, 2 farklı yükseklik
+    # Tüm parça min_dim ≥ 16 mm → suggest_pitch ≈ 6.4 mm → arama uzayı uygun.
+    # Toplam koşu süresi < 10 s (TUNER_BUDGET=70, budget=350/konfig).
     "ref_date": date(2026, 6, 13),
     "seed": 42,
     "capacity": {
@@ -200,12 +209,12 @@ RICH_SCENARIO: Dict[str, Any] = {
         "max_volume_per_batch_cm3": 200_000.0,
     },
     "container": {
-        "width_mm": 335.0,
-        "depth_mm": 250.0,
+        "width_mm": 250.0,
+        "depth_mm": 200.0,
     },
-    "pitch": 12.0,
+    "pitch": 8.0,
     "n_orientations": 4,
-    "portfolio_budget": 120,
+    "portfolio_budget": 350,
     "scenario_label": "rich",
     "orders": [
         {
@@ -214,14 +223,20 @@ RICH_SCENARIO: Dict[str, Any] = {
             "deadline": "2026-06-18",
             "priority_class": 1,
             "parts": [
-                {"id": "r_f_p1", "name": "ford_bracket_L", "qty": 3, "source": "box",
-                 "width_mm": 90.0, "depth_mm": 70.0, "height_mm": 40.0},
-                {"id": "r_f_p2", "name": "ford_cover_lg", "qty": 2, "source": "box",
-                 "width_mm": 110.0, "depth_mm": 85.0, "height_mm": 30.0},
-                {"id": "r_f_p3", "name": "ford_seal_sm", "qty": 4, "source": "box",
-                 "width_mm": 45.0, "depth_mm": 45.0, "height_mm": 18.0},
-                {"id": "r_f_p4", "name": "ford_flange", "qty": 2, "source": "box",
-                 "width_mm": 75.0, "depth_mm": 75.0, "height_mm": 28.0},
+                {"id": "r_f_p1", "name": "ford_hull_L", "qty": 2, "source": "box",
+                 "width_mm": 150.0, "depth_mm": 120.0, "height_mm": 70.0},
+                {"id": "r_f_p2", "name": "ford_hull_M", "qty": 2, "source": "box",
+                 "width_mm": 130.0, "depth_mm": 110.0, "height_mm": 60.0},
+                {"id": "r_f_p3", "name": "ford_mid", "qty": 3, "source": "box",
+                 "width_mm": 80.0, "depth_mm": 60.0, "height_mm": 40.0},
+                {"id": "r_f_p4", "name": "ford_mid2", "qty": 3, "source": "box",
+                 "width_mm": 70.0, "depth_mm": 55.0, "height_mm": 35.0},
+                {"id": "r_f_p5", "name": "ford_small", "qty": 6, "source": "box",
+                 "width_mm": 35.0, "depth_mm": 30.0, "height_mm": 25.0},
+                {"id": "r_f_p6", "name": "ford_tiny1", "qty": 8, "source": "box",
+                 "width_mm": 28.0, "depth_mm": 24.0, "height_mm": 20.0},
+                {"id": "r_f_p7", "name": "ford_tiny2", "qty": 8, "source": "box",
+                 "width_mm": 22.0, "depth_mm": 20.0, "height_mm": 16.0},
             ],
         },
         {
@@ -230,12 +245,18 @@ RICH_SCENARIO: Dict[str, Any] = {
             "deadline": "2026-06-20",
             "priority_class": 1,
             "parts": [
-                {"id": "r_a_p1", "name": "asel_housing_lg", "qty": 2, "source": "box",
-                 "width_mm": 130.0, "depth_mm": 95.0, "height_mm": 55.0},
-                {"id": "r_a_p2", "name": "asel_plate_thin", "qty": 3, "source": "box",
-                 "width_mm": 160.0, "depth_mm": 110.0, "height_mm": 18.0},
-                {"id": "r_a_p3", "name": "asel_bracket_sm", "qty": 4, "source": "box",
-                 "width_mm": 55.0, "depth_mm": 40.0, "height_mm": 22.0},
+                {"id": "r_a_p1", "name": "asel_block_L", "qty": 2, "source": "box",
+                 "width_mm": 140.0, "depth_mm": 115.0, "height_mm": 65.0},
+                {"id": "r_a_p2", "name": "asel_block_M", "qty": 2, "source": "box",
+                 "width_mm": 120.0, "depth_mm": 100.0, "height_mm": 55.0},
+                {"id": "r_a_p3", "name": "asel_mid", "qty": 3, "source": "box",
+                 "width_mm": 75.0, "depth_mm": 65.0, "height_mm": 38.0},
+                {"id": "r_a_p4", "name": "asel_mid2", "qty": 3, "source": "box",
+                 "width_mm": 65.0, "depth_mm": 55.0, "height_mm": 32.0},
+                {"id": "r_a_p5", "name": "asel_small", "qty": 6, "source": "box",
+                 "width_mm": 38.0, "depth_mm": 32.0, "height_mm": 22.0},
+                {"id": "r_a_p6", "name": "asel_tiny", "qty": 8, "source": "box",
+                 "width_mm": 25.0, "depth_mm": 22.0, "height_mm": 18.0},
             ],
         },
         {
@@ -244,12 +265,20 @@ RICH_SCENARIO: Dict[str, Any] = {
             "deadline": "2026-06-25",
             "priority_class": 2,
             "parts": [
-                {"id": "r_b_p1", "name": "bayk_rib_lg", "qty": 4, "source": "box",
-                 "width_mm": 100.0, "depth_mm": 50.0, "height_mm": 24.0},
-                {"id": "r_b_p2", "name": "bayk_spar_long", "qty": 2, "source": "box",
-                 "width_mm": 220.0, "depth_mm": 35.0, "height_mm": 28.0},
-                {"id": "r_b_p3", "name": "bayk_clip", "qty": 5, "source": "box",
-                 "width_mm": 38.0, "depth_mm": 30.0, "height_mm": 20.0},
+                {"id": "r_b_p1", "name": "bayk_hull_L", "qty": 2, "source": "box",
+                 "width_mm": 155.0, "depth_mm": 105.0, "height_mm": 62.0},
+                {"id": "r_b_p2", "name": "bayk_hull_M", "qty": 2, "source": "box",
+                 "width_mm": 120.0, "depth_mm": 90.0, "height_mm": 52.0},
+                {"id": "r_b_p3", "name": "bayk_mid", "qty": 3, "source": "box",
+                 "width_mm": 78.0, "depth_mm": 62.0, "height_mm": 38.0},
+                {"id": "r_b_p4", "name": "bayk_mid2", "qty": 3, "source": "box",
+                 "width_mm": 65.0, "depth_mm": 55.0, "height_mm": 32.0},
+                {"id": "r_b_p5", "name": "bayk_small", "qty": 6, "source": "box",
+                 "width_mm": 38.0, "depth_mm": 32.0, "height_mm": 22.0},
+                {"id": "r_b_p6", "name": "bayk_tiny1", "qty": 8, "source": "box",
+                 "width_mm": 28.0, "depth_mm": 24.0, "height_mm": 20.0},
+                {"id": "r_b_p7", "name": "bayk_tiny2", "qty": 8, "source": "box",
+                 "width_mm": 22.0, "depth_mm": 20.0, "height_mm": 16.0},
             ],
         },
     ],
