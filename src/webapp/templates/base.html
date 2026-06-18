@@ -3,17 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Konteyner Nesting Sistemi{% endblock %}</title>
+    <title>{% block title %}Nesting Sistemi{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%2315181e'/%3E%3Crect x='6' y='16' width='8' height='9' rx='1' fill='%23dd5b17'/%3E%3Crect x='16' y='12' width='9' height='13' rx='1' fill='%23dd5b17' opacity='0.78'/%3E%3Crect x='9' y='7' width='7' height='7' rx='1' fill='%23dd5b17' opacity='0.55'/%3E%3C/svg%3E">
 </head>
 <body>
 
 <header class="site-header">
-    <h1>Konteyner Nesting Sistemi &mdash; Demo</h1>
-    <span class="header-subtitle">Additive Manufacturing Parti Planlama ve Fiyatlama</span>
+    <a href="/" class="brand">
+        <span class="brand-mark" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                <rect x="1.5" y="1.5" width="23" height="23" rx="3" stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+                <rect x="5" y="13" width="7" height="7" rx="1" fill="currentColor"/>
+                <rect x="13.5" y="9.5" width="7.5" height="10.5" rx="1" fill="currentColor" opacity="0.78"/>
+                <rect x="8" y="6" width="6" height="6" rx="1" fill="currentColor" opacity="0.55"/>
+            </svg>
+        </span>
+        <span class="brand-text">
+            <span class="brand-title">NESTING<span class="brand-dot">.</span>FORGE</span>
+            <span class="header-subtitle">Eklemeli Üretim · Parti Planlama · Nesting · Fiyatlama</span>
+        </span>
+    </a>
     <nav class="site-nav">
-        <a href="/" class="nav-link">Ana Sayfa</a>
-        <a href="/siparisler" class="nav-link">Siparis Havuzu</a>
+        <a href="/" class="nav-link" data-path="/">Ana Sayfa</a>
+        <a href="/oncelik" class="nav-link" data-path="/oncelik">Öncelik Planı</a>
+        <a href="/siparisler" class="nav-link" data-path="/siparisler">Sipariş Havuzu</a>
     </nav>
 </header>
 
@@ -22,8 +39,23 @@
 </main>
 
 <footer class="site-footer">
-    IE 488 Proje Demo &mdash; Deterministik pipeline: Siparis &rarr; Cizgeleme &rarr; Nesting &rarr; Fiyatlama
+    <span class="footer-tick">▸</span>
+    IE 488 — Deterministik pipeline: Sipariş <span class="footer-arrow">→</span> Çizelgeleme
+    <span class="footer-arrow">→</span> Nesting <span class="footer-arrow">→</span> Fiyatlama
 </footer>
+
+<script>
+    // Aktif nav linkini isaretle (sayfa yoluna gore)
+    (function () {
+        var path = window.location.pathname.replace(/\/+$/, '') || '/';
+        document.querySelectorAll('.nav-link').forEach(function (a) {
+            var p = a.getAttribute('data-path');
+            if (p === path || (p !== '/' && path.indexOf(p) === 0)) {
+                a.classList.add('is-active');
+            }
+        });
+    })();
+</script>
 
 {% block scripts %}{% endblock %}
 
