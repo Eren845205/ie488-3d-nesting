@@ -474,3 +474,60 @@ class TestExplainerPrompt:
         assert "aciklama_md" in required
         assert "karar_tipi" in required
         assert "kullanilan_girdiler" in required
+
+
+# ---------------------------------------------------------------------------
+# TEST: BUG #1 — density ham kesir yerine formatlı % string olarak gitmeli
+# ---------------------------------------------------------------------------
+
+
+class TestDensityFormatting:
+    """BUG #1: ExplainerInput'a giren sistem_ciktisi density 0.6592 ise
+    LLM'e ham kesir (0.6592) DEĞİL formatlı string ("65.9%") gitmelidir.
+    webapp app.py'nin "doluluk" anahtarını kullandığını doğrular."""
+
+    def test_doluluk_preformatted_string_no_raw_fraction(self, tmp_path):
+        """sistem_ciktisi'nde 'doluluk' key varsa ham 0.x sayı LLM'e gitmez.
+        ExplainerInput.to_dict() doğrudan to_source_doc().icerik'e döndüğünde
+        kaynak içerikte '65.9%' geçmeli, '0.6592' geçmemeli."""
+        density_raw = 0.6592
+        formatted = f"{density_raw:.1%}"  # "65.9%"
+
+        sistem_ciktisi = {
+            "kazanan_algoritma": "SA",
+            "height_mm": 181.5,
+            "doluluk": formatted,
+            "n_parts": 10,
+            "toplam_fiyat": 1200.0,
+        }
+        inp = ExplainerInput(
+            karar_tipi="algoritma",
+            sistem_ciktisi=sistem_ciktisi,
+        )
+        doc = inp.to_source_doc()
+
+        # Formatlı yüzde string kaynakta görünmeli
+        assert "65.9%" in doc.icerik
+        # Ham kesir veya ×100 çarpılmış form kaynakta OLMAMALI
+        assert "0.6592" not in doc.icerik
+        assert "6592" not in doc.icerik
+
+    def test_doluluk_key_not_density_key_in_sistem_ciktisi(self, tmp_path):
+        """webapp'ın LLM'e gönderdiği sistem_ciktisi 'density' key içermemeli,
+        'doluluk' (önceden formatlı) içermeli — değer '65.9%' formatında olmalı."""
+        density_raw = 0.6592
+        sistem_ciktisi = {
+            "kazanan_algoritma": "dblf",
+            "height_mm": 200.0,
+            "doluluk": f"{density_raw:.1%}",
+            "n_parts": 5,
+            "toplam_fiyat": 800.0,
+        }
+        # Ham 'density' anahtarı sistem_ciktisi'nde bulunmamalı
+        assert "density" not in sistem_ciktisi
+        # Formatlı 'doluluk' anahtarı bulunmalı ve % formatında olmalı
+        assert "doluluk" in sistem_ciktisi
+        doluluk_val = sistem_ciktisi["doluluk"]
+        assert "%" in doluluk_val
+        assert "0.6592" not in doluluk_val
+        assert "6592" not in doluluk_val

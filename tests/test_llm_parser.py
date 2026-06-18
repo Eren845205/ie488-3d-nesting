@@ -398,3 +398,88 @@ def test_webapp_parse_route_empty_text():
         )
 
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Test 10: BUG #3 — deadline dolu olunca "termin.tarih" eksik_alanlar'dan cikmali
+# ---------------------------------------------------------------------------
+
+
+def test_parser_eksik_alanlar_removes_termin_tarih_when_deadline_present(tmp_path):
+    """LLM termin.tarih'i hem doldurursa hem eksik_alanlar'a yazarsa
+    ParserRole.parse() eksik_alanlar'dan 'termin.tarih'i cikarmalı."""
+    _make_parser_dir(tmp_path)
+    registry = _make_registry(tmp_path)
+    audit = _make_audit(tmp_path)
+    role_cfg = _make_role_cfg()
+
+    # LLM termin.tarih'i doldurdu AMA yanlislikla eksik_alanlar'a da ekledi
+    response_with_conflict = json.dumps({
+        "musteri": {"ad": "BAYKAR", "iletisim": None},
+        "termin": {"tarih": "2026-07-15", "ham_ifade": "15 Temmuz"},
+        "parcalar": [
+            {
+                "ad": "govde",
+                "adet": 2,
+                "boyut_mm": [100.0, 80.0, 50.0],
+                "agirlik_kg": None,
+                "kaynak": "box",
+                "guven": "yuksek",
+            }
+        ],
+        "eksik_alanlar": ["termin.tarih"],
+        "notlar": None,
+        "injection_suphesi": False,
+    }, ensure_ascii=False)
+
+    provider = FakeProvider(
+        fixture_map={("parser-v1", "_any_"): [response_with_conflict]}
+    )
+
+    role = ParserRole(provider=provider, registry=registry, audit=audit, role_cfg=role_cfg)
+    result = role.parse("BAYKAR icin govde parcasi termin 15 Temmuz 2026.")
+
+    assert result.status == ValidationStatus.VALID
+    assert result.order_dict is not None
+    assert result.order_dict["deadline"] == "2026-07-15"
+    # "termin.tarih" deadline dolu oldugu icin eksik_alanlar'dan cikmali
+    assert result.eksik_alanlar is not None
+    assert "termin.tarih" not in result.eksik_alanlar
+
+
+def test_parser_eksik_alanlar_keeps_termin_tarih_when_deadline_empty(tmp_path):
+    """Deadline gercekten bos ise 'termin.tarih' eksik_alanlar'da kalmali."""
+    _make_parser_dir(tmp_path)
+    registry = _make_registry(tmp_path)
+    audit = _make_audit(tmp_path)
+    role_cfg = _make_role_cfg()
+
+    response_no_deadline = json.dumps({
+        "musteri": {"ad": "ASELSAN", "iletisim": None},
+        "termin": {"tarih": None, "ham_ifade": None},
+        "parcalar": [
+            {
+                "ad": "kasa",
+                "adet": 1,
+                "boyut_mm": [50.0, 40.0, 20.0],
+                "agirlik_kg": None,
+                "kaynak": "box",
+                "guven": "orta",
+            }
+        ],
+        "eksik_alanlar": ["termin.tarih"],
+        "notlar": None,
+        "injection_suphesi": False,
+    }, ensure_ascii=False)
+
+    provider = FakeProvider(
+        fixture_map={("parser-v1", "_any_"): [response_no_deadline]}
+    )
+
+    role = ParserRole(provider=provider, registry=registry, audit=audit, role_cfg=role_cfg)
+    result = role.parse("ASELSAN kasa siparisi, termin belirtilmemis.")
+
+    assert result.status == ValidationStatus.VALID
+    assert result.eksik_alanlar is not None
+    # Deadline gercekten bos — "termin.tarih" eksik_alanlar'da kalmali
+    assert "termin.tarih" in result.eksik_alanlar

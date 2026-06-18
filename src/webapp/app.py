@@ -465,22 +465,23 @@ def _register_routes(
     @app.route("/", methods=["GET"])
     def index():
         """Ana sayfa: uygulama tanitimi + havuz ozeti + calistir dugmesi."""
-        from scripts.demo_pipeline import SCENARIO
+        from scripts.demo_pipeline import SCENARIO, RICH_SCENARIO
         from src.webapp.orders_store import load_orders
 
         _opath = app.config.get("ORDERS_PATH")
         pool_orders = load_orders(_opath)
         pool_count = len(pool_orders)
 
-        # Senaryo ozeti: havuz doluysa havuzdan, bos ise demo'dan
-        if pool_orders:
-            container = SCENARIO.get("container", {})
-            capacity = SCENARIO.get("capacity", {})
-            display_orders = pool_orders
-        else:
-            display_orders = SCENARIO.get("orders", [])
-            container = SCENARIO.get("container", {})
-            capacity = SCENARIO.get("capacity", {})
+        # Onizleme, SECILI radyo ile TUTARLI olmali: varsayilan 'rich' (zengin
+        # senaryo, calistir dugmesinin de varsayilani). Eski hata: onizleme her
+        # zaman SCENARIO (5 siparis) gosteriyordu ama varsayilan kosu RICH (3).
+        scenario_type = (request.args.get("scenario") or "rich").strip()
+        demo = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
+
+        # Senaryo ozeti: havuz doluysa havuzdan, bos ise SECILI demo senaryodan
+        container = demo.get("container", {})
+        capacity = demo.get("capacity", {})
+        display_orders = pool_orders if pool_orders else demo.get("orders", [])
 
         return render_template(
             "index.html",
@@ -490,6 +491,7 @@ def _register_routes(
             llm_active=llm_active,
             pool_count=pool_count,
             pool_is_custom=bool(pool_orders),
+            scenario_type=scenario_type,
         )
 
     @app.route("/run", methods=["POST"])
@@ -759,10 +761,11 @@ def _register_routes(
                         or port_first.get("winning_config")
                         or "dblf"
                     )
+                    _density_raw = nr_first.get("density", 0.0)
                     sistem_ciktisi: Dict[str, Any] = {
                         "kazanan_algoritma": winner_name,
                         "height_mm": nr_first.get("height_mm", 0.0),
-                        "density": nr_first.get("density", 0.0),
+                        "doluluk": f"{_density_raw:.1%}",
                         "n_parts": nr_first.get("n_parts", 0),
                         "toplam_fiyat": toplam_fiyat,
                         "n_orders": len(result.get("ranked_orders", [])),
@@ -1539,10 +1542,11 @@ def _register_routes(
                     or port_first.get("winning_config")
                     or "dblf"
                 )
+                _density_raw_otonom = nr_first.get("density", 0.0)
                 sistem_ciktisi = {
                     "kazanan_algoritma": winner_name,
                     "height_mm": nr_first.get("height_mm", 0.0),
-                    "density": nr_first.get("density", 0.0),
+                    "doluluk": f"{_density_raw_otonom:.1%}",
                     "n_parts": nr_first.get("n_parts", 0),
                     "toplam_fiyat": toplam_fiyat,
                 }
@@ -1694,6 +1698,60 @@ def _register_routes(
             "teklif_taslagi": teklif_taslagi,
             "teklif_onay_gerekli": True,
         }), 200
+
+    # -----------------------------------------------------------------------
+    # Oncelik Plani rotasi (deterministik, LLM gerektirmez)
+    # -----------------------------------------------------------------------
+
+    @app.route("/oncelik", methods=["GET"])
+    def oncelik():
+        """Cok-sirketli siparis onceliklendirme + parti plani + termin/kapasite uyarilari.
+
+        Tamamen deterministik: Ollama kapali olsa da calisir.
+        today = date(2026, 6, 13) SABiT — demo tutarliligini garantiler.
+        """
+        from datetime import date as _date
+        from src.scheduling.models import Order as _Order, Capacity as _Capacity
+        from src.scheduling.rules import PriorityConfig as _PriorityConfig, rank_orders as _rank_orders
+        from src.scheduling.batcher import build_batches as _build_batches
+        from src.scheduling.feasibility import check_feasibility as _check_feasibility
+        from src.scheduling.report import build_report as _build_report
+
+        _today = _date(2026, 6, 13)
+
+        _orders = [
+            _Order("ORD-FORD-001",    "FORD",     "motor-govde-A",       20, 8500.0,  "2026-06-18", 1),
+            _Order("ORD-FORD-002",    "FORD",     "dirsek-traversi-B",   12, 4200.0,  "2026-06-25", 2),
+            _Order("ORD-BAYKAR-001",  "BAYKAR",   "uc-govde-kanat",       8, 6800.0,  "2026-06-20", 1),
+            _Order("ORD-BAYKAR-002",  "BAYKAR",   "aviyonik-braket",     15, 3100.0,  "2026-07-05", 3),
+            _Order("ORD-ASELSAN-001", "ASELSAN",  "radar-muhafaza",       6, 9200.0,  "2026-06-22", 1),
+            _Order("ORD-ASELSAN-002", "ASELSAN",  "anten-tasiyi",        10, 5400.0,  "2026-07-10", 2),
+            _Order("ORD-ASELSAN-003", "ASELSAN",  "elektronik-kutu",      5, 2800.0,  "2026-07-15", 3),
+            _Order("ORD-TUSAS-001",   "TUSAS",    "kanat-nervuru",       18, 11000.0, "2026-06-19", 1),
+            _Order("ORD-TUSAS-002",   "TUSAS",    "iniş-takimi-bağlantı", 7, 7300.0,  "2026-06-28", 2),
+            _Order("ORD-TUSAS-003",   "TUSAS",    "yakıt-hücresi-kapak",  9, 4600.0,  "2026-07-08", 3),
+            _Order("ORD-ROKETSAN-001","ROKETSAN", "firlatici-govde",      4, 13500.0, "2026-06-21", 1),
+            _Order("ORD-ROKETSAN-002","ROKETSAN", "stabilizator-kanat",  11, 6100.0,  "2026-07-02", 2),
+            _Order("ORD-ROKETSAN-003","ROKETSAN", "guvdeli-eklenti",      6, 3900.0,  "2026-07-18", 3),
+        ]
+
+        _capacity = _Capacity(
+            num_machines=1,
+            batch_duration_hours=8,
+            shifts_per_day=1,
+            max_volume_per_batch_cm3=20000.0,
+        )
+
+        for o in _orders:
+            o.validate(_today)
+        _capacity.validate()
+
+        _ranked = _rank_orders(_orders, _PriorityConfig.default(), _today)
+        _batches = _build_batches(_ranked, _capacity, allow_mixing=False)
+        _warnings = _check_feasibility(_batches, _capacity, _today)
+        _report = _build_report(_ranked, _batches, _warnings, _today)
+
+        return render_template("oncelik.html", report=_report)
 
     # -----------------------------------------------------------------------
     # Siparis havuzu rotalar
@@ -1956,6 +2014,14 @@ def _startup_health_report(app: Flask) -> None:
 
 def _main() -> None:
     """Sunucuyu dogrudan baslatir (python -m src.webapp.app)."""
+    # Windows konsolu cp1254/cp437 olabilir; '✓'/'⚠' gibi karakterler
+    # UnicodeEncodeError ile sunucuyu COKERTIR. Cikti kodlamasini UTF-8'e
+    # (hata toleranslı) sabitle — boylece her kod sayfasinda guvenli.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 — reconfigure yoksa sessizce gec
+            pass
     logging.basicConfig(level=logging.INFO)
     app = create_app(testing=False, llm_enabled=True)
     _startup_health_report(app)

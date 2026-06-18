@@ -243,24 +243,28 @@
         {% endif %}
     </div>
 
-    <!-- Algoritma-Seçim Tahmini Rozeti -->
+    <!-- Seçim Modeli Kararı — önce hangi algoritma? -->
     {% set sel = nr.get('selection') %}
     {% if sel %}
-    <div style="margin-bottom: 14px; padding: 10px 14px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #6366f1;">
-        <strong style="font-size: 13px; color: #4338ca;">Algoritma-Secim Tahmini</strong>
-        &nbsp;
-        {% if sel.get('is_easy') %}
-            <span class="badge badge-yellow">KOLAY instance</span>
-            <span class="badge badge-blue">Tahmin: DBLF yeterli</span>
-        {% else %}
-            <span class="badge badge-red">ZOR instance</span>
-            <span class="badge badge-blue">Tahmin: {{ sel.get('predicted_winner', '?') }}</span>
-        {% endif %}
-        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+    <div style="margin-bottom: 14px; padding: 14px 16px; background: var(--accent-soft); border-radius: 8px; border-left: 4px solid var(--accent);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <strong style="font-size: 14px; color: var(--accent-ink);">Seçim Modeli Kararı — önce en uygun algoritma</strong>
+            {% if sel.get('is_easy') %}
+                <span class="badge badge-yellow">KOLAY parti</span>
+                <span class="badge badge-green">Verim: portföy atlanır → DBLF</span>
+            {% else %}
+                <span class="badge badge-red">ZOR parti</span>
+                <span class="badge badge-blue">Tahmin: {{ sel.get('predicted_winner', '?') }}</span>
+            {% endif %}
+        </div>
+        <div style="font-size: 12px; color: var(--ink-soft); margin-top: 6px;">
             {{ sel.get('explain', '') }}
         </div>
-        <div style="font-size: 11px; color: #9ca3af; margin-top: 2px; font-style: italic;">
-            Not: Cozum her zaman Instance-Tuner'dan gelir; tahmin yalnizca bilgilendirme icin gosterilir.
+        <div style="font-size: 12px; color: var(--muted); margin-top: 9px; line-height: 1.55; border-top: 1px dashed var(--line-2); padding-top: 8px;">
+            <strong style="color: var(--ink-soft);">Nasıl çalışır:</strong> Sistem her parti için <strong>önce</strong> en uygun algoritmayı tahmin eder.
+            Emin olduğunda (kolay parti / yüksek güven) <strong>sadece o algoritmayı koşar</strong> — tüm portföyü denemez, zaman kazanır.
+            Emin olmadığında (güven &lt; %60) güvenlik için aşağıdaki <strong>konfig yarışını</strong> koşup en iyiyi seçer.
+            Güven, gerçek geçmiş-nesting verisiyle eğitildikçe artar → daha çok partide tek algoritmaya iner.
         </div>
     </div>
     {% endif %}
@@ -451,7 +455,7 @@
             <strong>Siz:</strong> {{ tur.soru }}
         </div>
         <div class="sohbet-cevap">
-            <strong>Asistan:</strong> {{ tur.cevap }}
+            <strong>{% if tur.rol == 'explainer' %}Aciklayici{% elif tur.rol == 'report' %}Rapor{% else %}Asistan{% endif %}:</strong> {{ tur.cevap }}
         </div>
         {% endfor %}
     </div>
@@ -676,16 +680,18 @@
             // cevap_md (yeni) veya cevap (geriye-donuk uyumluluk)
             const cevapMetni = data.cevap_md || data.cevap || '';
 
-            // Kullanilan rol etiketi
+            // Kullanilan rol etiketi — Turkce karsilik + renk rozeti
             const rolRenk = {'report': '#0891b2', 'explainer': '#7c3aed', 'assistant': '#16a34a'};
             const rolAdi = data.kullanilan_rol || 'assistant';
+            const rolTurkce = {'report': 'Rapor', 'explainer': 'Aciklayici', 'assistant': 'Asistan'};
+            const rolLabel = rolTurkce[rolAdi] || 'Asistan';
             const rolEtiketi = '<span style="font-size:11px; padding:2px 7px; border-radius:4px; '
                 + 'background:' + (rolRenk[rolAdi] || '#6b7280') + '22; '
                 + 'color:' + (rolRenk[rolAdi] || '#6b7280') + '; '
                 + 'border:1px solid ' + (rolRenk[rolAdi] || '#6b7280') + '44; margin-left:6px;">'
-                + escapeHtml(rolAdi) + '</span>';
+                + escapeHtml(rolLabel) + '</span>';
 
-            let cevapHtml = '<strong>Asistan</strong>' + rolEtiketi + ': ' + escapeHtml(cevapMetni);
+            let cevapHtml = '<strong>' + escapeHtml(rolLabel) + ':</strong> ' + rolEtiketi + ' ' + escapeHtml(cevapMetni);
 
             // Sayi-topraklama uyarisi
             if (data.sayi_bayragi || data.topraklama_uyarisi) {
@@ -786,8 +792,16 @@
                     escapeHtml(data.taslak || '') +
                     '</pre></div>';
 
+                // Onay / gonder aksiyon cubugu (DEMO-GUVENLI: gercek e-posta GITMEZ)
+                html += '<div id="taslak-aksiyon" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+                    '<button class="btn btn-primary" id="onayla-btn" onclick="taslakOnayla()">Onayla ve Gonder</button>' +
+                    '<button class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;padding:8px 14px;cursor:pointer;" onclick="taslakKopyala()">Panoya kopyala</button>' +
+                    '<span id="taslak-durum" style="font-size:13px;color:var(--color-text-muted);"></span>' +
+                    '</div>';
+
                 result.style.display = 'block';
                 result.innerHTML = html;
+                window._sonTaslak = (data.baslik ? ('Konu: ' + data.baslik + '\n\n') : '') + (data.taslak || '');
             })
             .catch(err => {
                 loading.style.display = 'none';
@@ -796,6 +810,38 @@
                 hata.style.display = 'block';
                 hata.textContent = 'Baglanti hatasi: ' + err;
             });
+    }
+
+    // Taslak onay/gonder — DEMO-GUVENLI: gercek e-posta GONDERILMEZ.
+    // Operatör onayini isaretler; istenirse panoya kopyalanir.
+    function taslakOnayla() {
+        const btn = document.getElementById('onayla-btn');
+        const durum = document.getElementById('taslak-durum');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Onaylandi';
+            btn.style.background = '#059669';
+        }
+        if (durum) {
+            durum.innerHTML = '&#10003; Taslak onaylandi &mdash; gonderim kuyruguna alindi ' +
+                '(demo: gercek e-posta gonderilmez).';
+            durum.style.color = '#059669';
+        }
+    }
+
+    function taslakKopyala() {
+        const durum = document.getElementById('taslak-durum');
+        const metin = window._sonTaslak || '';
+        const bildir = (ok) => {
+            if (!durum) return;
+            durum.textContent = ok ? 'Panoya kopyalandi.' : 'Kopyalama desteklenmiyor.';
+            durum.style.color = ok ? '#059669' : '#b91c1c';
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(() => bildir(true), () => bildir(false));
+        } else {
+            bildir(false);
+        }
     }
 </script>
 
@@ -898,8 +944,37 @@
             });
     }
 
+    // Lazy-init via IntersectionObserver: her viewer SADECE canvas gorünür olunca baslatilir.
+    // Boylece ayni anda aktif WebGL context sayisi azalir (CONTEXT_LOST_WEBGL onlenir).
     document.addEventListener('DOMContentLoaded', () => {
-        batchIds.forEach(id => initViewer(id));
+        const initialized = new Set();
+
+        if (typeof IntersectionObserver === 'undefined') {
+            // Tarayici desteklemiyorsa eski davranisa geri don
+            batchIds.forEach(id => initViewer(id));
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const batchId = entry.target.dataset.batchId;
+                    if (batchId && !initialized.has(batchId)) {
+                        initialized.add(batchId);
+                        observer.unobserve(entry.target);
+                        initViewer(batchId);
+                    }
+                }
+            });
+        }, {rootMargin: '100px'});
+
+        batchIds.forEach(id => {
+            const canvas = document.getElementById('viewer-canvas-' + id);
+            if (canvas) {
+                canvas.dataset.batchId = id;
+                observer.observe(canvas);
+            }
+        });
     });
 </script>
 {% endblock %}

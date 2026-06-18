@@ -245,7 +245,18 @@ class ParserRole:
                 "saldiri suptesi. audit_ref=%s", role_result.audit_ref
             )
 
-        eksik = data.get("eksik_alanlar") or []
+        eksik = list(data.get("eksik_alanlar") or [])
+
+        # Deadline gercekten parse edildiyse "termin.tarih" eksik_alanlar'dan cikar.
+        termin = data.get("termin") or {}
+        _deadline_val = (termin.get("tarih") or "").strip()
+        if _deadline_val and "termin.tarih" in eksik:
+            eksik = [e for e in eksik if e != "termin.tarih"]
+            logger.debug(
+                "ParserRole: termin.tarih dolu (%r) — eksik_alanlar'dan cikarildi.",
+                _deadline_val,
+            )
+
         if eksik:
             logger.info("ParserRole: eksik alanlar bildirdi: %s", eksik)
 

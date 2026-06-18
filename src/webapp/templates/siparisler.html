@@ -92,7 +92,7 @@
                 <label for="order_id" style="font-weight: 600; font-size: 13px; color: var(--color-text-muted);">
                     Siparis ID <span style="color: #dc2626;">*</span>
                 </label>
-                <input type="text" id="order_id" name="order_id"
+                <input type="text" id="order_id" name="order_id" required
                        placeholder="ORN-FORD-001"
                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border);
                               border-radius: var(--radius); font-size: 14px; margin-top: 4px;">
@@ -101,7 +101,7 @@
                 <label for="customer" style="font-weight: 600; font-size: 13px; color: var(--color-text-muted);">
                     Musteri <span style="color: #dc2626;">*</span>
                 </label>
-                <input type="text" id="customer" name="customer"
+                <input type="text" id="customer" name="customer" required
                        placeholder="FORD"
                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border);
                               border-radius: var(--radius); font-size: 14px; margin-top: 4px;">
@@ -110,7 +110,7 @@
                 <label for="deadline" style="font-weight: 600; font-size: 13px; color: var(--color-text-muted);">
                     Termin Tarihi <span style="color: #dc2626;">*</span>
                 </label>
-                <input type="date" id="deadline" name="deadline"
+                <input type="date" id="deadline" name="deadline" required
                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border);
                               border-radius: var(--radius); font-size: 14px; margin-top: 4px;">
             </div>
@@ -133,7 +133,7 @@
                 Parca Listesi <span style="color: #dc2626;">*</span>
                 &mdash; her satir: <code>ad, genislik_mm, derinlik_mm, yukseklik_mm, adet</code>
             </label>
-            <textarea id="parts_text" name="parts_text" rows="4"
+            <textarea id="parts_text" name="parts_text" rows="4" required
                       placeholder="braketi, 80, 60, 30, 4&#10;kapak, 100, 80, 20, 2"
                       style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border);
                              border-radius: var(--radius); font-size: 14px; margin-top: 4px;

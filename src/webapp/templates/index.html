@@ -30,11 +30,15 @@
         <div style="margin-bottom: 12px; font-size: 14px; color: var(--color-text-muted);">
             <label style="margin-right: 16px; font-weight: 600;">Demo senaryosu:</label>
             <label style="margin-right: 12px; cursor: pointer;">
-                <input type="radio" name="scenario_type" value="rich" checked>
+                <input type="radio" name="scenario_type" value="rich"
+                       {% if scenario_type != 'standard' %}checked{% endif %}
+                       onchange="location.href='/?scenario=rich'">
                 Zengin (~20 parca, 3 siparis &mdash; 4 algoritma ayirt eder)
             </label>
             <label style="cursor: pointer;">
-                <input type="radio" name="scenario_type" value="standard">
+                <input type="radio" name="scenario_type" value="standard"
+                       {% if scenario_type == 'standard' %}checked{% endif %}
+                       onchange="location.href='/?scenario=standard'">
                 Standart (5 siparis, orjinal demo)
             </label>
         </div>
@@ -420,10 +424,19 @@
                     tkHtml += '</div>';
                 }
                 if (data.teklif_taslagi) {
+                    // taslak metnini closure'da sakla — buton handler'lari erisebilsin
+                    window._otonomTaslakMetni = data.teklif_taslagi;
+
                     tkHtml += '<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px 16px;border-radius:6px;">';
                     tkHtml += '<strong style="font-size:13px;color:#15803d;">Teklif Taslagi</strong> ';
                     tkHtml += '<span style="font-size:11px;color:#6b7280;font-style:italic;">(insan onay kapsisi — gonderilmedi)</span><br>';
                     tkHtml += '<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">' + escapeHtml(data.teklif_taslagi) + '</div>';
+                    // Aksiyon cubugu
+                    tkHtml += '<div id="otonom-aksiyon-bar" style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
+                    tkHtml += '<button id="otonom-onayla-btn" class="btn btn-primary" onclick="otonomTaslakOnayla()" style="font-size:13px;padding:6px 14px;">Onayla ve Gonder</button>';
+                    tkHtml += '<button class="btn" onclick="otonomTaslakKopyala()" style="font-size:13px;padding:6px 14px;background:#e5e7eb;color:#111827;border:1px solid #d1d5db;">Panoya Kopyala</button>';
+                    tkHtml += '<span id="otonom-aksiyon-durum" style="font-size:12px;color:#374151;"></span>';
+                    tkHtml += '</div>';
                     tkHtml += '</div>';
                 }
                 teklifDiv.innerHTML = tkHtml;
@@ -507,6 +520,64 @@
             hataDiv.textContent = 'Ag hatasi: ' + err;
             hataDiv.style.display = 'block';
         });
+    }
+
+    function otonomTaslakOnayla() {
+        var btn = document.getElementById('otonom-onayla-btn');
+        var durum = document.getElementById('otonom-aksiyon-durum');
+        if (!btn || btn.disabled) { return; }
+        btn.disabled = true;
+        btn.textContent = 'Onaylandi';
+        btn.style.background = '#16a34a';
+        btn.style.borderColor = '#16a34a';
+        if (durum) {
+            durum.textContent = '✓ Taslak onaylandi — gonderim kuyruğuna alindi (demo: gercek e-posta gonderilmez).';
+            durum.style.color = '#15803d';
+        }
+    }
+
+    function otonomTaslakKopyala() {
+        var metin = window._otonomTaslakMetni || '';
+        var durum = document.getElementById('otonom-aksiyon-durum');
+        if (!metin) {
+            if (durum) { durum.textContent = 'Kopyalanacak taslak yok.'; }
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(function() {
+                if (durum) {
+                    durum.textContent = 'Panoya kopyalandi.';
+                    durum.style.color = '#374151';
+                }
+            }).catch(function() {
+                otonomTaslakKopyalaFallback(metin, durum);
+            });
+        } else {
+            otonomTaslakKopyalaFallback(metin, durum);
+        }
+    }
+
+    function otonomTaslakKopyalaFallback(metin, durum) {
+        var ta = document.createElement('textarea');
+        ta.value = metin;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand('copy');
+            if (durum) {
+                durum.textContent = 'Panoya kopyalandi.';
+                durum.style.color = '#374151';
+            }
+        } catch (e) {
+            if (durum) {
+                durum.textContent = 'Kopyalama basarisiz — taslagi kendiniz secip kopyalayin.';
+                durum.style.color = '#c0392b';
+            }
+        }
+        document.body.removeChild(ta);
     }
     {% endif %}
 </script>
