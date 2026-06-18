@@ -749,11 +749,26 @@ decompiler) geri çıkarılır. Bu yanılgıya düşülmemeli.
    *kullanım hakkı* alır, kod mülkiyeti SENDE kalır; tersine mühendislik /
    kopyalama / yeniden satış yasak; ihlal → yasal yaptırım. Hocayla IP/ortaklık
    sözleşmesinde netleşmeli (§0.1 ortaklık sinyali + §7).
-2. **Lisans kilidi (teknik kontrol):** Makineye bağlı lisans (disk seri / MAC /
-   CPU id parmak izi → o makineye kilitli, kopyalanınca çalışmaz) + **süreli
-   lisans** (yenileme gerekir; RSA-imzalı, offline üretilebilir: müşteri
-   makine-id yollar, sen imzalı lisans üretirsin). Süreli lisans = yumuşak
-   abonelik → hem koruma hem sürekli gelir.
+2. **Lisans kilidi (teknik kontrol) — SUNUCU/SITE lisansı (cihaz-başı DEĞİL):**
+   Fabrika çok-cihazlı kullanır (aşağıda topoloji); cihaz-başı parmak izi
+   zahmetli + yanlış olur. Doğrusu: lisans **fabrikanın SUNUCU makinesine** bağlı
+   (disk seri / MAC / CPU id parmak izi o tek sunucuda) + **süreli** (yenileme
+   gerekir; RSA-imzalı, offline üretilebilir: müşteri sunucu makine-id'sini
+   yollar, sen imzalı lisans üretirsin). Kaç operatör tarayıcıdan bağlanırsa
+   bağlansın **tek lisans**. Süreli lisans = yumuşak abonelik → hem koruma hem
+   sürekli gelir. Sunucu tek kontrol noktası olduğu için LAN'dan periyodik
+   doğrulama bile mümkün.
+
+**Dağıtım topolojisi (lisans modelini ve paketlemeyi belirler):**
+- **Demo (şimdi):** tek makine, localhost — mevcut hâli yeterli.
+- **Ürün/fabrika:** **tek sunucu + çok tarayıcı-istemci** (PLAN_SERVIS §1
+  diyagramı: operatör tarayıcı → nginx → web; ortak Postgres → iş kaybolmaz,
+  herkes aynı sipariş havuzu/çizelgeyi görür). Operatör cihazına KURULUM YOK.
+  → Bu senaryoda **tarayıcı tabanlı kalmak AVANTAJ**; daha önce tartışılan
+  pywebview/tek-`.exe` yalnız *tek-operatörlü küçük müşteri* için uygundur,
+  çok-operatörlü fabrika için DEĞİL. Lisans bu topolojide sunucuya bağlanır.
+- **CSRF tekrar anlamlı** (çok kullanıcı + ağ) + kullanıcı/login (kim ne yaptı)
+  servis fazında (Faz 2) gündeme gelir. Detay dağıtım mimarisi: `PLAN_SERVIS.md`.
 3. **Kod sertleştirme (decompile zorlaştırma):** **Nuitka** (Python→gerçek C,
    bytecode yok) veya kritik **nesting motorunu Cython** ile `.pyd`'ye derle
    (asıl ticari değer en çok burada). Alternatif: PyArmor (bytecode şifreleme +
