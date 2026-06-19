@@ -157,12 +157,20 @@ def build_instance_from_order(
     temp_files: list[str] = []
     persist_path = Path(persist_dir) if persist_dir is not None else None
 
-    all_names = sorted(set(stl_map) | set(quantities))
+    # CASE-INSENSITIVE eşleşme: mail metnindeki ad (örn "Part282115_07D4113")
+    # ile zip'teki dosya adı (örn "part282115_07D4113") büyük/küçük harf farkı
+    # olsa da eşleşsin. Orijinal STL dosya adı görünür ad olarak korunur.
+    _stl_lower = {k.lower(): k for k in stl_map}
+    _qty_lower = {k.lower(): k for k in quantities}
+    all_lower = sorted(set(_stl_lower) | set(_qty_lower))
 
     try:
-        for name in all_names:
-            has_stl = name in stl_map
-            has_qty = name in quantities
+        for low in all_lower:
+            stl_key = _stl_lower.get(low)
+            qty_key = _qty_lower.get(low)
+            has_stl = stl_key is not None
+            has_qty = qty_key is not None
+            name = stl_key or qty_key  # tercihen STL dosya adı
 
             if has_stl and not has_qty:
                 skipped_no_qty.append(name)
@@ -175,8 +183,8 @@ def build_instance_from_order(
                 continue
 
             # Her iki haritada da var — isle
-            stl_bytes = stl_map[name]
-            qty = quantities[name]
+            stl_bytes = stl_map[stl_key]
+            qty = quantities[qty_key]
 
             bbox = _bbox_from_bytes(name, stl_bytes)
             if bbox is None:

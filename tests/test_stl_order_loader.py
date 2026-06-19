@@ -204,3 +204,16 @@ def test_empty_inputs():
     assert result.instance.parts == []
     assert result.skipped_no_qty == []
     assert result.skipped_no_stl == []
+
+
+def test_build_instance_case_insensitive_eslesme():
+    """Mail metni 'Braket' (büyük) ile dosya 'braket' (küçük) eşleşmeli."""
+    import trimesh
+    from src.nesting3d.instances.stl_order_loader import build_instance_from_order
+    m = trimesh.creation.box(extents=(10, 20, 30))
+    stl_map = {"braket": m.export(file_type="stl")}   # dosya: küçük
+    qty = {"Braket": 5}                                # mail: büyük
+    res = build_instance_from_order(stl_map, qty)
+    assert len(res.instance.parts) == 1
+    assert res.instance.parts[0].qty == 5
+    assert res.skipped_no_stl == [] and res.skipped_no_qty == []
