@@ -269,6 +269,28 @@
     </div>
     {% endif %}
 
+    <!-- Katman-Bazli Maliyet (AM makine-zamani: Z-height -> katman -> EUR/saat) -->
+    {% set lc = nr.get('layer_cost') %}
+    {% set ls = nr.get('layer_savings') %}
+    {% if lc %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+            <strong style="font-size: 15px;">Katman-Bazli Maliyet</strong>
+            <span class="badge badge-blue">{{ lc.n_layers }} katman ({{ "%.0f"|format(lc.layer_thickness_mm * 1000) }} µm)</span>
+            <span class="badge">~{{ "%.1f"|format(lc.total_hours) }} saat baski</span>
+            <span class="badge">~{{ "%.0f"|format(lc.total_cost_eur) }} € makine maliyeti</span>
+            {% if ls and ls.saved_layers > 0 %}
+            <span class="badge badge-green">Tuner tasarrufu: −{{ ls.saved_layers }} katman = {{ "%.0f"|format(ls.saved_cost_eur) }} € / {{ "%.1f"|format(ls.saved_hours) }} saat</span>
+            {% endif %}
+        </div>
+        <div style="font-size: 12px; color: var(--color-text-muted);">
+            Z-height {{ "%.1f"|format(lc.height_mm) }} mm ÷ {{ "%.2f"|format(lc.layer_thickness_mm) }} mm/katman = {{ lc.n_layers }} katman;
+            her katman ~{{ "%.0f"|format(lc.total_seconds / lc.n_layers) }} sn ve {{ "%.0f"|format(lc.total_cost_eur / lc.n_layers) }} €.
+            {% if ls and ls.saved_layers > 0 %}Nesting Z-height'i %{{ "%.1f"|format(ls.pct_height) }} dusurdu → {{ ls.saved_layers }} katman daha az.{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Instance-Tuner Konfig Kıyas Tablosu -->
     {% set tuner_data = nr.get('tuner') %}
     {% set port = nr.get('portfolio') %}

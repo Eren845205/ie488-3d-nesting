@@ -546,6 +546,24 @@ def _register_routes(
 
         used_demo = result.get("used_demo", False)
 
+        # Katman-bazli maliyet + tasarruf (AM makine-zamani): her batch icin
+        # height_mm -> katman sayisi -> EUR/saat. Tuner varsa baseline'a gore
+        # tasarruf da hesaplanir (nesting Z-height dususu -> dogrudan euro).
+        from src.pricing.layer_cost import (
+            LayerCostParams, compute_cost, compute_savings,
+        )
+        _lc_params = LayerCostParams()  # default 0.12mm / 20sn / 10EUR
+        for _nr in nesting_results.values():
+            _h = _nr.get("height_mm", 0.0)
+            if not _h:
+                continue
+            _nr["layer_cost"] = compute_cost(_h, _lc_params).to_dict()
+            _impr = (_nr.get("tuner") or {}).get("improvement_mm", 0.0) or 0.0
+            if _impr > 0:
+                _nr["layer_savings"] = compute_savings(
+                    _h + _impr, _h, _lc_params
+                ).to_dict()
+
         # Sohbet gecmisi: session'dan oku (per-kullanici)
         _sohbet = session.get("conversation_turns", [])
 
@@ -1180,13 +1198,26 @@ def _register_routes(
         # ASAMA 1: Mail-Cek
         # ------------------------------------------------------------------
         try:
-            mail_source = make_mail_source({"source": "fake"})
+            # Mail kaynagi: configs/mail.local.json varsa gercek IMAP (Gmail/
+            # Outlook/Hotmail), yoksa demo FakeMailbox. Sifre asla kodda degil.
+            _mail_cfg_path = _ROOT / "configs" / "mail.local.json"
+            if _mail_cfg_path.exists():
+                try:
+                    mail_cfg = json.loads(_mail_cfg_path.read_text(encoding="utf-8"))
+                except Exception as _cfg_exc:
+                    logger.warning("mail.local.json okunamadi (%s) — demo'ya dusuluyor", _cfg_exc)
+                    mail_cfg = {"source": "fake"}
+            else:
+                mail_cfg = {"source": "fake"}
+
+            mail_source = make_mail_source(mail_cfg)
             raw_mails = mail_source.fetch_new()
             n_mail = len(raw_mails)
+            _kaynak_etiket = mail_cfg.get("provider") or mail_cfg.get("source", "fake")
             asamalar.append({
                 "ad": "Mail-Cek",
                 "durum": "tamam",
-                "cikti": f"{n_mail} mail cekildi (FakeMailbox)",
+                "cikti": f"{n_mail} mail cekildi ({_kaynak_etiket})",
                 "detay": [
                     {"gonderen": m.gonderen, "konu": m.konu}
                     for m in raw_mails
@@ -1204,11 +1235,16 @@ def _register_routes(
         parsed_orders: List[Dict[str, Any]] = []
         parse_hatalar: List[str] = []
         parse_karantina: List[str] = []
-        parse_kaynak_sayac: Dict[str, int] = {"attachment_excel": 0, "attachment_csv": 0, "llm_text": 0}
+        parse_kaynak_sayac: Dict[str, int] = {
+            "attachment_zip_stl": 0, "attachment_excel": 0, "attachment_csv": 0, "llm_text": 0,
+        }
+        # ZIP-STL yolunda STL'ler buraya kalici yazilir (nesting voxelize edene
+        # kadar yasamali); mesaj-bazli alt klasor ingest_order icinde acilir.
+        _persist_root = str(_ROOT / "data" / "mail_stl")
 
         for mail in raw_mails:
             try:
-                order = ingest_order(mail, parser_role)
+                order = ingest_order(mail, parser_role, persist_root=_persist_root)
                 if order is not None:
                     # Mail gonderenden oncelik ipucu al
                     govde_lower = mail.govde.lower()
@@ -1247,6 +1283,10 @@ def _register_routes(
 
         # Kaynak ozeti icin etiket
         kaynak_parcalari = []
+        if parse_kaynak_sayac.get("attachment_zip_stl", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_zip_stl']} ZIP-STL'den"
+            )
         if parse_kaynak_sayac.get("attachment_excel", 0) > 0:
             kaynak_parcalari.append(
                 f"{parse_kaynak_sayac['attachment_excel']} Excel'den"
@@ -1286,6 +1326,15 @@ def _register_routes(
         # ------------------------------------------------------------------
         # Bulgu 7: deepcopy yerine shallow + tek anahtar override (daha hizli)
         scenario = {**RICH_SCENARIO, "orders": parsed_orders}
+
+        # ZIP-STL siparisi kendi konteynerini tasir (gercek plaka, orn. 335x335);
+        # varsa scenario konteynerini onunla degistir ki gercek geometri dogru
+        # plakaya yerlessin. Ilk container tasiyan order belirleyici.
+        _stl_container = next(
+            (o["container"] for o in parsed_orders if o.get("container")), None
+        )
+        if _stl_container:
+            scenario = {**scenario, "container": _stl_container}
 
         try:
             pipeline_result = run_pipeline(scenario)
@@ -1698,6 +1747,99 @@ def _register_routes(
             "teklif_taslagi": teklif_taslagi,
             "teklif_onay_gerekli": True,
         }), 200
+
+    # -----------------------------------------------------------------------
+    # Mail Ayarlari rotasi (UI'dan gercek gelen-kutusu baglama)
+    # -----------------------------------------------------------------------
+
+    _MAIL_SAGLAYICI_ETIKET = {
+        "hotmail": "Hotmail / Outlook.com", "outlook": "Outlook (Office 365)",
+        "gmail": "Gmail", "fake": "Demo", "imap": "IMAP",
+    }
+
+    def _mail_cfg_path():
+        return _ROOT / "configs" / "mail.local.json"
+
+    def _read_mail_cfg() -> Dict[str, Any]:
+        p = _mail_cfg_path()
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("mail.local.json okunamadi: %s", exc)
+        return {}
+
+    @app.route("/mail-ayar", methods=["GET"])
+    def mail_ayar():
+        """Mail ayar formunu goster (mevcut config'i doldurur, parola maskeli)."""
+        cfg = _read_mail_cfg()
+        provider = cfg.get("provider") or cfg.get("source") or "fake"
+        return render_template(
+            "mail_ayar.html",
+            kayitli=(bool(cfg) and provider != "fake"),
+            aktif_provider=provider,
+            aktif_saglayici=_MAIL_SAGLAYICI_ETIKET.get(provider, provider),
+            aktif_user=cfg.get("user", ""),
+            aktif_folder=cfg.get("folder", "INBOX"),
+            kaydedildi=(request.args.get("kaydedildi") == "1"),
+        )
+
+    def _mail_cfg_from_form() -> Dict[str, Any]:
+        """Form verisinden mail config kur; bos parola mevcut parolayi korur."""
+        provider = request.form.get("provider", "fake")
+        if provider == "fake":
+            return {"source": "fake"}
+        pw = (request.form.get("password") or "").strip()
+        if not pw:  # bos birakildi -> mevcut parolayi koru
+            pw = _read_mail_cfg().get("password", "")
+        return {
+            "provider": provider,
+            "user": (request.form.get("user") or "").strip(),
+            "password": pw,
+            "folder": (request.form.get("folder") or "INBOX").strip() or "INBOX",
+        }
+
+    @app.route("/mail-ayar", methods=["POST"])
+    def mail_ayar_kaydet():
+        """Form verisini configs/mail.local.json'a yaz (sifre yalniz sunucuda).
+
+        Guvenlik: dosya owner-only (0o600), dizin 0o700 yazilir — app password
+        baska kullanicilarca okunamaz (POSIX). Windows'ta mode kismen yoksayilir
+        ama POSIX deployment'ta (on-prem Linux sunucu) gercek koruma saglar.
+        """
+        cfg = _mail_cfg_from_form()
+        p = _mail_cfg_path()
+        p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        payload = json.dumps(cfg, ensure_ascii=False, indent=2)
+        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        return redirect(url_for("mail_ayar") + "?kaydedildi=1")
+
+    @app.route("/mail-ayar/test", methods=["POST"])
+    @_limit("4 per minute")
+    def mail_ayar_test():
+        """Girilen bilgilerle GERCEK baglanti+login dene (fetch_new degil — o
+        auth hatasinda sessizce bos doner). _connect login firlatirsa yakalanir."""
+        from src.runtime.mail_ingest import make_mail_source, ImapMailbox
+        cfg = _mail_cfg_from_form()
+        if cfg.get("source") == "fake":
+            return jsonify({"ok": True, "mesaj": "Demo modu — örnek mailler kullanılır, gerçek bağlantı yok."})
+        if not cfg.get("user") or not cfg.get("password"):
+            return jsonify({"ok": False, "mesaj": "E-posta ve uygulama şifresi gerekli."})
+        try:
+            src = make_mail_source(cfg)
+            if not isinstance(src, ImapMailbox):
+                return jsonify({"ok": False, "mesaj": "Geçersiz sağlayıcı."})
+            conn = src._connect()  # login dener; auth/baglanti hatasi firlatir
+            try:
+                conn.logout()
+            except Exception:
+                pass
+            return jsonify({"ok": True, "mesaj": "Bağlantı ve giriş başarılı. Gelen kutusu hazır."})
+        except Exception as exc:
+            logger.warning("Mail test baglanti hatasi: %s", exc)
+            return jsonify({"ok": False, "mesaj": f"Bağlanılamadı / giriş reddedildi: {exc}"})
 
     # -----------------------------------------------------------------------
     # Oncelik Plani rotasi (deterministik, LLM gerektirmez)

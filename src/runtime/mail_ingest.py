@@ -34,8 +34,10 @@ import imaplib
 import io
 import logging
 import re
+import tempfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
@@ -546,38 +548,115 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 # ---------------------------------------------------------------------------
 
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
+_ZIP_EXTENSIONS = {".zip"}
+
+
+def _find_attachment(mail: RawMail, extensions: Set[str]) -> Optional[Attachment]:
+    """Mail eklerinde verilen uzantilardan ilkini bul (yoksa None)."""
+    for att in (mail.ekler or []):
+        ext = "." + att.dosya_adi.rsplit(".", 1)[-1].lower() if "." in att.dosya_adi else ""
+        if ext in extensions:
+            return att
+    return None
+
+
+def _ingest_zip_stl_order(
+    mail: RawMail,
+    zip_att: Attachment,
+    persist_root: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """ZIP ekli STL siparisini isle: zip ac + govdeden adet + esleme + bbox.
+
+    Mail govdesi '<ad> <adet> adet' satirlari icerir; zip icindeki <ad>.stl
+    dosyalariyla birebir eslestirilir. Eslesmeyen STL/adet atlanir.
+
+    Dondurur: SCENARIO uyumlu order dict (parts source='stl', stl_path kalici)
+    + 'container' + 'skipped_*' alanlari. Eslesen parca yoksa None.
+    """
+    from src.runtime.zip_stl_extractor import extract_stls
+    from src.runtime.quantity_text_parser import parse_quantities
+    from src.nesting3d.instances.stl_order_loader import build_instance_from_order
+
+    try:
+        stl_map = extract_stls(zip_att.icerik)
+    except ValueError as exc:  # boyut bombasi vb.
+        logger.warning("ingest_order: ZIP acilamadi (%s) — %s", zip_att.dosya_adi, exc)
+        return None
+    if not stl_map:
+        logger.warning("ingest_order: ZIP icinde STL bulunamadi — %s", zip_att.dosya_adi)
+        return None
+
+    quantities = parse_quantities(mail.govde or "")
+
+    # STL'leri mesaj-bazli kalici klasore yaz (nesting voxelize edene kadar yasamali)
+    _det_hex = hashlib.sha256(mail.message_id.encode("utf-8")).hexdigest()[:8].upper()
+    base = Path(persist_root) if persist_root else Path(tempfile.gettempdir())
+    session_dir = base / f"mail_stl_{_det_hex}"
+
+    res = build_instance_from_order(stl_map, quantities, persist_dir=session_dir)
+    if not res.instance.parts:
+        logger.warning(
+            "ingest_order: ZIP+govde eslesmedi — hicbir parca uretilmedi (%s)",
+            zip_att.dosya_adi,
+        )
+        return None
+
+    parts = [
+        {
+            "id": p.id, "name": p.name, "qty": p.qty, "source": "stl",
+            "stl_path": p.stl_path, "width_mm": p.width_mm,
+            "depth_mm": p.depth_mm, "height_mm": p.height_mm,
+        }
+        for p in res.instance.parts
+    ]
+    c = res.instance.container
+    return {
+        "order_id": f"ZIP-{_det_hex}",
+        "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+        "deadline": "",
+        "priority_class": 2,
+        "parts": parts,
+        "parse_source": "attachment_zip_stl",
+        "container": {"width_mm": c.width_mm, "depth_mm": c.depth_mm, "height_mm": c.height_mm},
+        "skipped_no_stl": res.skipped_no_stl,
+        "skipped_no_qty": res.skipped_no_qty,
+    }
 
 
 def ingest_order(
     mail: RawMail,
     parser_role: Any,
+    persist_root: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Mail'den siparis dict'i cikar — dosya eki varsa deterministik, yoksa LLM.
+    """Mail'den siparis dict'i cikar — ek tipine gore yonlendirir.
 
-    Kural (SS6.1): .xlsx / .csv eki varsa parse_order_attachment (LLM YOK).
-    Ek yoksa parser_role.parse(mail.govde) (LLM — serbest metin).
+    Oncelik sirasi:
+      1. .zip eki  -> STL siparisi (zip ac + govdeden adet + esleme; LLM YOK)
+      2. .xlsx/.csv eki -> parse_order_attachment (LLM YOK)
+      3. ek yok -> parser_role.parse(mail.govde) (LLM — serbest metin)
 
     Parametreler
     ------------
-    mail        : RawMail ornegi (ekler alani kontrol edilir)
-    parser_role : ParserRole ornegi (metin parse icin; ek varsa cagrilmaz)
+    mail         : RawMail ornegi (ekler alani kontrol edilir)
+    parser_role  : ParserRole ornegi (metin parse icin; ek varsa cagrilmaz)
+    persist_root : ZIP-STL yolu icin STL'lerin yazilacagi kok dizin (None=tempdir)
 
     Dondurur
     --------
     dict | None — SCENARIO siparis formatiyla uyumlu dict:
       {order_id, customer, deadline, priority_class, parts, parse_source}
-      parse_source: "attachment_excel" | "attachment_csv" | "llm_text"
-      None: parse basarisiz (LLM yolu)
+      parse_source: "attachment_zip_stl" | "attachment_excel" | "attachment_csv" | "llm_text"
+      None: parse basarisiz / eslesme yok
     """
     from src.runtime.order_attachment_parser import parse_order_attachment
 
+    # --- En yuksek oncelik: ZIP-STL eki ---
+    zip_att = _find_attachment(mail, _ZIP_EXTENSIONS)
+    if zip_att is not None:
+        return _ingest_zip_stl_order(mail, zip_att, persist_root)
+
     # Yapılandırılmış ek kontrolu
-    structured_att: Optional[Attachment] = None
-    for att in (mail.ekler or []):
-        ext = "." + att.dosya_adi.rsplit(".", 1)[-1].lower() if "." in att.dosya_adi else ""
-        if ext in _STRUCTURED_EXTENSIONS:
-            structured_att = att
-            break
+    structured_att = _find_attachment(mail, _STRUCTURED_EXTENSIONS)
 
     if structured_att is not None:
         # --- Deterministik yol: Excel/CSV ---
@@ -634,26 +713,74 @@ def ingest_order(
 
 
 # ---------------------------------------------------------------------------
-# Fabrika
+# Fabrika — provider preset tablosu
 # ---------------------------------------------------------------------------
+
+_PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
+    "gmail": {
+        "host": "imap.gmail.com",
+        "port": 993,
+        "use_ssl": True,
+    },
+    "outlook": {
+        "host": "outlook.office365.com",
+        "port": 993,
+        "use_ssl": True,
+    },
+    "hotmail": {
+        "host": "outlook.office365.com",
+        "port": 993,
+        "use_ssl": True,
+    },
+}
+
+_VALID_PROVIDERS = frozenset(_PROVIDER_PRESETS.keys())
+
 
 def make_mail_source(config: Dict[str, Any]) -> MailSource:
     """Konfig sozlugundan uygun MailSource ornegi olusturur.
 
     Parametreler
     ------------
-    config : {"source": "fake"} veya {"source": "imap", "host": ..., ...}
-             "source" anahtari yoksa "fake" varsayilir.
+    config : Asagidaki bicimlerden biri kabul edilir:
 
-    Dondurur
-    --------
-    FakeMailbox  : source == "fake" veya source eksik
-    ImapMailbox  : source == "imap"
+      {"source": "fake"}
+          → FakeMailbox (demo, kimlik gerekmez)
+
+      {"source": "imap", "host": ..., "user": ..., "password": ...}
+          → ImapMailbox (geriye uyum — host elle verilir)
+
+      {"provider": "gmail"|"outlook"|"hotmail", "user": ..., "password": ...}
+          → ImapMailbox; host/port/use_ssl preset'ten doldurulur.
+            config'te acikca host verilmisse preset'i EZER (override).
+            user + password yine config'ten gelir (preset doldurmaz).
+
+      {} (ne source ne provider)
+          → FakeMailbox (varsayilan geriye uyum)
 
     Firlatir
     --------
-    ValueError : Bilinmeyen source degeri
+    ValueError : Bilinmeyen source veya bilinmeyen provider degeri
     """
+    provider = config.get("provider")
+
+    if provider is not None:
+        # Provider yolu
+        if provider not in _VALID_PROVIDERS:
+            raise ValueError(
+                f"Bilinmeyen mail provider: {provider!r}. "
+                f"Gecerli degerler: {sorted(_VALID_PROVIDERS)}."
+            )
+        preset = _PROVIDER_PRESETS[provider]
+        # Preset ile baslayan sonra config'teki acik degerler ezer (override)
+        resolved: Dict[str, Any] = {**preset, **config}
+        # "provider" anahtari ImapMailbox'a gecirilmez (gereksiz); temizle
+        resolved.pop("provider", None)
+        # source acikca verilmediyse "imap" sayilir
+        resolved.setdefault("source", "imap")
+        return ImapMailbox(resolved)
+
+    # Klasik source yolu
     source = config.get("source", "fake")
     if source == "fake":
         return FakeMailbox()

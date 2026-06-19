@@ -286,5 +286,152 @@ class TestImapMailboxSetup(unittest.TestCase):
         self.assertEqual(result, [], "Onceden islenmis UID tekrar donmemeli")
 
 
+# ---------------------------------------------------------------------------
+# make_mail_source — provider preset testleri
+# ---------------------------------------------------------------------------
+
+class TestMakeMailSourceProvider(unittest.TestCase):
+    """make_mail_source: provider preset mantigi."""
+
+    def test_gmail_provider_returns_imap_mailbox(self):
+        """provider='gmail' → ImapMailbox uretir."""
+        config = {
+            "provider": "gmail",
+            "user": "x@gmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertIsInstance(src, ImapMailbox)
+
+    def test_gmail_provider_sets_correct_host(self):
+        """provider='gmail' → host=='imap.gmail.com'."""
+        config = {
+            "provider": "gmail",
+            "user": "x@gmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.host, "imap.gmail.com")
+
+    def test_gmail_provider_sets_correct_port_and_ssl(self):
+        """provider='gmail' → port==993, use_ssl==True."""
+        config = {
+            "provider": "gmail",
+            "user": "x@gmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.port, 993)
+        self.assertTrue(src.use_ssl)
+
+    def test_outlook_provider_returns_imap_mailbox(self):
+        """provider='outlook' → ImapMailbox uretir."""
+        config = {
+            "provider": "outlook",
+            "user": "x@outlook.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertIsInstance(src, ImapMailbox)
+
+    def test_outlook_provider_sets_correct_host(self):
+        """provider='outlook' → host=='outlook.office365.com'."""
+        config = {
+            "provider": "outlook",
+            "user": "x@outlook.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.host, "outlook.office365.com")
+
+    def test_hotmail_provider_sets_correct_host(self):
+        """provider='hotmail' → host=='outlook.office365.com'."""
+        config = {
+            "provider": "hotmail",
+            "user": "x@hotmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.host, "outlook.office365.com")
+
+    def test_hotmail_provider_port_and_ssl(self):
+        """provider='hotmail' → port==993, use_ssl==True."""
+        config = {
+            "provider": "hotmail",
+            "user": "x@hotmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.port, 993)
+        self.assertTrue(src.use_ssl)
+
+    def test_explicit_host_overrides_gmail_preset(self):
+        """provider='gmail' + acik host → host preset'i degil acik deger kullanilir."""
+        config = {
+            "provider": "gmail",
+            "host": "custom.imap.example.com",
+            "user": "x@gmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.host, "custom.imap.example.com")
+
+    def test_explicit_port_overrides_preset(self):
+        """provider='gmail' + acik port → port preset'i degil acik deger kullanilir."""
+        config = {
+            "provider": "gmail",
+            "port": 1234,
+            "user": "x@gmail.com",
+            "password": "pw",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.port, 1234)
+
+    def test_unknown_provider_raises_value_error(self):
+        """Bilinmeyen provider → ValueError firlatilir."""
+        config = {
+            "provider": "yahoo",
+            "user": "x@yahoo.com",
+            "password": "pw",
+        }
+        with self.assertRaises(ValueError):
+            make_mail_source(config)
+
+    def test_provider_does_not_fill_user_or_password(self):
+        """Provider preset kullanici adi/parola DOLDURMAZ — config'den gelir."""
+        config = {
+            "provider": "gmail",
+            "user": "myuser@gmail.com",
+            "password": "mysecret",
+        }
+        src = make_mail_source(config)
+        self.assertEqual(src.user, "myuser@gmail.com")
+
+    # --- Geriye uyum testleri ---
+
+    def test_backward_compat_fake_source_unchanged(self):
+        """Geriye uyum: {'source':'fake'} hala FakeMailbox dondurur."""
+        src = make_mail_source({"source": "fake"})
+        self.assertIsInstance(src, FakeMailbox)
+
+    def test_backward_compat_imap_source_unchanged(self):
+        """Geriye uyum: eski imap konfig (source+host) hala calisir."""
+        config = {
+            "source": "imap",
+            "host": "imap.ornek.com",
+            "port": 993,
+            "user": "siparis@ornek.com",
+            "password": "gizli",
+        }
+        src = make_mail_source(config)
+        self.assertIsInstance(src, ImapMailbox)
+        self.assertEqual(src.host, "imap.ornek.com")
+
+    def test_backward_compat_no_source_no_provider_defaults_to_fake(self):
+        """Geriye uyum: ne 'source' ne 'provider' → Fake varsayilan."""
+        src = make_mail_source({})
+        self.assertIsInstance(src, FakeMailbox)
+
+
 if __name__ == "__main__":
     unittest.main()
