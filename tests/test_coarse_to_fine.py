@@ -22,7 +22,12 @@ from src.nesting3d.instances.format import (
     NestingInstance,
     PartSpec,
 )
-from src.nesting3d.coarse_to_fine import CoarseToFineResult, solve_coarse_to_fine
+from src.nesting3d.coarse_to_fine import (
+    CoarseToFineResult,
+    solve_coarse_to_fine,
+    suggest_coarse_pitch,
+    _min_feature_mm,
+)
 
 # ---------------------------------------------------------------------------
 # Test fixtures — small box instance (no real STL, no large voxelization)
@@ -262,3 +267,56 @@ def test_different_seed_still_valid():
     )
     assert result.height_mm > 0.0
     assert 0.0 < result.density <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Adaptif coarse pitch (suggest_coarse_pitch) — her veriye özel güvenli
+# ---------------------------------------------------------------------------
+
+def _inst(dim_list):
+    """dim_list: [(w,d,h), ...] -> box parçalı NestingInstance."""
+    return NestingInstance(
+        container=ContainerSpec(width_mm=PLATE_W, depth_mm=PLATE_D),
+        parts=[
+            PartSpec(id=f"p{i}", name=f"p{i}", qty=1, source="box",
+                     width_mm=w, depth_mm=d, height_mm=h)
+            for i, (w, d, h) in enumerate(dim_list)
+        ],
+    )
+
+
+def test_min_feature_en_ince_boyut():
+    inst = _inst([(50, 50, 50), (10, 1.0, 20)])
+    assert _min_feature_mm(inst) == 1.0
+
+
+def test_suggest_coarse_ince_parca_guvenli():
+    # 1 mm ince parça → coarse pitch onu voxelize'da kaybetmemeli
+    inst = _inst([(50, 50, 50), (10, 1.0, 20)])
+    cp = suggest_coarse_pitch(inst, fine_pitch=0.4)
+    assert _min_feature_mm(inst) / cp > 0.5   # kaybolmaz (güvenli)
+
+
+def test_suggest_coarse_kalin_parca_fine_x3():
+    # En ince 10 mm → güvenli tavan (10/0.6=16.7) yüksek, hedef fine×3 geçerli
+    inst = _inst([(50, 50, 50), (20, 10, 30)])
+    cp = suggest_coarse_pitch(inst, fine_pitch=1.0)
+    assert cp == pytest.approx(3.0)
+
+
+def test_suggest_coarse_fine_alt_sinir():
+    # coarse asla fine'dan küçük olamaz
+    inst = _inst([(2, 1.0, 2)])  # çok ince
+    cp = suggest_coarse_pitch(inst, fine_pitch=2.0)
+    assert cp >= 2.0
+
+
+def test_solve_coarse_pitch_none_otomatik():
+    # coarse_pitch=None → otomatik suggest; çalışmalı
+    inst = _make_instance()
+    r = solve_coarse_to_fine(
+        inst, plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+        coarse_pitch=None, fine_pitch=FINE_PITCH, budget=BUDGET, seed=42,
+    )
+    assert r.n_placed == 4
+    assert r.coarse_pitch >= FINE_PITCH

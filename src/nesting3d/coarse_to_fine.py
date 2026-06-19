@@ -25,6 +25,50 @@ from src.nesting3d.dblf import place_in_order
 from src.nesting3d.instances.format import NestingInstance, to_voxel_parts
 from src.nesting3d.tuner import tune
 
+# Voxelizasyon güvenlik oranı: bir parçanın en küçük boyutu / pitch bu değerin
+# ALTINA düşerse parça voxel grid'de KAYBOLUR (boş grid → hata). 0.5 teorik
+# sınır; 0.6 güvenlik payı bırakır.
+_VOXEL_SAFE_RATIO = 0.6
+
+
+def _min_feature_mm(instance: NestingInstance) -> float:
+    """Instance'taki EN İNCE parçanın en küçük boyutu (mm).
+
+    Coarse pitch'in üst sınırını belirler: pitch bundan fazla kabalaşırsa
+    en ince parça voxelize'da kaybolur. Boyut metası yoksa 0.0 döner.
+    """
+    best = float("inf")
+    for p in instance.parts:
+        dims = [d for d in (p.width_mm, p.depth_mm, p.height_mm)
+                if d is not None and d > 0]
+        if dims:
+            best = min(best, min(dims))
+    return best if best != float("inf") else 0.0
+
+
+def suggest_coarse_pitch(
+    instance: NestingInstance,
+    fine_pitch: float,
+    *,
+    factor: float = 3.0,
+) -> float:
+    """Her veriye özel, EN KABA-GÜVENLİ coarse pitch (mm).
+
+    - Hedef: fine_pitch × factor (hız-kalite dengesi).
+    - Güvenlik tavanı: en ince parça voxelize'da kaybolmasın
+      (min_feature / _VOXEL_SAFE_RATIO). Hedef bunu aşarsa tavana kelepçelenir.
+    - fine_pitch'ten küçük olamaz.
+
+    Böylece ince parçalı siparişlerde (örn. 1 mm parça) sabit kaba pitch'in
+    voxelizasyonu patlatması engellenir — coarse pitch otomatik daralır.
+    """
+    target = fine_pitch * factor
+    min_feat = _min_feature_mm(instance)
+    if min_feat > 0:
+        safe_cap = min_feat / _VOXEL_SAFE_RATIO
+        target = min(target, safe_cap)
+    return max(fine_pitch, target)
+
 
 # ---------------------------------------------------------------------------
 # Sonuc dataclass
@@ -77,7 +121,7 @@ def solve_coarse_to_fine(
     *,
     plate_w_mm: float,
     plate_d_mm: float,
-    coarse_pitch: float,
+    coarse_pitch: Optional[float] = None,
     fine_pitch: float,
     budget: int = 70,
     seed: int = 42,
@@ -113,6 +157,12 @@ def solve_coarse_to_fine(
     -------
     CoarseToFineResult
     """
+    # coarse_pitch=None → her veriye özel en kaba-güvenli pitch otomatik seçilir
+    # (en ince parça voxelize'da kaybolmayacak şekilde — sabit kaba pitch'in
+    # ince parçalı siparişlerde patlamasını önler).
+    if coarse_pitch is None:
+        coarse_pitch = suggest_coarse_pitch(instance, fine_pitch)
+
     # ------------------------------------------------------------------
     # Asama 1: COARSE arama
     # ------------------------------------------------------------------

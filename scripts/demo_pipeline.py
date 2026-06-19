@@ -54,8 +54,11 @@ TUNER_BUDGET = 70
 # senaryoları doğrudan tek-çözünürlük tune ile koşar (zaten hızlı).
 C2F_THRESHOLD = 40            # voxel-parça (kopya açılmış) eşiği
 COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
-COARSE_PITCH_FACTOR = 3.0    # kaba pitch = fine_pitch × faktör
-COARSE_PITCH_FLOOR = 3.0     # kaba pitch en az bu (mm) — hız garantisi
+# Kaba pitch = fine × faktör. SABİT TABAN YOK: fine_pitch zaten en ince
+# parçaya göre güvenli (suggest_pitch = min_feature/2.5); ×3 ile çarpınca
+# min_feature/coarse ≈ 0.83 > 0.5 → ince parça KAYBOLMAZ. Sabit 3mm taban,
+# 1mm parçalı siparişlerde (Plan2) voxelizasyonu patlatıyordu.
+COARSE_PITCH_FACTOR = 3.0
 
 # Algoritma-seçim model artefaktı
 SELECTION_MODEL_PATH = _ROOT / "data" / "selection_model.json"
@@ -613,12 +616,13 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         try:
             if len(voxel_parts) > C2F_THRESHOLD:
                 from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
-                _coarse_pitch = max(pitch * COARSE_PITCH_FACTOR, COARSE_PITCH_FLOOR)
+                # coarse_pitch=None → her veriye özel en kaba-güvenli pitch
+                # otomatik (ince parçalı siparişte voxelizasyon patlamaz).
                 _c2f_result = solve_coarse_to_fine(
                     instance,
                     plate_w_mm=float(container["width_mm"]),
                     plate_d_mm=float(container["depth_mm"]),
-                    coarse_pitch=_coarse_pitch,
+                    coarse_pitch=None,
                     fine_pitch=pitch,
                     budget=COARSE_BUDGET,
                     seed=seed,
