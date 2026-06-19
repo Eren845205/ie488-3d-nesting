@@ -317,17 +317,23 @@ box(s, "ÇÖZÜCÜLER — ortak Solver protokolü\nDBLF · SA · GA · Tabu · M
     5.85, 1.7, 6.6, 1.3, ACCENT, fs=13)
 box(s, "Hepsi AYNI decode'u kullanır (dblf.place_in_order)\n→ kalite kıyası ADİL, "
        "yeni algoritma motoru bozmaz", 2.0, 3.25, 9.3, 0.95, GREEN, fs=13)
-box(s, "PORTFÖY\nhepsini koş,\nen iyiyi seç", 2.0, 4.5, 3.0, 1.2, ACCENT, fs=13)
-arrow(s, 5.1, 5.0, 0.5)
-box(s, "INSTANCE-TUNER\nörneğe özel konfig menüsü\n(monoton kabul — asla kötüleşmez)",
-    5.7, 4.5, 5.6, 1.2, DGREEN, fs=13)
+box(s, "1) PORTFÖY (genel motor)\nhepsini koş, en iyiyi seç\n→ bu sonuç = BASELINE",
+    1.7, 4.5, 3.6, 1.35, ACCENT, fs=12)
+arrow(s, 5.4, 5.05, 0.5)
+box(s, "2) INSTANCE-TUNER — baseline'in ÜSTÜNE biner\n"
+       "örneğe özel konfig menüsü dener, DAHA İYİYSE alır\n"
+       "monotone acceptance → asla baseline'dan kötü olamaz",
+    6.0, 4.5, 5.7, 1.35, DGREEN, fs=12)
 notebox(s, "Kritik tasarım: tüm çözücüler tek bir arayüze (Solver protokolü) uyuyor "
            "ve aynı çözüm-çözme adımını paylaşıyor. Bu yüzden yeni bir algoritma "
-           "eklemek mevcut sistemi bozmuyor.", top=6.05, height=0.95, fill=LIGHT, fg=INK)
-notes(s, "Algoritma mimarisinin özü. Tüm çözücüler ortak bir sözleşmeye uyuyor, "
-         "aynı decode'u kullanıyor — bu sayede kıyas adil ve yeni çözücü eklemek "
-         "motoru kırmıyor. Portföy hepsini koşup en iyiyi seçiyor, tuner ise o "
-         "örneğe özel ince ayar yapıyor ama sonucu asla kötüleştirmiyor.")
+           "eklemek mevcut sistemi bozmuyor.", top=6.1, height=0.9, fill=LIGHT, fg=INK)
+notes(s, "Algoritma mimarisinin özü iki katman. ÖNCE portföy (genel motor) tüm "
+         "çözücüleri koşup en iyiyi seçiyor — buna baseline diyoruz. SONRA "
+         "instance-tuner bu baseline'in üstüne biniyor: o örneğe özel bir konfig "
+         "menüsü deniyor ve sadece daha iyi çıkarsa alıyor. Bu 'monotone acceptance' "
+         "garantisi sayesinde sonuç ya iyileşir ya aynı kalır — asla kötüleşmez. "
+         "Yani genel algoritma uygulanır, üstüne örneğe özel ince ayar gelir, "
+         "kazanırsa kâr, kaybederse zaten baseline korunur.")
 
 # ============================================================================
 # 9 — ÇÖZÜCÜLER TEK TEK
@@ -494,17 +500,23 @@ bullets(s, [
     ("Monoton garanti: seçim sonucu ASLA DBLF'den kötü olamaz", DGREEN, True),
     ("Overfit kapısı sertleştirildi: aileye-göre dengeli bölme + LOO-CV genelleme açığı", INK, True),
     ("Alternatif: karar ağacı seçici (LOO-CV %53.6 vs 1-NN %52.2) — yorumlanabilir", MUTED, True),
-    ("ÖĞRENME = MANUEL + ÖNERİ — otomatik yeniden-eğitim YOK", RED, True),
-    ("Sistem 'şu veri var, overfit riski şu, şunu geliştir' diye ÖNERİR; karar kullanıcıda", AMBER, True, 1),
-], top=1.65, size=16.5, gap=10)
+    ("ÖĞRENME = MANUEL + ÖNERİ (advisor) — otomatik yeniden-eğitim YOK", RED, True),
+    ("Advisor okur, YAZMAZ: 20 yeni instance birikince 'retrain düşünülebilir' diye ÖNERİR", AMBER, True, 1),
+    ("Öneri akıllı: az veri→'önce topla', overfit sinyali→'bloklar', kazanç varsa→'şimdi eğit'", AMBER, True, 1),
+    ("Gerçek eğitim hep manuel: `python -m scripts.retrain_selection`; karar kullanıcıda", MUTED, True, 1),
+], top=1.6, size=15.5, gap=9)
 notebox(s, "Bilinçli karar: model kendini sessizce yanlış eğitip bozmasın diye "
            "eğitim yalnız açık komutla çalışıyor. Bu, üreticideki riski azaltmak için.",
-        top=6.15, height=0.8, fill=NOTEBG, fg=INK)
+        top=6.2, height=0.75, fill=NOTEBG, fg=INK)
 notes(s, "Seçim modeli kurulu ve üretimde. Yorumlanabilir bir model seçtim "
          "bilinçli olarak — 1-NN ve karar ağacı, sinir ağı değil; çünkü 'neden bu "
          "çözücü' sorusuna cevap verebilmeliyiz. En kritik karar: öğrenme otomatik "
-         "DEĞİL. Sistem öneri sunuyor ama gerçek yeniden-eğitim sadece sizin "
-         "komutunuzla oluyor. Böylece model kendini sessizce bozamaz.")
+         "DEĞİL. Sistemde bir 'advisor' (öneri motoru) var; sadece okur, hiçbir şey "
+         "yazmaz. Son eğitimden beri 20 yeni instance birikince 'retrain "
+         "düşünülebilir' diye öneri çıkarıyor — ama bu otomatik tetik değil, sadece "
+         "size gösterilen bir bayrak. Öneri akıllı da: veri azsa 'önce topla' der, "
+         "overfit sinyali varsa 'şimdi eğitirsen kapı bloklar' der. Gerçek "
+         "yeniden-eğitim yalnız sizin komutunuzla. Böylece model kendini sessizce bozamaz.")
 
 # ============================================================================
 # 17 — OVERFIT DÜRÜST DURUM
