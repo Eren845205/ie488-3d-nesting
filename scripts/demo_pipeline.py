@@ -49,6 +49,14 @@ REPORT_FILENAME = "demo_pipeline_report.md"
 # Instance-Tuner demo bütçesi: demo süresi < ~15 s kalsın
 TUNER_BUDGET = 70
 
+# Coarse-to-fine otomatik tetik: bu kadar parçadan ÇOK olan siparişlerde
+# (gerçek-dünya ölçeği) kaba-optimize → ince-final kullanılır. Küçük demo
+# senaryoları doğrudan tek-çözünürlük tune ile koşar (zaten hızlı).
+C2F_THRESHOLD = 40            # voxel-parça (kopya açılmış) eşiği
+COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
+COARSE_PITCH_FACTOR = 3.0    # kaba pitch = fine_pitch × faktör
+COARSE_PITCH_FLOOR = 3.0     # kaba pitch en az bu (mm) — hız garantisi
+
 # Algoritma-seçim model artefaktı
 SELECTION_MODEL_PATH = _ROOT / "data" / "selection_model.json"
 
@@ -597,15 +605,32 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
             continue
 
-        # Instance-Tuner: TUNER_BUDGET ile portföy + menü konfigleri koşar
+        # Instance-Tuner: küçük instance → doğrudan tune; büyük instance (gerçek
+        # ölçek) → coarse-to-fine (kaba optimize → ince final). OTOMATIK, parça
+        # sayısına göre — kullanıcı bir şey ayarlamaz.
         factory = _bin_factory(container, pitch)
+        _c2f_result = None
         try:
-            tune_result = tuner_tune(
-                voxel_parts,
-                factory,
-                budget=TUNER_BUDGET,
-                seed=seed,
-            )
+            if len(voxel_parts) > C2F_THRESHOLD:
+                from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
+                _coarse_pitch = max(pitch * COARSE_PITCH_FACTOR, COARSE_PITCH_FLOOR)
+                _c2f_result = solve_coarse_to_fine(
+                    instance,
+                    plate_w_mm=float(container["width_mm"]),
+                    plate_d_mm=float(container["depth_mm"]),
+                    coarse_pitch=_coarse_pitch,
+                    fine_pitch=pitch,
+                    budget=COARSE_BUDGET,
+                    seed=seed,
+                )
+                tune_result = _c2f_result.tune_result
+            else:
+                tune_result = tuner_tune(
+                    voxel_parts,
+                    factory,
+                    budget=TUNER_BUDGET,
+                    seed=seed,
+                )
         except Exception as exc:
             # Zarif düşüş: tuner başarısız → DBLF tek başına
             try:
@@ -657,7 +682,14 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             continue
 
         t_nest_elapsed = time.perf_counter() - t_nest_start
-        winner_result = tune_result.result
+        # winner_result: coarse-to-fine sonucu (büyük) veya tuner sonucu (küçük).
+        # İkisi de placements/bin3d/height_mm/density alanlarını taşır (uyumlu).
+        if _c2f_result is not None:
+            winner_result = _c2f_result            # fine yükseklik/doluluk/yerleşim
+            voxel_parts_3d = _c2f_result.fine_voxel_parts  # 3D önizleme: ince parçalar
+        else:
+            winner_result = tune_result.result
+            voxel_parts_3d = {p.id: p for p in voxel_parts}
         height_mm = winner_result.height_mm
         density = winner_result.density
         n_placed = len(winner_result.placements)
@@ -724,7 +756,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # build_result_scene'e geçirir. OBJE'ler — JSON'a girmez (pipeline_job
             # _make_serializable bu iki anahtarı çıkarır); yalnız in-memory webapp.
             "placements": winner_result.placements,
-            "voxel_parts": {p.id: p for p in voxel_parts},
+            "voxel_parts": voxel_parts_3d,
         }
         batch_nesting_elapsed[batch.batch_id] = t_nest_elapsed
 
