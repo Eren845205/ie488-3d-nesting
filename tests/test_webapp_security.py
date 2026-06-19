@@ -15,7 +15,8 @@ def _client(monkeypatch, admin=None):
         monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
     else:
         monkeypatch.setenv("ADMIN_PASSWORD", admin)
-    app = create_app(testing=False, llm_enabled=False)
+    # load_env=False: gercek .env test ortamini (monkeypatch env) kirletmesin
+    app = create_app(testing=False, llm_enabled=False, load_env=False)
     return app.test_client()
 
 

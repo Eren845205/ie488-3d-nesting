@@ -370,6 +370,7 @@ def create_app(
     llm_provider_override: Any = None,
     llm_enabled: bool = True,
     orders_path: Optional[str] = None,
+    load_env: bool = True,
 ) -> Flask:
     """Flask uygulama factory.
 
@@ -389,11 +390,14 @@ def create_app(
 
     # .env varsa ortam degiskenlerini yukle (python-dotenv). override=False:
     # mevcut sistem/.bat env'i oncelikli kalir, .env yalniz eksikleri doldurur.
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(override=False)
-    except Exception:
-        pass
+    # testing modunda ASLA yuklenmez (testler .env'deki gercek mail/parola ile
+    # kirlenmesin; otonom testleri gercek IMAP'a baglanmaya calismasin).
+    if load_env and not testing:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=False)
+        except Exception:
+            pass
 
     app = Flask(
         __name__,
@@ -526,6 +530,58 @@ def _register_routes(
         """Oturumu kapat."""
         session.pop("authed", None)
         return redirect(url_for("giris"))
+
+    # -----------------------------------------------------------------------
+    # Arka plan poll (otomatik tetik): periyodik kutu kontrolu -> pipeline
+    # -----------------------------------------------------------------------
+    from src.runtime.mail_poller import MailPoller
+    from scripts.demo_pipeline import RICH_SCENARIO as _POLL_BASE_SCENARIO
+
+    def _poll_make_source():
+        from src.runtime.mail_ingest import make_mail_source
+        cfg = ({"source": "fake"} if app.config.get("TESTING")
+               else _resolve_mail_source_config(_ROOT))
+        return make_mail_source(cfg)
+
+    def _poll_on_result(result):
+        # Poll sonucu da /sonuc ekranina yazilir (tek-tik /run ile ayni yer)
+        result["used_demo"] = False
+        app.config["LAST_RESULT"] = result
+
+    try:
+        _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
+    except ValueError:
+        _poll_interval = 120
+
+    _poller = MailPoller(
+        make_source=_poll_make_source,
+        parser_role=(llm_components or {}).get("parser_role"),
+        base_scenario=_POLL_BASE_SCENARIO,
+        persist_root=str(_ROOT / "data" / "mail_stl"),
+        interval_s=_poll_interval,
+        on_result=_poll_on_result,
+        now=time.time,
+    )
+    app.config["MAIL_POLLER"] = _poller
+
+    # Otomatik baslat: MAIL_POLL_ENABLED=1 (testte baslamaz)
+    _poll_auto = os.environ.get("MAIL_POLL_ENABLED", "").strip().lower()
+    if _poll_auto in ("1", "true", "yes", "on") and not app.config.get("TESTING"):
+        _poller.start()
+
+    @app.route("/poll/durum", methods=["GET"])
+    def poll_durum():
+        return jsonify(_poller.state.snapshot())
+
+    @app.route("/poll/baslat", methods=["POST"])
+    def poll_baslat():
+        _poller.start()
+        return jsonify({"ok": True, "durum": _poller.state.snapshot()})
+
+    @app.route("/poll/durdur", methods=["POST"])
+    def poll_durdur():
+        _poller.stop()
+        return jsonify({"ok": True, "durum": _poller.state.snapshot()})
 
     @app.route("/health", methods=["GET"])
     def health():
@@ -1298,7 +1354,9 @@ def _register_routes(
         try:
             # Mail kaynagi: mail.local.json (UI) > .env MAIL_* > demo Fake.
             # Sifre asla kodda degil — dosya veya .env'den gelir.
-            mail_cfg = _resolve_mail_source_config(_ROOT)
+            # TESTING: gercek IMAP'a baglanmamak icin her zaman fake.
+            mail_cfg = ({"source": "fake"} if app.config.get("TESTING")
+                        else _resolve_mail_source_config(_ROOT))
 
             mail_source = make_mail_source(mail_cfg)
             raw_mails = mail_source.fetch_new()

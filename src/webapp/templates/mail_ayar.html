@@ -68,10 +68,57 @@
     <div id="test-sonuc" style="display:none; margin-top:14px; padding:10px 12px; border-radius:8px; font-size:14px;"></div>
 
     <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-muted);">
-        🔒 Şifre yalnızca bu sunucudaki <code>configs/mail.local.json</code> dosyasına yazılır
-        (versiyon kontrolüne girmez). Veri dışarı çıkmaz.
+        🔒 Şifre yalnızca bu sunucudaki <code>configs/mail.local.json</code> dosyasına (ya da
+        <code>.env</code>) yazılır; versiyon kontrolüne girmez. Veri dışarı çıkmaz.
     </div>
 </div>
+
+<div class="card" style="margin-top:16px;">
+    <div class="card-title">Otomatik Tarama (Arka Plan)</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Açıkken uygulama, siz hiçbir şey yapmadan belirli aralıklarla gelen kutusunu
+        kontrol eder; yeni sipariş maili geldikçe tüm pipeline'ı (parse → nesting →
+        fiyat → teklif) otomatik çalıştırır. Sonuçlar Sonuç ekranında görünür.
+    </p>
+    <div style="display:flex; align-items:center; gap:12px; margin-top:10px; flex-wrap:wrap;">
+        <span id="poll-rozet" class="badge">durum yükleniyor…</span>
+        <button type="button" class="btn btn-primary" id="poll-ac" onclick="pollAyar('baslat')">Otomatik Taramayı Aç</button>
+        <button type="button" class="btn" id="poll-kapa" onclick="pollAyar('durdur')">Kapat</button>
+    </div>
+    <div id="poll-detay" style="font-size:12px; color:var(--color-text-muted); margin-top:10px;"></div>
+</div>
+
+<script>
+async function pollDurumGetir() {
+    try {
+        var r = await fetch('/poll/durum');
+        if (!r.ok) return;
+        pollGoster(await r.json());
+    } catch (e) {}
+}
+function pollGoster(s) {
+    var rozet = document.getElementById('poll-rozet');
+    rozet.textContent = s.enabled ? '● Açık' : '○ Kapalı';
+    rozet.className = 'badge ' + (s.enabled ? 'badge-green' : 'badge-yellow');
+    document.getElementById('poll-ac').style.display = s.enabled ? 'none' : 'inline-block';
+    document.getElementById('poll-kapa').style.display = s.enabled ? 'inline-block' : 'none';
+    var parts = ['Aralık: ' + s.interval_s + ' sn', 'Tur: ' + s.runs,
+                 'Toplam işlenen sipariş: ' + s.total_processed];
+    if (s.last_error) parts.push('Son hata: ' + s.last_error);
+    document.getElementById('poll-detay').textContent = parts.join(' · ');
+}
+async function pollAyar(eylem) {
+    try {
+        var r = await fetch('/poll/' + eylem, {
+            method: 'POST', headers: {'X-CSRF-Token': '{{ csrf_token }}'}
+        });
+        var j = await r.json();
+        if (j.durum) pollGoster(j.durum);
+    } catch (e) {}
+}
+pollDurumGetir();
+setInterval(pollDurumGetir, 10000);  // 10 sn'de bir durumu tazele
+</script>
 
 <script>
 function provDegisti() {
