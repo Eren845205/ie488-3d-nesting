@@ -112,6 +112,15 @@ def test_cikis_oturumu_kapatir(monkeypatch):
     assert c.get("/oncelik").status_code == 302  # tekrar kapali
 
 
+def test_turkce_unicode_parola_kabul(monkeypatch):
+    # compare_digest str non-ASCII'de TypeError verir; bytes karsilastirma sart
+    c = _client(monkeypatch, admin="Şifrем-çığ-123")
+    tok = _csrf(c, "/giris")
+    r = c.post("/giris", data={"password": "Şifrем-çığ-123", "_csrf": tok})
+    assert r.status_code == 302
+    assert c.get("/oncelik").status_code == 200
+
+
 def test_acik_yonlendirme_korumasi(monkeypatch):
     c = _client(monkeypatch, admin="gizli123")
     tok = _csrf(c, "/giris")

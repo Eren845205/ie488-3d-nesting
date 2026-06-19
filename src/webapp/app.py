@@ -474,7 +474,10 @@ def _register_routes(
         if not _ADMIN_PASSWORD:
             return redirect(url_for("index"))
         if request.method == "POST":
-            if hmac.compare_digest(request.form.get("password", ""), _ADMIN_PASSWORD):
+            # bytes karsilastirma: Turkce/unicode parolada compare_digest ASCII
+            # kisitina takilmaz (str karsilastirma non-ASCII'de TypeError verir)
+            _girilen = request.form.get("password", "").encode("utf-8")
+            if hmac.compare_digest(_girilen, _ADMIN_PASSWORD.encode("utf-8")):
                 session["authed"] = True
                 _next = request.args.get("next") or url_for("index")
                 # acik-yonlendirme korumasi: yalniz site-ici mutlak yol
