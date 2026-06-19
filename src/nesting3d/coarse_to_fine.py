@@ -46,6 +46,27 @@ def _min_feature_mm(instance: NestingInstance) -> float:
     return best if best != float("inf") else 0.0
 
 
+def _voxelize_with_fallback(
+    instance: NestingInstance, pitch: float, floor_pitch: float
+):
+    """Voxelize; boş-grid hatasında pitch'i otomatik KIS (ince-duvar güvenliği).
+
+    bbox boyutu güvenli görünse bile bir parça ince-duvarlı (içi boş) olabilir
+    ve kaba pitch'te kaybolur (ValueError). Bu durumda pitch ×1/1.5 ile küçülür,
+    floor_pitch'e (fine) kadar denenir. Döner: (voxel_parts, kullanılan_pitch).
+    """
+    cur = pitch
+    while True:
+        try:
+            return to_voxel_parts(instance, cur), cur
+        except ValueError:
+            nxt = cur / 1.5
+            if nxt <= floor_pitch:
+                # floor'a indik: son çare floor ile dene (patlarsa propagate)
+                return to_voxel_parts(instance, floor_pitch), floor_pitch
+            cur = nxt
+
+
 def suggest_coarse_pitch(
     instance: NestingInstance,
     fine_pitch: float,
@@ -168,7 +189,10 @@ def solve_coarse_to_fine(
     # ------------------------------------------------------------------
     t0 = time.perf_counter()
 
-    coarse_parts = to_voxel_parts(instance, coarse_pitch)
+    # İnce-duvarlı parça kaba pitch'te kaybolursa pitch otomatik kısılır.
+    coarse_parts, coarse_pitch = _voxelize_with_fallback(
+        instance, coarse_pitch, fine_pitch
+    )
 
     def coarse_factory() -> Bin3D:
         return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=1)

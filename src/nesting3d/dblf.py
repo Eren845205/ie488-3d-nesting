@@ -56,12 +56,22 @@ def place_in_order(
 
     `orientation_for(index, part)` returns which orientation indices to try —
     all of them for the DBLF baseline, exactly one for an SA decode.
+
+    ROBUSTLUK: verilen oryantasyon(lar) parçayı plakaya sığdıramazsa (örn. SA/GA
+    sabit bir oryantasyon seçti ama o açıda parça plakadan taşıyor), parçanın
+    TÜM oryantasyonları denenir (DBLF gibi). Böylece büyük parça uygun açıda
+    döndürülerek sığar; çözücüler büyük parçada ÇÖKMEZ. Hiçbir oryantasyonda
+    sığmazsa parça gerçekten plakadan büyüktür → açık hata.
     """
     placements: List[Placement3D] = []
     for idx, part in enumerate(parts):
         best = _best_position(bin3d, part, orientation_for(idx, part))
+        if best is None:
+            # Fallback: sığan bir oryantasyon ara (tüm açılar)
+            best = _best_position(bin3d, part, range(len(part.orientations)))
         assert best is not None, (
-            f"{part.id} tabana sığmıyor — pitch/ölçek hatası (PLAN_3D.md §6.2)"
+            f"{part.id} hiçbir oryantasyonda plakaya sığmıyor — parça plaka "
+            f"boyutundan büyük (plaka/pitch ölçeğini kontrol edin)."
         )
         _, z, y, x, oi = best
         placements.append(bin3d.place(part, oi, x, y, z))
