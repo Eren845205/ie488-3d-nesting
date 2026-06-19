@@ -65,6 +65,7 @@
                         <form method="POST" action="/siparisler/sil/{{ s.order_id }}"
                               style="display:inline;"
                               onsubmit="return confirm('{{ s.order_id }} silinsin mi?')">
+                            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
                             <button type="submit" class="btn btn-danger btn-sm">
                                 Sil
                             </button>
@@ -87,6 +88,7 @@
     <div class="card-title">Yeni Siparis Ekle (Manuel Giris)</div>
 
     <form method="POST" action="/siparisler">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
         <div class="info-grid" style="gap: 16px; margin-bottom: 16px;">
             <div class="info-item">
                 <label for="order_id" style="font-weight: 600; font-size: 13px; color: var(--color-text-muted);">
@@ -164,6 +166,7 @@
     </p>
 
     <form method="POST" action="/siparisler/csv" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <input type="file" name="csv_file" accept=".csv"
                    style="border: 1px solid var(--color-border); padding: 7px 10px;

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Giriş — Nesting Sistemi{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:380px; margin:40px auto;">
+    <div class="card-title">Giriş</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Devam etmek için yönetici parolasını girin.
+    </p>
+
+    {% if hata %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fdecea; border:1px solid #f5b7b1; font-size:14px;">
+        ✗ {{ hata }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/giris{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}" style="margin-top:14px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Parola</label>
+        <input type="password" name="password" autofocus
+               style="width:100%; padding:9px; margin-bottom:14px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+        <button type="submit" class="btn btn-primary" style="width:100%; font-size:15px; padding:10px;">Giriş Yap</button>
+    </form>
+</div>
+{% endblock %}

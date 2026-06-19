@@ -515,6 +515,7 @@
         Pipeline&#39;i yeniden kosturmak icin asagidaki dugmeyi kullanin.
     </p>
     <form method="POST" action="/run" id="rerun-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
         <button type="submit" class="btn btn-primary" id="rerun-btn">
             Pipeline&#39;i Yeniden Calistir
         </button>
@@ -619,7 +620,7 @@
         uyari.style.display = 'none';
         hata.style.display = 'none';
 
-        fetch('/ozet', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        fetch('/ozet', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'}})
             .then(r => r.json())
             .then(data => {
                 loading.style.display = 'none';
@@ -676,7 +677,7 @@
 
         fetch('/sor', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
             body: JSON.stringify({soru: soru})
         })
         .then(r => r.json())
@@ -785,7 +786,7 @@
         result.style.display = 'none';
         hata.style.display = 'none';
 
-        fetch('/teklif', {method: 'POST', headers: {'Content-Type': 'application/json'}})
+        fetch('/teklif', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'}})
             .then(r => r.json())
             .then(data => {
                 loading.style.display = 'none';

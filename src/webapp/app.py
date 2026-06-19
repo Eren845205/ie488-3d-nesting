@@ -21,6 +21,7 @@ Durum yonetimi:
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -428,6 +429,68 @@ def _register_routes(
         def _passthrough(f):
             return f
         return _passthrough
+
+    # -----------------------------------------------------------------------
+    # Guvenlik: admin oturum (session) + CSRF (uygulama geneli)
+    # -----------------------------------------------------------------------
+    # ADMIN_PASSWORD env'den okunur (kodda sabit YOK). Bossa login devre disi
+    # (demo kolayligi). CSRF testing=False'ta aktif; testing=True'da mevcut
+    # testleri kirmamak icin atlanir (Flask-WTF'in WTF_CSRF_ENABLED=False mantigi).
+    _ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+    _AUTH_EXEMPT = {"giris", "cikis", "health", "static"}   # oturum gerektirmez
+    _CSRF_EXEMPT = {"health", "static"}                      # CSRF gerektirmez
+
+    @app.before_request
+    def _security_guard():
+        # Her oturuma CSRF token garanti et (testte de — context_processor icin)
+        if "_csrf" not in session:
+            session["_csrf"] = secrets.token_hex(16)
+
+        # Test izolasyonu: auth+csrf atlanir (mevcut testler token gondermez)
+        if app.config.get("TESTING"):
+            return
+
+        ep = request.endpoint or ""
+
+        # 1) Admin oturum (ADMIN_PASSWORD bossa login tamamen devre disi)
+        if _ADMIN_PASSWORD and ep not in _AUTH_EXEMPT and not session.get("authed"):
+            if request.method == "GET":
+                return redirect(url_for("giris", next=request.path))
+            return jsonify({"hata": "Oturum gerekli — lütfen giriş yapın."}), 401
+
+        # 2) CSRF (durum degistiren metodlar)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and ep not in _CSRF_EXEMPT:
+            sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
+            if not (sent and hmac.compare_digest(sent, session.get("_csrf", ""))):
+                return jsonify({"hata": "CSRF doğrulaması başarısız — sayfayı yenileyin."}), 403
+
+    @app.context_processor
+    def _inject_csrf():
+        return {"csrf_token": session.get("_csrf", "")}
+
+    @app.route("/giris", methods=["GET", "POST"])
+    def giris():
+        """Admin giris ekrani. ADMIN_PASSWORD bossa dogrudan ana sayfaya gecer."""
+        if not _ADMIN_PASSWORD:
+            return redirect(url_for("index"))
+        if request.method == "POST":
+            if hmac.compare_digest(request.form.get("password", ""), _ADMIN_PASSWORD):
+                session["authed"] = True
+                _next = request.args.get("next") or url_for("index")
+                # acik-yonlendirme korumasi: yalniz site-ici mutlak yol
+                if not _next.startswith("/") or _next.startswith("//"):
+                    _next = url_for("index")
+                return redirect(_next)
+            return render_template("giris.html", hata="Parola yanlış.")
+        if session.get("authed"):
+            return redirect(url_for("index"))
+        return render_template("giris.html", hata=None)
+
+    @app.route("/cikis", methods=["GET", "POST"])
+    def cikis():
+        """Oturumu kapat."""
+        session.pop("authed", None)
+        return redirect(url_for("giris"))
 
     @app.route("/health", methods=["GET"])
     def health():
