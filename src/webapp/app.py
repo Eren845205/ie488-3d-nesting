@@ -295,6 +295,30 @@ _TURKCE_AYLAR = {
 }
 
 
+def _resolve_mail_source_config(root) -> Dict[str, Any]:
+    """Mail kaynak konfigini coz: oncelik mail.local.json > .env MAIL_* > fake.
+
+    - configs/mail.local.json varsa (UI'dan kaydedilmis) O kullanilir.
+    - Yoksa .env'deki MAIL_PROVIDER/MAIL_USER/MAIL_PASSWORD/MAIL_FOLDER.
+    - O da yoksa demo FakeMailbox.
+    """
+    p = root / "configs" / "mail.local.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("mail.local.json okunamadi (%s) — .env/demo'ya dusuluyor", exc)
+    prov = os.environ.get("MAIL_PROVIDER", "").strip()
+    if prov:
+        return {
+            "provider": prov,
+            "user": os.environ.get("MAIL_USER", "").strip(),
+            "password": os.environ.get("MAIL_PASSWORD", "").strip(),
+            "folder": os.environ.get("MAIL_FOLDER", "INBOX").strip() or "INBOX",
+        }
+    return {"source": "fake"}
+
+
 def _normalize_deadline(deadline_str: str, mail_tarih: str = "") -> str:
     """Termin dizesini ISO 8601 (YYYY-MM-DD) formatina donusturur.
 
@@ -362,6 +386,14 @@ def create_app(
         Test izolasyonu icin tmp_path gecirilebilir.
     """
     from pathlib import Path as _Path
+
+    # .env varsa ortam degiskenlerini yukle (python-dotenv). override=False:
+    # mevcut sistem/.bat env'i oncelikli kalir, .env yalniz eksikleri doldurur.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=False)
+    except Exception:
+        pass
 
     app = Flask(
         __name__,
@@ -1264,17 +1296,9 @@ def _register_routes(
         # ASAMA 1: Mail-Cek
         # ------------------------------------------------------------------
         try:
-            # Mail kaynagi: configs/mail.local.json varsa gercek IMAP (Gmail/
-            # Outlook/Hotmail), yoksa demo FakeMailbox. Sifre asla kodda degil.
-            _mail_cfg_path = _ROOT / "configs" / "mail.local.json"
-            if _mail_cfg_path.exists():
-                try:
-                    mail_cfg = json.loads(_mail_cfg_path.read_text(encoding="utf-8"))
-                except Exception as _cfg_exc:
-                    logger.warning("mail.local.json okunamadi (%s) — demo'ya dusuluyor", _cfg_exc)
-                    mail_cfg = {"source": "fake"}
-            else:
-                mail_cfg = {"source": "fake"}
+            # Mail kaynagi: mail.local.json (UI) > .env MAIL_* > demo Fake.
+            # Sifre asla kodda degil — dosya veya .env'den gelir.
+            mail_cfg = _resolve_mail_source_config(_ROOT)
 
             mail_source = make_mail_source(mail_cfg)
             raw_mails = mail_source.fetch_new()

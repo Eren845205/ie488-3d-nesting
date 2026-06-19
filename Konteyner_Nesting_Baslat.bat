@@ -16,6 +16,8 @@ echo Sunucu baslatiliyor; tarayici birkac saniye icinde otomatik acilacak...
 echo.
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 6; Start-Process 'http://127.0.0.1:8765'"
 
+rem Giris sifresi (ADMIN_PASSWORD) ve mail bilgileri .env dosyasindan okunur.
+rem Ilk kurulum: .env.example dosyasini .env olarak kopyalayip doldurun.
 python -m src.webapp.app
 
 echo.

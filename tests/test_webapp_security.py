@@ -44,10 +44,11 @@ def test_csrf_yanlis_token_reddedilir(monkeypatch):
 
 
 def test_csrf_dogru_token_form_gecer(monkeypatch):
+    # /mail-ayar/test yazmaz (gercek configs'i kirletmez); form-field _csrf yolu
     c = _client(monkeypatch)
     tok = _csrf(c, "/mail-ayar")
-    r = c.post("/mail-ayar", data={"provider": "fake", "_csrf": tok})
-    assert r.status_code in (302, 200)
+    r = c.post("/mail-ayar/test", data={"provider": "fake", "_csrf": tok})
+    assert r.status_code == 200
 
 
 def test_csrf_header_ile_gecer(monkeypatch):
@@ -82,8 +83,8 @@ def test_admin_set_ise_korumali_get_giris_yonlendirir(monkeypatch):
 def test_admin_set_ise_korumali_post_401(monkeypatch):
     c = _client(monkeypatch, admin="gizli123")
     tok = _csrf(c, "/giris")
-    # CSRF dogru ama oturum yok -> 401 (auth, csrf'ten once)
-    r = c.post("/mail-ayar", data={"provider": "fake", "_csrf": tok})
+    # CSRF dogru ama oturum yok -> 401 (auth, csrf'ten once). Yazmayan uc.
+    r = c.post("/mail-ayar/test", data={"provider": "fake", "_csrf": tok})
     assert r.status_code == 401
 
 

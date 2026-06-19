@@ -19,6 +19,8 @@ data/orders.json
 
 # Gercek kimlik bilgisi dosyalari — repoya GIRME (Bulgu 9)
 configs/*.local.json
+.env
+data/mail_stl/
 
 # Büyük ikili dosyalar (teslimat/kaynak materyal — repoya girmez)
 *.zip
