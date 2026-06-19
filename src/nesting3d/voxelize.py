@@ -17,11 +17,39 @@ x {upright, tipped on side (Rx 90°)}.  Not all 24 rotations: AM part stability
 """
 
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
 import trimesh
+
+# ---------------------------------------------------------------------------
+# Otomatik-eşikli paralel voxelizasyon sabitleri
+#
+# PARALLEL_MIN_TYPES  — tip sayısı bu değerin ALTINDAYSA seri yol kullanılır.
+#   Küçük demolar (2-5 tip) paralel kurulum maliyetinden zarar görmesin.
+#   Değer: 6 — benchmark: 6 tip × 4 oryantasyon thread faydasının break-even'i.
+#
+# PARALLEL_MIN_VOXELS — tahmini toplam hücre sayısı (tüm tipler, tek oryantasyon
+#   bbox hacmi / pitch³ toplamı) bu değerin ALTINDAYSA seri yol kullanılır.
+#   Çok küçük kutular (her tip 1-2 hücre) paralele geçişi hak etmez.
+#   Değer: 5_000 — 5 kutu @ 20³/10³ = 8 hücre/kutu = 40 toplam → seri kalır;
+#   büyük gerçek parçalarda (200³mm / 3³mm pitch ≈ 300k hücre/tip) paralel açılır.
+#
+# _PARALLEL_MAX_WORKERS — ThreadPoolExecutor üst sınırı.
+#   numpy/trimesh C-uzantıları GIL'i çoğu zaman bırakır (özellikle trimesh
+#   voxelized, _slice_voxelize içindeki numpy ops); thread'ler bu süreçte
+#   gerçekten paralel çalışır. ProcessPoolExecutor daha kesin GIL çözümü
+#   sağlardı ama Windows'ta spawn overhead + pickle riski (mesh nesneleri,
+#   büyük numpy array'leri) kabul edilemez; thread tercih edilir.
+#   Her durumda cpu_count() ile cap'lenir, max 16.
+# ---------------------------------------------------------------------------
+
+PARALLEL_MIN_TYPES: int = 6
+PARALLEL_MIN_VOXELS: float = 5_000.0
+_PARALLEL_MAX_WORKERS: int = 16
 
 try:
     from shapely import contains_xy as _contains_xy
@@ -325,6 +353,28 @@ def voxelize_part(
     )
 
 
+def _should_parallelize(model_set: List[tuple], pitch: float) -> bool:
+    """Paralel yolun maliyet/kazancını heuristik ile değerlendir.
+
+    Tip sayısı PARALLEL_MIN_TYPES'tan az veya tahmini toplam voxel
+    PARALLEL_MIN_VOXELS'tan az ise seri yol tercih edilir.
+
+    Tahmini voxel: her tip için bbox hacmi / pitch³ (yuvarlak — gerçek
+    doldurma oranını değil ham üst sınırı kullanır; yine de küçük/büyük
+    ayrımı için yeterince güvenilir).
+    """
+    n_types = len(model_set)
+    if n_types < PARALLEL_MIN_TYPES:
+        return False
+    pitch3 = pitch ** 3
+    estimated_voxels = 0.0
+    for entry in model_set:
+        mesh = entry[1]
+        ext = mesh.extents  # (wx, wy, wz)
+        estimated_voxels += float(ext[0] * ext[1] * ext[2]) / pitch3
+    return estimated_voxels >= PARALLEL_MIN_VOXELS
+
+
 def expand_quantities(
     model_set: List[tuple],
     pitch: float,
@@ -344,17 +394,45 @@ def expand_quantities(
 
     orientation_overrides: {model adı -> 8-poz master sete indeks tuple'ı};
     eşleşmeyen modeller n_orientations default setini kullanır.
+
+    Otomatik-eşikli paralellik:
+      - İş yükü küçükse (tip sayısı < PARALLEL_MIN_TYPES veya tahmini
+        toplam voxel < PARALLEL_MIN_VOXELS) seri yol kullanılır.
+      - Büyük iş yükünde ThreadPoolExecutor ile tip voxelizasyonları
+        paralel çalışır.  Executor.map sırayı garanti eder → deterministik.
+      - ValueError (boş grid, ince parça) executor içinden propagate eder.
     """
-    parts: List[VoxelPart] = []
     overrides = orientation_overrides or {}
+
+    # Her tip için voxelize_part argümanlarını hazırla (sıra korunur).
+    entries = []
     for entry in model_set:
         name, mesh, qty = entry[:3]
         display = entry[3] if len(entry) > 3 else None
-        template = voxelize_part(
-            name, mesh, pitch, n_orientations=n_orientations, margin=margin,
-            method=method, display_mesh=display,
+        entries.append((name, mesh, qty, display))
+
+    def _voxelize_entry(entry: tuple) -> VoxelPart:
+        name, mesh, qty, display = entry
+        return voxelize_part(
+            name, mesh, pitch,
+            n_orientations=n_orientations,
+            margin=margin,
+            method=method,
+            display_mesh=display,
             allowed_orientations=overrides.get(name),
         )
+
+    if _should_parallelize(model_set, pitch):
+        max_workers = min(len(entries), os.cpu_count() or 1, _PARALLEL_MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # map() preserves order and re-raises exceptions from workers.
+            templates = list(executor.map(_voxelize_entry, entries))
+    else:
+        templates = [_voxelize_entry(e) for e in entries]
+
+    # Qty genişletme — sıra korunur, oryantasyon verisi paylaşılır.
+    parts: List[VoxelPart] = []
+    for template, (name, _mesh, qty, _display) in zip(templates, entries):
         width = max(2, len(str(qty)))
         for k in range(1, qty + 1):
             parts.append(
