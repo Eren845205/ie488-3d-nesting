@@ -992,10 +992,13 @@
         }, {rootMargin: '100px'});
 
         batchIds.forEach(id => {
-            const canvas = document.getElementById('viewer-canvas-' + id);
-            if (canvas) {
-                canvas.dataset.batchId = id;
-                observer.observe(canvas);
+            // GÖRÜNÜR container gozlemlenir — canvas baslangicta display:none
+            // oldugundan IntersectionObserver onu ASLA "intersecting" gormez
+            // (gizli elementin layout box'i yoktur -> 3D hic baslamaz).
+            const container = document.getElementById('viewer-container-' + id);
+            if (container) {
+                container.dataset.batchId = id;
+                observer.observe(container);
             }
         });
     });

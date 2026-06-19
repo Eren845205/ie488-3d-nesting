@@ -1490,6 +1490,12 @@ def _register_routes(
             logger.exception("Otonom: pipeline hatasi: %s", exc)
             return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}), 500
 
+        # Detayli sonuc ekrani (/sonuc) icin: otonom sonucu da LAST_RESULT'a
+        # yazilir; boylece kullanici "Detayli Sonucu Gor" ile tum tablolar +
+        # 3D onizleme + maliyet ekranina gidebilir (tek-tik /run ile ayni deneyim).
+        pipeline_result["used_demo"] = False
+        app.config["LAST_RESULT"] = pipeline_result
+
         ranked = pipeline_result.get("ranked_orders", [])
         batches = pipeline_result.get("batches", [])
         warnings = pipeline_result.get("warnings", [])
