@@ -28,11 +28,14 @@ Kullanım:
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # Proje kökü
 _ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +57,14 @@ TUNER_BUDGET = 70
 # senaryoları doğrudan tek-çözünürlük tune ile koşar (zaten hızlı).
 C2F_THRESHOLD = 40            # voxel-parça (kopya açılmış) eşiği
 COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
+
+# Parti-seviyesi PARALEL nesting: birden çok bağımsız parti (örn. 5 farklı
+# müşteriden 5 ayrı sipariş) ayrı SÜREÇLERDE aynı anda koşar → toplam süre =
+# en yavaş tek partininki, partilerin TOPLAMI değil. Partiler tam bağımsız
+# (sonuç batch_id'ye yazılır), paylaşılan değişken durum yok. Sıralı CPU-bound
+# (GIL) olduğundan thread değil SÜREÇ gerekir. Otomatik tetik: >=2 parti VE
+# toplam parça > PARALLEL_MIN_PARTS. Sonuç paralel/sıralıda AYNI (seed aynı).
+PARALLEL_MIN_PARTS = 40      # bu kadar parçanın altında paralel ek-maliyeti değmez
 # Kaba pitch = fine × faktör. SABİT TABAN YOK: fine_pitch zaten en ince
 # parçaya göre güvenli (suggest_pitch = min_feature/2.5); ×3 ile çarpınca
 # min_feature/coarse ≈ 0.83 > 0.5 → ince parça KAYBOLMAZ. Sabit 3mm taban,
@@ -484,6 +495,271 @@ def _predict_selection(
 
 
 # ---------------------------------------------------------------------------
+# Parti işçisi (ProcessPool için modül-seviyesi, picklable) + dispatch
+# ---------------------------------------------------------------------------
+
+def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Tek partinin nesting + fiyatlama hesabı (parti-paralel SÜREÇ işçisi).
+
+    payload tamamen picklable: batch_id, all_parts (parça dict listesi —
+    stl_path/box boyutları), batch_volume_cm3, container_cfg, pitch_fallback,
+    n_orient, seed, pricing_rules. Dönüş: {batch_id, nesting, pricing}.
+
+    Tüm ağır CPU işi (voxelize + tuner/coarse-to-fine) burada; süreçler arası
+    izole. Mantık run_pipeline'ın eski sıralı parti gövdesiyle BİREBİR aynı —
+    yalnızca dış-kapsam değişkenleri payload'dan okunur, sonuç dict döndürülür.
+    """
+    import time as _time
+    from src.nesting3d.instances.format import to_voxel_parts
+    from src.nesting3d.instances.pitch import suggest_pitch
+    from src.nesting3d.tuner import tune as tuner_tune
+    from src.nesting3d.instances.plate import resolve_container
+    from src.pricing.schema import RuleSet
+    from src.pricing.engine import PricingEngine
+
+    batch_id = payload["batch_id"]
+    all_parts = payload["all_parts"]
+    batch_volume_cm3 = payload["batch_volume_cm3"]
+    container_cfg = payload["container_cfg"]
+    pitch_fallback = payload["pitch_fallback"]
+    n_orient = payload["n_orient"]
+    seed = payload["seed"]
+
+    rule_set = RuleSet.from_dict(payload["pricing_rules"])
+    pricing_engine = PricingEngine(rule_set)
+    _sel_prefilter, _sel_model = _load_selection_model_safe()
+
+    def _ret(nesting, pricing):
+        return {"batch_id": batch_id, "nesting": nesting, "pricing": pricing}
+
+    if not all_parts:
+        return _ret(
+            {"height_mm": 0.0, "density": 0.0, "n_parts": 0,
+             "elapsed_sec": 0.0, "note": "Parça yok",
+             "portfolio": None, "tuner": None, "selection": None},
+            {"total_price": 0.0, "breakdown": []},
+        )
+
+    _pdims = [
+        (p.get("width_mm"), p.get("depth_mm"), p.get("height_mm"))
+        for p in all_parts
+    ]
+    _cw, _cd, _ch, _plate_auto = resolve_container(container_cfg, _pdims)
+    container = {"width_mm": _cw, "depth_mm": _cd, "height_mm": _ch}
+
+    instance = _build_nesting_instance(all_parts, container)
+
+    try:
+        pitch = suggest_pitch(instance)
+    except Exception:
+        pitch = pitch_fallback
+
+    selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
+
+    t_nest_start = _time.perf_counter()
+    try:
+        voxel_parts = to_voxel_parts(
+            instance, pitch, n_orientations=n_orient, margin=0
+        )
+    except Exception as exc:
+        return _ret(
+            {"height_mm": 0.0, "density": 0.0, "n_parts": len(all_parts),
+             "elapsed_sec": 0.0, "note": f"Voxelization hatasi: {exc}",
+             "portfolio": None, "tuner": None, "selection": selection_pred},
+            {"total_price": 0.0, "breakdown": []},
+        )
+
+    factory = _bin_factory(container, pitch)
+    _c2f_result = None
+    try:
+        if len(voxel_parts) > C2F_THRESHOLD:
+            from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
+            _c2f_result = solve_coarse_to_fine(
+                instance,
+                plate_w_mm=float(container["width_mm"]),
+                plate_d_mm=float(container["depth_mm"]),
+                coarse_pitch=None,
+                fine_pitch=pitch,
+                budget=COARSE_BUDGET,
+                seed=seed,
+            )
+            tune_result = _c2f_result.tune_result
+        else:
+            tune_result = tuner_tune(
+                voxel_parts, factory, budget=TUNER_BUDGET, seed=seed,
+            )
+    except Exception as exc:
+        # Zarif düşüş: tuner başarısız → DBLF tek başına
+        try:
+            from src.nesting3d.dblf import dblf as _dblf
+            _placements, bin3d = _dblf(voxel_parts, factory)
+            t_nest_elapsed = _time.perf_counter() - t_nest_start
+            nesting = {
+                "height_mm": bin3d.max_height_mm(),
+                "density": bin3d.packing_density(),
+                "n_parts": len(_placements),
+                "elapsed_sec": round(t_nest_elapsed, 3),
+                "note": f"Tuner hatasi (DBLF fallback): {exc}",
+                "portfolio": None, "tuner": None, "selection": selection_pred,
+            }
+        except Exception as exc2:
+            return _ret(
+                {"height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
+                 "elapsed_sec": 0.0,
+                 "note": f"Tuner hatasi: {exc}; DBLF fallback hatasi: {exc2}",
+                 "portfolio": None, "tuner": None, "selection": selection_pred},
+                {"total_price": 0.0, "breakdown": []},
+            )
+        pricing_inputs = _build_pricing_inputs(
+            batch_volume_cm3=batch_volume_cm3,
+            height_mm=nesting["height_mm"], density=nesting["density"],
+            n_containers=1,
+        )
+        try:
+            p_result = pricing_engine.calculate(pricing_inputs)
+            pricing = {
+                "total_price": p_result.total_price,
+                "breakdown": [str(line) for line in p_result.breakdown],
+                "inputs": pricing_inputs,
+            }
+        except Exception as exc3:
+            pricing = {
+                "total_price": 0.0,
+                "breakdown": [f"Fiyatlama hatasi: {exc3}"],
+                "inputs": pricing_inputs,
+            }
+        return _ret(nesting, pricing)
+
+    t_nest_elapsed = _time.perf_counter() - t_nest_start
+    if _c2f_result is not None:
+        winner_result = _c2f_result
+        voxel_parts_3d = _c2f_result.fine_voxel_parts
+    else:
+        winner_result = tune_result.result
+        voxel_parts_3d = {p.id: p for p in voxel_parts}
+    height_mm = winner_result.height_mm
+    density = winner_result.density
+    n_placed = len(winner_result.placements)
+    winner_config = tune_result.winning_config_name
+    baseline_height = tune_result.baseline_height_mm
+
+    dblf_height = baseline_height
+    gain_pct = (
+        (dblf_height - height_mm) / dblf_height * 100.0
+        if dblf_height > 0 else 0.0
+    )
+
+    tuner_rows = []
+    for cfg_name, cfg_result in tune_result.all_results:
+        is_win = cfg_result is winner_result
+        cfg_gain = (
+            (dblf_height - cfg_result.height_mm) / dblf_height * 100.0
+            if dblf_height > 0 else 0.0
+        )
+        tuner_rows.append({
+            "config": cfg_name,
+            "height_mm": round(cfg_result.height_mm, 2),
+            "density": round(cfg_result.density, 4),
+            "time_s": round(cfg_result.time_s, 3),
+            "winner": is_win,
+            "gain_pct": round(cfg_gain, 2),
+        })
+
+    portfolio_data = {
+        "winner": winner_config,
+        "dblf_height_mm": round(dblf_height, 2),
+        "gain_pct": round(gain_pct, 2),
+        "table_md": "",
+        "rows": tuner_rows,
+    }
+
+    nesting = {
+        "height_mm": height_mm,
+        "density": density,
+        "n_parts": n_placed,
+        "elapsed_sec": round(t_nest_elapsed, 3),
+        "note": "",
+        "pitch_mm": round(pitch, 2),
+        "portfolio": portfolio_data,
+        "tuner": {
+            "winning_config": winner_config,
+            "baseline_height_mm": round(baseline_height, 2),
+            "improvement_mm": round(tune_result.improvement_mm, 2),
+            "gain_vs_baseline_pct": round(gain_pct, 2),
+            "budget": TUNER_BUDGET,
+            "configs_tried": len(tune_result.all_results),
+            "rows": tuner_rows,
+        },
+        "selection": selection_pred,
+        "placements": winner_result.placements,
+        "voxel_parts": voxel_parts_3d,
+    }
+
+    pricing_inputs = _build_pricing_inputs(
+        batch_volume_cm3=batch_volume_cm3,
+        height_mm=height_mm, density=density, n_containers=1,
+    )
+    try:
+        p_result = pricing_engine.calculate(pricing_inputs)
+        pricing = {
+            "total_price": p_result.total_price,
+            "breakdown": [str(line) for line in p_result.breakdown],
+            "inputs": pricing_inputs,
+        }
+    except Exception as exc:
+        pricing = {
+            "total_price": 0.0,
+            "breakdown": [f"Fiyatlama hatasi: {exc}"],
+            "inputs": pricing_inputs,
+        }
+    return _ret(nesting, pricing)
+
+
+def _should_parallelize(scenario: Dict[str, Any], n_batches: int, total_parts: int) -> bool:
+    """Parti-paralel koşulsun mu? scenario['parallel_batches']: True/False/'auto'.
+
+    'auto' (varsayılan): >=2 parti VE toplam parça > PARALLEL_MIN_PARTS.
+    Env NESTING_PARALLEL=0 her durumda kapatır (hata ayıklama/Windows kaçışı).
+    """
+    import os
+    if os.environ.get("NESTING_PARALLEL", "").strip() == "0":
+        return False
+    flag = scenario.get("parallel_batches", "auto")
+    if flag is True:
+        return n_batches >= 2
+    if flag is False:
+        return False
+    return n_batches >= 2 and total_parts > PARALLEL_MIN_PARTS
+
+
+def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Partileri ayrı SÜREÇLERDE paralel koş. Hata/desteklenmezse {} (caller sıralıya düşer).
+
+    Sonuçlar batch_id'ye göre map'lenir; çağıran parti SIRASINA göre dizer
+    (determinizm korunur — her parti aynı seed ile koşar).
+    """
+    import os
+    try:
+        from concurrent.futures import ProcessPoolExecutor
+        max_workers = min(len(payloads), max(1, (os.cpu_count() or 2) - 2))
+        out: Dict[str, Dict[str, Any]] = {}
+        with ProcessPoolExecutor(max_workers=max_workers) as ex:
+            for r in ex.map(_process_batch, payloads):
+                out[r["batch_id"]] = r
+        logger.info(
+            "nesting: %d parti %d sürecte PARALEL koşuldu", len(payloads), max_workers,
+        )
+        return out
+    except Exception as exc:
+        # ProcessPool kurulamadı/pickle/Windows sorunu → caller sıralı koşar.
+        # Sessiz değil: kullanıcı loglardan paralelin düştüğünü görür.
+        logger.warning(
+            "nesting: paralel parti yürütme başarısız (%s) → SIRALI'ya düşülüyor", exc,
+        )
+        return {}
+
+
+# ---------------------------------------------------------------------------
 # Ana pipeline
 # ---------------------------------------------------------------------------
 
@@ -582,245 +858,46 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     # erisir). Atlananlar donus dict'inde ayri `skipped_orders` anahtarinda
     # yuzeye cikar (sessiz dusurme yok); UI/otonom oradan okur.
 
-    # --- 3. Her parti için nesting + fiyatlama ---
-    rule_set = RuleSet.from_dict(scenario["pricing_rules"])
-    pricing_engine = PricingEngine(rule_set)
-
+    # --- 3. Her parti için nesting + fiyatlama (parti-paralel) ---
     nesting_results: Dict[str, Dict[str, Any]] = {}
     pricing_results: Dict[str, Dict[str, Any]] = {}
-    batch_nesting_elapsed: Dict[str, float] = {}
 
+    # Parti yükleri (picklable). Her parti BAĞIMSIZ — sonuç batch_id'ye yazılır,
+    # paylaşılan değişken durum yok — bu yüzden süreç-paralel güvenli.
+    payloads: List[Dict[str, Any]] = []
     for batch in batches:
-        # Parti parçalarını derle
         all_parts: List[Dict[str, Any]] = []
         for order in batch.orders:
             all_parts.extend(order_parts_map[order.order_id])
+        payloads.append({
+            "batch_id": batch.batch_id,
+            "all_parts": all_parts,
+            "batch_volume_cm3": batch.total_volume_cm3,
+            "container_cfg": container_cfg,
+            "pitch_fallback": pitch_fallback,
+            "n_orient": n_orient,
+            "seed": seed,
+            "pricing_rules": scenario["pricing_rules"],
+        })
 
-        if not all_parts:
-            nesting_results[batch.batch_id] = {
-                "height_mm": 0.0, "density": 0.0, "n_parts": 0,
-                "elapsed_sec": 0.0, "note": "Parça yok",
-                "portfolio": None, "tuner": None, "selection": None,
-            }
-            pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
-            continue
+    # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5
+    # müşteriden 5 sipariş → 5 parti → ~tek parti süresi, toplamı değil). Sonuç
+    # sıralı ile AYNI (her parti aynı seed, batch_id'ye yazılır). Paralel
+    # kapalı/desteklenmiyor/düşerse otomatik sıralıya iner.
+    total_parts = sum(len(pl["all_parts"]) for pl in payloads)
+    results_map: Dict[str, Dict[str, Any]] = {}
+    if _should_parallelize(scenario, len(payloads), total_parts):
+        results_map = _run_batches_parallel(payloads)
+    if not results_map:
+        for payload in payloads:
+            r = _process_batch(payload)
+            results_map[r["batch_id"]] = r
 
-        # Plaka cozumu (parti bazinda): gercek plaka verildiyse o; yoksa bu
-        # partinin parcalarindan otomatik turetilir.
-        _pdims = [
-            (p.get("width_mm"), p.get("depth_mm"), p.get("height_mm"))
-            for p in all_parts
-        ]
-        _cw, _cd, _ch, _plate_auto = resolve_container(container_cfg, _pdims)
-        container = {"width_mm": _cw, "depth_mm": _cd, "height_mm": _ch}
-
-        # NestingInstance kur
-        instance = _build_nesting_instance(all_parts, container)
-
-        # Adaptif pitch: instance'tan türet, fallback = senaryo değeri
-        try:
-            pitch = suggest_pitch(instance)
-        except Exception:
-            pitch = pitch_fallback
-
-        # Algoritma-seçim tahmini (artefakt varsa; bilgilendirme amaçlı)
-        selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
-
-        # Voxelize (adaptif pitch)
-        t_nest_start = time.perf_counter()
-        try:
-            voxel_parts = to_voxel_parts(
-                instance, pitch, n_orientations=n_orient, margin=0
-            )
-        except Exception as exc:
-            nesting_results[batch.batch_id] = {
-                "height_mm": 0.0, "density": 0.0, "n_parts": len(all_parts),
-                "elapsed_sec": 0.0,
-                "note": f"Voxelization hatasi: {exc}",
-                "portfolio": None,
-                "tuner": None,
-                "selection": selection_pred,
-            }
-            pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
-            continue
-
-        # Instance-Tuner: küçük instance → doğrudan tune; büyük instance (gerçek
-        # ölçek) → coarse-to-fine (kaba optimize → ince final). OTOMATIK, parça
-        # sayısına göre — kullanıcı bir şey ayarlamaz.
-        factory = _bin_factory(container, pitch)
-        _c2f_result = None
-        try:
-            if len(voxel_parts) > C2F_THRESHOLD:
-                from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
-                # coarse_pitch=None → her veriye özel en kaba-güvenli pitch
-                # otomatik (ince parçalı siparişte voxelizasyon patlamaz).
-                _c2f_result = solve_coarse_to_fine(
-                    instance,
-                    plate_w_mm=float(container["width_mm"]),
-                    plate_d_mm=float(container["depth_mm"]),
-                    coarse_pitch=None,
-                    fine_pitch=pitch,
-                    budget=COARSE_BUDGET,
-                    seed=seed,
-                )
-                tune_result = _c2f_result.tune_result
-            else:
-                tune_result = tuner_tune(
-                    voxel_parts,
-                    factory,
-                    budget=TUNER_BUDGET,
-                    seed=seed,
-                )
-        except Exception as exc:
-            # Zarif düşüş: tuner başarısız → DBLF tek başına
-            try:
-                from src.nesting3d.dblf import dblf as _dblf
-                _placements, bin3d = _dblf(voxel_parts, factory)
-                t_nest_elapsed = time.perf_counter() - t_nest_start
-                nesting_results[batch.batch_id] = {
-                    "height_mm": bin3d.max_height_mm(),
-                    "density": bin3d.packing_density(),
-                    "n_parts": len(_placements),
-                    "elapsed_sec": round(t_nest_elapsed, 3),
-                    "note": f"Tuner hatasi (DBLF fallback): {exc}",
-                    "portfolio": None,
-                    "tuner": None,
-                    "selection": selection_pred,
-                }
-            except Exception as exc2:
-                nesting_results[batch.batch_id] = {
-                    "height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
-                    "elapsed_sec": 0.0,
-                    "note": f"Tuner hatasi: {exc}; DBLF fallback hatasi: {exc2}",
-                    "portfolio": None,
-                    "tuner": None,
-                    "selection": selection_pred,
-                }
-                pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
-                continue
-            pricing_inputs = _build_pricing_inputs(
-                batch_volume_cm3=batch.total_volume_cm3,
-                height_mm=nesting_results[batch.batch_id]["height_mm"],
-                density=nesting_results[batch.batch_id]["density"],
-                n_containers=1,
-            )
-            try:
-                p_result = pricing_engine.calculate(pricing_inputs)
-                breakdown_lines = [str(line) for line in p_result.breakdown]
-                pricing_results[batch.batch_id] = {
-                    "total_price": p_result.total_price,
-                    "breakdown": breakdown_lines,
-                    "inputs": pricing_inputs,
-                }
-            except Exception as exc3:
-                pricing_results[batch.batch_id] = {
-                    "total_price": 0.0,
-                    "breakdown": [f"Fiyatlama hatasi: {exc3}"],
-                    "inputs": pricing_inputs,
-                }
-            batch_nesting_elapsed[batch.batch_id] = nesting_results[batch.batch_id]["elapsed_sec"]
-            continue
-
-        t_nest_elapsed = time.perf_counter() - t_nest_start
-        # winner_result: coarse-to-fine sonucu (büyük) veya tuner sonucu (küçük).
-        # İkisi de placements/bin3d/height_mm/density alanlarını taşır (uyumlu).
-        if _c2f_result is not None:
-            winner_result = _c2f_result            # fine yükseklik/doluluk/yerleşim
-            voxel_parts_3d = _c2f_result.fine_voxel_parts  # 3D önizleme: ince parçalar
-        else:
-            winner_result = tune_result.result
-            voxel_parts_3d = {p.id: p for p in voxel_parts}
-        height_mm = winner_result.height_mm
-        density = winner_result.density
-        n_placed = len(winner_result.placements)
-        winner_config = tune_result.winning_config_name
-        baseline_height = tune_result.baseline_height_mm  # portföy (DBLF+SA+GA+Tabu) en iyisi
-
-        # DBLF yüksekliğini bul: baseline konfigin içindeki DBLF sonucundan
-        # Tuner all_results'ta "baseline" entry var; baseline = portföy winner.
-        # Eski UI uyumu için dblf_height = baseline (portföy, yani eski karşılaştırma)
-        dblf_height = baseline_height
-        gain_pct = (
-            (dblf_height - height_mm) / dblf_height * 100.0
-            if dblf_height > 0
-            else 0.0
-        )
-
-        # Tuner konfig kıyas verisi (her konfig için satır)
-        tuner_rows = []
-        for cfg_name, cfg_result in tune_result.all_results:
-            is_win = cfg_result is winner_result
-            cfg_gain = (
-                (dblf_height - cfg_result.height_mm) / dblf_height * 100.0
-                if dblf_height > 0
-                else 0.0
-            )
-            tuner_rows.append({
-                "config": cfg_name,
-                "height_mm": round(cfg_result.height_mm, 2),
-                "density": round(cfg_result.density, 4),
-                "time_s": round(cfg_result.time_s, 3),
-                "winner": is_win,
-                "gain_pct": round(cfg_gain, 2),
-            })
-
-        # Geriye-uyum: "portfolio" anahtarını tuner baseline'dan sentetik olarak koru
-        # (webapp/test uyumu; "rows" listesi tuner konfiglerinden üretilir)
-        portfolio_data = {
-            "winner": winner_config,
-            "dblf_height_mm": round(dblf_height, 2),
-            "gain_pct": round(gain_pct, 2),
-            "table_md": "",
-            "rows": tuner_rows,
-        }
-
-        nesting_results[batch.batch_id] = {
-            "height_mm": height_mm,
-            "density": density,
-            "n_parts": n_placed,
-            "elapsed_sec": round(t_nest_elapsed, 3),
-            "note": "",
-            "pitch_mm": round(pitch, 2),
-            "portfolio": portfolio_data,
-            "tuner": {
-                "winning_config": winner_config,
-                "baseline_height_mm": round(baseline_height, 2),
-                "improvement_mm": round(tune_result.improvement_mm, 2),
-                "gain_vs_baseline_pct": round(gain_pct, 2),
-                "budget": TUNER_BUDGET,
-                "configs_tried": len(tune_result.all_results),
-                "rows": tuner_rows,
-            },
-            "selection": selection_pred,
-            # 3D önizleme (gerçek geometri) için: webapp /geometri rotası bunları
-            # build_result_scene'e geçirir. OBJE'ler — JSON'a girmez (pipeline_job
-            # _make_serializable bu iki anahtarı çıkarır); yalnız in-memory webapp.
-            "placements": winner_result.placements,
-            "voxel_parts": voxel_parts_3d,
-        }
-        batch_nesting_elapsed[batch.batch_id] = t_nest_elapsed
-
-        # Fiyatlama
-        pricing_inputs = _build_pricing_inputs(
-            batch_volume_cm3=batch.total_volume_cm3,
-            height_mm=height_mm,
-            density=density,
-            n_containers=1,
-        )
-        try:
-            p_result = pricing_engine.calculate(pricing_inputs)
-            breakdown_lines = [str(line) for line in p_result.breakdown]
-            pricing_results[batch.batch_id] = {
-                "total_price": p_result.total_price,
-                "breakdown": breakdown_lines,
-                "inputs": pricing_inputs,
-            }
-        except Exception as exc:
-            pricing_results[batch.batch_id] = {
-                "total_price": 0.0,
-                "breakdown": [f"Fiyatlama hatasi: {exc}"],
-                "inputs": pricing_inputs,
-            }
+    # Parti SIRASINA göre diz (determinizm + rapor/UI sırası korunur)
+    for batch in batches:
+        r = results_map[batch.batch_id]
+        nesting_results[batch.batch_id] = r["nesting"]
+        pricing_results[batch.batch_id] = r["pricing"]
 
     elapsed_total = time.perf_counter() - t0
 

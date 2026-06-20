@@ -327,3 +327,76 @@ class TestEmptyOrderRobustness:
             o["parts"] = []
         with pytest.raises(ValueError, match="Gecerli siparis yok"):
             run_pipeline(sc)
+
+
+# ---------------------------------------------------------------------------
+# Parti-paralel nesting: paralel == sıralı (determinizm) + gerçekten paralel
+# ---------------------------------------------------------------------------
+
+class TestParallelBatches:
+    """5 müşteriden 5 ayrı sipariş gibi BAĞIMSIZ partiler ayrı süreçlerde
+    paralel koşar; sonuç sıralı ile BİREBİR aynı olmalı (her parti aynı seed)."""
+
+    def _multi_batch_scenario(self, n=3):
+        """n ayrı müşteri -> allow_mixing=False -> n ayrı parti."""
+        sc = copy.deepcopy(SMOKE_SCENARIO)
+        orders = []
+        for i in range(n):
+            orders.append({
+                "order_id": f"P{i:02d}",
+                "customer": f"Musteri{i}",      # farklı müşteri -> ayrı parti
+                "deadline": "2026-07-10",
+                "priority_class": 2,
+                "parts": [
+                    {"id": f"p{i}a", "name": f"box_{i}a", "qty": 2, "source": "box",
+                     "width_mm": 40.0, "depth_mm": 30.0, "height_mm": 20.0},
+                    {"id": f"p{i}b", "name": f"box_{i}b", "qty": 1, "source": "box",
+                     "width_mm": 50.0, "depth_mm": 40.0, "height_mm": 25.0},
+                ],
+            })
+        sc["orders"] = orders
+        return sc
+
+    def test_parallel_equals_sequential(self):
+        """parallel_batches=True ve =False AYNI yükseklik+fiyat üretmeli."""
+        seq = self._multi_batch_scenario(); seq["parallel_batches"] = False
+        par = self._multi_batch_scenario(); par["parallel_batches"] = True
+        rs = run_pipeline(seq)
+        rp = run_pipeline(par)
+        assert set(rs["nesting_results"]) == set(rp["nesting_results"])
+        for bid in rs["nesting_results"]:
+            assert abs(rs["nesting_results"][bid]["height_mm"]
+                       - rp["nesting_results"][bid]["height_mm"]) < 1e-9, bid
+            assert abs(rs["pricing_results"][bid]["total_price"]
+                       - rp["pricing_results"][bid]["total_price"]) < 1e-9, bid
+
+    def test_parallel_actually_runs_in_processes(self):
+        """_run_batches_parallel GERÇEKTEN süreçlerde koşmalı (boş dönerse
+        sessizce sıralıya düşmüş demektir — Windows spawn kırık). Boş-değil +
+        doğru batch_id'ler = paralel yol canlı."""
+        from scripts.demo_pipeline import _run_batches_parallel
+        sc = self._multi_batch_scenario(n=2)
+        # run_pipeline'ın kurduğu payload şeklini birebir taklit et
+        payloads = []
+        for o in sc["orders"]:
+            payloads.append({
+                "batch_id": o["order_id"], "all_parts": o["parts"],
+                "batch_volume_cm3": 100.0, "container_cfg": sc.get("container"),
+                "pitch_fallback": sc["pitch"], "n_orient": sc["n_orientations"],
+                "seed": sc["seed"], "pricing_rules": sc["pricing_rules"],
+            })
+        out = _run_batches_parallel(payloads)
+        assert out, "ProcessPool boş döndü — paralel yol sessizce sıralıya düşüyor"
+        assert set(out) == {"P00", "P01"}
+        # 3D nesneler (placements/voxel_parts) pickle ile geri geldi mi?
+        for bid in out:
+            assert "placements" in out[bid]["nesting"]
+            assert "voxel_parts" in out[bid]["nesting"]
+
+    def test_3d_objects_survive_pickle(self):
+        """Paralel sonuçta placements/voxel_parts (3D önizleme nesneleri) korunur."""
+        par = self._multi_batch_scenario(n=2); par["parallel_batches"] = True
+        rp = run_pipeline(par)
+        for bid, nr in rp["nesting_results"].items():
+            assert len(nr.get("placements", [])) >= 1
+            assert len(nr.get("voxel_parts", {})) >= 1
