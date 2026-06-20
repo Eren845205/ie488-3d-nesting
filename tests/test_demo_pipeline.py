@@ -370,11 +370,16 @@ class TestParallelBatches:
             assert abs(rs["pricing_results"][bid]["total_price"]
                        - rp["pricing_results"][bid]["total_price"]) < 1e-9, bid
 
-    def test_parallel_actually_runs_in_processes(self):
+    def test_parallel_actually_runs_in_processes(self, monkeypatch):
         """_run_batches_parallel GERÇEKTEN süreçlerde koşmalı (boş dönerse
         sessizce sıralıya düşmüş demektir — Windows spawn kırık). Boş-değil +
         doğru batch_id'ler = paralel yol canlı."""
+        from scripts import demo_pipeline as dp
         from scripts.demo_pipeline import _run_batches_parallel
+        # RAM kapısını izole et: testi koşan makinenin anlık boş RAM'inden
+        # bağımsız olsun (bol RAM + bol çekirdek varsay → >=2 işçi garanti).
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 64.0)
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 8)
         sc = self._multi_batch_scenario(n=2)
         # run_pipeline'ın kurduğu payload şeklini birebir taklit et
         payloads = []
@@ -422,16 +427,18 @@ class TestParallelWorkerLimit:
     def test_hard_cap_enforced(self, monkeypatch):
         """Çok yüksek override bile PARALLEL_HARD_CAP'i aşamaz."""
         from scripts import demo_pipeline as dp
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 999.0)  # RAM kapısını izole et
         monkeypatch.setenv("NESTING_MAX_WORKERS", "999")
         # 100 parti istense bile tavanla sınırlı
         assert dp._resolve_max_workers(100) == dp.PARALLEL_HARD_CAP
 
     def test_explicit_override(self, monkeypatch):
         """NESTING_MAX_WORKERS kesin sayıyı belirler (iş kadarına kıstırılır)."""
-        from scripts.demo_pipeline import _resolve_max_workers
+        from scripts import demo_pipeline as dp
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 999.0)  # RAM kapısını izole et
         monkeypatch.setenv("NESTING_MAX_WORKERS", "3")
-        assert _resolve_max_workers(10) == 3   # tavan(8) altında, iş(10) altında
-        assert _resolve_max_workers(2) == 2    # iş 2 ise 2
+        assert dp._resolve_max_workers(10) == 3   # tavan(8) altında, iş(10) altında
+        assert dp._resolve_max_workers(2) == 2    # iş 2 ise 2
 
     def test_reserve_leaves_headroom(self, monkeypatch):
         """Otomatik modda OS/UI'ye çekirdek payı bırakılır (rezerv kadar az)."""
@@ -450,3 +457,50 @@ class TestParallelWorkerLimit:
         monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
         monkeypatch.setenv("NESTING_RESERVE_CORES", "9999")
         assert _resolve_max_workers(5) >= 1
+
+
+# ---------------------------------------------------------------------------
+# RAM-farkında işçi sınırı: az-RAM'li makinede süreç şişmesini önler
+# ---------------------------------------------------------------------------
+
+class TestRamAwareLimit:
+    """İşçi sayısı CPU çekirdeğine EK OLARAK boş RAM'e de tabidir."""
+
+    def test_available_ram_reads_or_none(self):
+        """RAM okuması bir sayı (>0) veya None döner; istisna atmaz."""
+        from scripts.demo_pipeline import _available_ram_gb
+        v = _available_ram_gb()
+        assert v is None or v > 0
+
+    def test_low_ram_caps_workers(self, monkeypatch):
+        """Bol çekirdek ama AZ RAM → işçi RAM'e göre kısılır."""
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 32)      # bol CPU
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 3.0) # az RAM (3GB boş)
+        # ram_workers = floor(3.0 * 0.8 / 1.5) = floor(1.6) = 1 → sıralıya düşer
+        assert dp._resolve_max_workers(10) == 1
+
+    def test_ample_ram_allows_cpu_limit(self, monkeypatch):
+        """Bol RAM → RAM kapısı bağlamaz, CPU limiti geçerli."""
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 8)
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 64.0)  # bol RAM
+        # CPU: 8-2=6; RAM: floor(64*0.8/1.5)=34 → min → 6 (10 iş, tavan 8)
+        assert dp._resolve_max_workers(10) == 6
+
+    def test_ram_unreadable_skips_gate(self, monkeypatch):
+        """RAM okunamazsa (None) RAM kapısı atlanır → CPU-only davranış."""
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 8)
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: None)
+        assert dp._resolve_max_workers(10) == 6   # sadece CPU: 8-2=6
+
+    def test_ram_overrides_even_explicit_workers(self, monkeypatch):
+        """Açık NESTING_MAX_WORKERS verilse bile RAM yetmiyorsa düşürülür (güvenlik)."""
+        from scripts import demo_pipeline as dp
+        monkeypatch.setenv("NESTING_MAX_WORKERS", "8")
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 3.0)  # 1 işçilik RAM
+        assert dp._resolve_max_workers(10) == 1

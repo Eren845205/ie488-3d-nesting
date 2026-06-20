@@ -75,6 +75,14 @@ PARALLEL_MIN_PARTS = 40      # bu kadar parçanın altında paralel ek-maliyeti 
 # Her işçi tam bir süreç (kendi RAM'i) olduğundan işçi sayısı = RAM yükü de demek.
 PARALLEL_RESERVE_CORES = 2   # OS/UI/tarayıcıya bırakılan çekirdek (env ile değişir)
 PARALLEL_HARD_CAP = 8        # kaç çekirdek olursa olsun mutlak tavan (RAM + getiri azalır)
+# RAM-FARKINDA sınır: işçi sayısı sadece çekirdeğe değil, BOŞ RAM'e de tabi.
+# Her işçi ayrı süreç (Python + voxel ızgaraları). Çok çekirdekli ama az-RAM'li
+# makinede çekirdek-kadar işçi belleği şişirir (swap/çökme). Bu yüzden:
+#   ram_işçi = (boş_RAM × NESTING_RAM_HEADROOM) / NESTING_MEM_PER_WORKER_GB
+# ile de kısıtlanır. per-worker bütçe bir KESTİRİM (parça/çözünürlüğe bağlı) —
+# env ile ayarlanır; RAM okunamazsa bu sınır atlanır (CPU-only eski davranış).
+PARALLEL_MEM_PER_WORKER_GB = 1.5   # işçi-başına tahmini RAM bütçesi (env ile değişir)
+PARALLEL_RAM_HEADROOM = 0.8        # boş RAM'in en çok bu oranı paralele ayrılır
 # Kaba pitch = fine × faktör. SABİT TABAN YOK: fine_pitch zaten en ince
 # parçaya göre güvenli (suggest_pitch = min_feature/2.5); ×3 ile çarpınca
 # min_feature/coarse ≈ 0.83 > 0.5 → ince parça KAYBOLMAZ. Sabit 3mm taban,
@@ -763,15 +771,67 @@ def _detect_cores() -> int:
     return int(n) if n and n > 0 else 2
 
 
+def _available_ram_gb() -> Optional[float]:
+    """Boş (kullanılabilir) RAM'i GB cinsinden döndür; okunamazsa None.
+
+    Sıra: psutil (çapraz-platform, en güvenilir) → Windows ctypes
+    (GlobalMemoryStatusEx) → Linux /proc/meminfo (MemAvailable) → None.
+    None dönerse çağıran RAM sınırını ATLAR (CPU-only davranış) — yani RAM
+    okunamayan ortamda da çalışmaya devam eder, sadece RAM kapısı devre dışı.
+    """
+    # 1) psutil (varsa)
+    try:
+        import psutil  # type: ignore
+        return psutil.virtual_memory().available / (1024 ** 3)
+    except Exception:
+        pass
+    # 2) Windows
+    try:
+        import sys as _sys
+        if _sys.platform.startswith("win"):
+            import ctypes
+            class _MEMSTAT(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            stat = _MEMSTAT()
+            stat.dwLength = ctypes.sizeof(_MEMSTAT)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                return stat.ullAvailPhys / (1024 ** 3)
+    except Exception:
+        pass
+    # 3) Linux
+    try:
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    kb = float(line.split()[1])
+                    return kb / (1024 ** 2)
+    except Exception:
+        pass
+    return None
+
+
 def _resolve_max_workers(n_batches: int) -> int:
-    """Kaç paralel SÜREÇ kullanılacağını donanıma göre belirle (üst-sınırlı).
+    """Kaç paralel SÜREÇ kullanılacağını donanıma (CPU + RAM) göre belirle.
 
     Sıra:
       1. env NESTING_MAX_WORKERS verilmişse onu kullan (kesin; >=1'e kıstırılır).
-      2. Yoksa: tespit_çekirdek - rezerv (env NESTING_RESERVE_CORES, vars. 2),
-         en az 1.
-    Sonra her durumda min(parti_sayısı, PARALLEL_HARD_CAP) ile kısıtlanır —
-    sınırsız olmaz; makine boğulmaz.
+      2. Yoksa: tespit_çekirdek - rezerv (env NESTING_RESERVE_CORES, vars. 2).
+    Sonra:
+      - RAM kapısı: boş_RAM okunabiliyorsa ram_işçi = (boş × headroom) /
+        per_worker_gb ile kısıtla (az-RAM'li makinede süreç şişmesini önler).
+        RAM okunamazsa bu kapı atlanır.
+      - Mutlak tavan (PARALLEL_HARD_CAP) + iş kadarı (n_batches).
+    Sınırsız olmaz; makine ne CPU ne RAM tarafından boğulur.
     """
     import os
     cores = _detect_cores()
@@ -787,7 +847,20 @@ def _resolve_max_workers(n_batches: int) -> int:
         except ValueError:
             reserve = PARALLEL_RESERVE_CORES
         want = max(1, cores - max(0, reserve))
-    # Mutlak tavan + iş kadarı: fazla süreç açma (RAM + getiri azalır)
+
+    # RAM kapısı (boş RAM okunabiliyorsa). NESTING_MAX_WORKERS açık verilse bile
+    # RAM yetmiyorsa düşürülür — güvenlik CPU override'ından önce gelir.
+    avail = _available_ram_gb()
+    if avail is not None:
+        try:
+            per = float(os.environ.get("NESTING_MEM_PER_WORKER_GB", str(PARALLEL_MEM_PER_WORKER_GB)))
+        except ValueError:
+            per = PARALLEL_MEM_PER_WORKER_GB
+        if per > 0:
+            ram_workers = int((avail * PARALLEL_RAM_HEADROOM) / per)
+            want = min(want, max(1, ram_workers))
+
+    # Mutlak tavan + iş kadarı: fazla süreç açma
     return max(1, min(want, n_batches, PARALLEL_HARD_CAP))
 
 
@@ -813,11 +886,13 @@ def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str,
         with ProcessPoolExecutor(max_workers=max_workers) as ex:
             for r in ex.map(_process_batch, payloads):
                 out[r["batch_id"]] = r
+        _ram = _available_ram_gb()
         logger.info(
-            "nesting: %d parti %d sürecte PARALEL koşuldu (tespit edilen çekirdek=%d, "
-            "rezerv=%d, tavan=%d)",
+            "nesting: %d parti %d sürecte PARALEL koşuldu (çekirdek=%d, boş RAM=%s, "
+            "işçi-başı bütçe=%.1fGB, tavan=%d)",
             len(payloads), max_workers, _detect_cores(),
-            PARALLEL_RESERVE_CORES, PARALLEL_HARD_CAP,
+            ("%.1fGB" % _ram if _ram is not None else "okunamadı"),
+            PARALLEL_MEM_PER_WORKER_GB, PARALLEL_HARD_CAP,
         )
         return out
     except Exception as exc:
