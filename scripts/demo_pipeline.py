@@ -527,16 +527,27 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     # --- 1. Sipariş nesnelerini kur + doğrula ---
     orders: List[Order] = []
     order_parts_map: Dict[str, List[Dict[str, Any]]] = {}
+    skipped_orders: List[str] = []  # bos/sifir-adet siparisler (atlandi)
 
     for od in scenario["orders"]:
         parts_list = od.get("parts", [])
+        total_qty = sum(p.get("qty", 1) for p in parts_list)
+
+        # ROBUSTLUK: parcasiz veya sifir-adet siparis tum partiyi COKERTMEZ.
+        # (gercek kutuda LLM bazen sinyal tasiyan ama parcasiz "siparis" uretir;
+        # Order.validate total_quantity>0 ister.) Boyle siparis atlanir, gecerli
+        # siparisler islenir; durum skipped_orders + warnings'e yazilir.
+        if not parts_list or total_qty <= 0:
+            skipped_orders.append(od.get("order_id", "?"))
+            continue
+
         vol_cm3 = _parts_volume_cm3(parts_list)
 
         o = Order(
             order_id=od["order_id"],
             customer=od["customer"],
             parts_ref=od["order_id"],
-            total_quantity=sum(p.get("qty", 1) for p in parts_list),
+            total_quantity=total_qty,
             total_volume_cm3=vol_cm3,
             deadline=od["deadline"],
             priority_class=od["priority_class"],
@@ -544,6 +555,13 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         o.validate(today)
         orders.append(o)
         order_parts_map[od["order_id"]] = parts_list
+
+    if not orders:
+        # Hicbir gecerli siparis kalmadi -> caller (otonom/poller) yakalar.
+        raise ValueError(
+            "Gecerli siparis yok — tum siparisler bos/sifir adet "
+            f"(atlanan: {', '.join(skipped_orders) or 'yok'})"
+        )
 
     cap_cfg = scenario["capacity"]
     capacity = Capacity(
@@ -559,6 +577,10 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     ranked = rank_orders(orders, config, today)
     batches = build_batches(ranked, capacity, allow_mixing=False)
     warnings = check_feasibility(batches, capacity, today)
+    # NOT: atlanan bos/sifir-adet siparisler `warnings` listesine KONULMAZ —
+    # bu liste yapisal feasibility uyari nesneleri tutar (rapor ureteci .order_id
+    # erisir). Atlananlar donus dict'inde ayri `skipped_orders` anahtarinda
+    # yuzeye cikar (sessiz dusurme yok); UI/otonom oradan okur.
 
     # --- 3. Her parti için nesting + fiyatlama ---
     rule_set = RuleSet.from_dict(scenario["pricing_rules"])
@@ -833,6 +855,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         "warnings": warnings,
         "nesting_results": nesting_results,
         "pricing_results": pricing_results,
+        "skipped_orders": skipped_orders,
         "elapsed_sec": round(elapsed_total, 3),
         "report_path": str(report_path),
     }

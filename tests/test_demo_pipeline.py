@@ -277,3 +277,53 @@ class TestRichScenario:
             if port is not None:
                 assert len(port["rows"]) >= 1
                 assert isinstance(port["winner"], str)
+
+
+# ---------------------------------------------------------------------------
+# Robustluk: bos/sifir-adet siparis tum partiyi cokertmez
+# ---------------------------------------------------------------------------
+
+import copy  # noqa: E402
+
+
+class TestEmptyOrderRobustness:
+    """Parcasiz/sifir-adet siparis (gercek kutuda LLM uretebiliyor) gecerli
+    siparisleri COKERTMEMELI — atlanmali, durum warnings'e yazilmali."""
+
+    def _scenario_with_empty(self):
+        sc = copy.deepcopy(SMOKE_SCENARIO)
+        # Gecerli SMOKE-A + SMOKE-B'nin yanina parcasiz bir siparis ekle
+        sc["orders"].append({
+            "order_id": "BOS-LLM",
+            "customer": "Hayalet",
+            "deadline": "2026-07-20",
+            "priority_class": 3,
+            "parts": [],  # LLM sinyal gordu ama parca uretemedi
+        })
+        return sc
+
+    def test_empty_order_does_not_crash(self):
+        """Bir bos siparis varken pipeline gecerlileri isler, exception atmaz."""
+        result = run_pipeline(self._scenario_with_empty())
+        assert result is not None
+        # Gecerli iki siparis islendi
+        ids = {o.order_id for o in result["ranked_orders"]}
+        assert "SMOKE-A" in ids and "SMOKE-B" in ids
+        # Bos siparis atlandi
+        assert "BOS-LLM" not in ids
+        assert "BOS-LLM" in result["skipped_orders"]
+
+    def test_empty_order_surfaced_in_skipped(self):
+        """Atlanan siparis sessizce dusurulmez — skipped_orders'da gorunur."""
+        result = run_pipeline(self._scenario_with_empty())
+        assert "BOS-LLM" in result["skipped_orders"]
+        # warnings yapisal feasibility nesneleri tutar; string karismaz
+        assert all(not isinstance(w, str) for w in result["warnings"])
+
+    def test_all_empty_raises_clear_error(self):
+        """Tum siparisler bos -> net ValueError (caller yakalar)."""
+        sc = copy.deepcopy(SMOKE_SCENARIO)
+        for o in sc["orders"]:
+            o["parts"] = []
+        with pytest.raises(ValueError, match="Gecerli siparis yok"):
+            run_pipeline(sc)

@@ -520,7 +520,11 @@ def _extract_text_body(msg: email.message.Message) -> str:
 # Ek cikarici yardimci
 # ---------------------------------------------------------------------------
 
-MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024  # 5 MB — Fix-2
+# Sikistirilmis ek (ZIP/Excel) ust siniri. GERCEK STL siparis zip'leri buyuktur
+# (orn. hocanin Plan3.zip ~24.5 MB) — 5 MB cok dusuktu, gercek siparisleri
+# sessizce eliyordu. 50 MB on-prem tek-kiraci araci icin makul DoS siniri;
+# acilan toplam STL ayrica zip_stl_extractor max_total_mb=200 ile sinirli.
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
