@@ -569,6 +569,26 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
 _ZIP_EXTENSIONS = {".zip"}
 
+# Boyut deseni: "80x60x30", "80 x 60 x 30", "80×60" — sipariş sinyali (parça olcusu).
+_DIM_PATTERN = re.compile(r"\d+\s*[x×]\s*\d+", re.IGNORECASE)
+
+
+def _has_order_signal(text: str) -> bool:
+    """Mail govdesinde SIPARIS SINYALI var mi? (LLM'e gitmeden ucuz on-kontrol)
+
+    Sinyal = '<ad> <sayi> adet' deseni VEYA boyut deseni (NxN). Ikisi de yoksa
+    mail muhtemelen siparis DEGIL (reklam/kisisel/bildirim) — LLM'e sokulmaz.
+    Aksi halde LLM siparis olmayan maili parse etmeye zorlanip UYDURUR
+    (hallucination -> sahte siparis). Bu kapi yanlis-pozitifi engeller; gercek
+    siparis ya ek ya bu desenlerden birini tasidigi icin kacmaz.
+    """
+    from src.runtime.quantity_text_parser import parse_quantities
+    if parse_quantities(text):
+        return True
+    if _DIM_PATTERN.search(text):
+        return True
+    return False
+
 
 def _resolve_plate() -> tuple[Optional[float], Optional[float]]:
     """Gercek plaka (width, depth) coz — configs/plate.local.json > env PLATE_*.
@@ -725,6 +745,16 @@ def ingest_order(
         }
 
     # --- LLM yolu: serbest metin ---
+    # KAPI: ek yok; govdede siparis sinyali (adet/boyut deseni) yoksa LLM'e
+    # SOKMA. Sinyalsiz mail (reklam/kisisel/bildirim) LLM'e gidince model
+    # parca uydurur (sahte siparis). parser_role None ise zaten LLM yok.
+    if parser_role is None or not _has_order_signal(mail.govde or ""):
+        logger.info(
+            "ingest_order: siparis sinyali yok (adet/boyut deseni) — LLM atlandi: %s",
+            mail.gonderen,
+        )
+        return None
+
     parse_result = parser_role.parse(mail.govde)
     if parse_result is None:
         return None
