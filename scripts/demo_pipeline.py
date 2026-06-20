@@ -801,6 +801,14 @@ def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str,
     try:
         from concurrent.futures import ProcessPoolExecutor
         max_workers = _resolve_max_workers(len(payloads))
+        # Etkili işçi 1 ise (zayıf makine / yüksek rezerv) paralel ANLAMSIZ —
+        # 1-süreçlik havuz sıralıdan yavaştır (boşa spawn). Sıralıya bırak.
+        if max_workers <= 1:
+            logger.info(
+                "nesting: tek işçi çözümlendi (çekirdek=%d) → paralel atlandı, SIRALI",
+                _detect_cores(),
+            )
+            return {}
         out: Dict[str, Dict[str, Any]] = {}
         with ProcessPoolExecutor(max_workers=max_workers) as ex:
             for r in ex.map(_process_batch, payloads):
