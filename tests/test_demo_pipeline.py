@@ -504,3 +504,48 @@ class TestRamAwareLimit:
         monkeypatch.setenv("NESTING_MAX_WORKERS", "8")
         monkeypatch.setattr(dp, "_available_ram_gb", lambda: 3.0)  # 1 işçilik RAM
         assert dp._resolve_max_workers(10) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tavan env ile ezilebilir: süper bilgisayarda daha çok süreç
+# ---------------------------------------------------------------------------
+
+class TestConfigurableHardCap:
+    """PARALLEL_HARD_CAP varsayılan 8 ama NESTING_HARD_CAP env ile ezilir —
+    süper bilgisayarda (bol çekirdek+RAM) çok daha geniş paralellik."""
+
+    def test_default_cap_is_8(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_HARD_CAP", raising=False)
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 64)
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 999.0)  # bol RAM
+        # 64 çekirdek + bol RAM ama varsayılan tavan 8
+        assert dp._resolve_max_workers(50) == 8
+
+    def test_env_raises_cap_for_supercomputer(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setenv("NESTING_HARD_CAP", "48")
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 64)     # 64-2=62
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 999.0)
+        # tavan 48; CPU 62; iş 50 → min = 48
+        assert dp._resolve_max_workers(50) == 48
+
+    def test_env_cap_still_bounded_by_cpu_and_work(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setenv("NESTING_HARD_CAP", "1000")   # çok yüksek tavan
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 64)
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 999.0)
+        # tavan 1000 ama iş 5 → 5; CPU 62 → yine iş kazanır
+        assert dp._resolve_max_workers(5) == 5
+
+    def test_env_cap_still_bounded_by_ram(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setenv("NESTING_HARD_CAP", "1000")
+        monkeypatch.setattr(dp, "_detect_cores", lambda: 64)
+        monkeypatch.setattr(dp, "_available_ram_gb", lambda: 12.0)  # az RAM
+        # RAM: floor(12*0.8/1.5)=6 → tavan 1000 ve CPU 62'ye rağmen 6
+        assert dp._resolve_max_workers(50) == 6

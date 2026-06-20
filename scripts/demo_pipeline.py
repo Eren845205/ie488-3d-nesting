@@ -74,7 +74,12 @@ PARALLEL_MIN_PARTS = 40      # bu kadar parçanın altında paralel ek-maliyeti 
 #      en az 1; ayrıca PARALLEL_HARD_CAP ve parti sayısı ile kısıtlanır.
 # Her işçi tam bir süreç (kendi RAM'i) olduğundan işçi sayısı = RAM yükü de demek.
 PARALLEL_RESERVE_CORES = 2   # OS/UI/tarayıcıya bırakılan çekirdek (env ile değişir)
-PARALLEL_HARD_CAP = 8        # kaç çekirdek olursa olsun mutlak tavan (RAM + getiri azalır)
+PARALLEL_HARD_CAP = 8        # VARSAYILAN mutlak tavan (bilinmeyen müşteri makinesi
+                             # için güvenli). env NESTING_HARD_CAP ile EZİLİR —
+                             # süper bilgisayarda NESTING_HARD_CAP=64 gibi yüksek
+                             # ver → tam paralellik. Tavan tamamen kaldırılmaz:
+                             # RAM okunamadığında (kapı atlanır) ve çok-sayıda
+                             # küçük partide aşırı süreç spawn'ını önler (son emniyet).
 # RAM-FARKINDA sınır: işçi sayısı sadece çekirdeğe değil, BOŞ RAM'e de tabi.
 # Her işçi ayrı süreç (Python + voxel ızgaraları). Çok çekirdekli ama az-RAM'li
 # makinede çekirdek-kadar işçi belleği şişirir (swap/çökme). Bu yüzden:
@@ -860,8 +865,14 @@ def _resolve_max_workers(n_batches: int) -> int:
             ram_workers = int((avail * PARALLEL_RAM_HEADROOM) / per)
             want = min(want, max(1, ram_workers))
 
-    # Mutlak tavan + iş kadarı: fazla süreç açma
-    return max(1, min(want, n_batches, PARALLEL_HARD_CAP))
+    # Mutlak tavan: varsayılan PARALLEL_HARD_CAP, env NESTING_HARD_CAP ile ezilir
+    # (süper bilgisayar: yüksek değer ver → tam paralellik). + iş kadarı.
+    try:
+        hard_cap = int(os.environ.get("NESTING_HARD_CAP", str(PARALLEL_HARD_CAP)))
+    except ValueError:
+        hard_cap = PARALLEL_HARD_CAP
+    hard_cap = max(1, hard_cap)
+    return max(1, min(want, n_batches, hard_cap))
 
 
 def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -871,6 +882,7 @@ def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str,
     sınırsız değil; OS/UI'ye çekirdek payı bırakılır. Sonuçlar batch_id'ye göre
     map'lenir; çağıran parti SIRASINA göre dizer (determinizm — aynı seed).
     """
+    import os
     try:
         from concurrent.futures import ProcessPoolExecutor
         max_workers = _resolve_max_workers(len(payloads))
@@ -887,12 +899,13 @@ def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str,
             for r in ex.map(_process_batch, payloads):
                 out[r["batch_id"]] = r
         _ram = _available_ram_gb()
+        _eff_cap = os.environ.get("NESTING_HARD_CAP", str(PARALLEL_HARD_CAP))
         logger.info(
             "nesting: %d parti %d sürecte PARALEL koşuldu (çekirdek=%d, boş RAM=%s, "
-            "işçi-başı bütçe=%.1fGB, tavan=%d)",
+            "işçi-başı bütçe=%.1fGB, tavan=%s)",
             len(payloads), max_workers, _detect_cores(),
             ("%.1fGB" % _ram if _ram is not None else "okunamadı"),
-            PARALLEL_MEM_PER_WORKER_GB, PARALLEL_HARD_CAP,
+            PARALLEL_MEM_PER_WORKER_GB, _eff_cap,
         )
         return out
     except Exception as exc:
