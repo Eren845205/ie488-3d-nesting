@@ -168,15 +168,25 @@ def test_instance_meta():
 # Test 7: konteyner boyutlari default + override
 # ---------------------------------------------------------------------------
 
-def test_container_defaults():
+def test_container_otomatik_plaka():
+    """Plaka verilmezse SABIT default DEGIL — parcalardan otomatik turetilir.
+
+    Pay = max(%2, 10mm taban): kucuk parcada (5 mm) %2 = 0.1 mm pitch icin
+    yetersiz kalir -> sabit 10 mm taban uygulanir = 5 + 10 = 15 mm. Boylece
+    parca her zaman plakaya sigar (voxel/pitch yuvarlamasi tasmaz).
+    Sabit 335 ARTIK kullanilmaz (kullanici karari: sabit default olmamali).
+    """
     stl_map = {"p": _make_stl_bytes(5.0, 5.0, 5.0)}
     quantities = {"p": 1}
 
     result = build_instance_from_order(stl_map, quantities)
     c = result.instance.container
-    assert c.width_mm == 335.0
-    assert c.depth_mm == 335.0
+    assert c.width_mm == 15.0
+    assert c.depth_mm == 15.0
     assert c.height_mm is None
+    # parca taban kenarindan (5) buyuk olmali -> her oryantasyonda sigar
+    assert c.width_mm >= 5.0
+    assert result.instance.meta.get("plate_auto") is True
 
 
 def test_container_override():
@@ -193,6 +203,8 @@ def test_container_override():
     assert c.width_mm == 500.0
     assert c.depth_mm == 400.0
     assert c.height_mm == 200.0
+    # gercek plaka acikca verildi -> otomatik DEGIL
+    assert result.instance.meta.get("plate_auto") is False
 
 
 # ---------------------------------------------------------------------------

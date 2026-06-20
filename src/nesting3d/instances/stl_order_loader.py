@@ -130,18 +130,27 @@ def build_instance_from_order(
     stl_map: dict[str, bytes],
     quantities: dict[str, int],
     *,
-    container_w_mm: float = 335.0,
-    container_d_mm: float = 335.0,
+    container_w_mm: Optional[float] = None,
+    container_d_mm: Optional[float] = None,
     container_h_mm: Optional[float] = None,
     persist_dir: Optional[Union[str, Path]] = None,
 ) -> StlOrderResult:
     """Siparis STL byte'lari + adet eslemesinden NestingInstance kur.
 
+    Plaka (konteyner taban) politikasi — SABIT default YOK:
+      * container_w_mm / container_d_mm acikca verilirse  -> o GERCEK plaka
+        kullanilir (fiziksel yazici kisiti; parca sigmazsa nesting uyarir).
+      * None birakilirsa -> plaka eldeki PARCALARDAN otomatik turetilir
+        (_auto_plate_side; en buyuk parcayi sigdiran kare + %10 pay).
+      * Biri verilip digeri None ise -> verilen korunur, None olan otomatik.
+    Boylece "sabit plaka var" ve "veriye gore plaka" senaryolari birlikte
+    desteklenir (gercek hayatta ikisi de olur).
+
     Args:
         stl_map:       {uzantisiz_ad: stl_bytes} — zip extractor ciktisi.
         quantities:    {parca_adi: adet} — quantity parser ciktisi.
-        container_w_mm: Konteyner genisligi (mm). Default 335.
-        container_d_mm: Konteyner derinligi (mm). Default 335.
+        container_w_mm: Gercek plaka genisligi (mm). None -> parcalardan otomatik.
+        container_d_mm: Gercek plaka derinligi (mm). None -> parcalardan otomatik.
         container_h_mm: Konteyner yuksekligi (mm). None = open-dimension.
         persist_dir:   Verilirse STL'ler bu KALICI dizine yazilir ve SILINMEZ
                        (stl_path gecerli kalir — nesting/voxelize sonrasi
@@ -221,10 +230,19 @@ def build_instance_from_order(
             except OSError:
                 pass
 
+    # Plaka cozumu: cekirdek politika (plate.resolve_container) — verilen GERCEK
+    # plaka onceliklidir; eksik boyut(lar) parcalardan otomatik turetilir.
+    from src.nesting3d.instances.plate import resolve_container
+    _pdims = [(p.width_mm, p.depth_mm, p.height_mm) for p in parts]
+    resolved_w, resolved_d, resolved_h, plate_auto = resolve_container(
+        {"width_mm": container_w_mm, "depth_mm": container_d_mm, "height_mm": container_h_mm},
+        _pdims,
+    )
+
     container = ContainerSpec(
-        width_mm=container_w_mm,
-        depth_mm=container_d_mm,
-        height_mm=container_h_mm,
+        width_mm=resolved_w,
+        depth_mm=resolved_d,
+        height_mm=resolved_h,
     )
 
     n_distinct = len(parts)
@@ -237,6 +255,7 @@ def build_instance_from_order(
             "family": "mail_order",
             "n_distinct_parts": n_distinct,
             "total_qty": total_qty,
+            "plate_auto": plate_auto,
         },
     )
 

@@ -80,10 +80,12 @@ def process_inbox_once(
         return None
 
     scenario = {**base_scenario, "orders": orders}
-    # ZIP-STL siparisi kendi konteynerini tasir (gercek plaka) — varsa uygula.
+    # Plaka: bir siparis GERCEK plaka tasiyorsa (env PLATE_*) onu uygula.
+    # Aksi halde base_scenario'nun demo container'ini BIRAK (None) ki run_pipeline
+    # gercek parcalardan parti-bazli otomatik plaka turetsin — demo plakasi
+    # gercek STL siparisine dayatilmaz (cekirdek politika her yoldan gecerli).
     stl_container = next((o["container"] for o in orders if o.get("container")), None)
-    if stl_container:
-        scenario = {**scenario, "container": stl_container}
+    scenario = {**scenario, "container": stl_container}  # None -> pipeline otomatik
 
     return run_pipeline(scenario)
 

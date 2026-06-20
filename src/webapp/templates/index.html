@@ -239,15 +239,20 @@
             btn.disabled = false;
             spinner.style.display = 'none';
 
-            if (data.hata && (!data.asamalar || data.asamalar.length === 0)) {
+            pano.style.display = 'block';
+
+            // Hata varsa (asamalar dolu olsa bile) -> pipeline TAMAMLANMADI,
+            // LAST_RESULT yazilmadi. Hatayi goster, "Detayli Sonuc" linkini
+            // GOSTERME (tiklayinca bos /sonuc'a ve ana ekrana atardi).
+            if (data.hata) {
                 hataDiv.textContent = 'Hata: ' + data.hata;
                 hataDiv.style.display = 'block';
-                return;
+                document.getElementById('otonom-detay-link').style.display = 'none';
+                // asamalar timeline'i yine de gosterilir (nerede durdugu gorulsun)
+            } else {
+                // Otonom pipeline'i kostu ve LAST_RESULT'a yazildi -> detayli ekran linki
+                document.getElementById('otonom-detay-link').style.display = 'block';
             }
-
-            pano.style.display = 'block';
-            // Otonom pipeline'i kostu ve LAST_RESULT'a yazildi -> detayli ekran linki
-            document.getElementById('otonom-detay-link').style.display = 'block';
 
             // Agent asamalari timeline — detay balonlari dahil
             var asamalar = data.asamalar || [];

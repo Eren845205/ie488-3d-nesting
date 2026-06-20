@@ -307,6 +307,11 @@ class ImapMailbox(MailSource):
     password : Parola (konfig/env — KODDA SABIT DEGER YOK)
     folder   : Posta klasoru (varsayilan "INBOX")
     use_ssl  : True -> IMAP4_SSL, False -> IMAP4 (varsayilan True)
+    max_fetch: Tek turda islenecek EN YENI mail sayisi (varsayilan 20).
+               Gelen kutusunun TAMAMINI degil; en son gelen N maili tarar
+               (siparis maili her zaman yenidir). 0/negatif -> sinirsiz.
+    unseen_only: True ise yalniz OKUNMAMIS (UNSEEN) mailleri tarar
+               (varsayilan False — demo'da mailler okunmus olabilir).
 
     Idempotency: _seen_uids set'i ile daha once islenen UID'ler tekrar cekilmez.
     Zarif dusus: baglanti/auth hatasi -> bos liste + log (firlatmaz).
@@ -325,6 +330,9 @@ class ImapMailbox(MailSource):
             )
         self.folder: str = config.get("folder", "INBOX")
         self.use_ssl: bool = bool(config.get("use_ssl", True))
+        # Limit: gelen kutusunun tamamini DEGIL, en yeni N maili tara.
+        self.max_fetch: int = int(config.get("max_fetch", 20))
+        self.unseen_only: bool = bool(config.get("unseen_only", False))
         self._seen_uids: Set[str] = set()
         # Fix-4: kalici idempotency deposu (SqliteIdempotencyStore ile)
         from src.runtime.idempotency import SqliteIdempotencyStore
@@ -396,12 +404,23 @@ class ImapMailbox(MailSource):
         return f"imap:{self.user}:{uid}"
 
     def _fetch_uids(self, conn: imaplib.IMAP4) -> List[str]:
-        """Klasordeki tum UID'leri dondurur; kalici store'da kayitli olanlari atlar."""
+        """Islenecek UID'leri dondurur.
+
+        Gelen kutusunun TAMAMINI degil yalniz en yeni `max_fetch` maili tarar
+        (UID SEARCH artan sirali doner -> son N = en yeni N). Boylece ilk
+        calistirmada yuzlerce eski mail LLM'e sokulmaz. unseen_only=True ise
+        once OKUNMAMIS suzgeci uygulanir. Kalici store + in-memory set ile
+        daha once islenenler atlanir.
+        """
         conn.select(self.folder, readonly=True)
-        status, data = conn.uid("SEARCH", None, "ALL")
+        criteria = "UNSEEN" if self.unseen_only else "ALL"
+        status, data = conn.uid("SEARCH", None, criteria)
         if status != "OK" or not data or not data[0]:
             return []
         uid_list = data[0].decode().split()
+        # Limit: yalniz en yeni N maili degerlendir (artan sirali -> son N).
+        if self.max_fetch and self.max_fetch > 0:
+            uid_list = uid_list[-self.max_fetch:]
         # Fix-4: in-memory set VE kalici store kontrolu
         return [
             u for u in uid_list
@@ -551,6 +570,18 @@ _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
 _ZIP_EXTENSIONS = {".zip"}
 
 
+def _resolve_plate() -> tuple[Optional[float], Optional[float]]:
+    """Gercek plaka (width, depth) coz — configs/plate.local.json > env PLATE_*.
+
+    Tanimliysa o GERCEK yazici plakasi (UI'dan girilen) kullanilir. Tanimsizsa
+    (None, None) -> plaka parcalardan otomatik turetilir. Tek kaynak:
+    src/runtime/plate_config.resolve_plate (height bu akista kullanilmaz).
+    """
+    from src.runtime.plate_config import resolve_plate
+    w, d, _h = resolve_plate()
+    return w, d
+
+
 def _find_attachment(mail: RawMail, extensions: Set[str]) -> Optional[Attachment]:
     """Mail eklerinde verilen uzantilardan ilkini bul (yoksa None)."""
     for att in (mail.ekler or []):
@@ -571,7 +602,11 @@ def _ingest_zip_stl_order(
     dosyalariyla birebir eslestirilir. Eslesmeyen STL/adet atlanir.
 
     Dondurur: SCENARIO uyumlu order dict (parts source='stl', stl_path kalici)
-    + 'container' + 'skipped_*' alanlari. Eslesen parca yoksa None.
+    + 'skipped_*' alanlari. Eslesen parca yoksa None.
+
+    Plaka: GERCEK plaka (env PLATE_*) verildiyse order'a 'container' olarak
+    eklenir; verilmediyse 'container' KOYULMAZ — karar tamamen run_pipeline'a
+    birakilir (cekirdek politika her parti icin parcalardan otomatik turetir).
     """
     from src.runtime.zip_stl_extractor import extract_stls
     from src.runtime.quantity_text_parser import parse_quantities
@@ -593,7 +628,13 @@ def _ingest_zip_stl_order(
     base = Path(persist_root) if persist_root else Path(tempfile.gettempdir())
     session_dir = base / f"mail_stl_{_det_hex}"
 
-    res = build_instance_from_order(stl_map, quantities, persist_dir=session_dir)
+    # Gercek plaka (env) varsa pipeline'a iletilir; yoksa karar pipeline'da.
+    plate_w, plate_d = _resolve_plate()
+    res = build_instance_from_order(
+        stl_map, quantities,
+        container_w_mm=plate_w, container_d_mm=plate_d,
+        persist_dir=session_dir,
+    )
     if not res.instance.parts:
         logger.warning(
             "ingest_order: ZIP+govde eslesmedi — hicbir parca uretilmedi (%s)",
@@ -609,18 +650,21 @@ def _ingest_zip_stl_order(
         }
         for p in res.instance.parts
     ]
-    c = res.instance.container
-    return {
+    order: Dict[str, Any] = {
         "order_id": f"ZIP-{_det_hex}",
         "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
         "deadline": "",
         "priority_class": 2,
         "parts": parts,
         "parse_source": "attachment_zip_stl",
-        "container": {"width_mm": c.width_mm, "depth_mm": c.depth_mm, "height_mm": c.height_mm},
         "skipped_no_stl": res.skipped_no_stl,
         "skipped_no_qty": res.skipped_no_qty,
     }
+    # Yalniz GERCEK plaka (env) verildiyse pipeline'a ilet; aksi halde
+    # run_pipeline parti-bazli otomatik turetir (tek karar noktasi pipeline).
+    if plate_w is not None and plate_d is not None:
+        order["container"] = {"width_mm": plate_w, "depth_mm": plate_d, "height_mm": None}
+    return order
 
 
 def ingest_order(

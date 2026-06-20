@@ -509,9 +509,14 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     from src.pricing.schema import RuleSet
     from src.pricing.engine import PricingEngine
 
+    from src.nesting3d.instances.plate import resolve_container
+
     t0 = time.perf_counter()
     today = scenario["ref_date"]
-    container = scenario["container"]
+    # Plaka politikasi cekirdekte: scenario["container"] verilirse o GERCEK plaka,
+    # verilmezse (None/eksik) her parti icin PARCALARDAN otomatik turetilir.
+    # Sabit default YOK — mail/numune/dogrudan cagri fark etmez (kullanici karari).
+    container_cfg = scenario.get("container")
     pitch_fallback = float(scenario.get("pitch", 15.0))
     n_orient = int(scenario.get("n_orientations", 4))
     seed = int(scenario.get("seed", 42))
@@ -577,6 +582,15 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             }
             pricing_results[batch.batch_id] = {"total_price": 0.0, "breakdown": []}
             continue
+
+        # Plaka cozumu (parti bazinda): gercek plaka verildiyse o; yoksa bu
+        # partinin parcalarindan otomatik turetilir.
+        _pdims = [
+            (p.get("width_mm"), p.get("depth_mm"), p.get("height_mm"))
+            for p in all_parts
+        ]
+        _cw, _cd, _ch, _plate_auto = resolve_container(container_cfg, _pdims)
+        container = {"width_mm": _cw, "depth_mm": _cd, "height_mm": _ch}
 
         # NestingInstance kur
         instance = _build_nesting_instance(all_parts, container)

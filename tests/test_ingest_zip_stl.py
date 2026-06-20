@@ -48,11 +48,24 @@ def test_zip_stl_temel_eslestirme(tmp_path):
     assert all(os.path.exists(p["stl_path"]) for p in order["parts"])
 
 
-def test_zip_stl_container_var(tmp_path):
+def test_zip_stl_otomatik_plaka_pipeline_cozer(tmp_path, monkeypatch):
+    # env'de PLATE_* yok -> mail order'a 'container' KOYMAZ; plaka kararini
+    # run_pipeline parti-bazli verir (tek karar noktasi pipeline).
+    monkeypatch.delenv("PLATE_W_MM", raising=False)
+    monkeypatch.delenv("PLATE_D_MM", raising=False)
     zb = _zip_bytes([("a", (10, 10, 10))])
     order = ingest_order(_mail("a 1 adet", zb), parser_role=None, persist_root=str(tmp_path))
-    assert "container" in order
-    assert order["container"]["width_mm"] == 335.0
+    assert "container" not in order
+
+
+def test_zip_stl_gercek_plaka_env(tmp_path, monkeypatch):
+    """PLATE_W_MM/PLATE_D_MM env tanimliysa o GERCEK plaka pipeline'a iletilir."""
+    monkeypatch.setenv("PLATE_W_MM", "250")
+    monkeypatch.setenv("PLATE_D_MM", "200")
+    zb = _zip_bytes([("a", (10, 10, 10))])
+    order = ingest_order(_mail("a 1 adet", zb), parser_role=None, persist_root=str(tmp_path))
+    assert order["container"]["width_mm"] == 250.0
+    assert order["container"]["depth_mm"] == 200.0
 
 
 def test_zip_stl_eslesmeyen_atlanir(tmp_path):

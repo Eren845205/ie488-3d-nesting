@@ -1475,14 +1475,20 @@ def _register_routes(
         # Bulgu 7: deepcopy yerine shallow + tek anahtar override (daha hizli)
         scenario = {**RICH_SCENARIO, "orders": parsed_orders}
 
-        # ZIP-STL siparisi kendi konteynerini tasir (gercek plaka, orn. 335x335);
-        # varsa scenario konteynerini onunla degistir ki gercek geometri dogru
-        # plakaya yerlessin. Ilk container tasiyan order belirleyici.
-        _stl_container = next(
-            (o["container"] for o in parsed_orders if o.get("container")), None
-        )
-        if _stl_container:
-            scenario = {**scenario, "container": _stl_container}
+        # Plaka politikasi (cekirdek). Oncelik:
+        #   1. UI'dan girilen GERCEK plaka (configs/plate.local.json > env PLATE_*)
+        #   2. Siparisin tasidigi container (varsa)
+        #   3. Hicbiri yok -> None -> run_pipeline parcalardan otomatik turetir.
+        # Demo container'i gercek STL siparisine ASLA dayatilmaz.
+        from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
+        _pw, _pd, _ph = _resolve_plate_ui(_ROOT)
+        if _pw and _pd:
+            _container = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
+        else:
+            _container = next(
+                (o["container"] for o in parsed_orders if o.get("container")), None
+            )
+        scenario = {**scenario, "container": _container}  # None -> pipeline otomatik
 
         try:
             pipeline_result = run_pipeline(scenario)
@@ -1994,6 +2000,64 @@ def _register_routes(
         except Exception as exc:
             logger.warning("Mail test baglanti hatasi: %s", exc)
             return jsonify({"ok": False, "mesaj": f"Bağlanılamadı / giriş reddedildi: {exc}"})
+
+    # -----------------------------------------------------------------------
+    # Plaka (yazici tabani) ayar rotalari — manuel sabit plaka girisi
+    # -----------------------------------------------------------------------
+
+    def _plate_cfg_path():
+        return _ROOT / "configs" / "plate.local.json"
+
+    @app.route("/plaka-ayar", methods=["GET"])
+    def plaka_ayar():
+        """Plaka ayar formunu goster (mevcut config'i doldurur)."""
+        from src.runtime.plate_config import resolve_plate
+        w, d, h = resolve_plate(_ROOT)
+        return render_template(
+            "plaka_ayar.html",
+            aktif_w=("" if w is None else w),
+            aktif_d=("" if d is None else d),
+            aktif_h=("" if h is None else h),
+            otomatik=(w is None and d is None),
+            kaydedildi=(request.args.get("kaydedildi") == "1"),
+        )
+
+    @app.route("/plaka-ayar", methods=["POST"])
+    def plaka_ayar_kaydet():
+        """Plaka boyutunu configs/plate.local.json'a yaz.
+
+        Bos birakilirsa (veya 'otomatik' secilirse) config dosyasi SILINIR ->
+        plaka parcalardan otomatik turetilir (cekirdek politika). Boylece kullanici
+        sabit plaka ile otomatik arasinda gecis yapabilir.
+        """
+        def _num(key):
+            raw = (request.form.get(key) or "").strip().replace(",", ".")
+            if not raw:
+                return None
+            try:
+                v = float(raw)
+                return v if v > 0 else None
+            except ValueError:
+                return None
+
+        otomatik = request.form.get("otomatik") == "1"
+        w, d, h = (None, None, None) if otomatik else (_num("width_mm"), _num("depth_mm"), _num("height_mm"))
+
+        p = _plate_cfg_path()
+        if w is None or d is None:
+            # Eksik/otomatik -> sabit plaka kaldirilir (varsa dosyayi sil)
+            try:
+                p.unlink()
+            except FileNotFoundError:
+                pass
+            return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
+
+        cfg = {"width_mm": w, "depth_mm": d}
+        if h is not None:
+            cfg["height_mm"] = h
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
 
     # -----------------------------------------------------------------------
     # Oncelik Plani rotasi (deterministik, LLM gerektirmez)
