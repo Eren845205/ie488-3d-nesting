@@ -535,7 +535,19 @@ def _register_routes(
     # Arka plan poll (otomatik tetik): periyodik kutu kontrolu -> pipeline
     # -----------------------------------------------------------------------
     from src.runtime.mail_poller import MailPoller
+    from src.runtime.pending_orders import PendingOrderStore
     from scripts.demo_pipeline import RICH_SCENARIO as _POLL_BASE_SCENARIO
+
+    # Eksik-bilgi (ZIP var, adet yok) siparis deposu. Testte gecici dizine yazar
+    # (test izolasyonu); aksi halde data/pending_orders. /otonom + poller buraya
+    # kaydeder, /adet-gir buradan okur.
+    if app.config.get("TESTING"):
+        import tempfile as _tf
+        _pending_root = Path(_tf.mkdtemp(prefix="pending_orders_"))
+    else:
+        _pending_root = _ROOT / "data" / "pending_orders"
+    _pending_store = PendingOrderStore(_pending_root)
+    app.config["PENDING_STORE"] = _pending_store
 
     def _poll_make_source():
         from src.runtime.mail_ingest import make_mail_source
@@ -561,6 +573,7 @@ def _register_routes(
         interval_s=_poll_interval,
         on_result=_poll_on_result,
         now=time.time,
+        pending_store=_pending_store,
     )
     app.config["MAIL_POLLER"] = _poller
 
@@ -1382,6 +1395,7 @@ def _register_routes(
         parser_role = llm_components.get("parser_role")
         parsed_orders: List[Dict[str, Any]] = []
         parse_hatalar: List[str] = []
+        parse_eksik: List[Dict[str, Any]] = []  # ZIP var, adet yok -> operator girmeli
         parse_karantina: List[str] = []
         parse_kaynak_sayac: Dict[str, int] = {
             "attachment_zip_stl": 0, "attachment_excel": 0, "attachment_csv": 0, "llm_text": 0,
@@ -1393,7 +1407,38 @@ def _register_routes(
         for mail in raw_mails:
             try:
                 order = ingest_order(mail, parser_role, persist_root=_persist_root)
-                if order is not None:
+                if order is not None and order.get("needs_review"):
+                    # EKSIK BILGI: ZIP'te STL var ama govdede adet yok. Otomatik
+                    # ISLENMEZ — operatorun adet girmesi gerekir (karar: operatore
+                    # sor/beklet). Genel "parse basarisiz" ile karistirilmaz.
+                    # Operatorun /adet-gir'den adet girip yeniden kurabilmesi icin
+                    # bekleyen siparis deposuna (STL'ler + meta) kaydet.
+                    _saved_id = order.get("order_id", "")
+                    try:
+                        _saved_id = _pending_store.add(
+                            order_id=order.get("order_id", ""),
+                            customer=order.get("customer", ""),
+                            sender=mail.gonderen,
+                            deadline=_normalize_deadline(
+                                order.get("deadline", ""), mail_tarih=mail.tarih,
+                            ),
+                            priority_class=(1 if ("acil" in mail.konu.lower()
+                                                  or "acil" in mail.govde.lower())
+                                            else order.get("priority_class", 2)),
+                            konu=mail.konu,
+                            stl_map=order.get("_stl_map", {}),
+                            container=order.get("container"),
+                        )
+                    except Exception as exc:
+                        logger.warning("Otonom: bekleyen siparis kaydedilemedi: %s", exc)
+                    parse_eksik.append({
+                        "order_id": _saved_id,
+                        "gonderen": mail.gonderen,
+                        "konu": mail.konu,
+                        "stl_sayisi": len(order.get("stl_names", [])),
+                        "stl_adlar": order.get("stl_names", []),
+                    })
+                elif order is not None:
                     # Mail gonderenden oncelik ipucu al
                     govde_lower = mail.govde.lower()
                     konu_lower = mail.konu.lower()
@@ -1452,6 +1497,8 @@ def _register_routes(
         parse_cikti = f"{n_parsed} siparis cikarildi ({kaynak_ozet})"
         if parse_hatalar:
             parse_cikti += f" — {len(parse_hatalar)} basarisiz"
+        if parse_eksik:
+            parse_cikti += f" — {len(parse_eksik)} eksik bilgi (adet yok)"
         asamalar.append({
             "ad": "Parse",
             "durum": parse_durum,
@@ -1459,13 +1506,26 @@ def _register_routes(
             "detay": {
                 "siparis_sayisi": n_parsed,
                 "hatalar": parse_hatalar,
+                "eksik_bilgi": parse_eksik,
                 "kaynak_sayac": parse_kaynak_sayac,
             },
         })
 
         if n_parsed == 0:
+            # Eksik-bilgi siparisi varsa operatore net mesaj ver (genel "parse
+            # basarisiz" degil — ZIP geldi, sadece adet eksik).
+            if parse_eksik:
+                _ek = parse_eksik[0]
+                hata_msg = (
+                    f"{len(parse_eksik)} siparis EKSIK BILGI nedeniyle islenemedi: "
+                    f"ZIP ekinde STL var ama mail govdesinde adet belirtilmemis. "
+                    f"Ornek: {_ek['gonderen']} ({_ek['stl_sayisi']} STL). "
+                    f"Adetleri girmek icin 'Adet Girisi' (/adet-gir) sayfasini acin."
+                )
+            else:
+                hata_msg = "Hic siparis cikartilamadi (LLM parse basarisiz)."
             return jsonify({
-                "hata": "Hic siparis cikartilamadi (LLM parse basarisiz).",
+                "hata": hata_msg,
                 "asamalar": asamalar,
             }), 500
 
@@ -2058,6 +2118,110 @@ def _register_routes(
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
         return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
+
+    # -----------------------------------------------------------------------
+    # Eksik-bilgi siparisleri: operator adet girisi (/adet-gir)
+    # -----------------------------------------------------------------------
+    # "ZIP ekinde STL var ama mailde adet yok" siparisleri otomatik islenmez
+    # (karar: operatore sor/beklet). Operator burada her STL icin adet girer;
+    # siparis yeniden kurulup pipeline'a sokulur.
+
+    @app.route("/adet-gir", methods=["GET"])
+    def adet_gir():
+        """Bekleyen eksik-bilgi siparislerini listele (her STL icin adet formu)."""
+        bekleyenler = _pending_store.list()
+        return render_template(
+            "adet_gir.html",
+            bekleyenler=bekleyenler,
+            hata=request.args.get("hata"),
+            islenen=request.args.get("islenen"),
+        )
+
+    @app.route("/adet-gir/<order_id>", methods=["POST"])
+    def adet_gir_isle(order_id):
+        """Operatorun girdigi adetlerle siparisi yeniden kur + pipeline kos.
+
+        Form: her STL icin 'qty_<ad>' alani. Adet>0 olan STL'ler dahil edilir;
+        bos/0 birakilanlar atlanir (operator parcayi cikarmis sayilir). En az bir
+        gecerli adet yoksa hata ile geri doner.
+        """
+        from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
+        from src.nesting3d.instances.stl_order_loader import build_instance_from_order
+
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("adet_gir") + "?hata=bulunamadi")
+
+        stl_map = _pending_store.load_stl_map(order_id)
+        if not stl_map:
+            _pending_store.remove(order_id)
+            return redirect(url_for("adet_gir") + "?hata=stl_kayip")
+
+        # Form adetlerini topla (qty_<ad>); adet>0 olanlar dahil.
+        quantities: Dict[str, int] = {}
+        for name in stl_map:
+            raw = (request.form.get(f"qty_{name}") or "").strip()
+            if not raw:
+                continue
+            try:
+                q = int(float(raw.replace(",", ".")))
+            except ValueError:
+                continue
+            if q > 0:
+                quantities[name] = q
+
+        if not quantities:
+            return redirect(url_for("adet_gir") + "?hata=adet_yok")
+
+        # Plaka politikasi (cekirdek) — UI plakasi > siparis container > otomatik.
+        from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
+        _pw, _pd, _ph = _resolve_plate_ui(_ROOT)
+        if not (_pw and _pd):
+            _c = meta.get("container") or {}
+            _pw, _pd, _ph = _c.get("width_mm"), _c.get("depth_mm"), _c.get("height_mm")
+
+        _persist_dir = _ROOT / "data" / "mail_stl" / f"adetgir_{order_id}"
+        res = build_instance_from_order(
+            stl_map, quantities,
+            container_w_mm=_pw, container_d_mm=_pd, container_h_mm=_ph,
+            persist_dir=_persist_dir,
+        )
+        if not res.instance.parts:
+            return redirect(url_for("adet_gir") + "?hata=parca_yok")
+
+        parts = [
+            {
+                "id": p.id, "name": p.name, "qty": p.qty, "source": "stl",
+                "stl_path": p.stl_path, "width_mm": p.width_mm,
+                "depth_mm": p.depth_mm, "height_mm": p.height_mm,
+            }
+            for p in res.instance.parts
+        ]
+        order = {
+            "order_id": meta.get("order_id", order_id),
+            "customer": meta.get("customer", ""),
+            "deadline": _normalize_deadline(meta.get("deadline", "")),
+            "priority_class": meta.get("priority_class", 2),
+            "parts": parts,
+            "parse_source": "operator_adet_girisi",
+        }
+        scenario = {**RICH_SCENARIO, "orders": [order]}
+        if _pw and _pd:
+            scenario["container"] = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
+        else:
+            scenario["container"] = None  # run_pipeline parcalardan otomatik
+
+        try:
+            result = run_pipeline(scenario)
+        except Exception as exc:
+            logger.exception("adet-gir: pipeline hatasi: %s", exc)
+            return redirect(url_for("adet_gir") + "?hata=pipeline")
+
+        result["used_demo"] = False
+        app.config["LAST_RESULT"] = result
+        # Basariyla islendi -> bekleyen kayidi temizle, sonuc ekranina git.
+        _pending_store.remove(order_id)
+        return redirect(url_for("sonuc"))
 
     # -----------------------------------------------------------------------
     # Oncelik Plani rotasi (deterministik, LLM gerektirmez)

@@ -79,11 +79,32 @@ def test_zip_stl_eslesmeyen_atlanir(tmp_path):
     assert "d" in order["skipped_no_stl"]       # adet var STL yok
 
 
-def test_zip_stl_govdede_adet_yoksa_none(tmp_path):
-    zb = _zip_bytes([("a", (10, 10, 10))])
+def test_zip_stl_govdede_adet_yoksa_eksik_bilgi(tmp_path):
+    # ZIP'te GECERLI STL var ama govdede adet yok -> SESSIZCE DUSURME.
+    # Operator incelemesi gereken "eksik bilgi" siparisi olarak isaretlenir
+    # (karar: operatore sor / beklet). None DONMEZ.
+    zb = _zip_bytes([("a", (10, 10, 10)), ("b", (12, 12, 12))])
     mail = _mail("Merhabalar, adet bilgisi yok.", zb)
     order = ingest_order(mail, parser_role=None, persist_root=str(tmp_path))
-    assert order is None  # hicbir parca eslesmedi
+    assert order is not None
+    assert order["needs_review"] is True
+    assert order["review_reason"] == "missing_quantity"
+    assert order["parse_source"] == "attachment_zip_stl_incomplete"
+    assert order["parts"] == []
+    # ZIP icindeki STL adlari operatore gosterilmek uzere tasinir (sirali)
+    assert order["stl_names"] == ["a", "b"]
+
+
+def test_bozuk_meshli_zip_eksik_degil_none(tmp_path):
+    # ZIP gecerli ama icindeki STL bozuk (mesh okunamaz) -> eksik-bilgi DEGIL,
+    # gercek basarisizlik -> None.
+    import io as _io, zipfile as _zip
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w") as z:
+        z.writestr("a.stl", b"bu gecerli bir STL degil")
+    mail = _mail("a 3 adet", buf.getvalue())
+    order = ingest_order(mail, parser_role=None, persist_root=str(tmp_path))
+    assert order is None
 
 
 def test_zip_oncelik_excelden_yuksek(tmp_path):

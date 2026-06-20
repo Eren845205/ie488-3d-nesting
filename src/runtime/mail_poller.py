@@ -36,6 +36,7 @@ def process_inbox_once(
     base_scenario: Dict[str, Any],
     persist_root: Optional[str] = None,
     deadline_fallback: str = "",
+    pending_store: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """Gelen kutusunu BIR kez isle: cek -> parse -> pipeline.
 
@@ -49,6 +50,9 @@ def process_inbox_once(
         deadline_fallback: Termini bos gelen siparislere atanacak ISO tarih
                        (run_pipeline bos deadline'da hata verir). Bos ise
                        base_scenario['ref_date'] + 30 gun kullanilir.
+        pending_store: PendingOrderStore (opsiyonel). Verilirse "ZIP var ama adet
+                       yok" siparisleri burada operator incelemesine kaydedilir;
+                       None ise yalniz atlanir (geriye uyum).
 
     Returns:
         run_pipeline ciktisi (dict) — yeni siparis islendiyse.
@@ -71,6 +75,32 @@ def process_inbox_once(
             logger.warning("mail_poller: ingest hatasi (%s): %s", mail.gonderen, exc)
             continue
         if not order:
+            continue
+        # Eksik-bilgi siparisi (ZIP var, adet yok) pipeline'a SOKULMAZ —
+        # operator incelemesi gerekir; bos parca run_pipeline'i bozardi.
+        # pending_store verildiyse operatorun /adet-gir'den islemesi icin kaydet.
+        if order.get("needs_review"):
+            if pending_store is not None:
+                try:
+                    pending_store.add(
+                        order_id=order.get("order_id", ""),
+                        customer=order.get("customer", ""),
+                        sender=mail.gonderen,
+                        deadline=order.get("deadline", "") or fallback,
+                        priority_class=order.get("priority_class", 2),
+                        konu=mail.konu,
+                        stl_map=order.get("_stl_map", {}),
+                        container=order.get("container"),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "mail_poller: bekleyen siparis kaydedilemedi (%s): %s",
+                        mail.gonderen, exc,
+                    )
+            logger.info(
+                "mail_poller: eksik-bilgi siparisi atlandi (%s) — sebep=%s",
+                mail.gonderen, order.get("review_reason"),
+            )
             continue
         if not order.get("deadline"):
             order["deadline"] = fallback
@@ -145,6 +175,7 @@ class MailPoller:
         interval_s: int = 120,
         on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
         now: Optional[Callable[[], float]] = None,
+        pending_store: Any = None,
     ) -> None:
         self._make_source = make_source
         self._parser_role = parser_role
@@ -152,6 +183,7 @@ class MailPoller:
         self._persist_root = persist_root
         self._on_result = on_result
         self._now = now
+        self._pending_store = pending_store
         self.state = PollState(interval_s=interval_s)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -169,6 +201,7 @@ class MailPoller:
                 self._parser_role,
                 base_scenario=self._base_scenario,
                 persist_root=self._persist_root,
+                pending_store=self._pending_store,
             )
             self.state.last_error = None
             if result is not None:

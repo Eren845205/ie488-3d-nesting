@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Adet Girişi — Eksik Bilgi Siparişleri{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Adet Girişi &mdash; Eksik Bilgi Siparişleri</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Aşağıdaki siparişlerde <strong>ZIP ekinde STL dosyaları</strong> geldi ama
+        mail gövdesinde <strong>adet bilgisi yoktu</strong>. Bu yüzden otomatik
+        işlenmediler. Her parça için adet girip <strong>İşle</strong> deyin; sistem
+        siparişi kurup nesting + fiyatı hesaplar.
+    </p>
+
+    {% if hata == "adet_yok" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Hiç geçerli adet girilmedi. En az bir parça için 0'dan büyük bir adet girin.
+    </div>
+    {% elif hata == "parca_yok" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Girilen adetlerle geçerli parça oluşturulamadı (STL'ler okunamadı olabilir).
+    </div>
+    {% elif hata == "pipeline" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Sipariş kuruldu ama hesaplama (nesting/fiyat) sırasında hata oluştu.
+    </div>
+    {% elif hata == "bulunamadi" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Sipariş bulunamadı (zaten işlenmiş veya silinmiş olabilir).
+    </div>
+    {% elif hata == "stl_kayip" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Siparişin STL dosyaları bulunamadı — kayıt temizlendi.
+    </div>
+    {% endif %}
+
+    {% if not bekleyenler %}
+    <div style="margin:16px 0; padding:14px 16px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
+        ✓ Bekleyen eksik-bilgi siparişi yok. Tüm siparişler işlenebildi.
+    </div>
+    {% else %}
+    <div style="margin:12px 0 4px; font-size:13px; color:var(--color-text-muted);">
+        {{ bekleyenler|length }} bekleyen sipariş.
+    </div>
+
+    {% for o in bekleyenler %}
+    <div style="margin:16px 0; padding:16px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-surface, #fff);">
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div>
+                <div style="font-weight:700; font-size:15px;">{{ o.customer or "Bilinmeyen müşteri" }}</div>
+                <div style="font-size:12px; color:var(--color-text-muted);">
+                    {{ o.sender }}{% if o.konu %} · {{ o.konu }}{% endif %}
+                </div>
+            </div>
+            <div style="font-size:12px; color:var(--color-text-muted); text-align:right;">
+                Sipariş: <code>{{ o.order_id }}</code><br>
+                {{ o.stl_names|length }} parça · termin {{ o.deadline or "—" }}
+            </div>
+        </div>
+
+        <form method="POST" action="/adet-gir/{{ o.order_id }}">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
+                        <th style="padding:6px 8px;">Parça (STL)</th>
+                        <th style="padding:6px 8px; width:140px;">Adet</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ad in o.stl_names %}
+                    <tr style="border-bottom:1px solid var(--color-border);">
+                        <td style="padding:6px 8px; font-family:'IBM Plex Mono', monospace;">{{ ad }}</td>
+                        <td style="padding:6px 8px;">
+                            <input type="text" inputmode="numeric" name="qty_{{ ad }}"
+                                   placeholder="0"
+                                   style="width:100px; padding:6px 8px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p style="font-size:12px; color:var(--color-text-muted); margin:8px 0 12px;">
+                Boş veya 0 bıraktığınız parçalar bu siparişe dahil edilmez.
+            </p>
+            <button type="submit" class="btn btn-primary" style="font-size:14px; padding:9px 18px;">
+                İşle &rarr; Nesting + Fiyat
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-muted);">
+        Bu siparişler <code>data/pending_orders/</code> altında bekler. Adet girip
+        işlenince kayıt temizlenir ve sonuç <strong>Detaylı Sonuç</strong> ekranında
+        görüntülenir. Karar gereği eksik-bilgili siparişlerde adet
+        <strong>tahmin edilmez</strong> — operatör girer.
+    </div>
+</div>
+{% endblock %}

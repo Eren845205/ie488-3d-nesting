@@ -656,6 +656,33 @@ def _ingest_zip_stl_order(
         persist_dir=session_dir,
     )
     if not res.instance.parts:
+        # AYRIM: bos parca iki sebepten olabilir —
+        #  (a) ZIP'te GECERLI STL var ama govdede ADET yok (skipped_no_qty dolu)
+        #      -> SESSIZCE DUSURME. Bu bir EKSIK-BILGI sinyali; operatore
+        #      "adet gir / beklet" diye yuzeye cikar (needs_review marker).
+        #  (b) STL'lerin hepsi bozuk/okunamaz (yalniz skipped_no_stl) -> gercek
+        #      basarisizlik -> None.
+        if res.skipped_no_qty:
+            logger.info(
+                "ingest_order: ZIP-STL eksik bilgi — %d STL var ama govdede adet "
+                "yok; operator incelemesine alindi (%s)",
+                len(res.skipped_no_qty), zip_att.dosya_adi,
+            )
+            # Operatorun /adet-gir'den adet girip yeniden kurabilmesi icin
+            # GECERLI (adeti eksik) STL byte'larini markere koy. Bozuk mesh'ler
+            # skipped_no_stl'de — onlar tasinmaz. _stl_map underscore: app/poller
+            # icin ic alan; JSON yanitina serialize EDILMEZ.
+            valid_stl_map = {nm: stl_map[nm] for nm in res.skipped_no_qty if nm in stl_map}
+            return {
+                "needs_review": True,
+                "review_reason": "missing_quantity",
+                "order_id": f"ZIP-{_det_hex}",
+                "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+                "parse_source": "attachment_zip_stl_incomplete",
+                "stl_names": sorted(res.skipped_no_qty),
+                "_stl_map": valid_stl_map,
+                "parts": [],
+            }
         logger.warning(
             "ingest_order: ZIP+govde eslesmedi — hicbir parca uretilmedi (%s)",
             zip_att.dosya_adi,
