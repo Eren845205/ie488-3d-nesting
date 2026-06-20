@@ -65,6 +65,16 @@ COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
 # (GIL) olduğundan thread değil SÜREÇ gerekir. Otomatik tetik: >=2 parti VE
 # toplam parça > PARALLEL_MIN_PARTS. Sonuç paralel/sıralıda AYNI (seed aynı).
 PARALLEL_MIN_PARTS = 40      # bu kadar parçanın altında paralel ek-maliyeti değmez
+
+# Paralel işçi (süreç) ÜST SINIRI. Sınırsız DEĞİL — işlemciyi/ RAM'i boğmamak,
+# makineyi (sunucu + operatör UI + tarayıcı aynı cihazda) yanıt-verir tutmak için.
+# Politika (donanım-farkında, _resolve_max_workers):
+#   1. Açık override: env NESTING_MAX_WORKERS (kesin işçi sayısı).
+#   2. Otomatik: tespit_edilen_çekirdek - NESTING_RESERVE_CORES (OS/UI'ye pay),
+#      en az 1; ayrıca PARALLEL_HARD_CAP ve parti sayısı ile kısıtlanır.
+# Her işçi tam bir süreç (kendi RAM'i) olduğundan işçi sayısı = RAM yükü de demek.
+PARALLEL_RESERVE_CORES = 2   # OS/UI/tarayıcıya bırakılan çekirdek (env ile değişir)
+PARALLEL_HARD_CAP = 8        # kaç çekirdek olursa olsun mutlak tavan (RAM + getiri azalır)
 # Kaba pitch = fine × faktör. SABİT TABAN YOK: fine_pitch zaten en ince
 # parçaya göre güvenli (suggest_pitch = min_feature/2.5); ×3 ile çarpınca
 # min_feature/coarse ≈ 0.83 > 0.5 → ince parça KAYBOLMAZ. Sabit 3mm taban,
@@ -732,22 +742,74 @@ def _should_parallelize(scenario: Dict[str, Any], n_batches: int, total_parts: i
     return n_batches >= 2 and total_parts > PARALLEL_MIN_PARTS
 
 
+def _detect_cores() -> int:
+    """Kullanılabilir mantıksal çekirdek sayısını GÜVENİLİR tespit et (çapraz-platform).
+
+    Öncelik: os.process_cpu_count() (Py 3.13+; CPU affinity/cgroup sınırına SAYGI
+    duyar — container/VM'de doğru) → os.cpu_count() → 2 (son çare). Bu çağrılar
+    Windows/Linux/macOS'ta standarttır; hiçbiri istisna fırlatmaz, en kötü None
+    döner (o zaman 2 varsayılır). Yani tespit her donanımda çalışır.
+    """
+    import os
+    n = None
+    _proc_count = getattr(os, "process_cpu_count", None)  # Python 3.13+
+    if callable(_proc_count):
+        try:
+            n = _proc_count()
+        except Exception:
+            n = None
+    if not n:
+        n = os.cpu_count()
+    return int(n) if n and n > 0 else 2
+
+
+def _resolve_max_workers(n_batches: int) -> int:
+    """Kaç paralel SÜREÇ kullanılacağını donanıma göre belirle (üst-sınırlı).
+
+    Sıra:
+      1. env NESTING_MAX_WORKERS verilmişse onu kullan (kesin; >=1'e kıstırılır).
+      2. Yoksa: tespit_çekirdek - rezerv (env NESTING_RESERVE_CORES, vars. 2),
+         en az 1.
+    Sonra her durumda min(parti_sayısı, PARALLEL_HARD_CAP) ile kısıtlanır —
+    sınırsız olmaz; makine boğulmaz.
+    """
+    import os
+    cores = _detect_cores()
+    raw = os.environ.get("NESTING_MAX_WORKERS", "").strip()
+    if raw:
+        try:
+            want = max(1, int(raw))
+        except ValueError:
+            want = max(1, cores - PARALLEL_RESERVE_CORES)
+    else:
+        try:
+            reserve = int(os.environ.get("NESTING_RESERVE_CORES", str(PARALLEL_RESERVE_CORES)))
+        except ValueError:
+            reserve = PARALLEL_RESERVE_CORES
+        want = max(1, cores - max(0, reserve))
+    # Mutlak tavan + iş kadarı: fazla süreç açma (RAM + getiri azalır)
+    return max(1, min(want, n_batches, PARALLEL_HARD_CAP))
+
+
 def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Partileri ayrı SÜREÇLERDE paralel koş. Hata/desteklenmezse {} (caller sıralıya düşer).
 
-    Sonuçlar batch_id'ye göre map'lenir; çağıran parti SIRASINA göre dizer
-    (determinizm korunur — her parti aynı seed ile koşar).
+    İşçi sayısı donanım-farkında ve ÜST-SINIRLI (_resolve_max_workers): asla
+    sınırsız değil; OS/UI'ye çekirdek payı bırakılır. Sonuçlar batch_id'ye göre
+    map'lenir; çağıran parti SIRASINA göre dizer (determinizm — aynı seed).
     """
-    import os
     try:
         from concurrent.futures import ProcessPoolExecutor
-        max_workers = min(len(payloads), max(1, (os.cpu_count() or 2) - 2))
+        max_workers = _resolve_max_workers(len(payloads))
         out: Dict[str, Dict[str, Any]] = {}
         with ProcessPoolExecutor(max_workers=max_workers) as ex:
             for r in ex.map(_process_batch, payloads):
                 out[r["batch_id"]] = r
         logger.info(
-            "nesting: %d parti %d sürecte PARALEL koşuldu", len(payloads), max_workers,
+            "nesting: %d parti %d sürecte PARALEL koşuldu (tespit edilen çekirdek=%d, "
+            "rezerv=%d, tavan=%d)",
+            len(payloads), max_workers, _detect_cores(),
+            PARALLEL_RESERVE_CORES, PARALLEL_HARD_CAP,
         )
         return out
     except Exception as exc:

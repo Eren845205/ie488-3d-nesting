@@ -400,3 +400,53 @@ class TestParallelBatches:
         for bid, nr in rp["nesting_results"].items():
             assert len(nr.get("placements", [])) >= 1
             assert len(nr.get("voxel_parts", {})) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Paralel işçi ÜST SINIRI: donanım-farkında, sınırsız değil
+# ---------------------------------------------------------------------------
+
+class TestParallelWorkerLimit:
+    """İşçi (süreç) sayısı çekirdeğe göre belirlenir ama üst-sınırlıdır —
+    işlemciyi/RAM'i boğmaz, OS/UI'ye pay bırakır."""
+
+    def test_detect_cores_positive(self):
+        from scripts.demo_pipeline import _detect_cores
+        assert _detect_cores() >= 1
+
+    def test_capped_by_batch_count(self):
+        """İş 2 partiyse 2'den fazla süreç açılmaz (çekirdek çok olsa bile)."""
+        from scripts.demo_pipeline import _resolve_max_workers
+        assert _resolve_max_workers(2) <= 2
+
+    def test_hard_cap_enforced(self, monkeypatch):
+        """Çok yüksek override bile PARALLEL_HARD_CAP'i aşamaz."""
+        from scripts import demo_pipeline as dp
+        monkeypatch.setenv("NESTING_MAX_WORKERS", "999")
+        # 100 parti istense bile tavanla sınırlı
+        assert dp._resolve_max_workers(100) == dp.PARALLEL_HARD_CAP
+
+    def test_explicit_override(self, monkeypatch):
+        """NESTING_MAX_WORKERS kesin sayıyı belirler (iş kadarına kıstırılır)."""
+        from scripts.demo_pipeline import _resolve_max_workers
+        monkeypatch.setenv("NESTING_MAX_WORKERS", "3")
+        assert _resolve_max_workers(10) == 3   # tavan(8) altında, iş(10) altında
+        assert _resolve_max_workers(2) == 2    # iş 2 ise 2
+
+    def test_reserve_leaves_headroom(self, monkeypatch):
+        """Otomatik modda OS/UI'ye çekirdek payı bırakılır (rezerv kadar az)."""
+        from scripts.demo_pipeline import _resolve_max_workers, _detect_cores
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setenv("NESTING_RESERVE_CORES", "2")
+        cores = _detect_cores()
+        # bol partiyle: işçi <= çekirdek-2 (en az 1), yani tüm çekirdek alınmaz
+        got = _resolve_max_workers(1000)
+        assert got <= max(1, cores - 2)
+        assert got >= 1
+
+    def test_min_one_worker(self, monkeypatch):
+        """Aşırı rezerv bile en az 1 işçi bırakır (paralel hiç çökmez)."""
+        from scripts.demo_pipeline import _resolve_max_workers
+        monkeypatch.delenv("NESTING_MAX_WORKERS", raising=False)
+        monkeypatch.setenv("NESTING_RESERVE_CORES", "9999")
+        assert _resolve_max_workers(5) >= 1
