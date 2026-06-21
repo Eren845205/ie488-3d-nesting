@@ -118,6 +118,28 @@ sona bağlandı. **Plan1 hızlı:**
 
 ---
 
+## FAZ 1 (C) — PER-PART PITCH ARAŞTIRMASI (ölç-önce, branch'te, geri alındı)
+
+drop_map vektörize edildikten sonra "tekrar profil al" (Açık Soru 1) yapıldı —
+per-part pitch'i körlemesine kurmadan önce darboğazı doğrulamak için.
+
+- **profile_thinpart.py** (sentetik ince+kalın): coarse SA arama baskın, fine
+  voxelizasyon değil. (Kutu → drop_map fast-path, tam temsil değil.)
+- **profile_plan1.py** (GERÇEK konkav 112 parça, n=8): TOPLAM 109.7s.
+  **`_drop_map_general` tottime 37.4s = sürenin %43'ü** (88.788 çağrı, SA arama).
+  Voxelizasyon (_surface_cells/contains_xy/_mark) ~%14. → **Darboğaz drop_map
+  çağrı SAYISI, fine-pitch voxelizasyon DEĞİL.**
+- **ÇIKARIM:** per-part pitch (two-level grid) **YANLIŞ lever** (voxelizasyon
+  baskın değil) + riskli (1a daha önce %21 bozdu) → **branch atıldı, kod yazılmadı.**
+- **DENENDİ & GERİ ALINDI:** drop_map düz-taban (konkav+tek-taban) için
+  `scipy.ndimage.maximum_filter`. Test'ler hızlandı (minik grid) AMA gerçek
+  Plan1'de **~2.5× YAVAŞ** (drop_map cumulative 46.8→62.3s; scipy generic filter
+  tüm H üzerinde çalışıyor). **Revert edildi.** sliding-window zaten ~optimal.
+- **SONUÇ:** Ucuz/güvenli hız kazancı kalmadı. Kalan hız ancak **SA placement
+  sayısını azaltmakla** (arama işi → kalite riski) gelir. drop_map vektörize
+  (%28.5, üretimde canlı) ana hız kazancıydı. Profil araçları commit'li
+  (cf6fc56) — gelecekte tekrar ölçülebilir.
+
 ## KARAR (2026-06-22)
 - Bu oturum commit'lendi: `0ac9e4b` (kod+test), `9c84115` (doküman).
 - **Sıradaki: (C) per-part pitch (Faz 1 H1/1b)** — gerçek hız lever'ı; başarılırsa
