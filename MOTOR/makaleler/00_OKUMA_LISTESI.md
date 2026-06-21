@@ -1,5 +1,10 @@
 # Makaleler — Okuma Listesi + Araştırma Planı
 
+> **2026-06-21 MAGICS KIYASI turu → [02_magics_kiyas_literatur_2026-06-21/](02_magics_kiyas_literatur_2026-06-21/)**
+> Magics açığını (kalite 1.26× + hız 78dk) kapatmak için 22 peer-reviewed kaynak.
+> Sentez + künye + 3 indirilen PDF (EJOR 2018 quasi-phi, SFF 2015 Araujo, NVIDIA
+> 2010 octree). Yol haritası: repo kökü `PLAN_IYILESTIRME_YOLHARITASI.md`.
+
 > **2026-06-14 deep-research turu tamamlandı → [01_ARASTIRMA_BULGULAR.md](01_ARASTIRMA_BULGULAR.md)**
 > (Gap 1-2 doğrulanmış 9 makale + "önce entegre et" top-3; Gap 3-5 ikinci tur bekliyor).
 
