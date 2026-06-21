@@ -290,6 +290,7 @@ def voxelize_part(
     method: str = "subdivide",
     display_mesh: Optional[trimesh.Trimesh] = None,
     allowed_orientations: Optional[Tuple[int, ...]] = None,
+    rot_matrices: Optional[List[np.ndarray]] = None,
 ) -> VoxelPart:
     """Voxelize one model into a VoxelPart with per-orientation profiles.
 
@@ -305,8 +306,16 @@ def voxelize_part(
     allowed_orientations: 8-pozluk master sete indeks listesi — parça-bazlı
     poz kısıtı (örn. plakalar dik duramaz: dik plaka tek başına 178-190 mm,
     <=170 mm hedefini imkânsız kılar).  Verilirse n_orientations yok sayılır.
+
+    rot_matrices: AÇIK 4x4 rotasyon matrisi listesi — verilirse hem
+    n_orientations hem allowed_orientations YOK SAYILIR; oryantasyonlar tam
+    olarak bu matrislerden üretilir. İnce-açı refinement (Faz 2b, coarse_to_fine)
+    kazanan ayrık pozun ±açı çevresinde sürekli (ör. 1° adım) rotasyonlar
+    üretmek için kullanır (master sette olmayan keyfi açılar).
     """
-    if allowed_orientations is not None:
+    if rot_matrices is not None:
+        rots = list(rot_matrices)
+    elif allowed_orientations is not None:
         master = rotation_matrices(N_MASTER_POSES)
         rots = [master[i] for i in allowed_orientations]
     else:

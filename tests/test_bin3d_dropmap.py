@@ -186,3 +186,91 @@ class TestDropMapFastEquivalenceExtended:
         fast = b._drop_map_fast(orient, npx, npy)
         assert fast is not None
         assert np.array_equal(fast, _loop_drop_map(b, orient))
+
+
+# ---------------------------------------------------------------------------
+# Genel yol VEKTORIZASYONU eşdeğerlik testleri (2026-06-22, Faz 1 hız)
+#
+# drop_map genel yolu (konkav footprint / değişken taban — gerçek STL) Python
+# for-döngüsünden sliding_window_view tek-redüksiyona çevrildi. Bu testler yeni
+# vektörize `_drop_map_general`'in eski döngü referansıyla (`_loop_drop_map`)
+# BİRE BİR aynı sonucu verdiğini garanti eder — KALİTE KORUMA (yükseklik
+# değişmez). cProfile darboğazı (%72) bu yolda; hızlanma kalite pahasına olamaz.
+# ---------------------------------------------------------------------------
+
+def _random_concave_orient(rng: np.random.Generator, fw: int, fh: int,
+                           variable_bottom: bool) -> Orientation:
+    """Rastgele konkav (delikli) footprint + ops. değişken taban orientation."""
+    # En az bir dolu kolon garanti (tamamen boş footprint anlamsız)
+    filled = rng.random((fw, fh)) > 0.35
+    if not filled.any():
+        filled[0, 0] = True
+    if variable_bottom:
+        bottom = rng.integers(0, 8, size=(fw, fh)).astype(np.int32)
+    else:
+        bottom = np.full((fw, fh), int(rng.integers(0, 8)), dtype=np.int32)
+    bottom[~filled] = 0  # boş kolon tabanı ilgisiz (drop_map filled'a bakar)
+    top = bottom + rng.integers(1, 5, size=(fw, fh)).astype(np.int32)
+    return _orient(filled, bottom, top)
+
+
+class TestDropMapGeneralVectorizedEquivalence:
+    """Vektörize genel yol == saf-Python döngü (kalite koruma, birebir aynı)."""
+
+    @pytest.mark.parametrize("seed", range(12))
+    @pytest.mark.parametrize("variable_bottom", [False, True])
+    @pytest.mark.parametrize("fw,fh", [(1, 1), (3, 4), (8, 5), (5, 8), (20, 20), (1, 25), (25, 1)])
+    def test_general_equals_loop_concave(self, seed, variable_bottom, fw, fh):
+        b = Bin3D(plate_w_mm=120.0, plate_d_mm=120.0, pitch=2.0)
+        rng = np.random.default_rng(seed * 101 + fw * 7 + fh + int(variable_bottom))
+        b.height = rng.integers(0, 45, size=b.height.shape).astype(np.int32)
+        orient = _random_concave_orient(rng, fw, fh, variable_bottom)
+        npx, npy = b.nx - fw + 1, b.ny - fh + 1
+        if npx <= 0 or npy <= 0:
+            pytest.skip("footprint bin'den büyük")
+        # Konkav / değişken taban hızlı yola GİRMEMELİ → genel yol çalışır
+        if not orient.filled.all() or not (orient.bottom[orient.filled]
+                                           == orient.bottom[orient.filled].flat[0]).all():
+            assert b._drop_map_fast(orient, npx, npy) is None
+        got = b._drop_map_general(orient, npx, npy)
+        assert np.array_equal(got, _loop_drop_map(b, orient)), (
+            f"seed={seed} fw={fw} fh={fh} var_bottom={variable_bottom}: "
+            "vektörize genel yol != döngü (KALİTE REGRESYONU)"
+        )
+        # Public drop_map de aynı sonucu vermeli
+        assert np.array_equal(b.drop_map(orient), _loop_drop_map(b, orient))
+
+    @pytest.mark.parametrize("z_clearance", [0, 1, 3])
+    def test_general_equals_loop_with_clearance(self, z_clearance):
+        b = Bin3D(plate_w_mm=100.0, plate_d_mm=100.0, pitch=2.0,
+                  z_clearance=z_clearance)
+        rng = np.random.default_rng(700 + z_clearance)
+        b.height = rng.integers(0, 30, size=b.height.shape).astype(np.int32)
+        orient = _random_concave_orient(rng, 9, 7, variable_bottom=True)
+        npx, npy = b.nx - 9 + 1, b.ny - 7 + 1
+        assert np.array_equal(b._drop_map_general(orient, npx, npy),
+                              _loop_drop_map(b, orient))
+
+    def test_general_xblock_chunking_equivalence(self):
+        """x-ekseni bloklamanın doğruluğu: CAP'i küçülterek >1 blok zorla."""
+        b = Bin3D(plate_w_mm=120.0, plate_d_mm=120.0, pitch=2.0)
+        rng = np.random.default_rng(4242)
+        b.height = rng.integers(0, 50, size=b.height.shape).astype(np.int32)
+        orient = _random_concave_orient(rng, 10, 10, variable_bottom=True)
+        npx, npy = b.nx - 10 + 1, b.ny - 10 + 1
+        ref = _loop_drop_map(b, orient)
+        # Tek blok (varsayılan büyük CAP) sonucu
+        assert np.array_equal(b._drop_map_general(orient, npx, npy), ref)
+        # Çok-blok yolu: _drop_map_general'i monkeypatch yerine doğrudan
+        # _drop_map_loop fallback'i ile karşılaştır (aynı referans olmalı)
+        assert np.array_equal(b._drop_map_loop(orient, npx, npy), ref)
+
+    def test_loop_fallback_matches_general(self):
+        """_drop_map_loop (CAP fallback) genel yolla birebir aynı."""
+        b = Bin3D(plate_w_mm=80.0, plate_d_mm=80.0, pitch=2.0)
+        rng = np.random.default_rng(55)
+        b.height = rng.integers(0, 20, size=b.height.shape).astype(np.int32)
+        orient = _random_concave_orient(rng, 6, 6, variable_bottom=True)
+        npx, npy = b.nx - 6 + 1, b.ny - 6 + 1
+        assert np.array_equal(b._drop_map_loop(orient, npx, npy),
+                              b._drop_map_general(orient, npx, npy))

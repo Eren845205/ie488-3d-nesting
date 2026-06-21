@@ -27,6 +27,7 @@ from src.nesting3d.coarse_to_fine import (
     solve_coarse_to_fine,
     suggest_coarse_pitch,
     _min_feature_mm,
+    _refined_rot_matrices,
 )
 
 # ---------------------------------------------------------------------------
@@ -320,3 +321,143 @@ def test_solve_coarse_pitch_none_otomatik():
     )
     assert r.n_placed == 4
     assert r.coarse_pitch >= FINE_PITCH
+
+
+# ---------------------------------------------------------------------------
+# Faz 2b — İnce-açı rotasyon refinement (hocanın 0.5-1° hassas döndürme isteği)
+# ---------------------------------------------------------------------------
+
+import numpy as np
+
+
+def test_refined_rot_matrices_base_first_and_count():
+    """Baz poz İLK eleman (regresyon koruması) + sayı = 1 + eksen·2·(window/step)."""
+    base = np.eye(4)
+    mats = _refined_rot_matrices(base, window_deg=5.0, step_deg=1.0, axes=("z",))
+    # window/step = 5 → her eksen için ±1..±5 = 10 perturbasyon + 1 baz = 11
+    assert len(mats) == 1 + 1 * 2 * 5
+    assert np.array_equal(mats[0], base), "ilk eleman tam baz poz olmalı (0°)"
+    # 3 eksen
+    mats3 = _refined_rot_matrices(base, window_deg=5.0, step_deg=1.0,
+                                  axes=("x", "y", "z"))
+    assert len(mats3) == 1 + 3 * 2 * 5
+
+
+def test_refined_rot_matrices_window_zero_only_base():
+    """window=0 → sadece baz poz (perturbasyon yok)."""
+    base = np.eye(4)
+    mats = _refined_rot_matrices(base, window_deg=0.0, step_deg=1.0, axes=("z",))
+    assert len(mats) == 1
+    assert np.array_equal(mats[0], base)
+
+
+def test_refine_window_zero_equals_baseline():
+    """fine_angle_window=0 → refinement KAPALI, mevcut yolla aynı sonuç."""
+    r_base = _solve()
+    r_zero = _solve(fine_angle_window=0.0)
+    assert r_zero.height_mm == r_base.height_mm
+    assert r_zero.n_placed == r_base.n_placed
+
+
+def test_refine_runs_and_places_all():
+    """Refinement açık (±5°, 1° adım, z) → tüm parçalar yerleşir, geçerli sonuç."""
+    r = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    assert r.n_placed == 4
+    assert r.height_mm > 0.0
+    assert 0.0 < r.density <= 1.0
+
+
+def test_refine_safe_never_worse_than_baseline():
+    """GÜVENLİ MOD (varsayılan): ince açı global yüksekliği ASLA bozmaz.
+
+    Algoritma hem açısız baz hem ince-açılı çözümü üretir, daha iyi global
+    yüksekliği seçer → sonuç DAİMA ≤ baseline. Kutularda in-plane dönüş yardım
+    etmediğinden baz seçilir (yükseklik = baseline, fine_angle_used=False).
+    """
+    r_base = _solve()
+    r_ref = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    assert r_ref.height_mm <= r_base.height_mm + 1e-9, (
+        f"güvenli mod yüksekliği bozdu: {r_ref.height_mm} > {r_base.height_mm}"
+    )
+
+
+def test_refine_safe_picks_base_for_boxes():
+    """Kutularda güvenli mod baz çözümü seçer (fine_angle_used=False, yük=baseline)."""
+    r_base = _solve()
+    r_ref = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    assert r_ref.fine_angle_used is False
+    assert r_ref.height_mm == r_base.height_mm
+
+
+def test_refine_unsafe_forces_refined():
+    """safe=False → refined koşulsuz kullanılır (fine_angle_used=True)."""
+    r = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z",
+               fine_angle_safe=False)
+    assert r.fine_angle_used is True
+    assert r.n_placed == 4
+
+
+def test_refine_deterministic():
+    """Refinement deterministik (aynı argüman → aynı yükseklik)."""
+    r1 = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    r2 = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    assert r1.height_mm == r2.height_mm
+    assert r1.n_placed == r2.n_placed
+
+
+# ---------------------------------------------------------------------------
+# Adaptif parametre seçimi (kutuluk özelliğinden veri-odaklı karar)
+# ---------------------------------------------------------------------------
+
+def test_boxes_are_boxy():
+    """Kutu parçalar voxelize edilince kutuluk ≈ 1.0 olmalı."""
+    from src.nesting3d.adaptive_params import instance_boxiness
+    from src.nesting3d.instances.format import to_voxel_parts
+    parts = to_voxel_parts(_make_instance(), FINE_PITCH, n_orientations=1)
+    b = instance_boxiness(parts)
+    assert b >= 0.9, f"kutular kutu çıkmalı, boxiness={b}"
+
+
+def test_recommend_skips_angle_for_boxes():
+    """Kutu parçalarda öneri ince-açıyı ATLAR (window=0)."""
+    from src.nesting3d.adaptive_params import recommend
+    from src.nesting3d.instances.format import to_voxel_parts
+    parts = to_voxel_parts(_make_instance(), FINE_PITCH, n_orientations=1)
+    rec = recommend(parts)
+    assert rec.fine_angle_window == 0.0
+    assert "ATLANDI" in rec.reason
+
+
+def test_adaptive_solve_sets_reason_and_skips_for_boxes():
+    """adaptive=True: kutu setinde gerekçe yazılır, ince-açı atlanır."""
+    r_ad = _solve(adaptive=True)
+    assert r_ad.adaptive_reason is not None
+    assert "kutuluk" in r_ad.adaptive_reason
+    # Kutularda ince-açı atlanır → refinement kullanılmaz
+    assert r_ad.fine_angle_used is False
+
+
+def test_adaptive_auto_selects_pose_count():
+    """adaptive=True poz sayısını KENDİ seçer (gerekçede poz izi + n; ladder içinde)."""
+    r_ad = _solve(adaptive=True)
+    assert "poz:" in r_ad.adaptive_reason
+    assert r_ad.n_placed == 4  # tüm parçalar yerleşir (seçilen n ne olursa)
+
+
+def test_adaptive_deterministic():
+    """Adaptif tam akış deterministik (aynı argüman → aynı yükseklik + gerekçe)."""
+    r1 = _solve(adaptive=True)
+    r2 = _solve(adaptive=True)
+    assert r1.height_mm == r2.height_mm
+    assert r1.adaptive_reason == r2.adaptive_reason
+
+
+def test_auto_select_returns_ladder_value():
+    """_auto_select_n_orientations ladder içinden bir n + tüm parçaları döndürür."""
+    from src.nesting3d.coarse_to_fine import (
+        _auto_select_n_orientations, _ORIENTATION_LADDER)
+    n, parts, used, trail = _auto_select_n_orientations(
+        _make_instance(), PLATE_W, PLATE_D, COARSE_PITCH, FINE_PITCH)
+    assert n in _ORIENTATION_LADDER
+    assert parts is not None and len(parts) == 4
+    assert len(trail) >= 1 and trail[0][0] == _ORIENTATION_LADDER[0]

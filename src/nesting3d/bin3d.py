@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 from src.nesting3d.voxelize import Orientation, VoxelPart
 
@@ -71,6 +72,57 @@ class Bin3D:
         if fast is not None:
             return fast
 
+        return self._drop_map_general(orient, npx, npy)
+
+    def _drop_map_general(self, orient: Orientation, npx: int, npy: int
+                          ) -> np.ndarray:
+        """Konkav footprint / degisken taban genel yolu — VEKTORIZE.
+
+        Z[x, y] = max over dolu kolon (i, j) of  H[x+i, y+j] - bottom[i, j].
+        Eski hali dolu kolonlar uzerinde Python `for` dongusuydu (cProfile:
+        tottime %72, motorun gercek darbogazi; gercek STL parcalari konkav →
+        hizli yol None doner, bu genel yola duser). Burada ayni redaksiyon
+        `sliding_window_view` ile tek numpy reduksiyonuna cekildi: kayan pencere
+        son iki eksende footprint maskesiyle indekslenir (dolu kolonlar), taban
+        cikarilir, son eksende max alinir. max birlesmeli/yer-degistirmeli ve
+        islem tamsayi (yuvarlamasiz) oldugundan sonuc Python dongusuyle BIRE BIR
+        AYNI — yalnizca hizlanir, yukseklik degismez (kalite garantisi).
+
+        Bellek: pencere kopyasi (blok, npy, K) int32 (K = dolu kolon sayisi).
+        Tepe noktayi sinirlamak icin x ekseni bloklara bolunur; bir satir bile
+        CAP'i asarsa (cok nadir, devasa footprint) guvenli yavas dongu yoluna
+        dusulur (`_drop_map_loop`) — regresyon/OOM yok.
+        """
+        filled = orient.filled
+        bf = orient.bottom[filled].astype(np.int32, copy=False)  # (K,)
+        K = int(bf.shape[0])
+        if K == 0:  # bos footprint (gercek parcalarda olmaz) — dongu ile ayni
+            return np.zeros((npx, npy), dtype=np.int32)
+
+        CAP = 16_000_000  # ~64 MB int32 pencere tepe noktasi
+        per_row = npy * K
+        if per_row > CAP:  # tek x-satiri bile sigmiyor → guvenli dongu fallback
+            return self._drop_map_loop(orient, npx, npy)
+        rows = max(1, CAP // per_row)
+
+        fw, fh = filled.shape
+        W = sliding_window_view(self.height, (fw, fh))  # view (npx,npy,fw,fh)
+        Z = np.empty((npx, npy), dtype=np.int32)
+        for x0 in range(0, npx, rows):
+            x1 = min(x0 + rows, npx)
+            Wf = W[x0:x1, :, filled]   # (blok, npy, K) kopya — dolu kolonlar
+            Wf -= bf                   # taban cikar (broadcast son eksen)
+            Wf.max(axis=2, out=Z[x0:x1])
+        np.maximum(Z, 0, out=Z)
+        if self.z_clearance:
+            Z[Z > 0] += self.z_clearance  # parça üstüne oturma -> dikey boşluk
+        return Z
+
+    def _drop_map_loop(self, orient: Orientation, npx: int, npy: int
+                       ) -> np.ndarray:
+        """drop_map genel yolunun saf-Python dongu referansi — yalniz devasa
+        footprint icin bellek-guvenli fallback (`_drop_map_general` CAP asiminda
+        cagirir). Vektorize yolla bire bir ayni sonucu uretir."""
         Z = np.zeros((npx, npy), dtype=np.int32)
         cols_i, cols_j = np.nonzero(orient.filled)
         for i, j, b in zip(cols_i, cols_j, orient.bottom[cols_i, cols_j]):
