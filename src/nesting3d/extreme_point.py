@@ -77,11 +77,22 @@ class OccupancyBin3D:
     """
 
     def __init__(self, nx: int, ny: int, nz_limit: int = 200,
-                 pitch: float = 5.0) -> None:
+                 pitch: float = 5.0, *, cavity: bool = False,
+                 cavity_cap: int = 60000) -> None:
         self.nx = int(nx)
         self.ny = int(ny)
         self.nz_limit = int(nz_limit)
         self.pitch = float(pitch)
+        # --- M1: cavity / NFV-lite candidate generation (opt-in) ---
+        # When True, every placement also seeds EP candidates at the *empty
+        # voxels face-adjacent to occupancy* in the placed part's neighbourhood
+        # — i.e. the accessible surface, INCLUDING the floors/walls of concave
+        # cavities. The bbox-corner candidates (Crainic-style, default) only sit
+        # at the part's bounding-box extremes and therefore cannot target the
+        # cavity interior of a 93%-empty part. cavity_cap bounds the EP set
+        # (bottom-left-back kept) so it never explodes on fine grids.
+        self.cavity = bool(cavity)
+        self.cavity_cap = int(cavity_cap)
         self.occupancy: np.ndarray = np.zeros(
             (self.nx, self.ny, self.nz_limit), dtype=bool
         )
@@ -210,7 +221,43 @@ class OccupancyBin3D:
         ]
         for ep in candidates:
             self.extreme_points.add(ep)
+        if self.cavity:
+            for ep in self._cavity_candidates(px, py, pz, fw, fd, fh):
+                self.extreme_points.add(ep)
         self._prune_extreme_points()
+
+    def _cavity_candidates(self, px: int, py: int, pz: int,
+                            fw: int, fd: int, fh: int):
+        """Empty voxels face-adjacent to occupancy near the placed part (NFV-lite).
+
+        Returns the *accessible surface* of the occupancy in the placed part's
+        neighbourhood: every empty, in-bounds voxel that shares a face with an
+        occupied voxel. This deliberately includes the empty cells *inside* a
+        concave part's bounding box (the cavity walls and floor) — exactly the
+        origins the bbox-corner generator misses. Each is just a placement-origin
+        seed; is_feasible() + the lex (z_top, z, y, x) selection decide whether a
+        following part actually slides into the cavity.
+        """
+        occ_full = self.occupancy
+        x0 = max(px - 1, 0); x1 = min(px + fw + 1, self.nx)
+        y0 = max(py - 1, 0); y1 = min(py + fd + 1, self.ny)
+        z0 = max(pz - 1, 0); z1 = min(pz + fh + 1, occ_full.shape[2])
+        occ = occ_full[x0:x1, y0:y1, z0:z1]
+        if occ.size == 0 or not occ.any():
+            return []
+        # adj[c] = True iff cell c has an occupied 6-connected neighbour
+        adj = np.zeros_like(occ)
+        adj[1:, :, :] |= occ[:-1, :, :]
+        adj[:-1, :, :] |= occ[1:, :, :]
+        adj[:, 1:, :] |= occ[:, :-1, :]
+        adj[:, :-1, :] |= occ[:, 1:, :]
+        adj[:, :, 1:] |= occ[:, :, :-1]
+        adj[:, :, :-1] |= occ[:, :, 1:]
+        cand_mask = (~occ) & adj
+        xs, ys, zs = np.nonzero(cand_mask)
+        return list(zip((xs + x0).tolist(),
+                        (ys + y0).tolist(),
+                        (zs + z0).tolist()))
 
     def _prune_extreme_points(self) -> None:
         """Remove EPs that are out-of-x/y bounds or inside occupancy."""
@@ -225,6 +272,12 @@ class OccupancyBin3D:
             if self.occupancy[ex, ey, ez]:
                 continue  # inside occupied voxel — discard
             keep.add((ex, ey, ez))
+        # Cavity mode can generate a surface-sized candidate set; bound it to the
+        # deepest (bottom-left-back) cavity_cap so memory/iteration stay finite.
+        # Low-z candidates win — exactly the cavity floors we care about — so the
+        # cap drops only high, less useful seeds.
+        if self.cavity and len(keep) > self.cavity_cap:
+            keep = set(sorted(keep, key=_ep_sort_key)[:self.cavity_cap])
         self.extreme_points = keep
 
     def _rebuild_column_top(self) -> None:
@@ -311,6 +364,36 @@ def _ep_sort_key(ep: Tuple[int, int, int]) -> Tuple[int, int, int]:
     return (ep[2], ep[1], ep[0])
 
 
+def _drop_fallback(obin: "OccupancyBin3D", part: VoxelPart
+                   ) -> Optional[Tuple[Tuple[int, int, int], int]]:
+    """Guaranteed-feasible 'place on top of everything' position (heightmap drop).
+
+    Used only when the EP scan finds nothing feasible — e.g. in cavity mode where
+    the EP cap can drop the high stack-on-top seeds. Mirrors bin3d.drop_map: the
+    drop height at origin (x, y) is max(column_top) over the part's footprint bbox;
+    placing there satisfies z >= local column top, so is_feasible's fast path is
+    always True (no collision). Returns ((x, y, z), oi) minimising (z_top, z, y, x).
+    """
+    ct = obin.column_top
+    best_key: Optional[Tuple[int, int, int, int]] = None
+    best: Optional[Tuple[Tuple[int, int, int], int]] = None
+    for oi, orient in enumerate(part.orientations):
+        fw, fd, fh = orient.grid.shape
+        if fw > obin.nx or fd > obin.ny:
+            continue
+        win = np.lib.stride_tricks.sliding_window_view(ct, (fw, fd))
+        zmap = win.max(axis=(2, 3)).astype(np.int64)  # (X, Y) drop z per origin
+        ztop = zmap + fh
+        flat = np.argmin(ztop)  # first min in C-order == smallest (x, then y)
+        x, y = np.unravel_index(flat, ztop.shape)
+        z = int(zmap[x, y])
+        key = (int(ztop[x, y]), z, int(y), int(x))
+        if best_key is None or key < best_key:
+            best_key = key
+            best = ((int(x), int(y), z), oi)
+    return best
+
+
 def place_extreme_point(
     parts: List[VoxelPart],
     bin_factory: Callable[[], OccupancyBin3D],
@@ -354,23 +437,48 @@ def place_extreme_point(
         best_ep: Optional[Tuple[int, int, int]] = None
         best_oi: int = 0
 
+        # EP order is orientation-independent → sort once per part. With EPs in
+        # (z, y, x) order and fh constant within an orientation, the FIRST
+        # feasible EP minimises (z_top, z, y, x) for that orientation, so we
+        # break on it. Result is bit-identical to the full scan (any later
+        # feasible EP has >= sort key) but avoids scanning the whole — possibly
+        # cavity-sized — EP set.
+        sorted_eps = sorted(obin.extreme_points, key=_ep_sort_key)
+        # Cavity mode minimises the *resulting global height* max(z_top, cur_max)
+        # instead of the part's own z_top. This is the Magics "free void fill"
+        # principle: a placement that stays within the current envelope ties all
+        # other in-envelope placements at cur_max, and the (z, y, x) tiebreak then
+        # prefers the deepest — filling enclosed cavities for free — while a
+        # placement that would protrude scores higher and is avoided unless forced.
+        # cur_max is constant during this part's placement, fh constant per
+        # orientation → max(z+fh, cur_max) is non-decreasing in z, so first-feasible
+        # in (z,y,x) order is still the per-orientation minimum (early-break valid).
+        cur_max = obin.max_height_voxels() if obin.cavity else 0
         for oi, orient in enumerate(part.orientations):
             fw, fd, fh = orient.grid.shape
-            # Sort EPs each iteration — set is small after pruning
-            for ep in sorted(obin.extreme_points, key=_ep_sort_key):
+            for ep in sorted_eps:
                 ex, ey, ez = ep
                 if obin.is_feasible(orient, ex, ey, ez):
                     z_top = ez + fh
-                    score = (z_top, ez, ey, ex, oi)
+                    if obin.cavity:
+                        score = (max(z_top, cur_max), z_top, ez, ey, ex, oi)
+                    else:
+                        score = (z_top, ez, ey, ex, oi)
                     if best_score is None or score < best_score:
                         best_score = score
                         best_ep = ep
                         best_oi = oi
+                    break  # first feasible in (z,y,x) order is minimal here
 
-        assert best_ep is not None, (
-            f"{part.id}: no feasible EP found — increase nz_limit or bin size "
-            f"(extreme_point.py §6.2 analogue)"
-        )
+        if best_ep is None:
+            # No feasible EP (e.g. cavity cap dropped the high stack-on-top
+            # seeds). Fall back to a guaranteed heightmap-drop on top.
+            fb = _drop_fallback(obin, part)
+            assert fb is not None, (
+                f"{part.id}: part does not fit the bin footprint in any "
+                f"orientation (extreme_point.py §6.2 analogue)"
+            )
+            best_ep, best_oi = fb
 
         ex, ey, ez = best_ep
         orient = part.orientations[best_oi]
