@@ -527,6 +527,37 @@ class TestPipelineDemoFallback:
 # ---------------------------------------------------------------------------
 
 
+class TestNestingModeOptIn:
+    """Opt-in NFV "kalite modu" UI seçici (backlog #2): checkbox → scenario['nesting_mode']."""
+
+    def test_index_shows_quality_mode_checkbox(self, client_orders):
+        html = client_orders.get("/").data.decode("utf-8")
+        assert 'name="nesting_mode"' in html and 'value="nfv"' in html
+        assert "Kalite modu" in html
+
+    def test_run_passes_nfv_mode_to_scenario(self, client_orders, monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        client_orders.post("/run", data={"nesting_mode": "nfv"})
+        assert captured["scenario"]["nesting_mode"] == "nfv"
+
+    def test_run_defaults_to_heightmap_when_unchecked(self, client_orders, monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        client_orders.post("/run", data={})  # checkbox işaretsiz
+        assert captured["scenario"]["nesting_mode"] == "heightmap"
+
+
 class TestPipelineFromPool:
 
     def test_run_with_pool_does_not_crash(self, client_orders_dolu):

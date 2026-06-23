@@ -44,6 +44,17 @@
             </label>
         </div>
         {% endif %}
+        <div style="margin-bottom: 12px; font-size: 14px;">
+            <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="nesting_mode" value="nfv"
+                       {% if nesting_mode == 'nfv' %}checked{% endif %}>
+                <span style="font-weight: 600;">Kalite modu (NFV cavity)</span>
+            </label>
+            <div style="margin-top: 4px; color: var(--color-text-muted);">
+                Parçaları birbirinin oyuğuna yerleştirir &mdash; daha kısa istif (~%25),
+                ama daha yavaş. Kapalıysa hızlı standart yerleştirme kullanılır.
+            </div>
+        </div>
         <button type="submit" class="btn btn-primary" id="run-btn">
             Pipeline&#39;i Calistir
         </button>

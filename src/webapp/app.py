@@ -682,6 +682,11 @@ def _register_routes(
             scenario = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
             used_demo = True
 
+        # Nesting modu (opt-in NFV "kalite modu"): checkbox işaretliyse "nfv", aksi "heightmap".
+        # NFV cavity istifi daha kısa (Plan2 %25) ama daha yavaş; default hızlı heightmap.
+        nesting_mode = "nfv" if request.form.get("nesting_mode") == "nfv" else "heightmap"
+        scenario = {**scenario, "nesting_mode": nesting_mode}
+
         result = run_pipeline(scenario)
         result["used_demo"] = used_demo
         app.config["LAST_RESULT"] = result
