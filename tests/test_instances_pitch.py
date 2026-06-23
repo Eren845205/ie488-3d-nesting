@@ -142,6 +142,23 @@ class TestSuggestNfvPitch:
             inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=self.LARGE_RAM, floor=99.0)
         assert nfv_p >= 99.0 - 1e-9
 
+    def test_plate_ratio_caps_pitch(self):
+        # Büyük parça + küçük plaka: pitch plaka-oranı tavanına çekilir (parça+margin sığsın).
+        inst = random_boxes(n_parts=4, min_dim=20.0, max_dim=20.0, seed=0)  # 20mm küpler
+        # plaka 50, margin 1: plate_ceil=(50-20)/2=15; güvenli mf/1.0=20 → pitch=min(20,15)=15
+        nfv_p, feasible, _ = suggest_nfv_pitch(
+            inst, plate_w_mm=50.0, plate_d_mm=50.0, ram_bytes=self.LARGE_RAM, margin=1)
+        assert feasible
+        assert nfv_p <= 15.0 + 1e-6  # plaka-oranı tavanına çekildi (boxy çökmesini önler)
+
+    def test_part_larger_than_plate_infeasible(self):
+        # Parça tek boyutta plakadan büyük → sığmaz → feasible=False (NFV değil hiçbir şey çözemez).
+        inst = random_boxes(n_parts=4, min_dim=20.0, max_dim=20.0, seed=0)
+        _, feasible, reason = suggest_nfv_pitch(
+            inst, plate_w_mm=15.0, plate_d_mm=15.0, ram_bytes=self.LARGE_RAM)
+        assert feasible is False
+        assert "sigmaz" in reason
+
     def test_empty_instance_raises(self):
         from src.nesting3d.instances.format import NestingInstance, ContainerSpec
         empty = NestingInstance(

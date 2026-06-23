@@ -95,40 +95,62 @@ def suggest_nfv_pitch(
     min_ratio: float = MIN_FILL_RATIO,
     cells_per_gb: float = NFV_CELLS_PER_GB,
     floor: float = DEFAULT_FLOOR,
+    margin: int = 1,
 ) -> tuple[float, bool, str]:
-    """NFV cavity çözücüsü için pitch öner: parça-GÜVENLİ pitch + bellek pre-flight kabalaştırma.
+    """NFV cavity çözücüsü için pitch öner: parça-GÜVENLİ pitch + plaka-oranı + bellek kabalaştırma.
 
-    Mantık (ÖLÇ-ÖNCE, c3_xdataset_speed + probe_safe 2026-06-23): pitch hem veriden (min_feature)
-    hem donanımdan (RAM) türer — SABİT DEĞİL.
+    Mantık (ÖLÇ-ÖNCE, c3_xdataset_speed + probe_safe 2026-06-23): pitch hem veriden (min_feature,
+    en büyük parça) hem donanımdan (RAM) türer — SABİT DEĞİL.
       1. GÜVENLİ taban: pitch = min_feature/safe_ratio (oran 1.0 → parça en az 1 voxel GARANTİ,
          voxelize çökmez). En ince güvenli = en iyi cavity; bu tercih edilir.
-      2. Bellek aşarsa: pitch'i bellek bütçesine sığana kadar KABALAŞTIR — ama yalnızca voxelize
-         mutlak sınırına (min_ratio=0.5) kadar. Plan2 gibi ince-parça+büyük-plaka durumu burada.
-      3. O sınıra kadar bellek sığmazsa feasible=False → çağıran heightmap'e düşmeli.
+      2. PLAKA-ORANI tavanı: en büyük parça + 2·margin voxel plakaya SIĞMALI. Kaba pitch'te margin
+         (=pitch·margin mm) parçayı plaka dışına itebilir (boxy stres-testi). pitch'i bu tavanın altına
+         çek; parça tek boyutta bile plakadan büyükse feasible=False.
+      3. Bellek aşarsa: bütçeye sığana kadar KABALAŞTIR — voxelize sınırı (min_ratio) VE plaka tavanı
+         içinde. Plan2 gibi ince-parça+büyük-plaka durumu burada.
+      4. Hiçbir geçerli pitch yoksa feasible=False → çağıran heightmap'e düşmeli.
 
     Args:
-        plate_w_mm, plate_d_mm: plaka ölçüleri (bellek proxy'si grid boyutu).
+        plate_w_mm, plate_d_mm: plaka ölçüleri (bellek + plaka-oranı için).
         ram_bytes:   kullanılabilir RAM (probe_capabilities().ram_bytes).
         safe_ratio:  parça-garanti voxelize oranı (min_dim/pitch >= bu); tercih edilen taban.
         min_ratio:   voxelize mutlak alt sınır oranı; bellek için buraya kadar kabalaşılır.
         cells_per_gb: bellek bütçesi (RAM GB başına izinli grid hücresi).
         floor:       pitch alt sınırı (mm) — patolojik koruma.
+        margin:      decode'da kullanılan voxel margin (plaka-oranı tavanı için; solve_nfv ile aynı).
 
     Returns:
-        (pitch, feasible, reason). feasible=False → bellek-riskli, heightmap önerilir.
+        (pitch, feasible, reason). feasible=False → riskli, heightmap önerilir.
     """
     if not instance.parts:
         raise ValueError("Boş instance: NFV pitch türetilemez (parça yok).")
 
     mf = min_feature_mm(instance)
+    max_dim = max(max(p.width_mm, p.depth_mm, p.height_mm) for p in instance.parts)
+    min_plate = min(plate_w_mm, plate_d_mm)
     budget = (ram_bytes / 1e9) * cells_per_gb
-    pitch_safe = max(floor, mf / safe_ratio)      # parça-garanti (en ince güvenli)
-    pitch_max = max(pitch_safe, mf / min_ratio)   # voxelize mutlak üst sınır (bunun üstü kesin kayıp)
+
+    # Plaka-oranı tavanı: en büyük parça(voxel) + 2·margin <= plaka(voxel)
+    #   → max_dim + 2·margin·pitch <= min_plate → pitch <= (min_plate - max_dim)/(2·margin).
+    m = max(1, int(margin))
+    if max_dim >= min_plate:
+        return (max(floor, mf / safe_ratio), False,
+                f"en buyuk parca {max_dim:.0f}mm >= plaka {min_plate:.0f}mm -> sigmaz, heightmap onerilir")
+    plate_ceil = (min_plate - max_dim) / (2 * m)
+    if plate_ceil < floor:
+        return (floor, False,
+                f"plaka-orani tavani {plate_ceil:.2f}mm < floor {floor}mm (parca plakaya cok yakin) "
+                f"-> NFV riskli, heightmap onerilir")
+
+    pitch_safe = min(max(floor, mf / safe_ratio), plate_ceil)   # parça-garanti, plakaya sığar
+    pitch_max = min(max(pitch_safe, mf / min_ratio), plate_ceil)  # voxelize + plaka üst sınırı
 
     pitch = pitch_safe
     cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
     if cells <= budget:
-        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (guvenli: min_feature={mf:.2f}/{safe_ratio}); "
+        limiter = ("plaka-orani" if plate_ceil < mf / safe_ratio - 1e-9
+                   else f"guvenli min_feature={mf:.2f}/{safe_ratio}")
+        return pitch, True, (f"nfv-pitch={pitch:.2f}mm ({limiter}); "
                              f"grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
 
     # Bellek asiyor -> bellek sigana kadar kabalastir (deterministik, voxelize sinirina kadar).

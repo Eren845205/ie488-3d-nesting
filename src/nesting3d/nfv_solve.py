@@ -50,7 +50,7 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     if fine_pitch is None:
         fine_pitch, feasible, nfv_reason = suggest_nfv_pitch(
             instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
-            ram_bytes=probe_capabilities().ram_bytes,
+            ram_bytes=probe_capabilities().ram_bytes, margin=margin,
         )
         # feasible=False → en kaba pitch bile bellek bütçesini aşıyor; yine de denenir (best_decode
         # GPU→CPU→seri graceful fallback ile en uygun yolu bulur), ama reason raporlanır (uyarı).
