@@ -54,6 +54,11 @@
                 Parçaları birbirinin oyuğuna yerleştirir &mdash; daha kısa istif (~%25),
                 ama daha yavaş. Kapalıysa hızlı standart yerleştirme kullanılır.
             </div>
+            <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="nfv_quality" value="max"
+                       {% if nfv_quality == 'max' %}checked{% endif %}>
+                <span>Maksimum kalite (daha çok oryantasyon &mdash; en kısa istif, en yavaş; güçlü donanım önerilir)</span>
+            </label>
         </div>
         <button type="submit" class="btn btn-primary" id="run-btn">
             Pipeline&#39;i Calistir
@@ -143,6 +148,10 @@
         <span style="color: var(--color-text-muted); margin-left: 6px;">
             &mdash; daha kısa istif (~%25), daha yavaş. Kapalıysa hızlı standart.
         </span>
+        <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="otonom-nfv-quality" value="max">
+            <span>Maksimum kalite (daha çok oryantasyon &mdash; en kısa istif, en yavaş; güçlü donanım)</span>
+        </label>
     </div>
     <button
         id="otonom-btn"
@@ -251,10 +260,12 @@
 
         var nfvChk = document.getElementById('otonom-nesting-mode');
         var nestingMode = (nfvChk && nfvChk.checked) ? 'nfv' : 'heightmap';
+        var nfvQualChk = document.getElementById('otonom-nfv-quality');
+        var nfvQuality = (nfvQualChk && nfvQualChk.checked) ? 'max' : 'fast';
         fetch('/otonom', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
-            body: JSON.stringify({nesting_mode: nestingMode}),
+            body: JSON.stringify({nesting_mode: nestingMode, nfv_quality: nfvQuality}),
         })
         .then(function(resp) { return resp.json(); })
         .then(function(data) {

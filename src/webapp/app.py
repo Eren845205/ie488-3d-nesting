@@ -685,7 +685,9 @@ def _register_routes(
         # Nesting modu (opt-in NFV "kalite modu"): checkbox işaretliyse "nfv", aksi "heightmap".
         # NFV cavity istifi daha kısa (Plan2 %25) ama daha yavaş; default hızlı heightmap.
         nesting_mode = "nfv" if request.form.get("nesting_mode") == "nfv" else "heightmap"
-        scenario = {**scenario, "nesting_mode": nesting_mode}
+        # NFV kalite seviyesi: "max" → donanım-tavanı oryantasyon (en kısa istif, en yavaş); default "fast" (n=8).
+        nfv_quality = "max" if request.form.get("nfv_quality") == "max" else "fast"
+        scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality}
 
         result = run_pipeline(scenario)
         result["used_demo"] = used_demo
@@ -1362,6 +1364,7 @@ def _register_routes(
         # Default hızlı heightmap; "nfv" → cavity istif (daha kısa, daha yavaş).
         _otonom_body = request.get_json(silent=True) or {}
         otonom_nesting_mode = "nfv" if _otonom_body.get("nesting_mode") == "nfv" else "heightmap"
+        otonom_nfv_quality = "max" if _otonom_body.get("nfv_quality") == "max" else "fast"
 
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
         from src.runtime.mail_ingest import make_mail_source, ingest_order
@@ -1559,7 +1562,8 @@ def _register_routes(
                 (o["container"] for o in parsed_orders if o.get("container")), None
             )
         scenario = {**scenario, "container": _container,  # None -> pipeline otomatik
-                    "nesting_mode": otonom_nesting_mode}
+                    "nesting_mode": otonom_nesting_mode,
+                    "nfv_quality": otonom_nfv_quality}
 
         try:
             pipeline_result = run_pipeline(scenario)

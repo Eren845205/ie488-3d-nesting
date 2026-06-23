@@ -191,6 +191,7 @@ class TestOtonomNestingMode:
 
         def fake(scenario):
             captured["mode"] = scenario.get("nesting_mode")
+            captured["quality"] = scenario.get("nfv_quality")
             # nesting_mode yakalandı; gerçek pipeline'ı hızlı heightmap'te koş (NFV decode'u yavaşlatma)
             return real({**scenario, "nesting_mode": "heightmap"})
 
@@ -212,6 +213,16 @@ class TestOtonomNestingMode:
     def test_otonom_card_shows_quality_mode_checkbox(self, client_llm):
         html = client_llm.get("/").data.decode("utf-8")
         assert 'id="otonom-nesting-mode"' in html and "Kalite modu" in html
+
+    def test_otonom_card_shows_quality_max_option(self, client_llm):
+        html = client_llm.get("/").data.decode("utf-8")
+        assert 'id="otonom-nfv-quality"' in html and "Maksimum kalite" in html
+
+    def test_otonom_passes_nfv_quality_max(self, client_llm, monkeypatch):
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={"nesting_mode": "nfv", "nfv_quality": "max"})
+        assert resp.status_code == 200
+        assert captured.get("quality") == "max"
 
 
 # ---------------------------------------------------------------------------

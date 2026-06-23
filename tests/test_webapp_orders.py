@@ -557,6 +557,32 @@ class TestNestingModeOptIn:
         client_orders.post("/run", data={})  # checkbox işaretsiz
         assert captured["scenario"]["nesting_mode"] == "heightmap"
 
+    def test_index_shows_quality_max_option(self, client_orders):
+        html = client_orders.get("/").data.decode("utf-8")
+        assert 'name="nfv_quality"' in html and "Maksimum kalite" in html
+
+    def test_run_passes_nfv_quality_max(self, client_orders, monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        client_orders.post("/run", data={"nesting_mode": "nfv", "nfv_quality": "max"})
+        assert captured["scenario"]["nfv_quality"] == "max"
+
+    def test_run_nfv_quality_defaults_fast(self, client_orders, monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        client_orders.post("/run", data={"nesting_mode": "nfv"})  # max işaretsiz
+        assert captured["scenario"]["nfv_quality"] == "fast"
+
 
 class TestPipelineFromPool:
 
