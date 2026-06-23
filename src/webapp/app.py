@@ -1358,6 +1358,11 @@ def _register_routes(
                 "asamalar": [],
             }), 503
 
+        # Nesting modu (opt-in NFV "kalite modu"): otonom panosundan checkbox → JSON body.
+        # Default hızlı heightmap; "nfv" → cavity istif (daha kısa, daha yavaş).
+        _otonom_body = request.get_json(silent=True) or {}
+        otonom_nesting_mode = "nfv" if _otonom_body.get("nesting_mode") == "nfv" else "heightmap"
+
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
         from src.runtime.mail_ingest import make_mail_source, ingest_order
         from src.llm.roles.parser import parsed_to_order
@@ -1553,7 +1558,8 @@ def _register_routes(
             _container = next(
                 (o["container"] for o in parsed_orders if o.get("container")), None
             )
-        scenario = {**scenario, "container": _container}  # None -> pipeline otomatik
+        scenario = {**scenario, "container": _container,  # None -> pipeline otomatik
+                    "nesting_mode": otonom_nesting_mode}
 
         try:
             pipeline_result = run_pipeline(scenario)

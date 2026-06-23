@@ -180,6 +180,40 @@ class TestOtonomRoute:
                 assert key in stage, f"Asama '{stage}' icinde '{key}' yok"
 
 
+class TestOtonomNestingMode:
+    """Opt-in NFV "kalite modu" otonom akışta (backlog #2 tamamlama): checkbox → JSON body →
+    scenario['nesting_mode']. run_pipeline yakalanır; gerçek koşum heightmap'te tutulur (hız)."""
+
+    def _capture(self, monkeypatch):
+        import scripts.demo_pipeline as dp
+        real = dp.run_pipeline
+        captured = {}
+
+        def fake(scenario):
+            captured["mode"] = scenario.get("nesting_mode")
+            # nesting_mode yakalandı; gerçek pipeline'ı hızlı heightmap'te koş (NFV decode'u yavaşlatma)
+            return real({**scenario, "nesting_mode": "heightmap"})
+
+        monkeypatch.setattr(dp, "run_pipeline", fake)
+        return captured
+
+    def test_otonom_passes_nfv_mode_to_scenario(self, client_llm, monkeypatch):
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={"nesting_mode": "nfv"})
+        assert resp.status_code == 200
+        assert captured["mode"] == "nfv"
+
+    def test_otonom_defaults_to_heightmap(self, client_llm, monkeypatch):
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={})  # checkbox işaretsiz / body boş
+        assert resp.status_code == 200
+        assert captured["mode"] == "heightmap"
+
+    def test_otonom_card_shows_quality_mode_checkbox(self, client_llm):
+        html = client_llm.get("/").data.decode("utf-8")
+        assert 'id="otonom-nesting-mode"' in html and "Kalite modu" in html
+
+
 # ---------------------------------------------------------------------------
 # B) Agent asamalari isimleri dogrulama
 # ---------------------------------------------------------------------------

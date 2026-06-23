@@ -135,6 +135,15 @@
         Her asama agent panosu olarak gosterilir.
         Teklif taslagi <strong>insan onay kapsisi</strong>ndan gecmedikce gonderilmez.
     </p>
+    <div style="margin-bottom: 10px; font-size: 14px;">
+        <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="otonom-nesting-mode" value="nfv">
+            <span style="font-weight: 600;">Kalite modu (NFV cavity)</span>
+        </label>
+        <span style="color: var(--color-text-muted); margin-left: 6px;">
+            &mdash; daha kısa istif (~%25), daha yavaş. Kapalıysa hızlı standart.
+        </span>
+    </div>
     <button
         id="otonom-btn"
         class="btn btn-primary"
@@ -240,10 +249,12 @@
         ozetDiv.style.display = 'none';
         teklifDiv.style.display = 'none';
 
+        var nfvChk = document.getElementById('otonom-nesting-mode');
+        var nestingMode = (nfvChk && nfvChk.checked) ? 'nfv' : 'heightmap';
         fetch('/otonom', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
-            body: JSON.stringify({}),
+            body: JSON.stringify({nesting_mode: nestingMode}),
         })
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
