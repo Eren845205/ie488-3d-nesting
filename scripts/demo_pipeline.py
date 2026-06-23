@@ -580,17 +580,25 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     nfv_pitch_reason = None
     if nesting_mode == "nfv":
-        # NFV-farkında pitch: parçayı kaybetmeyen EN KABA pitch (suggest_pitch'in tersi). Kübik FFT
-        # maliyeti + bellek için kritik (ölçüm c3_pitch_curve.py: suggest_pitch=0.5mm → OOM/saatler;
-        # NFV-pitch=2.0mm → 102s/556mm). voxel_parts + factory + solve_nfv hepsi bu pitch'i kullanır.
+        # NFV-farkında pitch: parça-GÜVENLİ pitch (min_feature/1.0) + bellek pre-flight kabalaştırma.
+        # Hem veriden (parça boyutu) hem donanımdan (RAM) türer — SABİT DEĞİL. Ölçüm: c3_xdataset_speed
+        # (eski tek-oran 0.5 Plan1'de çöküyordu → güvenli orandan başla + bellek için kabalaştır).
+        # voxel_parts + factory + solve_nfv hepsi bu pitch'i kullanır.
         from src.nesting3d.instances.pitch import suggest_nfv_pitch
         from src.nesting3d.capabilities import probe_capabilities
         try:
-            pitch, _nfv_feasible, nfv_pitch_reason = suggest_nfv_pitch(
+            _nfv_pitch, _nfv_feasible, nfv_pitch_reason = suggest_nfv_pitch(
                 instance, plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
                 ram_bytes=probe_capabilities().ram_bytes,
             )
+            if _nfv_feasible:
+                pitch = _nfv_pitch
+            else:
+                # En kaba güvenli pitch bile bellek bütçesini aşıyor → NFV bu instance+donanımda
+                # riskli. Güvenli moda (heightmap) düş; suggest_pitch ile devam (regresyon yok).
+                nesting_mode = "heightmap"
+                nfv_pitch_reason = f"NFV->heightmap dususu (bellek): {nfv_pitch_reason}"
         except Exception:
             pass  # türetme başarısızsa suggest_pitch'te kal (güvenli düşüş)
 

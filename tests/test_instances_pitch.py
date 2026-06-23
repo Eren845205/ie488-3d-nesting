@@ -20,7 +20,8 @@ from src.nesting3d.instances.pitch import (
     DEFAULT_FACTOR,
     DEFAULT_FLOOR,
     DEFAULT_CEIL,
-    VOXEL_FILL_RATIO,
+    SAFE_FILL_RATIO,
+    MIN_FILL_RATIO,
 )
 from src.nesting3d.instances.synthetic import (
     random_boxes,
@@ -97,13 +98,27 @@ class TestSuggestNfvPitch:
         assert nfv_p > suggest_pitch(inst)  # NFV daha kaba (ters yön)
         assert feasible
 
-    def test_nfv_pitch_derivation(self):
-        # Bütçe bol + floor altı değilse: pitch = min_feature / fill_ratio (= 2×min_feature).
+    def test_nfv_pitch_derivation_safe(self):
+        # Bütçe bol → güvenli (parça-garanti) pitch = min_feature / safe_ratio (=1.0).
         inst = random_boxes(n_parts=6, min_dim=10.0, max_dim=40.0, seed=2)
         mf = min_feature_mm(inst)
-        nfv_p, _, _ = suggest_nfv_pitch(
+        nfv_p, feasible, _ = suggest_nfv_pitch(
             inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=self.LARGE_RAM)
-        assert nfv_p == pytest.approx(mf / VOXEL_FILL_RATIO)
+        assert feasible
+        assert nfv_p == pytest.approx(mf / SAFE_FILL_RATIO)
+
+    def test_memory_coarsens_but_feasible(self):
+        # İnce parça + büyük plaka + sınırlı RAM: güvenli pitch belleği aşar → kabalaştırılır
+        # (Plan2 senaryosu) ama voxelize sınırını (min_ratio) aşmadan feasible kalır.
+        inst = random_boxes(n_parts=6, min_dim=2.0, max_dim=8.0, seed=2)
+        mf = min_feature_mm(inst)
+        pitch_safe = mf / SAFE_FILL_RATIO
+        nfv_p, feasible, reason = suggest_nfv_pitch(
+            inst, plate_w_mm=300.0, plate_d_mm=300.0, ram_bytes=5 * 1024 ** 3)
+        assert feasible
+        assert nfv_p > pitch_safe  # bellek için kabalaştırıldı
+        assert nfv_p <= mf / MIN_FILL_RATIO + 1e-6  # voxelize mutlak sınırını aşmadı
+        assert "kabalastirildi" in reason
 
     def test_memory_guard_marks_infeasible(self):
         # Çok küçük RAM bütçesi → en kaba pitch bile grid bütçesini aşar → feasible=False.

@@ -60,13 +60,19 @@ def min_feature_mm(instance: "NestingInstance") -> float:
 #     (Plan2 ölçümü: 2.0mm=556 vs 1.5mm hedeflenen ~%1 — ama 1.5mm bu donanımda OOM).
 #   → NFV için DOĞRU pitch = parçayı kaybetmeyen EN KABA pitch (hız+bellek minimum, kalite ~korunur).
 #
-# VOXEL_FILL_RATIO: voxelize.py ampirik "parça yakalanma" eşiği (min_dim/pitch >= ~0.5; pitch.py:32
-#   ve voxelize.py:223 ile hizalı). pitch = min_feature / 0.5 = 2×min_feature → en kaba güvenli.
-#   2026-06-23 ölçümü (scripts/c3_pitch_curve.py, Plan2): bu kural 2.0mm verir = tek çalışan + 556mm.
-# NFV_CELLS_PER_GB: bellek pre-flight bütçesi. proxy=nx*ny*nz_limit (üst-sınır hücre sayısı).
-#   Ölçüm (16GB RAM): 21.5M hücre (2.0mm) çalıştı, 50.9M (1.5mm) OOM → ~2.0e6 hücre/GB güvenli eşik
-#   (16GB×2.0e6=32M tavan: 21.5M<32M geçer, 50.9M reddedilir). Sabit değil — donanım RAM'inden ölçekler.
-VOXEL_FILL_RATIO: float = 0.5
+# İKİ türetme oranı (voxelize.py geometrik eşiğinden; ikisi de SABİT-SAYI değil, türetme kuralı):
+#   SAFE_FILL_RATIO=1.0: min_dim/pitch>=1.0 → parça en az 1 voxel kalınlık GARANTİ (dilim merkezi
+#     her zaman içeride → voxelize ASLA çökmez). Tercih edilen taban; en ince=en iyi cavity.
+#   MIN_FILL_RATIO=0.5: voxelize.py ampirik MUTLAK alt sınır (~0.5 altı kesin kaybolur). Bellek
+#     mecbur bırakırsa pitch SADECE buraya kadar kabalaştırılır (oran 0.5'te voxelize hizaya bağlı,
+#     risk var → fallback + heightmap düşüşü devrede).
+# 2026-06-23 cross-dataset ölçümü (c3_xdataset_speed + probe_safe): oran 1.0 plan1/plan3/boxy'de hem
+#   güvenli hem bellek-OK (çökme YOK); SADECE plan2 (1mm ince parça+büyük plaka, 172M>bütçe) bellek
+#   için 2.0mm'ye kabalaşır. Eski tek-oran 0.5 plan1'de çöküyordu (Plan2-overfit) → bu düzeltme.
+# NFV_CELLS_PER_GB: bellek pre-flight bütçesi. proxy=nx*ny*nz_limit. Ölçüm (16GB): 21.5M (2.0mm)
+#   çalıştı, 50.9M (1.5mm) OOM → ~2.0e6 hücre/GB. Donanım RAM'inden ölçekler (sabit değil).
+SAFE_FILL_RATIO: float = 1.0
+MIN_FILL_RATIO: float = 0.5
 NFV_CELLS_PER_GB: float = 2.0e6
 _NFV_NZ_BUDGET_MM: float = 1600.0  # parallel_decode._nz_limit ile aynı (800 dilim @2mm)
 
@@ -85,40 +91,55 @@ def suggest_nfv_pitch(
     plate_w_mm: float,
     plate_d_mm: float,
     ram_bytes: int,
-    fill_ratio: float = VOXEL_FILL_RATIO,
+    safe_ratio: float = SAFE_FILL_RATIO,
+    min_ratio: float = MIN_FILL_RATIO,
     cells_per_gb: float = NFV_CELLS_PER_GB,
     floor: float = DEFAULT_FLOOR,
 ) -> tuple[float, bool, str]:
-    """NFV cavity çözücüsü için pitch öner: parçayı kaybetmeyen EN KABA pitch + bellek pre-flight.
+    """NFV cavity çözücüsü için pitch öner: parça-GÜVENLİ pitch + bellek pre-flight kabalaştırma.
 
-    Mantık (ÖLÇ-ÖNCE, scripts/c3_pitch_curve.py): NFV'de kalite pitch'e az duyarlı ama maliyet
-    kübik → en kaba güvenli pitch hem en hızlı/az bellek hem kaliteyi korur. Pitch'i geometriden
-    (min_feature) türetir; karşı yönde (suggest_pitch'in ince pitch'inin tersi).
+    Mantık (ÖLÇ-ÖNCE, c3_xdataset_speed + probe_safe 2026-06-23): pitch hem veriden (min_feature)
+    hem donanımdan (RAM) türer — SABİT DEĞİL.
+      1. GÜVENLİ taban: pitch = min_feature/safe_ratio (oran 1.0 → parça en az 1 voxel GARANTİ,
+         voxelize çökmez). En ince güvenli = en iyi cavity; bu tercih edilir.
+      2. Bellek aşarsa: pitch'i bellek bütçesine sığana kadar KABALAŞTIR — ama yalnızca voxelize
+         mutlak sınırına (min_ratio=0.5) kadar. Plan2 gibi ince-parça+büyük-plaka durumu burada.
+      3. O sınıra kadar bellek sığmazsa feasible=False → çağıran heightmap'e düşmeli.
 
     Args:
-        instance:    NestingInstance (en küçük parça boyutu okunur).
-        plate_w_mm, plate_d_mm: plaka ölçüleri (bellek proxy'si için grid boyutu).
-        ram_bytes:   kullanılabilir RAM (capabilities.probe_capabilities().ram_bytes).
-        fill_ratio:  voxelize parça-yakalanma eşiği (min_dim/pitch >= bu); pitch = min_feature/ratio.
+        plate_w_mm, plate_d_mm: plaka ölçüleri (bellek proxy'si grid boyutu).
+        ram_bytes:   kullanılabilir RAM (probe_capabilities().ram_bytes).
+        safe_ratio:  parça-garanti voxelize oranı (min_dim/pitch >= bu); tercih edilen taban.
+        min_ratio:   voxelize mutlak alt sınır oranı; bellek için buraya kadar kabalaşılır.
         cells_per_gb: bellek bütçesi (RAM GB başına izinli grid hücresi).
         floor:       pitch alt sınırı (mm) — patolojik koruma.
 
     Returns:
-        (pitch, feasible, reason). feasible=False → NFV bu instance+donanımda bellek-riskli;
-        çağıran heightmap'e düşmeli (pitch yine de döner, raporlama için).
+        (pitch, feasible, reason). feasible=False → bellek-riskli, heightmap önerilir.
     """
     if not instance.parts:
         raise ValueError("Boş instance: NFV pitch türetilemez (parça yok).")
 
     mf = min_feature_mm(instance)
-    pitch = max(floor, mf / fill_ratio)  # en kaba güvenli (Plan2: 1.0/0.5=2.0mm)
-
-    cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
     budget = (ram_bytes / 1e9) * cells_per_gb
+    pitch_safe = max(floor, mf / safe_ratio)      # parça-garanti (en ince güvenli)
+    pitch_max = max(pitch_safe, mf / min_ratio)   # voxelize mutlak üst sınır (bunun üstü kesin kayıp)
+
+    pitch = pitch_safe
+    cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
     if cells <= budget:
-        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (min_feature={mf:.2f}/{fill_ratio}); "
+        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (guvenli: min_feature={mf:.2f}/{safe_ratio}); "
                              f"grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
-    # En kaba pitch bile butceyi asiyor -> daha kabaya gidemeyiz (parca kaybolur) -> NFV infeasible.
+
+    # Bellek asiyor -> bellek sigana kadar kabalastir (deterministik, voxelize sinirina kadar).
+    while cells > budget and pitch < pitch_max - 1e-9:
+        pitch = min(pitch_max, pitch * 1.1)
+        cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
+
+    if cells <= budget:
+        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (bellek icin kabalastirildi, "
+                             f"oran={mf / pitch:.2f}); grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
+    # Voxelize sinirina kadar kabalastik ama bellek hala yetmiyor -> NFV bu instance+donanimda riskli.
     return pitch, False, (f"nfv-pitch={pitch:.2f}mm ama grid~{cells / 1e6:.1f}M > butce "
                           f"{budget / 1e6:.0f}M (RAM {ram_bytes / 1e9:.0f}GB) -> bellek-riskli, "
                           f"heightmap onerilir")

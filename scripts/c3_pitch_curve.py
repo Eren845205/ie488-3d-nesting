@@ -83,7 +83,7 @@ def main():
     print("-" * 78)
     if rows:
         best_h = min(h for _, h, _ in rows)
-        print(f"{'pitch':>6} | {'yük':>8} | {'en-iyiye Δ':>10} | {'süre':>8} | {'2.0mm-e süre×':>13}")
+        print(f"{'pitch':>6} | {'yuk':>8} | {'en-iyiye-d':>10} | {'sure':>8} | {'2.0mm-sure-x':>13}")
         base_t = next((t for p, _, t in rows if abs(p - 2.0) < 1e-6), None)
         for p, h, t in rows:
             dpct = (h - best_h) / best_h * 100 if best_h else 0
