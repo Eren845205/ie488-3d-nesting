@@ -17,6 +17,8 @@ from src.nesting3d.bin3d import Bin3D
 from src.nesting3d.coarse_to_fine import CoarseToFineResult
 from src.nesting3d.tuner import TuneResult
 from src.nesting3d.instances.format import to_voxel_parts
+from src.nesting3d.instances.pitch import suggest_nfv_pitch
+from src.nesting3d.capabilities import probe_capabilities
 from src.nesting3d.parallel_decode import best_decode
 
 
@@ -35,10 +37,23 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin):
             cur = nxt
 
 
-def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch,
+def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               n_orientations=4, margin=1, seed=42, force=None) -> CoarseToFineResult:
-    """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug)."""
+    """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
+
+    fine_pitch=None (varsayılan) → NFV-farkında pitch otomatik seçilir (suggest_nfv_pitch):
+    parçayı kaybetmeyen EN KABA pitch (hız/bellek min, kalite ~korunur). Çağıran açık pitch
+    verirse o kullanılır (opt-in override). Ölçüm gerekçesi: instances/pitch.py + c3_pitch_curve.py.
+    """
     t0 = time.perf_counter()
+    nfv_reason = None
+    if fine_pitch is None:
+        fine_pitch, feasible, nfv_reason = suggest_nfv_pitch(
+            instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+            ram_bytes=probe_capabilities().ram_bytes,
+        )
+        # feasible=False → en kaba pitch bile bellek bütçesini aşıyor; yine de denenir (best_decode
+        # GPU→CPU→seri graceful fallback ile en uygun yolu bulur), ama reason raporlanır (uyarı).
     parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin)
     nx, ny = int(plate_w_mm // used_pitch), int(plate_d_mm // used_pitch)
 
@@ -64,5 +79,5 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch,
         winning_config="nfv", coarse_height_mm=h, coarse_pitch=used_pitch, fine_pitch=used_pitch,
         coarse_time_s=0.0, fine_time_s=elapsed, n_placed=len(bin3d.placements),
         tune_result=tune_result, fine_voxel_parts=parts_by_id, fine_angle_used=False,
-        adaptive_reason=f"nfv strategy={strategy}",
+        adaptive_reason=f"nfv strategy={strategy}" + (f" | {nfv_reason}" if nfv_reason else ""),
     )

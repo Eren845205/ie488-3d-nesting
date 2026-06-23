@@ -53,6 +53,77 @@ def min_feature_mm(instance: "NestingInstance") -> float:
     )
 
 
+# --- NFV "kalite modu" pitch türetmesi (backlog #1, ölçüm 2026-06-23) ---------
+# NFV (FFT-cavity) çözücüsü suggest_pitch'in TERSİ bir pitch ister:
+#   * suggest_pitch: min_dim/2.5 → İNCE pitch (heightmap'te ince ucuz, kalite için iyi).
+#   * NFV: FFT maliyeti ve bellek pitch ile KÜBİK büyür; kalite ise pitch'e AZ duyarlı
+#     (Plan2 ölçümü: 2.0mm=556 vs 1.5mm hedeflenen ~%1 — ama 1.5mm bu donanımda OOM).
+#   → NFV için DOĞRU pitch = parçayı kaybetmeyen EN KABA pitch (hız+bellek minimum, kalite ~korunur).
+#
+# VOXEL_FILL_RATIO: voxelize.py ampirik "parça yakalanma" eşiği (min_dim/pitch >= ~0.5; pitch.py:32
+#   ve voxelize.py:223 ile hizalı). pitch = min_feature / 0.5 = 2×min_feature → en kaba güvenli.
+#   2026-06-23 ölçümü (scripts/c3_pitch_curve.py, Plan2): bu kural 2.0mm verir = tek çalışan + 556mm.
+# NFV_CELLS_PER_GB: bellek pre-flight bütçesi. proxy=nx*ny*nz_limit (üst-sınır hücre sayısı).
+#   Ölçüm (16GB RAM): 21.5M hücre (2.0mm) çalıştı, 50.9M (1.5mm) OOM → ~2.0e6 hücre/GB güvenli eşik
+#   (16GB×2.0e6=32M tavan: 21.5M<32M geçer, 50.9M reddedilir). Sabit değil — donanım RAM'inden ölçekler.
+VOXEL_FILL_RATIO: float = 0.5
+NFV_CELLS_PER_GB: float = 2.0e6
+_NFV_NZ_BUDGET_MM: float = 1600.0  # parallel_decode._nz_limit ile aynı (800 dilim @2mm)
+
+
+def _nfv_grid_cells(pitch: float, plate_w_mm: float, plate_d_mm: float) -> float:
+    """NFV occupancy grid'inin üst-sınır hücre sayısı (bellek proxy'si). nz_limit dahil."""
+    nx = int(plate_w_mm // pitch)
+    ny = int(plate_d_mm // pitch)
+    nz = int(_NFV_NZ_BUDGET_MM / max(pitch, 1e-6))
+    return float(nx) * float(ny) * float(nz)
+
+
+def suggest_nfv_pitch(
+    instance: "NestingInstance",
+    *,
+    plate_w_mm: float,
+    plate_d_mm: float,
+    ram_bytes: int,
+    fill_ratio: float = VOXEL_FILL_RATIO,
+    cells_per_gb: float = NFV_CELLS_PER_GB,
+    floor: float = DEFAULT_FLOOR,
+) -> tuple[float, bool, str]:
+    """NFV cavity çözücüsü için pitch öner: parçayı kaybetmeyen EN KABA pitch + bellek pre-flight.
+
+    Mantık (ÖLÇ-ÖNCE, scripts/c3_pitch_curve.py): NFV'de kalite pitch'e az duyarlı ama maliyet
+    kübik → en kaba güvenli pitch hem en hızlı/az bellek hem kaliteyi korur. Pitch'i geometriden
+    (min_feature) türetir; karşı yönde (suggest_pitch'in ince pitch'inin tersi).
+
+    Args:
+        instance:    NestingInstance (en küçük parça boyutu okunur).
+        plate_w_mm, plate_d_mm: plaka ölçüleri (bellek proxy'si için grid boyutu).
+        ram_bytes:   kullanılabilir RAM (capabilities.probe_capabilities().ram_bytes).
+        fill_ratio:  voxelize parça-yakalanma eşiği (min_dim/pitch >= bu); pitch = min_feature/ratio.
+        cells_per_gb: bellek bütçesi (RAM GB başına izinli grid hücresi).
+        floor:       pitch alt sınırı (mm) — patolojik koruma.
+
+    Returns:
+        (pitch, feasible, reason). feasible=False → NFV bu instance+donanımda bellek-riskli;
+        çağıran heightmap'e düşmeli (pitch yine de döner, raporlama için).
+    """
+    if not instance.parts:
+        raise ValueError("Boş instance: NFV pitch türetilemez (parça yok).")
+
+    mf = min_feature_mm(instance)
+    pitch = max(floor, mf / fill_ratio)  # en kaba güvenli (Plan2: 1.0/0.5=2.0mm)
+
+    cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
+    budget = (ram_bytes / 1e9) * cells_per_gb
+    if cells <= budget:
+        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (min_feature={mf:.2f}/{fill_ratio}); "
+                             f"grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
+    # En kaba pitch bile butceyi asiyor -> daha kabaya gidemeyiz (parca kaybolur) -> NFV infeasible.
+    return pitch, False, (f"nfv-pitch={pitch:.2f}mm ama grid~{cells / 1e6:.1f}M > butce "
+                          f"{budget / 1e6:.0f}M (RAM {ram_bytes / 1e9:.0f}GB) -> bellek-riskli, "
+                          f"heightmap onerilir")
+
+
 def suggest_pitch(
     instance: "NestingInstance",
     *,

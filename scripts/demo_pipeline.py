@@ -578,6 +578,22 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         pitch = pitch_fallback
 
+    nfv_pitch_reason = None
+    if nesting_mode == "nfv":
+        # NFV-farkında pitch: parçayı kaybetmeyen EN KABA pitch (suggest_pitch'in tersi). Kübik FFT
+        # maliyeti + bellek için kritik (ölçüm c3_pitch_curve.py: suggest_pitch=0.5mm → OOM/saatler;
+        # NFV-pitch=2.0mm → 102s/556mm). voxel_parts + factory + solve_nfv hepsi bu pitch'i kullanır.
+        from src.nesting3d.instances.pitch import suggest_nfv_pitch
+        from src.nesting3d.capabilities import probe_capabilities
+        try:
+            pitch, _nfv_feasible, nfv_pitch_reason = suggest_nfv_pitch(
+                instance, plate_w_mm=float(container["width_mm"]),
+                plate_d_mm=float(container["depth_mm"]),
+                ram_bytes=probe_capabilities().ram_bytes,
+            )
+        except Exception:
+            pass  # türetme başarısızsa suggest_pitch'te kal (güvenli düşüş)
+
     selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
 
     t_nest_start = _time.perf_counter()

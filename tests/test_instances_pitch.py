@@ -15,10 +15,12 @@ import pytest
 
 from src.nesting3d.instances.pitch import (
     suggest_pitch,
+    suggest_nfv_pitch,
     min_feature_mm,
     DEFAULT_FACTOR,
     DEFAULT_FLOOR,
     DEFAULT_CEIL,
+    VOXEL_FILL_RATIO,
 )
 from src.nesting3d.instances.synthetic import (
     random_boxes,
@@ -76,6 +78,62 @@ class TestSuggestPitch:
         mf = min_feature_mm(inst)
         p = suggest_pitch(inst, factor=3.0, floor=0.1, ceil=100.0)
         assert p == pytest.approx(mf / 3.0)
+
+
+class TestSuggestNfvPitch:
+    """NFV-farkında pitch (backlog #1, ölçüm c3_pitch_curve.py 2026-06-23).
+
+    suggest_pitch'in TERSİ: NFV'de pitch maliyeti kübik + kalite az duyarlı → parçayı
+    kaybetmeyen EN KABA pitch seçilir (hız/bellek min). + bellek pre-flight guard.
+    """
+
+    LARGE_RAM = 64 * 1024 ** 3  # bütçe bol → feasible (guard tetiklenmesin)
+
+    def test_nfv_pitch_coarser_than_heightmap(self):
+        # NFV pitch (min_feature/0.5) heightmap pitch'inden (min_feature/2.5) DAİMA kaba olmalı.
+        inst = random_boxes(n_parts=6, min_dim=10.0, max_dim=40.0, seed=2)
+        nfv_p, feasible, reason = suggest_nfv_pitch(
+            inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=self.LARGE_RAM)
+        assert nfv_p > suggest_pitch(inst)  # NFV daha kaba (ters yön)
+        assert feasible
+
+    def test_nfv_pitch_derivation(self):
+        # Bütçe bol + floor altı değilse: pitch = min_feature / fill_ratio (= 2×min_feature).
+        inst = random_boxes(n_parts=6, min_dim=10.0, max_dim=40.0, seed=2)
+        mf = min_feature_mm(inst)
+        nfv_p, _, _ = suggest_nfv_pitch(
+            inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=self.LARGE_RAM)
+        assert nfv_p == pytest.approx(mf / VOXEL_FILL_RATIO)
+
+    def test_memory_guard_marks_infeasible(self):
+        # Çok küçük RAM bütçesi → en kaba pitch bile grid bütçesini aşar → feasible=False.
+        inst = random_boxes(n_parts=6, min_dim=1.0, max_dim=4.0, seed=2)  # ince → büyük grid
+        _, feasible, reason = suggest_nfv_pitch(
+            inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=256 * 1024 ** 2)  # 256MB
+        assert feasible is False
+        assert "bellek-riskli" in reason
+
+    def test_reason_is_ascii_safe(self):
+        # Windows cp1254 stdout non-ASCII'de çöker → reason ASCII olmalı (gerçek bug, 2026-06-23).
+        inst = random_boxes(n_parts=4, min_dim=10.0, max_dim=20.0, seed=1)
+        for ram in (self.LARGE_RAM, 64 * 1024 ** 2):  # feasible + infeasible iki yol
+            _, _, reason = suggest_nfv_pitch(
+                inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=ram)
+            reason.encode("cp1254")  # çökmemeli
+
+    def test_never_below_floor(self):
+        inst = random_boxes(n_parts=4, min_dim=10.0, max_dim=20.0, seed=1)
+        nfv_p, _, _ = suggest_nfv_pitch(
+            inst, plate_w_mm=500.0, plate_d_mm=500.0, ram_bytes=self.LARGE_RAM, floor=99.0)
+        assert nfv_p >= 99.0 - 1e-9
+
+    def test_empty_instance_raises(self):
+        from src.nesting3d.instances.format import NestingInstance, ContainerSpec
+        empty = NestingInstance(
+            container=ContainerSpec(width_mm=100.0, depth_mm=100.0, height_mm=None),
+            parts=[], meta={})
+        with pytest.raises(ValueError):
+            suggest_nfv_pitch(empty, plate_w_mm=100.0, plate_d_mm=100.0, ram_bytes=self.LARGE_RAM)
 
 
 class TestVoxelizationRegression:
