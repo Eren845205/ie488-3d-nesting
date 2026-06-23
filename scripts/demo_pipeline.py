@@ -547,6 +547,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     pitch_fallback = payload["pitch_fallback"]
     n_orient = payload["n_orient"]
     seed = payload["seed"]
+    nesting_mode = payload.get("nesting_mode", "heightmap")
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -595,7 +596,20 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     factory = _bin_factory(container, pitch)
     _c2f_result = None
     try:
-        if len(voxel_parts) > C2F_THRESHOLD:
+        if nesting_mode == "nfv":
+            # Opt-in NFV cavity "kalite modu" (Engel 1 çözümü): NFV'yi pitch'te tam-yerleştirici
+            # koş, drop boru hattını baypas et → cavity korunur. Sonuç CoarseToFineResult şeklinde.
+            from src.nesting3d.nfv_solve import solve_nfv
+            _c2f_result = solve_nfv(
+                instance,
+                plate_w_mm=float(container["width_mm"]),
+                plate_d_mm=float(container["depth_mm"]),
+                fine_pitch=pitch,
+                n_orientations=n_orient,
+                seed=seed,
+            )
+            tune_result = _c2f_result.tune_result
+        elif len(voxel_parts) > C2F_THRESHOLD:
             from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
             _c2f_result = solve_coarse_to_fine(
                 instance,
@@ -1036,6 +1050,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "n_orient": n_orient,
             "seed": seed,
             "pricing_rules": scenario["pricing_rules"],
+            "nesting_mode": scenario.get("nesting_mode", "heightmap"),
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5
