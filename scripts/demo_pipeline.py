@@ -548,6 +548,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     n_orient = payload["n_orient"]
     seed = payload["seed"]
     nesting_mode = payload.get("nesting_mode", "heightmap")
+    nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -629,7 +630,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
                 fine_pitch=pitch,
-                n_orientations=n_orient,
+                n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
+                quality=nfv_quality,
                 seed=seed,
             )
             tune_result = _c2f_result.tune_result
@@ -1075,6 +1077,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "seed": seed,
             "pricing_rules": scenario["pricing_rules"],
             "nesting_mode": scenario.get("nesting_mode", "heightmap"),
+            "nfv_quality": scenario.get("nfv_quality", "fast"),
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5

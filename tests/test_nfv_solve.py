@@ -90,6 +90,31 @@ def test_determinism():
     assert abs(_solve().height_mm - _solve().height_mm) < 1e-9
 
 
+# --- oryantasyon: n=8 default (4⊂8 garanti) + quality=max donanım-tavanı (ÖLÇÜM 2026-06-24) ---
+
+def test_quality_fast_default_uses_n8():
+    r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+                  fine_pitch=FINE_PITCH, quality="fast", force="cpu-kolA")
+    assert "n=8" in r.adaptive_reason  # default fast → sabit n=8
+
+def test_quality_max_uses_hw_ceil():
+    r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+                  fine_pitch=FINE_PITCH, quality="max", force="cpu-kolA")
+    assert "quality=max" in r.adaptive_reason  # donanım-tavanı yolu
+
+def test_explicit_n_overrides_quality():
+    r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+                  fine_pitch=FINE_PITCH, n_orientations=2, quality="max", force="cpu-kolA")
+    # açık n verilince quality yok sayılır (reason'da n=8/quality=max ibaresi olmaz)
+    assert "quality=max" not in r.adaptive_reason and "n=8" not in r.adaptive_reason
+
+def test_hw_max_orientations_scales_with_ram():
+    from src.nesting3d.nfv_solve import _hw_max_orientations, NFV_QUALITY_MAX_CEIL
+    assert _hw_max_orientations(4 * 10 ** 9) == 8        # düşük RAM → güvenli taban
+    assert _hw_max_orientations(16 * 10 ** 9) == 12      # laptop (ölçüldü)
+    assert _hw_max_orientations(64 * 10 ** 9) == NFV_QUALITY_MAX_CEIL  # datacenter → 28
+
+
 def test_run_pipeline_opt_in_nfv_mode():
     """run_pipeline(scenario|{"nesting_mode":"nfv"}) opt-in yolu uçtan uca çalışır."""
     from scripts.demo_pipeline import run_pipeline
