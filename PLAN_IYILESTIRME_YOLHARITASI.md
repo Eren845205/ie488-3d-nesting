@@ -199,3 +199,35 @@ Faz 3 başarılıysa Faz 4'ün ayrı gereği azalabilir. Faz 3 sonrası yeniden 
 **Faz 0 + Faz 1 birlikte** (ölçüm + hız): en düşük risk, sonraki tüm kalite
 deneylerini mümkün kılar. Hız düştükten sonra Faz 2 (fine-açı) hızlı görünür kalite
 kazancı verir. Faz 3-4 (NLP + cavity) kök çözümler, en yüksek değer/efor.
+
+---
+
+## GÜNCEL DURUM (2026-06-23) — C3 NFV CAVITY + PARALELLİK
+
+> Yukarıdaki Faz 0-4 yol haritası izlendi; kalite kök-çözümü **Faz 4 (cavity)** = gerçek-3B
+> NFV oldu. Aşağısı o track'in (C3) bugünkü net durumu. Tam detay: `RESUME_2026-06-23.md` §11,
+> memory [[project-kiyas-iyilestirme]] + [[project-nfv-app-baglama-engelleri]].
+
+**KALİTE (NFV cavity) — KANITLANDI:**
+- Gerçek geometrik NFV (`fftconvolve(occ, grid[::-1], 'valid')<0.5`) + BLB → Plan2 kaba **556mm**
+  (heightmap 740'ı %25 geçti, katı-bbox tabanı 586'nın altında = gerçek cavity).
+- **GENEL (overfit değil):** 4 veride %9-25 kazanç, regresyon yok (`GENELLIK_KAPISI_2026-06-23.md`).
+- **[GO] (Faz B):** 1.5mm'de NFV 550.5, gerçek üretim motoru (coarse_to_fine+SA) 645'i **%14.7 geçti**.
+
+**HIZ + PARALELLİK — UYGULANDI (deney, birebir 556, donanım-agnostik oto-algılama):**
+| Yöntem | Plan2 (226 parça, 2.0mm) | hız | script |
+|---|---|---|---|
+| NFV tek-thread | ~281s (xy-bbox, 985'ten 3.5×) | 1.0× | `c3_speed2.py` |
+| CPU Kol A orient-thread | ~122s | ~2.3× | `c3_par_a.py` |
+| **GPU-resident** | **51.1s** | **~5.5×** | `c3_gpu_resident.py` |
+- Backend soyutlaması + capability probe (GPU/cpu/RAM/SLURM oto-algıla, graceful fallback): `c3_backend.py`.
+- Doğrulama harness: `c3_parverify.py` (equiv/backend/bench). Onaylı plan: `~/.claude/plans/composed-churning-token.md`.
+
+**APP-BAĞLAMA ENGELLERİ (kanıt ≠ üretim-hazır — [[project-nfv-app-baglama-engelleri]]):**
+1. **Engel 1 (EN BÜYÜK):** üretim fine aşaması `place_in_order`/drop NFV'nin 3B-cavity pozisyonlarını
+   BOZAR → pozisyon-koruyan fine boru hattı gerek (gerçek mühendislik, yapılmadı).
+2. **Engel 2:** paralellik src/ portu + dispatcher (naive→GPU-resident bağla) + test + cross-dataset hız doğrulama.
+
+**KALAN PLAN (composed-churning-token Faz 4-5):** Faz 4 dispatcher + Kol B/C (`c3_dispatch.py`) →
+Faz 5 src/ port + test. Faz 2 (mkl) opsiyonel. Rollback tag `checkpoint-2026-06-22-faz1-2`.
+`src/` HÂLÂ DEĞİŞMEDİ (her şey scripts/ deney). Commit `d9822c4`.
