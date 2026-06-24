@@ -173,11 +173,14 @@ def _load(ds):
     return res.instance
 
 
-def run_one(ds, caps, n_or):
+def run_one(ds, caps, n_or, pitch_override=None):
     print(f"\n{'=' * 74}\n[{ds}] n={n_or}", flush=True)
     inst = _load(ds)
     pw, pd = float(inst.container.width_mm), float(inst.container.depth_mm)
-    pitch, feasible, _ = suggest_nfv_pitch(inst, plate_w_mm=pw, plate_d_mm=pd, ram_bytes=caps.ram_bytes)
+    if pitch_override is not None:
+        pitch, feasible = pitch_override, True  # NFV'nin GERCEKTEN kostugu kaba pitch (adil test)
+    else:
+        pitch, feasible, _ = suggest_nfv_pitch(inst, plate_w_mm=pw, plate_d_mm=pd, ram_bytes=caps.ram_bytes)
     parts = to_voxel_parts(inst, pitch, n_orientations=n_or, margin=MARGIN)
     nx, ny = int(pw // pitch), int(pd // pitch)
     print(f"  pitch={pitch:.2f} | {len(parts)} parca {nx}x{ny}vox", flush=True)
@@ -204,9 +207,12 @@ def run_one(ds, caps, n_or):
 def main():
     arg = sys.argv[1] if len(sys.argv) > 1 else "all"
     n_or = int(sys.argv[2]) if len(sys.argv) > 2 else 8
+    # 3. arg: pitch override (plan2 suggest 1.00mm=OOM/heightmap; NFV'nin GERCEKTEN kostugu 2.0mm ile adil test)
+    pitch_ov = float(sys.argv[3]) if len(sys.argv) > 3 else None
     caps = probe_capabilities()
     print("=" * 74)
-    print(f"(A) occ-FFT PAYLASIMI GPU PROTOTIP — {caps.summary()}")
+    print(f"(A) occ-FFT PAYLASIMI GPU PROTOTIP — {caps.summary()}"
+          + (f" | pitch override={pitch_ov}" if pitch_ov else ""))
     print("=" * 74, flush=True)
     if not (caps.gpu and caps.gpu_fp64):
         print("GPU/fp64 yok — prototip GPU gerektirir. CIK.", flush=True)
@@ -215,7 +221,7 @@ def main():
     rows = []
     for ds in todo:
         try:
-            rows.append(run_one(ds, caps, n_or))
+            rows.append(run_one(ds, caps, n_or, pitch_override=pitch_ov))
         except Exception as e:
             import traceback
             print(f"\n[{ds}] HATA: {type(e).__name__}: {e}", flush=True)
