@@ -100,10 +100,58 @@ pitch kaynaklı (adil kıyas için süper bilgisayarda fine pitch + yüksek-n ge
 
 ---
 
+## 6) MAGICS AÇIĞI — 6GB ALGORİTMA KALDIRACI TÜKENDİ (2026-06-25 oturumu)
+
+**Soru:** Kalan %6 Magics açığı (NFV n=8 = 522 vs Magics 492) süper bilgisayar BEKLEMEDEN,
+algoritma tarafında kapatılabilir mi?
+
+**Yöntem:** Açığın kaynağını kanıtlarla daralt → kalan tek ucuz kaldıracı (yerleştirme tie-break) ÖLÇ.
+
+### Açığın kaynağı: tüm parametre eksenleri 6GB'de doygun/kilitli
+| Kaldıraç | Durum | Kanıt |
+|---|---|---|
+| **Pitch** (2.0→0.5mm) | DOYGUN | 2.0=556 → 1.5=550.5 = **%1** (n=4, `c3_pitch_curve`). Açık pitch DEĞİL. |
+| **Eksen-hizalı oryantasyon** | DOYGUN | n=8=522 → n=12=516 = **%1.1** (`c3_quality_levers`). |
+| **Eğik açılar** (20-35° Rx) | DENENMİŞ | `voxelize.py:93` — eğik pozlar `mats[8:12]`'de; n=12 onları içeriyor → marjinal. |
+| **Sıra** (SA / multi-start) | ÖLÜ | largest-first zaten optimal (556→556). |
+| **Donanım** | KİLİTLİ | 6GB'de tek çalışan pitch 2.0mm (1.5mm GPU OOM, 1.0mm CPU OOM). |
+
+> ⚠️ DÜZELTME: önceki "açık büyük ölçüde KABA pitch kaynaklı" tahmini **ZAYIF** — pitch eğrisi
+> doygun olduğu için açık pitch değil, parametre eksenleri 6GB'de tükenmiş durumda.
+
+### Son ucuz kaldıraç: yerleştirme tie-break ("free void fill") — ÖLÇÜLDÜ → ÖLÜ
+Parametre eksenleri tükendiğinden geriye greedy'nin KENDİSİNİ değiştirmek kaldı. En ucuz aday:
+decode tie-break key `(max(z+fh, cur_max), z+fh, z, y, x, oi)` mevcut zarf içine sığan TÜM
+pozisyonları eşit-skorlu sayıp aralarından "köşe" (min y,x) seçiyor. Magics "free void fill"
+hipotezi: bu eşit-skorlu pozisyonlar arasında EN İYİ OTURAN'ı (footprint en çok alttan
+desteklenen = max-support) seçmek, yüksekliği bozmadan greedy myopia'yı azaltabilir.
+
+**ÖLÇÜM (`scripts/c3_tiebreak.py`, Plan2 @2.0mm n=8 GPU):**
+| tie-break | yükseklik | not |
+|---|---|---|
+| baz BLB (köşe) | **522.0mm** | sanity: mevcut `decode_gpu` ile BİREBİR |
+| max-support | **522.0mm** | **fark %0.0 — TAM SIFIR** |
+
+**Neden 0:** tie-break yalnız (x,y) seçer, zstar (yükseklik) HER MODDA sabit. Plan2 cavity-zengin
+(bol feasible bölge) → (x,y) dağılımı sonraki parçaların yükseklik sonucunu değiştirmiyor.
+En zorlu cavity testbed'inde (Plan2) %0 → cross-dataset gereksiz; tie-break kaldıracı **ÖLÜ**.
+
+### KARAR: 6GB'de algoritma yolu KAPANDI
+Pitch + oryantasyon + sıra + tie-break — **dördü de** 6GB'de tükendi/etkisiz. Kalan %6 açık
+greedy'nin pratik tavanı bu çözünürlükte; Magics 492'si **fine pitch (0.5mm) + yüksek/sürekli
+oryantasyon** birleşik etkisinden (her ikisi de 6GB'de OOM) geliyor. Adil kıyas + gerçek NFV
+tavanı için **SÜPER BİLGİSAYAR (n=28 + 0.5mm fine, bol VRAM)** tek yol. Bu, A14 coarse-to-fine
+rotasyon planıyla ([[project-konteyner-app-plani]]) ve datacenter batched-FFT backlog'uyla örtüşür.
+DERS: kaynak-daraltma + Plan2 (en zorlu testbed) ölçümü, belirsiz bir kaldıracı (tie-break) tek
+deneyde net "ölü"ye taşıdı — boş cross-dataset turundan korudu.
+
+---
+
 ## EK — sayıların kaynağı (izlenebilirlik)
 - Kalite/oryantasyon: `scripts/c3_quality_levers.py` (n=4/8/12 sweep, Plan2 @2.0mm GPU).
 - Cross-dataset hız: `scripts/c3_xdataset_speed.py` (plan1/plan3 tam tablo).
 - Pitch eğrisi/OOM sınırları: `scripts/c3_pitch_curve.py`.
+- Tie-break kaldıracı (max-support, NO-GO): `scripts/c3_tiebreak.py` (Plan2 @2.0mm n=8, 522=522 birebir).
 - Üretim kodu: `src/nesting3d/nfv_solve.py` (n=8 default, quality=max), `src/nesting3d/instances/pitch.py`
   (`suggest_nfv_pitch`), `scripts/demo_pipeline.py` (dispatch, default heightmap).
 - İlgili commit'ler: `2d8a5da` (adaptif pitch), `a26d180` (pitch cross-dataset fix/overfit gider),
