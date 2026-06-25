@@ -147,11 +147,49 @@ deneyde net "ölü"ye taşıdı — boş cross-dataset turundan korudu.
 
 ---
 
+## §7 — Global compaction (top-K eject + best-fit repack) — NO-GO (2026-06-25)
+
+Literatür araştırması (`MOTOR/makaleler/03_nfv_bakilmamis_yontemler_2026-06-25/`, A2/CGF) global
+compaction'ı "6GB-uyumlu, denenmemiş ilk kalite hedefi" olarak işaret etti: layout BİTTİKTEN sonra
+parçaları söküp daha iyi boşluğa sok (sıra-metaheuristiğinden ve tek-parça tie-break'ten farklı,
+çok-parça + layout-sonrası). `scripts/c3_compaction.py` ile Plan2 @2.0mm n=8 GPU'da ölçüldü.
+
+**KOD-ÖNCESİ MONOTONİKLİK TEOREMİ:** Bir parça yerleştirildiğinde occ'ta yalnız daha büyükler vardı;
+greedy minimal z+fh'ye koydu. Sonraki parçalar occ'u yalnız BÜYÜTTÜ. -> TEK parçayı söküp geri koymak
+(occ artık daha dolu) z+fh'yi ASLA düşüremez. Gerçek kazanç ancak >=2 parçayı BİRLİKTE eject edip occ'u
+gerçekten küçültünce gelebilir (tavan parçaları birbirinin yerini açar). Tek serbestlik = repack SIRASI.
+
+**ÖLÇÜM (baz 522.0mm = bilinen değer; sanity geçti):**
+
+| repack politikası | sonuç | yorum |
+|---|---|---|
+| largest-first K=all (sanity) | 522.0mm = baz, **+0.0%** | birebir -> monotoniklik teoremi doğrulandı |
+| best-fit K=2 / K=5 | 522.0mm, **+0.0%** | tavan parçaları zaten optimal yerde |
+| best-fit K=10 | 840.0mm, **-60.9%** | best-fit küçüğü öne/büyüğü sona alıyor -> felaket kötüleşme |
+
+**Neden ölü:** İki repack politikası da kalite kazancı vermedi. largest-first occ_rest ⊆ baz-occ olduğu
+için tavanı asla düşüremez (monotoniklik, K=all'da birebir 522 ile kanıtlı). best-fit ise sırayı bozup
+büyük parçaları yükseğe iterek KÖTÜLEŞTİRİYOR. Tavanı düşürmek için tavan parçasının ALTINDAKİ dolu
+kolonu da eject edip tüm kümeyi GLOBAL yeniden düzenlemek gerekirdi = bu artık **sıra/reorder problemi =
+ZATEN ÖLÜ** (largest-first optimal, SA/ALNS 0). CGF compaction'ın sürekli-pozisyon "push/swap"
+mekanizması bizim **diskret + BLB (zaten bottom-most) + greedy** dünyamızda karşılıksız — BLB her parçayı
+zaten anlık-compact yerleştiriyor; geriye kalan serbestlik (sıra/oryantasyon/sürekli-rotasyon) ya doygun
+ya da süper bilgisayar işi (phi-function NLP, A1).
+
+**KARAR:** Global compaction da 6GB algoritma yolunda ÖLÜ — pitch + oryantasyon + sıra + tie-break'e
+**beşinci** olarak katıldı. Magics açığı için tek kalan yol SÜPER BİLGİSAYAR (sürekli rotasyon NLP /
+n=28+0.5mm fine). DERS: monotoniklik teoremini kod-öncesi kurmak, K=2/5'in neden 0 çıktığını önceden
+açıkladı; tek Plan2 koşusu (en zorlu testbed) belirsiz kaldıracı net "ölü"ye taşıdı, cross-dataset gereksiz.
+
+---
+
 ## EK — sayıların kaynağı (izlenebilirlik)
 - Kalite/oryantasyon: `scripts/c3_quality_levers.py` (n=4/8/12 sweep, Plan2 @2.0mm GPU).
 - Cross-dataset hız: `scripts/c3_xdataset_speed.py` (plan1/plan3 tam tablo).
 - Pitch eğrisi/OOM sınırları: `scripts/c3_pitch_curve.py`.
 - Tie-break kaldıracı (max-support, NO-GO): `scripts/c3_tiebreak.py` (Plan2 @2.0mm n=8, 522=522 birebir).
+- Global compaction (top-K eject + best-fit repack, NO-GO): `scripts/c3_compaction.py` (Plan2 @2.0mm
+  n=8; largest K=all=522 birebir, best-fit K=2/5=+0.0%, K=10=-60.9%).
 - Üretim kodu: `src/nesting3d/nfv_solve.py` (n=8 default, quality=max), `src/nesting3d/instances/pitch.py`
   (`suggest_nfv_pitch`), `scripts/demo_pipeline.py` (dispatch, default heightmap).
 - İlgili commit'ler: `2d8a5da` (adaptif pitch), `a26d180` (pitch cross-dataset fix/overfit gider),
