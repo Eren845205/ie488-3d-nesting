@@ -183,6 +183,38 @@ açıkladı; tek Plan2 koşusu (en zorlu testbed) belirsiz kaldıracı net "öl�
 
 ---
 
+## §8 — HIZ: sparse/popcount korelasyon vs FFT — sparse-shift NO-GO (2026-06-26)
+
+Literatür B1 (binary AND+popcount, Turing 1-bit tensor-core / XNOR conv): NFV feasibility = occ ile
+parça grid'inin valid-correlation'i (overlap==0); şu an fp64 FFT. Parçalar %93 boş -> çakışma testini
+parçanın DOLU voxelleri üzerinden yap (sparse-shift: dolu voxel başına occ'u kaydır-topla), FFT'siz +
+EXACT. "bit-pack NO-GO"dan FARKLI (saklama değil hesaplama). İki aşama ölçüldü.
+
+**Mikro-benchmark (`scripts/c3_popcount.py`, Plan2 GPU):** birebirlik HER satırda True (sparse EXACT,
+FFT feasible set ile array_equal). Hız: küçük parça (4x5x2, 28 dolu voxel) + GENİŞ occ-xy (164) =
+**6.67×** (FFT 5.78ms vs sparse 0.87ms); ama dar occ 0.68×, orta (977 dolu) 0.13×, büyük (296k dolu)
+0.00×. -> sparse maliyeti = MUTLAK dolu-voxel sayısı (doluluk% değil); az-dolu parçada FFT'yi yener.
+
+**Gerçek decode (`scripts/c3_popcount_decode.py`, hibrit: dolu<THRESH -> sparse, değilse FFT):** baz
+FFT-only 522.0mm/164s. Hibrit THRESH=50/100/200/500 hepsi **522.0mm BİREBİR** (sparse tasarımı tam
+doğrulandı) AMA hız **0.85/0.81/0.69/0.73× = HER THRESH'te baz'dan YAVAŞ.** Mikro'nun 6.67× üst-sınırı
+decode'da gerçekleşmedi.
+
+**Kök neden:** (1) `sparse_corr` Python-loop'ta dolu-voxel başına GPU kernel launch -> THRESH altı parça
+50-500 voxel -> launch overhead FFT'nin sabit 3-transform'unu yiyor. (2) Gerçek decode xy-bbox crop
+kullanıyor -> küçük parça çoğu zaman zaten KÜÇÜK crop'ta değerlendiriliyor (FFT zaten ucuz: mikro dar-occ
+0.64ms); mikro'nun "geniş occ" senaryosu nadir + tam orada Python-loop baskın. (A) occ-FFT dersinin
+TEKRARI: mikro üst-sınır != gerçek decode kazancı.
+
+**KARAR:** Naif (cupy-array, Python-loop) sparse-shift = birebir EXACT ama gerçek decode'da NO-GO. Bu B1'in
+EN ZAYIF formu; **gerçek B1 = bit-pack popcount RawKernel** (z-ekseni 64-bit pack + word-AND + `__popc`,
+Python-loop'suz custom CUDA) HÂLÂ açık ama: (a) yüksek efor (3B valid-corr + word-shift boundary kernel),
+(b) Amdahl — küçük parça FFT'si zaten ucuz (mikro dar-occ 0.64ms), büyük parça FFT'si baskın, (c) mikro
+üst-sınırın iki kez (occ-FFT + sparse) decode'da gerçekleşmeme dersi -> beklenen kazanç marjinal.
+Kullanıcı kararına bırakıldı. Kaliteyi-bozmayan kolay/orta hız kaldıraçları büyük ölçüde tükendi.
+
+---
+
 ## EK — sayıların kaynağı (izlenebilirlik)
 - Kalite/oryantasyon: `scripts/c3_quality_levers.py` (n=4/8/12 sweep, Plan2 @2.0mm GPU).
 - Cross-dataset hız: `scripts/c3_xdataset_speed.py` (plan1/plan3 tam tablo).
@@ -190,6 +222,8 @@ açıkladı; tek Plan2 koşusu (en zorlu testbed) belirsiz kaldıracı net "öl�
 - Tie-break kaldıracı (max-support, NO-GO): `scripts/c3_tiebreak.py` (Plan2 @2.0mm n=8, 522=522 birebir).
 - Global compaction (top-K eject + best-fit repack, NO-GO): `scripts/c3_compaction.py` (Plan2 @2.0mm
   n=8; largest K=all=522 birebir, best-fit K=2/5=+0.0%, K=10=-60.9%).
+- Sparse/popcount korelasyon (HIZ, sparse-shift NO-GO): `scripts/c3_popcount.py` (mikro: küçük+geniş
+  6.67× birebir), `scripts/c3_popcount_decode.py` (gerçek decode hibrit: 522 birebir AMA 0.69-0.85× yavaş).
 - Üretim kodu: `src/nesting3d/nfv_solve.py` (n=8 default, quality=max), `src/nesting3d/instances/pitch.py`
   (`suggest_nfv_pitch`), `scripts/demo_pipeline.py` (dispatch, default heightmap).
 - İlgili commit'ler: `2d8a5da` (adaptif pitch), `a26d180` (pitch cross-dataset fix/overfit gider),
