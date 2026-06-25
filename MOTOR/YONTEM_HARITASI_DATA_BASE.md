@@ -161,6 +161,13 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN olmadı:** **Monotoniklik teoremi** (kod-öncesi): parça yerleşince occ yalnız büyür → tek-parça eject (occ daha dolu) z+fh ASLA düşmez. Tavanı düşürmek = altındaki kolonu da eject + global reorder = ZATEN ÖLÜ (K-08). CGF'in sürekli-pozisyon push'u diskret+BLB (zaten bottom-most) dünyamızda karşılıksız.
 - **Ders:** Kod-öncesi teorem kurmak K=2/5'in neden 0 çıktığını önceden açıkladı.
 
+#### [K-12] NFV numune doğrulaması (cavity-fakir veride davranış)
+- **Durum:** ❌ NO-GO (kazanç yok — beklenen) · **Tarih:** 2026-06-26 · **Kanıt:** `scripts/c3_numune_nfv.py`
+- **Ne:** Gerçek FFT-NFV'yi hocanın İLK numune verisinde (kutuluk ~0.35, cavity-fakir) çalıştır; eski eğik-plaka SA rekoru 181.5mm ile kıyas. (NFV daha önce yalnız cavity-zengin Plan2/3'te test edilmişti.)
+- **Sonuç:** NFV n=8 = **180.0mm = heightmap (180.0) ile BİREBİR** (kazanç %0.0); NFV+eğik oryantasyon 186 (daha kötü). Rekor 181.5 ile "%0.8 daha iyi" görünür ama YANILTICI (180 zaten heightmap'in değeri; 181.5 farklı kurulum = ince pitch+SA+eğik plaka).
+- **NEDEN olmadı:** Numune cavity-fakir → NFV'nin tek avantajı (oyuğa girme) yok. Plan2(0.07)=%29, Plan3(0.30)=%20, Plan1(0.44)=%14, numune(0.35)=%0 → kazanç kutuluk/oyukla orantılı.
+- **Ders:** Meta-ders #3'ü (numune YANILTIR) gerçek FFT-NFV ile de doğruladı + NFV'nin OVERFIT OLMADIĞINI kanıtladı (cavity yoksa sahte iyileşme uydurmuyor). Eski NFV-LİTE numune'de 218 idi; gerçek NFV 180'e çekti (heightmap seviyesi).
+
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction = **5'i de ölü/doygun**. Magics %6 açığı = fine pitch (0.5mm) + sürekli
 > rotasyon birleşik (ikisi de 6GB OOM/doygun) → **SÜPER BİLGİSAYAR** tek yol (§5 A1).
