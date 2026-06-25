@@ -215,6 +215,33 @@ Kullanıcı kararına bırakıldı. Kaliteyi-bozmayan kolay/orta hız kaldıraç
 
 ---
 
+## §9 — VDB/sparse-occupancy fizibilite (bellek darboğazı nerede?) — NO-GO ön-analiz (2026-06-26)
+
+Literatür B2 (VDB/OpenVDB sparse occupancy): belleği aktif-voxelle ölçekle -> OOM'u gevşet -> daha ince
+pitch (0.5mm, Magics) -> DOLAYLI kalite. VDB'nin tek faydası BELLEK; NFV feasibility FFT (dense)
+gerektirir (sparse-FFT B4'te "yaklaşık" diye elendi). VDB ancak occupancy ARRAY darboğazsa yardım eder.
+ÖLÇ-ÖNCE: VDB kurmadan darboğazı ölç (`scripts/c3_vdb_memprofile.py`, Plan2 pitch sweep, cupy
+mempool.total_bytes peak).
+
+**ÖLÇÜM:**
+
+| pitch | grid | occ-array | peak-GPU | peak/occ | durum |
+|---|---|---|---|---|---|
+| 2.0mm | 164x164x800 | 20.5MB | 8921MB | **434.8×** | OK (522mm) |
+| 1.5mm | 219x218x1066 | 48.5MB | — | — | OOM |
+| 1.0mm | 328x328x1600 | 164MB | — | — | OOM |
+| 0.5mm | — | — | — | — | voxelize MemoryError (CPU RAM) |
+
+**KARAR — NO-GO:** peak/occ = **434.8×** -> bellek darboğazı occupancy'de DEĞİL, ezici çoğunlukla FFT
+geçici array'lerinde (dense complex128 crop'lar; occ'un 435 katı). occ zaten küçük (20-164MB), sıkıştırmanın
+anlamı yok. İnce pitch'teki (1.5mm) OOM da occ'tan değil FFT'den. FFT sparse EDİLEMEZ (birebir kuralı). ->
+VDB occupancy bizim FFT-NFV'mizde ince-pitch'i AÇMAZ. İnce pitch için çözülmesi gereken FFT-bellek = bol
+VRAM = SÜPER BİLGİSAYAR (occupancy temsili değil). (peak mutlak değeri free-edilmemiş havuz bloklarıyla
+şişebilir > 6GB VRAM; ama ORAN kesin: FFT >> occ.) DERS: B2'nin tek faydası bellekti; tek ölçüm (peak/occ),
+VDB kurulum/debug eforuna girmeden darboğazın yanlış yerde olduğunu kanıtladı = ÖLÇ-ÖNCE'nin en temiz örneği.
+
+---
+
 ## EK — sayıların kaynağı (izlenebilirlik)
 - Kalite/oryantasyon: `scripts/c3_quality_levers.py` (n=4/8/12 sweep, Plan2 @2.0mm GPU).
 - Cross-dataset hız: `scripts/c3_xdataset_speed.py` (plan1/plan3 tam tablo).
@@ -224,6 +251,8 @@ Kullanıcı kararına bırakıldı. Kaliteyi-bozmayan kolay/orta hız kaldıraç
   n=8; largest K=all=522 birebir, best-fit K=2/5=+0.0%, K=10=-60.9%).
 - Sparse/popcount korelasyon (HIZ, sparse-shift NO-GO): `scripts/c3_popcount.py` (mikro: küçük+geniş
   6.67× birebir), `scripts/c3_popcount_decode.py` (gerçek decode hibrit: 522 birebir AMA 0.69-0.85× yavaş).
+- VDB/sparse-occ fizibilite (NO-GO): `scripts/c3_vdb_memprofile.py` (Plan2 @2.0mm peak/occ=434.8× -> FFT
+  baskın, occ değil; VDB occupancy ince-pitch'i açmaz).
 - Üretim kodu: `src/nesting3d/nfv_solve.py` (n=8 default, quality=max), `src/nesting3d/instances/pitch.py`
   (`suggest_nfv_pitch`), `scripts/demo_pipeline.py` (dispatch, default heightmap).
 - İlgili commit'ler: `2d8a5da` (adaptif pitch), `a26d180` (pitch cross-dataset fix/overfit gider),
