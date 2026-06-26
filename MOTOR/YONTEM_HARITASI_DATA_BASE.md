@@ -168,9 +168,33 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN olmadı:** Numune cavity-fakir → NFV'nin tek avantajı (oyuğa girme) yok. Plan2(0.07)=%29, Plan3(0.30)=%20, Plan1(0.44)=%14, numune(0.35)=%0 → kazanç kutuluk/oyukla orantılı.
 - **Ders:** Meta-ders #3'ü (numune YANILTIR) gerçek FFT-NFV ile de doğruladı + NFV'nin OVERFIT OLMADIĞINI kanıtladı (cavity yoksa sahte iyileşme uydurmuyor). Eski NFV-LİTE numune'de 218 idi; gerçek NFV 180'e çekti (heightmap seviyesi).
 
+#### [K-13] Sürekli SERBEST rotasyon (greedy menüsüne off-axis ekle)
+- **Durum:** ❌ NO-GO · **Tarih:** 2026-06-26 · **Kanıt:** `scripts/c3_continuous_rot.py`, `scratch_crot_plan2*.log`
+- **Ne:** n=8 baz + sürekli off-axis eğik pozlar (tilt 20/40 × azimuth × spin = 24 poz) greedy decode menüsüne eklendi; küme-içerme (set ⊇ n=8) ile "asla baz'dan kötü olamaz" beklendi.
+- **Sonuç:** Plan2 C24 = **550 > baz 522 (−%5.4 KÖTÜ)**. A24 kontrol (24 eksen-hizalı) = 520 (≈baz → diskret doygun, K-05 yine doğrulandı).
+- **NEDEN olmadı:** Küme-içerme garantisi greedy'de TUTMADI — greedy bir eğik pozu miyopça kapıp o parçanın z'sini düşürüyor ama footprint büyütüp sonraki parçaları yukarı itiyor (K-07 + M1-M6 miyopi tekrarı). Rotasyon parça-i için çok erken/izole kilitleniyor.
+- **Ders:** Greedy decode sürekli rotasyondan FAYDALANAMAZ, zarar görür. Rotasyon ancak GLOBAL (eşzamanlı açı+pozisyon) optimizasyonla kullanılır → A1.
+
+#### [K-14] Koordineli ortak-tilt "rack" + height-driver teşhisi
+- **Durum:** ❌ NO-GO (Plan2) · **Tarih:** 2026-06-26 · **Kanıt:** `scripts/c3_coord_tilt.py` + `scripts/c3_height_driver.py`, `scratch_coord_plan2.log`
+- **Ne:** "Ekmek rafı" hipotezi — greedy serbest seçmesin diye uzun/rack-uygun parçalar (en-boy≥2 VE ≤0.6·plaka, GEOMETRİ-türevli) PAYLAŞILAN tek tilt açısına zorlandı; açı 90/75/60/45/30° tarandı. Sonra height-driver teşhisi.
+- **Sonuç:** 5 açının TÜMÜ = **522.0 birebir (%0.0)**. Fallback değil (8/8 rack parça 4/4 voxelize). Teşhis: tavanı (522) **~20 BÜYÜK LEVHA** belirliyor — P282335 (77×147×**300**)×5 + kardeşler P282334/336/337 + P155308 (178×299×**356**)×1; rack-uygun küçük parçalar HİÇ tavan değil.
+- **NEDEN olmadı:** Plan2 yükseklik darboğazı = düz yatamayan büyük levhalar (P282335 footprint 44.100mm², plakaya 2 sığar → ~20 levha ≈ 8 plaka-alanı → İSTİFLENMEK ZORUNDA). Bunlar rack-uygun değil (çok büyük); koordinasyon YANLIŞ parçalara uygulandı çünkü DOĞRU parçalar (büyük benzersiz levhalar) koordine-edilebilir tipte değil.
+- **Ders:** Plan2'de "rotasyonla iyileştirme" = bu ~20 büyük levhayı optimal istiflemek = global sürekli-açı eşzamanlı paketleme = A1. Magics 492 (%6) tam bunu yapıyor (levhaları %6 daha sıkı). **Darboğazı ÖLÇ (height-driver) stratejiyi uygulamadan ÖNCE** — coord-tilt yanlış parçalara harcandı.
+
+#### [K-15] Numune height-driver — rotasyonun küçük-N'de de yanlış kaldıraç olduğu
+- **Durum:** ❌ NO-GO (rotasyon, teşhisle) · **Tarih:** 2026-06-26 · **Kanıt:** `scripts/c3_height_driver_numune.py`
+- **Ne:** SA-sürekli-rotasyonu numune'de (8 tip, hedef 170mm, A1 küçük-N testbed adayı) koşmadan ÖNCE meta-ders #11: tavanı (180) NE belirliyor? Baz n=8 decode + tepe-z ölçümü.
+- **Sonuç:** Tavan (180) = **ince büyük plakalar** (n3 15×178×228 oran 15.2 tepe-180; n7/n6/n8 benzer ~15-19mm kalın, 180-230mm geniş). Plan2'den FARKLI darboğaz tipi ama yine rotasyon-kapalı.
+- **NEDEN olmadı:** İnce plakalar düz yatıyor = **zaten minimum yükseklik** (15mm). Eğmek yüksekliği ARTIRIR (eski eğik-SA 181.5 > düz 180 = tam bunun kanıtı). Bread-rack uzun-dik parçayı yatırınca kazandırır; numune plakaları zaten yatık → rack tersine çalışır.
+- **Ders:** Her iki gerçek darboğaz da rotasyona kapalı: Plan2=düz-yatamayan-büyük-levha (istif zorunlu), numune=düz-zaten-optimal-ince-plaka (eğmek uzatır). SA-sürekli-rotasyon koşulmadı çünkü ölçüm "eğik-SA tekrarı" diyor (meta-ders #11 saatlerce SA'dan korudu). Numune 170 hedefi rotasyonla DEĞİL farklı kaldıraçla (placement/interleave) — VEYA 180 ≈ düz-istif-optimal kabul.
+
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
-> sıra + tie-break + compaction = **5'i de ölü/doygun**. Magics %6 açığı = fine pitch (0.5mm) + sürekli
-> rotasyon birleşik (ikisi de 6GB OOM/doygun) → **SÜPER BİLGİSAYAR** tek yol (§5 A1).
+> sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
+> ölü/doygun**. Plan2 darboğazı = ~20 büyük levha (düz yatamaz, istiflenir); numune darboğazı = ince plakalar
+> (düz zaten optimal, K-15) — **her ikisi de rotasyona kapalı, farklı sebeplerle**. Magics %6 açığı = fine
+> pitch (0.5mm) + büyük levhaların global rotasyonu (ikisi de 6GB OOM/erişilemez) → **SÜPER BİLGİSAYAR** tek
+> yol (§5 A1). NOT: A1'in küçük-N (numune) 6GB-fizibilite umudu da K-15 ile zayıfladı (numune rotasyon-kapalı).
 
 ### 3.2 HIZ (kaliteyi BOZMADAN — birebir/exact)
 
@@ -294,7 +318,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 
 | # | Yön | Donanım | Efor | Beklenti | Not |
 |---|---|---|---|---|---|
-| **A1** | **Phi-function sürekli rotasyon NLP** (quasi-phi + IPOPT + decomposition) | **Süper bilgisayar** | Çok yüksek | **YÜKSEK** — Magics'in muhtemel sırrı (diskret→sürekli rotasyon) | Önce küçük-N (20-30) kavram doğrulama. Asıl kalite kazancı burada. |
+| **A1** | **Phi-function sürekli rotasyon NLP** (quasi-phi + IPOPT + decomposition) | **Süper bilgisayar** (büyük-N) | Çok yüksek | **ORTA-YÜKSEK** (düştü) — Magics'in muhtemel sırrı (diskret→sürekli rotasyon). K-13/K-14 darboğaz=büyük-levha global rotasyonu; AMA K-15: numune (küçük-N) darboğazı da rotasyon-kapalı | Küçük-N 6GB-fizibilite umudu K-15 ile **zayıfladı** (numune ince-plaka, eğmek uzatır). A1 hâlâ Plan2 büyük-levha paketi için geçerli ama "ucuz numune kanıtı" yolu kapandı. Açılırsa: rotasyon-amenable YENİ veri bulup orada test. |
 | A1b | n=28 + 0.5mm fine NFV koşusu | Süper bilgisayar (bol VRAM) | Orta | Adil Magics kıyası + gerçek NFV tavanı | Bizde OOM (FFT-bellek, H-11). |
 | B1' | bit-pack popcount RawKernel (gerçek B1) | 6GB | Yüksek (CUDA) | Marjinal (Amdahl + mikro-dersi) | Naif sparse NO-GO'ydu (H-10); önermiyoruz. |
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
@@ -319,6 +343,8 @@ planında var (hocayla, [[project-konteyner-app-plani]]).
 8. **Makale → kod → benchmark kapısı.** Makale iddiası ≠ bizim veride iyi (Ikonen GA, A2 compaction). Geçemezse MERGE YOK.
 9. **Cavity = gerçek geometrik NFV'den EMERGENT**, özel kod değil. Aday-üretimi bbox-köşe olduğu sürece cavity çıkmaz (M1-M6 ezici kanıt).
 10. **Üretim DEFAULT'a dokunma.** Tüm deneyler `scripts/`'te; NFV opt-in; default heightmap birebir korundu (2043 test yeşil).
+11. **Darboğazı ÖLÇ, stratejiyi uygulamadan ÖNCE** (height-driver teşhisi, K-14). Koordineli-rack yanlış parçalara harcandı çünkü "tavanı ne belirliyor" önce ölçülmedi; ölçülünce darboğazın rack-uygun OLMAYAN büyük levhalar olduğu çıktı. Hangi parçayı döndüreceğini bilmeden rotasyon stratejisi körlemesine.
+12. **Greedy ⊕ rotasyon = miyopi (K-13).** Küme-içerme garantisi (4⊂8, K-05) eksen-hizalıda tuttu ama sürekli off-axis'te TUTMADI: greedy eğik pozu erken/izole kilitler, footprint büyütür. Rotasyon GLOBAL optimizasyon ister (eşzamanlı açı+pozisyon), greedy'ye cıvata olmaz.
 
 ---
 

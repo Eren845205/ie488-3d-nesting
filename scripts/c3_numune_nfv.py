@@ -32,48 +32,53 @@ PITCH, PLATE, MARGIN = 2.0, 335.0, 1
 REKOR = 181.5  # egik-plaka SA en iyi (2026-06-12)
 
 
-def main():
-    nx = int(PLATE // PITCH)
-    caps = probe_capabilities()
-    print("=" * 70)
-    print(f"NUMUNE — GERCEK FFT-NFV vs egik-plaka rekoru {REKOR}mm — {caps.summary()}")
-    print(f"pitch={PITCH} plaka={PLATE:.0f} grid={nx}x{nx}")
-    print("=" * 70, flush=True)
-
-    # parcalar: hibrit (egik) + standart (eksen-hizali)
+def _run_cell(pitch, n):
+    """Bir (pitch, n) hucresi: voxelize + heightmap + NFV(standart). (hm, h_nfv, strat, dt) doner."""
+    nx = int(PLATE // pitch)
     t = time.perf_counter()
-    parts_h = expand_quantities(model_set("numune"), PITCH, n_orientations=8, margin=MARGIN,
-                                method="slice", orientation_overrides=NUMUNE_ORIENTATIONS_HYBRID)
-    parts_s = expand_quantities(model_set("numune"), PITCH, n_orientations=8, margin=MARGIN,
-                                method="slice")
-    print(f"voxelize: {len(parts_h)} parca ({time.perf_counter()-t:.0f}s)", flush=True)
-
-    # 1. heightmap baseline (hibrit)
-    t = time.perf_counter()
-    _, hb = dblf(parts_h, lambda: Bin3D(PLATE, PLATE, PITCH, z_clearance=MARGIN))
+    parts = expand_quantities(model_set("numune"), pitch, n_orientations=n, margin=MARGIN,
+                              method="slice")
+    vt = time.perf_counter() - t
+    _, hb = dblf(parts, lambda: Bin3D(PLATE, PLATE, pitch, z_clearance=MARGIN))
     hm = hb.max_height_mm()
-    print(f"[1] HEIGHTMAP (hibrit)  : {hm:6.1f} mm  ({time.perf_counter()-t:.0f}s)", flush=True)
+    h_nfv, _, strat = best_decode(parts, nx, nx, pitch=pitch)
+    return hm, h_nfv, strat, vt + (time.perf_counter() - t - vt)
 
-    # 2. NFV + hibrit oryantasyonlar (181.5 ile ayni havuz = adil kiyas)
-    t = time.perf_counter()
-    h_nfv_h, raw_h, strat_h = best_decode(parts_h, nx, nx, pitch=PITCH)
-    print(f"[2] NFV (hibrit/egik)   : {h_nfv_h:6.1f} mm  ({time.perf_counter()-t:.0f}s, {strat_h})", flush=True)
 
-    # 3. NFV + standart n=8 (eksen-hizali)
-    t = time.perf_counter()
-    h_nfv_s, raw_s, strat_s = best_decode(parts_s, nx, nx, pitch=PITCH)
-    print(f"[3] NFV (standart n=8)  : {h_nfv_s:6.1f} mm  ({time.perf_counter()-t:.0f}s, {strat_s})", flush=True)
+def main():
+    caps = probe_capabilities()
+    print("=" * 78)
+    print(f"NUMUNE — NFV PITCH x N SUPURME (hedef 170, rekor {REKOR}) — {caps.summary()}")
+    print(f"plaka={PLATE:.0f}  (diskret kaldirac doyuyor mu? -> A1 surekli rotasyon karari)")
+    print("=" * 78, flush=True)
+    print(f"  {'pitch':>6} {'n':>4} {'heightmap':>10} {'NFV':>9} {'NFV-vs-hm':>10} {'sure':>7} {'durum':>10}")
+    print("-" * 78, flush=True)
 
-    print("-" * 70)
-    best_nfv = min(h_nfv_h, h_nfv_s)
-    print(f"  egik-plaka SA rekoru : {REKOR} mm")
-    print(f"  heightmap baseline   : {hm:.1f} mm")
-    print(f"  EN IYI NFV           : {best_nfv:.1f} mm")
-    d_rec = (REKOR - best_nfv) / REKOR * 100
-    d_hm = (hm - best_nfv) / hm * 100
-    print(f"  NFV vs rekor 181.5   : {d_rec:+.1f}%  ({'GELISME' if d_rec > 0 else 'GERIDE'})")
-    print(f"  NFV vs heightmap     : {d_hm:+.1f}%")
-    print("=" * 70)
+    best = (REKOR, "rekor 181.5 (egik+SA)")
+    for pitch in (2.0, 1.5, 1.0, 0.5):
+        for n in (8, 12):
+            try:
+                hm, h_nfv, strat, dt = _run_cell(pitch, n)
+                d = (hm - h_nfv) / hm * 100
+                if h_nfv < best[0]:
+                    best = (h_nfv, f"NFV pitch={pitch} n={n}")
+                print(f"  {pitch:>6} {n:>4} {hm:>10.1f} {h_nfv:>9.1f} {d:>+9.1f}% {dt:>6.0f}s {strat:>10}",
+                      flush=True)
+            except Exception as e:
+                nm = type(e).__name__
+                durum = "OOM" if "Memory" in nm or "alloc" in str(e).lower() else nm[:10]
+                print(f"  {pitch:>6} {n:>4} {'-':>10} {'-':>9} {'-':>10} {'-':>7} {durum:>10}", flush=True)
+
+    print("-" * 78)
+    print(f"  EN IYI: {best[0]:.1f} mm  ({best[1]})")
+    print(f"  rekor 181.5 | hedef 170 (sozel stretch, ulasilmadi)")
+    if best[0] <= 170:
+        print(f"  -> HEDEF 170 ASILDI! cross-dataset overfit testi GEREK.")
+    elif best[0] < REKOR - 1:
+        print(f"  -> rekoru gecti ama 170 altina inmedi (diskret kaldirac sinirli).")
+    else:
+        print(f"  -> diskret kaldirac (pitch+n) DOYGUN -> 170 icin SUREKLI ROTASYON (A1) gerek.")
+    print("=" * 78)
 
 
 if __name__ == "__main__":
