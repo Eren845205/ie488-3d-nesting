@@ -255,6 +255,12 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
         np.clip(idx, 0, np.asarray(shape) - 1, out=idx)
         grid[idx[:, 0], idx[:, 1], idx[:, 2]] = True
 
+    # Bellek tavanı: tek pts array'i (chunk_mk, n_bary, 3) bu eleman sayısını aşmaz.
+    # Büyük DÜZ yüzeyler (az ama dev üçgen — örn. plaka tabanı) ince pitch'te k_per_tri
+    # ~1000+ → n_bary ~5e5; mk*n_bary tek seferde alloc edilince OOM (Plan2 P155308
+    # 356mm @0.5mm: 4.87GB tek array → çöküyordu). Chunk AYNI hücreleri işaretler
+    # (BİREBİR aynı grid, _mark idempotent) ama belleği O(chunk_mk*n_bary)'a bağlar.
+    _PTS_CHUNK_ELEMS = 8_000_000  # ~0.19 GB / chunk (float64 *3*8 bayt)
     for k in np.unique(k_per_tri):
         sub = tri[k_per_tri == k]  # (mk, 3, 3)
         # barycentric ızgara: (i/k, j/k, 1-i/k-j/k), i+j <= k
@@ -262,10 +268,14 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
         keep = (ii + jj) <= k
         u = (ii[keep] / k)[None, :, None]
         v = (jj[keep] / k)[None, :, None]
-        pts = (sub[:, 0:1, :] * (1.0 - u - v)
-               + sub[:, 1:2, :] * u
-               + sub[:, 2:3, :] * v)
-        _mark(pts.reshape(-1, 3))
+        n_bary = int(keep.sum())
+        chunk_mk = max(1, _PTS_CHUNK_ELEMS // max(1, n_bary * 3))
+        for s0 in range(0, sub.shape[0], chunk_mk):
+            chunk = sub[s0:s0 + chunk_mk]  # (<=chunk_mk, 3, 3)
+            pts = (chunk[:, 0:1, :] * (1.0 - u - v)
+                   + chunk[:, 1:2, :] * u
+                   + chunk[:, 2:3, :] * v)
+            _mark(pts.reshape(-1, 3))
     return grid
 
 
