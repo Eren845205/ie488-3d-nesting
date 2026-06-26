@@ -605,25 +605,24 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
 
-    t_nest_start = _time.perf_counter()
-    try:
-        voxel_parts = to_voxel_parts(
-            instance, pitch, n_orientations=n_orient, margin=0
-        )
-    except Exception as exc:
-        return _ret(
-            {"height_mm": 0.0, "density": 0.0, "n_parts": len(all_parts),
-             "elapsed_sec": 0.0, "note": f"Voxelization hatasi: {exc}",
-             "portfolio": None, "tuner": None, "selection": selection_pred},
-            {"total_price": 0.0, "breakdown": []},
-        )
+    # ÇİFT-VOXELİZE KALDIRMA: voxel_parts SADECE tuner + DBLF-fallback yolunda gerekli.
+    # NFV (solve_nfv) ve coarse_to_fine KENDİ voxelize'larını yapar → buradaki fine voxelize
+    # o yollarda BOŞA olurdu (Plan2 büyük parça @0.5mm = 159s/parça çift). Yol kararı için gereken
+    # len(voxel_parts)'ı voxelize ETMEDEN tahmin et: to_voxel_parts semantiği = distinct ada göre
+    # qty topla (format.py:227-246) → estimated_n_parts BİREBİR == len(to_voxel_parts(...)).
+    _name_to_qty = {}
+    for _p in all_parts:
+        _nm = _p.get("name")
+        _name_to_qty[_nm] = _name_to_qty.get(_nm, 0) + int(_p.get("qty", 1))
+    estimated_n_parts = sum(_name_to_qty.values())
 
+    t_nest_start = _time.perf_counter()
     factory = _bin_factory(container, pitch)
     _c2f_result = None
+    voxel_parts = None  # yalnız tuner/DBLF yolunda üretilir (None = henüz voxelize edilmedi)
     try:
         if nesting_mode == "nfv":
-            # Opt-in NFV cavity "kalite modu" (Engel 1 çözümü): NFV'yi pitch'te tam-yerleştirici
-            # koş, drop boru hattını baypas et → cavity korunur. Sonuç CoarseToFineResult şeklinde.
+            # Opt-in NFV cavity "kalite modu": solve_nfv KENDİ voxelize'ını yapar (voxel_parts gereksiz).
             from src.nesting3d.nfv_solve import solve_nfv
             _c2f_result = solve_nfv(
                 instance,
@@ -635,7 +634,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 seed=seed,
             )
             tune_result = _c2f_result.tune_result
-        elif len(voxel_parts) > C2F_THRESHOLD:
+        elif estimated_n_parts > C2F_THRESHOLD:
+            # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
             from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
             _c2f_result = solve_coarse_to_fine(
                 instance,
@@ -648,6 +648,19 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             )
             tune_result = _c2f_result.tune_result
         else:
+            # Tuner yolu: voxel_parts GERÇEKTEN gerekli → SADECE burada voxelize et.
+            # Voxelize hatası (OOM/boş-grid) mevcut davranışı korur: "Voxelization hatasi" note + _ret.
+            try:
+                voxel_parts = to_voxel_parts(
+                    instance, pitch, n_orientations=n_orient, margin=0
+                )
+            except Exception as _vox_exc:
+                return _ret(
+                    {"height_mm": 0.0, "density": 0.0, "n_parts": len(all_parts),
+                     "elapsed_sec": 0.0, "note": f"Voxelization hatasi: {_vox_exc}",
+                     "portfolio": None, "tuner": None, "selection": selection_pred},
+                    {"total_price": 0.0, "breakdown": []},
+                )
             tune_result = tuner_tune(
                 voxel_parts, factory, budget=TUNER_BUDGET, seed=seed,
             )
@@ -655,6 +668,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Zarif düşüş: tuner başarısız → DBLF tek başına
         try:
             from src.nesting3d.dblf import dblf as _dblf
+            if voxel_parts is None:
+                # NFV/coarse yolunda hata → voxel_parts henüz üretilmedi; fallback için tek kez voxelize et.
+                voxel_parts = to_voxel_parts(
+                    instance, pitch, n_orientations=n_orient, margin=0
+                )
             _placements, bin3d = _dblf(voxel_parts, factory)
             t_nest_elapsed = _time.perf_counter() - t_nest_start
             nesting = {
@@ -667,7 +685,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             }
         except Exception as exc2:
             return _ret(
-                {"height_mm": 0.0, "density": 0.0, "n_parts": len(voxel_parts),
+                {"height_mm": 0.0, "density": 0.0, "n_parts": estimated_n_parts,
                  "elapsed_sec": 0.0,
                  "note": f"Tuner hatasi: {exc}; DBLF fallback hatasi: {exc2}",
                  "portfolio": None, "tuner": None, "selection": selection_pred},

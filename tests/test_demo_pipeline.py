@@ -278,6 +278,31 @@ class TestRichScenario:
                 assert len(port["rows"]) >= 1
                 assert isinstance(port["winner"], str)
 
+    def test_coarse_path_unchanged_after_double_voxelize_removal(self):
+        """Çift-voxelize kaldırma (2026-06-26) coarse_to_fine yolu SONUCUNU değiştirmemeli.
+
+        45 box parça (>C2F_THRESHOLD=40) → coarse_to_fine yolu. Refactor: voxel_parts artık bu
+        yolda üretilmiyor (solve_coarse_to_fine kendi voxelize'ını yapar) → gereksiz çift-voxelize
+        kalktı, ama height/density BİREBİR korunmalı. Referans (git stash ile öncesi=sonrası
+        doğrulandı 2026-06-26): height=36.0mm. Bu test refactor mantığını kalıcı korur.
+        """
+        parts = [{"id": f"b{i}", "name": f"box{i}", "qty": 1, "source": "box",
+                  "width_mm": 30.0 + (i % 12), "depth_mm": 25.0 + (i % 7),
+                  "height_mm": 18.0 + (i % 5)} for i in range(45)]
+        scenario = {**RICH_SCENARIO,
+                    "orders": [{"order_id": "SYN-COARSE", "customer": "TEST",
+                                "deadline": "2030-01-01", "priority_class": 1, "parts": parts}],
+                    "container": {"width_mm": 250.0, "depth_mm": 250.0, "height_mm": None},
+                    "nesting_mode": "heightmap"}
+        result = run_pipeline(scenario)
+        nr = result["nesting_results"]
+        assert nr, "nesting_results bos"
+        nest = next(iter(nr.values()))
+        assert nest["n_parts"] == 45, f"45 parca beklendi: {nest['n_parts']}"
+        # BİREBİRLİK kapısı: refactor öncesi=sonrası (git stash karşılaştırması) 36.0mm
+        assert abs(nest["height_mm"] - 36.0) < 1e-6, \
+            f"coarse yolu height degisti (cift-voxelize regresyon!): {nest['height_mm']}"
+
 
 # ---------------------------------------------------------------------------
 # Robustluk: bos/sifir-adet siparis tum partiyi cokertmez
