@@ -267,9 +267,25 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN olmadı:** Bellek darboğazı occupancy'de DEĞİL, FFT geçici array'lerinde (occ'un 435 katı). occ zaten küçük; FFT sparse edilemez (birebir kuralı). VDB ince-pitch'i açmaz.
 - **Ders:** Tek ölçüm (peak/occ) VDB kurulum/debug eforuna girmeden net NO-GO = ÖLÇ-ÖNCE en temiz örneği. İnce pitch = FFT-bellek = süper bilgisayar.
 
-> **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA hız kaldıraçları TÜKENDİ. Üretimdeki NFV (drop_map +
-> kademeli-z + xy-bbox + GPU-resident) zaten **3-5.5×** optimize. Kalan: bit-pack popcount RawKernel
-> (marjinal) / BVH (sınırlı). Gerçek büyük hız = paralellik + bol VRAM = süper bilgisayar/datacenter.
+#### [H-12] Voxelize OOM — `_surface_cells` mk-chunk (ÜRETİM robustluk, gerçek-veri heightmap)
+- **Durum:** ✅ GO (ÜRETİMDE) · **Tarih:** 2026-06-26 · **Kanıt:** `voxelize.py::_surface_cells`, commit `36744b3`, `RESUME_2026-06-26 İş2`
+- **Ne:** `_surface_cells` barycentric `pts (mk, n_bary, 3)` array'ini mk-chunk'la (tek-array yerine ~0.19GB/chunk).
+- **Sonuç:** Plan2 GERÇEK veri default heightmap ÇÖKÜYORDU (356mm dev parça P155308 @0.5mm → `pts (363,559153,3)`=**4.87GB tek array** OOM → height=0 BAŞARISIZ). Chunk sonrası OOM YOK, **BİREBİR grid** (chunk==referans 194914=194914; `_mark` idempotent). 98 kritik test yeşil.
+- **NEDEN gerekti:** Büyük DÜZ yüzey = az ama dev üçgen → ince pitch'te k_per_tri ~1056 → n_bary ~5.6e5; mk*n_bary tek alloc patlıyor. Pitch politikasına dokunulmadı (parça-kaybı riski yok).
+- **Ders:** Bellek-bağımsız (chunk) çözüm pitch/kaliteye dokunmadan robustluk verir. **OOM (çökme) ≠ yavaşlık** — ayrı kökler.
+
+#### [H-13] Çift-voxelize kaldırma (`_process_batch` — APP üretim hızı)
+- **Durum:** ✅ GO (ÜRETİMDE) · **Tarih:** 2026-06-26 · **Kanıt:** `scripts/demo_pipeline.py::_process_batch`, commit `10b5f2e`, `RESUME_2026-06-26 İş3`
+- **Ne:** Satır 610 HER ZAMAN fine voxelize ediyordu; NFV (`solve_nfv`)/coarse_to_fine KENDİ voxelize'ını yapar → o yollarda BOŞA. `voxel_parts` SADECE tuner+DBLF yolunda; C2F yol kararı voxelize'sız `estimated_n_parts = sum(qty) by distinct name` ile (to_voxel_parts semantiği birebir).
+- **Sonuç:** **BİREBİR** (45-parça coarse height=36.0+density git-stash öncesi=sonrası AYNI); süre 7.0→4.4s (%37 sentetik; büyük parçada çift 159s/parça kalktığından kazanç DAHA büyük). Kalıcı regresyon testi + 175 test.
+- **NEDEN oldu:** Gereksiz tekrar voxelize; yalnız tuner/DBLF voxel_parts gerektiriyor. Voxelize hata yakalama + DBLF None-guard korundu.
+- **Ders:** **YARI çözüm** — coarse_to_fine FINE adımı (büyük parça 159s @0.5mm) DURUYOR; asıl kök pitch R6 = ayrı/riskli (§5).
+
+> **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA NFV hız kaldıraçları TÜKENDİ (NFV zaten 3-5.5×). **2026-06-26
+> ÜRETİM gerçek-veri yolu:** Plan2 default heightmap ÇÖKÜYORDU → **OOM-chunk (H-12) çökme giderildi (birebir)** +
+> **çift-voxelize (H-13) ~2× (birebir)**. KALAN büyük-parça darboğazı = `coarse_to_fine` FINE adımı 159s/parça
+> @0.5mm pitch (**pitch R6** — tek 1mm parça → 356mm parça da 0.5mm) → AÇIK/riskli iş (§5: surface_cells hız +
+> pitch politikası, H-06 duvarı + parça-kaybı + cross-dataset). Kalan başka: bit-pack popcount RawKernel / BVH.
 
 ---
 
@@ -324,6 +340,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
+| **C1** | **Büyük-parça voxelize SÜRESİ** (`_surface_cells` hızı + pitch R6, fine 0.5mm 159s/parça) | 6GB | Yüksek/RİSKLİ | **ORTA** (APP kullanılabilirlik) | H-13 sonrası AÇIK. `coarse_to_fine` FINE adımı büyük parçayı 0.5mm voxelize. pitch kabalaştırma=parça-kaybı+**H-06 duvarı**+cross-dataset kalite; `_surface_cells` algoritma-hızı daha güvenli. **ÖNCE çift-voxelize sonrası Plan2 gerçek süre ÖLÇ**. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
 ilerleme = **SÜPER BİLGİSAYAR** (A1 sürekli rotasyon + ince-pitch için bol VRAM). Erişim konteyner-app
@@ -349,7 +366,8 @@ planında var (hocayla, [[project-konteyner-app-plani]]).
 ---
 
 ## EK — kaynak haritası (izlenebilirlik)
-- **Handoff'lar:** `RESUME_2026-06-{21,22,23,24,25}.md` (kronolojik, en güncel = en yüksek tarih).
+- **Handoff'lar:** `RESUME_2026-06-{21,22,23,24,25,26}.md` (kronolojik, en güncel = **`RESUME_2026-06-26.md`**:
+  APP mail-filtreleme bug-fix + voxelize OOM (H-12) + çift-voxelize (H-13)).
 - **NFV sayısal:** `ANALIZ_NFV.md` (§1-5 gelişim/overfit, §6-9 NO-GO kanıtları).
 - **Kıyas/M1-M6:** `MAGICS_ANALIZ.md`, `PLAN_KIYAS_IYILESTIRME.md`, memory [[project-kiyas-iyilestirme]].
 - **Backlog:** memory [[project-nfv-sonraki-oturum-backlog]] (madde 1-12).
