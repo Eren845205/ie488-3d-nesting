@@ -333,6 +333,14 @@ class ImapMailbox(MailSource):
         # Limit: gelen kutusunun tamamini DEGIL, en yeni N maili tara.
         self.max_fetch: int = int(config.get("max_fetch", 20))
         self.unseen_only: bool = bool(config.get("unseen_only", False))
+        # Saglam mail-secimi (opt-in, geri-uyumlu — default'lar eski "ALL" davranisini korur):
+        #   provider          : "gmail" ise X-GM-RAW kategorisi/ek filtresi tetiklenir (None -> kapali)
+        #   category_filter   : Gmail kategorisi ("primary" -> reklamlari atla, birincil maillere bak)
+        #   prefer_attachments: ek-iceren mailleri yakala (siparis = ZIP-STL eki -> kesin sinyal)
+        # NEDEN: duz "ALL" + son-20 penceresi reklamlarla dolup siparis mailini disari itiyordu.
+        self.provider: Optional[str] = config.get("provider", None)
+        self.category_filter: Optional[str] = config.get("category_filter", None)
+        self.prefer_attachments: bool = bool(config.get("prefer_attachments", False))
         self._seen_uids: Set[str] = set()
         # Fix-4: kalici idempotency deposu (SqliteIdempotencyStore ile)
         from src.runtime.idempotency import SqliteIdempotencyStore
@@ -413,8 +421,38 @@ class ImapMailbox(MailSource):
         daha once islenenler atlanir.
         """
         conn.select(self.folder, readonly=True)
-        criteria = "UNSEEN" if self.unseen_only else "ALL"
-        status, data = conn.uid("SEARCH", None, criteria)
+        base = "UNSEEN" if self.unseen_only else "ALL"
+
+        # Gmail X-GM-RAW kategori/ek filtresi (provider-aware, opt-in). Birincil maillere ve/veya
+        # ek-iceren maillere odaklan -> reklamlar son-N penceresini doldurup siparisi disari itemez.
+        gmail_raw = None
+        if self.provider == "gmail":
+            parts = []
+            if self.category_filter:
+                parts.append(f"category:{self.category_filter}")
+            if self.prefer_attachments:
+                parts.append("has:attachment")
+            if parts:
+                # primary VEYA ekli -> siparis (Primary'de ya da ek tasiyan) kacmaz
+                gmail_raw = " OR ".join(parts) if len(parts) > 1 else parts[0]
+
+        status = data = None
+        if gmail_raw is not None:
+            try:
+                if self.unseen_only:
+                    status, data = conn.uid("SEARCH", None, "UNSEEN",
+                                            "X-GM-RAW", f'"{gmail_raw}"')
+                else:
+                    status, data = conn.uid("SEARCH", None, "X-GM-RAW", f'"{gmail_raw}"')
+            except imaplib.IMAP4.error as exc:
+                # X-GM-RAW desteklenmeyen sunucu (Outlook vb.) -> duz aramaya dus, kirilmaz
+                logger.warning("X-GM-RAW desteklenmiyor (%s) — duz '%s' aramaya dusuluyor.",
+                               exc, base)
+                status = data = None
+
+        if status is None:
+            status, data = conn.uid("SEARCH", None, base)
+
         if status != "OK" or not data or not data[0]:
             return []
         uid_list = data[0].decode().split()
@@ -879,8 +917,9 @@ def make_mail_source(config: Dict[str, Any]) -> MailSource:
         preset = _PROVIDER_PRESETS[provider]
         # Preset ile baslayan sonra config'teki acik degerler ezer (override)
         resolved: Dict[str, Any] = {**preset, **config}
-        # "provider" anahtari ImapMailbox'a gecirilmez (gereksiz); temizle
-        resolved.pop("provider", None)
+        # "provider" anahtari KORUNUR — ImapMailbox provider'a gore Gmail X-GM-RAW
+        # kategori/ek filtresini tetikler (eskiden pop ediliyordu -> Gmail filtresi calismyordu).
+        resolved["provider"] = provider
         # source acikca verilmediyse "imap" sayilir
         resolved.setdefault("source", "imap")
         return ImapMailbox(resolved)

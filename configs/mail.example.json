@@ -35,13 +35,20 @@
     "Gmail ve Outlook/Hotmail icin NORMAL SIFRE CALISMAZ — hesap ayarlarindan 'Uygulama Sifresi' (App Password) olusturun.",
     "Gmail App Password: myaccount.google.com/apppasswords",
     "Outlook/Hotmail App Password: account.microsoft.com/security (2 adimli dogrulama etkin olmali)",
-    "config'te ayrica 'host' yazarsaniz preset degerini ezer (override)."
+    "config'te ayrica 'host' yazarsaniz preset degerini ezer (override).",
+    "OPSIYONEL SAGLAM MAIL-SECIMI (yalniz Gmail; geri-uyumlu, belirtilmezse eski 'ALL' davranisi):",
+    "  category_filter: 'primary' -> reklamlari (Promotions/Social) atla, birincil maillere bak.",
+    "  prefer_attachments: true -> ek-iceren mailleri yakala (siparis = ZIP-STL eki = kesin sinyal).",
+    "  Ikisi birlikte -> 'category:primary OR has:attachment' (siparis maili son-N penceresinden dusmez).",
+    "  Non-Gmail (Outlook/Hotmail) bu alanlari yok sayar (X-GM-RAW yok) -> duz arama."
   ],
 
   "gmail_ornek": {
     "provider": "gmail",
     "user": "siparis@gmail.com",
     "password": "your-app-password-here",
+    "category_filter": "primary",
+    "prefer_attachments": true,
     "_aciklama": "Gmail App Password gerekir, normal Gmail sifresi degil. host/port/use_ssl otomatik: imap.gmail.com:993 SSL"
   },
 

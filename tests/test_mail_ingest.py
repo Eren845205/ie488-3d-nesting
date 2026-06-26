@@ -265,6 +265,75 @@ class TestImapMailboxSetup(unittest.TestCase):
         self.assertIsInstance(m, RawMail)
         self.assertIn("ford", m.gonderen.lower())
 
+    # ------------------------------------------------------------------
+    # Gmail X-GM-RAW kategori/ek filtresi (saglam mail-secimi)
+    # ------------------------------------------------------------------
+    def _mock_search_only(self):
+        """SEARCH bos dondurur (FETCH yok) — yalniz SEARCH cagrisinin sekli onemli."""
+        mock_imap = MagicMock()
+        mock_imap.login.return_value = ("OK", [b"Logged in"])
+        mock_imap.select.return_value = ("OK", [b"1"])
+        mock_imap.uid.side_effect = [("OK", [b""])]  # SEARCH -> bos liste
+        mock_imap.logout.return_value = ("BYE", [])
+        return mock_imap
+
+    def test_gmail_filters_use_xgmraw(self):
+        """provider=gmail + category_filter + prefer_attachments -> SEARCH X-GM-RAW raw query."""
+        cfg = self._make_config(provider="gmail", category_filter="primary",
+                                prefer_attachments=True)
+        mb = ImapMailbox(cfg)
+        mock_imap = self._mock_search_only()
+        with patch("imaplib.IMAP4_SSL", return_value=mock_imap):
+            mb.fetch_new()
+        search_args = mock_imap.uid.call_args_list[0].args
+        self.assertIn("X-GM-RAW", search_args)
+        raw_query = search_args[-1]
+        self.assertIn("category:primary", raw_query)
+        self.assertIn("has:attachment", raw_query)
+
+    def test_non_gmail_ignores_filters(self):
+        """provider=outlook + category_filter -> X-GM-RAW GECMEZ (duz ALL)."""
+        cfg = self._make_config(provider="outlook", category_filter="primary",
+                                prefer_attachments=True)
+        mb = ImapMailbox(cfg)
+        mock_imap = self._mock_search_only()
+        with patch("imaplib.IMAP4_SSL", return_value=mock_imap):
+            mb.fetch_new()
+        search_args = mock_imap.uid.call_args_list[0].args
+        self.assertNotIn("X-GM-RAW", search_args)
+        self.assertIn("ALL", search_args)
+
+    def test_xgmraw_error_falls_back_to_all(self):
+        """X-GM-RAW desteklenmeyen sunucu (IMAP4.error) -> duz ALL'a duser, cokmez."""
+        import imaplib
+        cfg = self._make_config(provider="gmail", prefer_attachments=True)
+        mb = ImapMailbox(cfg)
+        mock_imap = MagicMock()
+        mock_imap.login.return_value = ("OK", [b"Logged in"])
+        mock_imap.select.return_value = ("OK", [b"1"])
+        mock_imap.uid.side_effect = [
+            imaplib.IMAP4.error("X-GM-RAW unsupported"),  # 1. cagri: X-GM-RAW hata
+            ("OK", [b""]),                                 # 2. cagri: ALL fallback (bos)
+        ]
+        mock_imap.logout.return_value = ("BYE", [])
+        with patch("imaplib.IMAP4_SSL", return_value=mock_imap):
+            result = mb.fetch_new()
+        self.assertEqual(result, [])  # cokmedi
+        self.assertEqual(mock_imap.uid.call_count, 2)
+        self.assertIn("X-GM-RAW", mock_imap.uid.call_args_list[0].args)
+        self.assertIn("ALL", mock_imap.uid.call_args_list[1].args)
+
+    def test_backward_compat_no_filters_uses_all(self):
+        """Yeni alanlar belirtilmezse (eski config) -> duz ALL davranisi (regresyon korumasi)."""
+        cfg = self._make_config()  # provider/category/attachment YOK
+        mb = ImapMailbox(cfg)
+        mock_imap = self._mock_search_only()
+        with patch("imaplib.IMAP4_SSL", return_value=mock_imap):
+            mb.fetch_new()
+        search_args = mock_imap.uid.call_args_list[0].args
+        self.assertNotIn("X-GM-RAW", search_args)
+        self.assertIn("ALL", search_args)
+
     def test_seen_uid_not_returned_again(self):
         """Daha once gorulen UID tekrar dondurulmez."""
         cfg = self._make_config()
