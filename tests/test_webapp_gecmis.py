@@ -65,3 +65,31 @@ class TestGecmisEntegrasyon:
         client_llm.post("/otonom", json={})
         store = app_with_llm.config["OTONOM_GECMIS"]
         assert len(store.liste()) == 2
+
+    def test_gecmis_kaydinda_asama_ozeti_var(self, client_llm, app_with_llm):
+        client_llm.post("/otonom", json={})
+        kayit = app_with_llm.config["OTONOM_GECMIS"].liste()[0]
+        assert isinstance(kayit.get("asamalar"), list)
+        assert any(a.get("ad") == "Mail-Cek" for a in kayit["asamalar"])
+
+
+class TestGecmisDetay:
+    def test_satir_detay_linki_iceriyor(self, client_llm):
+        client_llm.post("/otonom", json={})
+        html = client_llm.get("/gecmis").data.decode("utf-8")
+        assert "/gecmis/" in html  # satir onclick -> detay sayfasi
+
+    def test_detay_sayfasi_acilir(self, client_llm, app_with_llm):
+        client_llm.post("/otonom", json={})
+        kid = app_with_llm.config["OTONOM_GECMIS"].liste()[0]["id"]
+        resp = client_llm.get(f"/gecmis/{kid}")
+        assert resp.status_code == 200
+        html = resp.data.decode("utf-8")
+        assert "İş Geçmişine Dön" in html              # geri linki
+        assert "İşlem Hattı Aşamaları" in html          # asama ozeti bolumu
+        assert "Sonuç Metrikleri" in html               # metrik kartlari
+
+    def test_bilinmeyen_id_listeye_yonlendirir(self, client_no_llm):
+        resp = client_no_llm.get("/gecmis/yokboyle")
+        assert resp.status_code == 302
+        assert "/gecmis" in resp.headers.get("Location", "")

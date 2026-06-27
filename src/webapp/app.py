@@ -1993,16 +1993,34 @@ def _register_routes(
                     _g_musteri = f"{_g_musteri} +{_farkli - 1}"
             _g_yuk = [nr.get("height_mm", 0.0) for nr in nesting_results.values()
                       if nr.get("height_mm")]
+            _g_dol = [nr.get("density", 0.0) for nr in nesting_results.values()
+                      if nr.get("density")]
+            # auto modda gercekte secilen mod + gerekce (ilk parti temsili) — seffaflik
+            _g_secilen = None
+            _g_reason = None
+            if nesting_results:
+                _ilk_nr = next(iter(nesting_results.values()))
+                _g_secilen = _ilk_nr.get("nesting_mode_used")
+                _g_reason = _ilk_nr.get("auto_mode_reason")
+            # Asama OZETI (kucuk: ad/durum/cikti) — detay sayfasi icin; detay/watcher haric
+            _g_asamalar = [
+                {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
+                for a in asamalar
+            ]
             _otonom_gecmis.kaydet({
                 "durum": "bitti",
                 "mod": otonom_nesting_mode,
+                "secilen_mod": _g_secilen,
+                "auto_mode_reason": _g_reason,
                 "nfv_quality": otonom_nfv_quality,
                 "musteri": _g_musteri,
                 "siparis_sayisi": len(ranked),
                 "parti_sayisi": n_batches,
                 "min_yukseklik_mm": round(min(_g_yuk), 1) if _g_yuk else None,
+                "doluluk": round(sum(_g_dol) / len(_g_dol), 3) if _g_dol else None,
                 "toplam_fiyat": round(toplam_fiyat, 2),
                 "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
+                "asamalar": _g_asamalar,
             })
         except Exception:
             logger.debug("Otonom gecmise yazilamadi", exc_info=True)
@@ -2122,6 +2140,18 @@ def _register_routes(
         """Daha once islenen otonom nesting isleri (en yeni ustte)."""
         kayitlar = _otonom_gecmis.liste(limit=100)
         return render_template("gecmis.html", kayitlar=kayitlar)
+
+    @app.route("/gecmis/<kayit_id>", methods=["GET"])
+    def gecmis_detay(kayit_id: str):
+        """Tek bir gecmis isinin DETAYI (asama ozeti + metrikler + auto karar).
+
+        Ayri sayfa — liste icinde acilmaz (sayfayi isgal etmesin). Geri linki
+        /gecmis'e doner. Kayit yoksa listeye yonlendir.
+        """
+        kayit = _otonom_gecmis.get(kayit_id)
+        if kayit is None:
+            return redirect(url_for("gecmis"))
+        return render_template("gecmis_detay.html", k=kayit)
 
     # -----------------------------------------------------------------------
     # Mail Ayarlari rotasi (UI'dan gercek gelen-kutusu baglama)

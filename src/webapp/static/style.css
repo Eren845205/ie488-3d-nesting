@@ -717,6 +717,11 @@ footer.site-footer {
 @keyframes forgeGlow { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 @keyframes forgeDots { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
 
+/* Is gecmisi: tiklanabilir satir — detay AYRI sayfada acilir (liste isgal olmaz) */
+.gecmis-row { cursor: pointer; transition: background .12s ease; }
+.gecmis-row:hover { background: var(--accent-soft); }
+.gecmis-row:hover td:last-child { color: var(--accent-deep); }
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
 }
