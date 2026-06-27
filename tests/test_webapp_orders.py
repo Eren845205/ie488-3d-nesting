@@ -530,10 +530,12 @@ class TestPipelineDemoFallback:
 class TestNestingModeOptIn:
     """Opt-in NFV "kalite modu" UI seçici (backlog #2): checkbox → scenario['nesting_mode']."""
 
-    def test_index_shows_quality_mode_checkbox(self, client_orders):
+    def test_index_shows_nesting_mode_radio(self, client_orders):
+        # 2026-06-27 akıllı mod: checkbox → 3'lü radio (auto/nfv/heightmap), default auto.
         html = client_orders.get("/").data.decode("utf-8")
-        assert 'name="nesting_mode"' in html and 'value="nfv"' in html
-        assert "Kalite modu" in html
+        assert 'name="nesting_mode"' in html
+        assert 'value="auto"' in html and 'value="nfv"' in html and 'value="heightmap"' in html
+        assert "Otomatik" in html
 
     def test_run_passes_nfv_mode_to_scenario(self, client_orders, monkeypatch):
         captured = {}
@@ -546,7 +548,8 @@ class TestNestingModeOptIn:
         client_orders.post("/run", data={"nesting_mode": "nfv"})
         assert captured["scenario"]["nesting_mode"] == "nfv"
 
-    def test_run_defaults_to_heightmap_when_unchecked(self, client_orders, monkeypatch):
+    def test_run_defaults_to_auto_when_unspecified(self, client_orders, monkeypatch):
+        # 2026-06-27 akıllı mod: mod belirtilmezse VARSAYILAN "auto" (veri-odaklı seçim).
         captured = {}
 
         def fake_run_pipeline(scenario):
@@ -554,8 +557,8 @@ class TestNestingModeOptIn:
             return {"nesting_results": {}, "used_demo": True}
 
         monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
-        client_orders.post("/run", data={})  # checkbox işaretsiz
-        assert captured["scenario"]["nesting_mode"] == "heightmap"
+        client_orders.post("/run", data={})  # mod belirtilmemiş
+        assert captured["scenario"]["nesting_mode"] == "auto"
 
     def test_index_shows_quality_max_option(self, client_orders):
         html = client_orders.get("/").data.decode("utf-8")

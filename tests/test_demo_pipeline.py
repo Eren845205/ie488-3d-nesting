@@ -113,6 +113,21 @@ class TestSmokePipeline:
         result = run_pipeline(SMOKE_SCENARIO)
         assert result is not None
 
+    def test_auto_mode_resolves_and_runs(self):
+        """nesting_mode='auto' → predict_nfv_benefit mod seçer, pipeline çalışır, şeffaf gerekçe.
+
+        Akıllı mod (2026-06-27): auto, instance'tan veri-odaklı NFV/heightmap seçer. Bu test
+        auto'nun çözüldüğünü + fiilen kullanılan mod ve gerekçenin çıktıya yazıldığını doğrular.
+        """
+        result = run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "auto"})
+        assert result is not None
+        for nr in result["nesting_results"].values():
+            if nr.get("n_parts", 0) > 0 and nr.get("note", "") == "":
+                assert nr.get("nesting_mode_used") in ("nfv", "heightmap"), \
+                    f"auto çözülmedi: {nr.get('nesting_mode_used')}"
+                assert nr.get("auto_mode_reason") and "auto->" in nr["auto_mode_reason"], \
+                    f"auto gerekçesi şeffaf değil: {nr.get('auto_mode_reason')}"
+
     def test_report_file_created(self):
         """Rapor dosyası oluşmalı."""
         run_pipeline(SMOKE_SCENARIO)

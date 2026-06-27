@@ -90,3 +90,71 @@ def recommend(voxel_parts: List,
         reason=(f"kutuluk={b:.2f} < {boxiness_skip_angle:.2f} → ince-açı AÇIK "
                 f"(düzensiz parçalar; güvenli mod iyileştirmezse yine kullanmaz)"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Akıllı nesting MOD seçimi: NFV cavity vs heightmap (2026-06-27, ÖLÇ-ÖNCE kanıtlı)
+# ---------------------------------------------------------------------------
+# Felsefe: VARSAYILAN NFV (kalite-güvenli — K-12: NFV >= heightmap HER ZAMAN; cavity yoksa
+# birebir eşit, varsa daha iyi). heightmap'e SADECE NFV'nin %0-kazanç + boşuna-yavaş olduğu
+# 2 BARİZ durumda düşülür → kazan-kazan (hem hızlı hem kalite-eşit):
+#   (A) NET KUTU:          mean_aspect_z < BOX_ASPECT_THR → cavity yok (boxy: 2.8; plan'lar 6.4+).
+#   (B) İNCE-PLAKA dom.:   thin_plate_ratio > THIN_PLATE_THR → düz zaten optimal, NFV eğmek
+#                          yüksekliği ARTIRIR (K-15; numune: 0.92; plan2 max 0.26).
+# Kalite-riski asimetrisi: NFV yanlış-pozitif = SADECE hız (kalite-güvenli); heightmap
+# yanlış-negatif (cavity-zengin → heightmap) = %14-29 KALİTE KAYBI. Bu yüzden ŞÜPHEDE NFV
+# (konservatif) → false-negative riskini sıfırlar.
+# Eşikler "sabit-değil-ama-sabit": kutu/ince-plaka GEOMETRİK sınırlarından + K-14/K-15
+# mekanizmasından türer (veri-uydurma DEĞİL). ÖLÇ-ÖNCE 5-veri kanıtı (false-negative=0,
+# cavity-zengin plan1/2/3 eşiklerden GENİŞ marjla uzak): scripts/automode_proof.py.
+BOX_ASPECT_THR: float = 4.0
+THIN_PLATE_THR: float = 0.6
+
+
+@dataclass
+class ModeDecision:
+    """Akıllı mod kararı + ŞEFFAFLIK için açıklanabilir gerekçe."""
+
+    mode: str       # "nfv" | "heightmap"
+    reason: str
+
+
+def predict_nfv_benefit(
+    instance,
+    *,
+    box_aspect_thr: float = BOX_ASPECT_THR,
+    thin_plate_thr: float = THIN_PLATE_THR,
+) -> ModeDecision:
+    """Instance'a NFV cavity mi heightmap mi uygun — veri-odaklı, açıklanabilir, kalite-güvenli.
+
+    VARSAYILAN NFV; heightmap SADECE net-kutu VEYA ince-plaka-dominant (NFV'nin kazanmadığı +
+    boşuna yavaş olduğu durumlar). NFV >= heightmap (K-12) olduğundan NFV seçimi ASLA kaliteden
+    kaybettirmez; şüphede NFV seçilir (false-negative = kalite kaybı riskini sıfırlar).
+    ÖLÇ-ÖNCE kanıtlı: Plan1/2/3 → nfv, numune/boxy → heightmap, false-negative=0.
+
+    Özellikler `extract_features` ile parça bbox'larından türetilir (box + STL; STL'de
+    build_instance_from_order bbox'ları doldurur). İleride telemetri birikince selection/
+    altyapısıyla öğrenen sürüme yükseltilebilir (adaptive_params felsefesi).
+    """
+    from src.nesting3d.instances.features import extract_features
+    fv = extract_features(instance)
+    feats = dict(zip(fv.names, fv.values))
+    maz = float(feats.get("mean_aspect_z", 0.0))
+    tpr = float(feats.get("thin_plate_ratio", 0.0))
+    if maz < box_aspect_thr:
+        return ModeDecision(
+            "heightmap",
+            f"net-kutu (mean_aspect_z={maz:.1f} < {box_aspect_thr}): cavity yok, "
+            f"NFV kazanmaz -> hizli heightmap",
+        )
+    if tpr > thin_plate_thr:
+        return ModeDecision(
+            "heightmap",
+            f"ince-plaka dominant (thin_plate={tpr:.2f} > {thin_plate_thr}): duz zaten "
+            f"optimal, NFV uzatir -> heightmap",
+        )
+    return ModeDecision(
+        "nfv",
+        f"cavity-aday (mean_aspect_z={maz:.1f}, thin_plate={tpr:.2f}): NFV kalite-guvenli "
+        f"(>=heightmap)",
+    )

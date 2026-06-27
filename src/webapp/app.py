@@ -682,9 +682,10 @@ def _register_routes(
             scenario = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
             used_demo = True
 
-        # Nesting modu (opt-in NFV "kalite modu"): checkbox işaretliyse "nfv", aksi "heightmap".
-        # NFV cavity istifi daha kısa (Plan2 %25) ama daha yavaş; default hızlı heightmap.
-        nesting_mode = "nfv" if request.form.get("nesting_mode") == "nfv" else "heightmap"
+        # Nesting modu: "auto" (VARSAYILAN, veri-odaklı NFV/heightmap seçimi) | "nfv" | "heightmap".
+        # auto → predict_nfv_benefit pipeline içinde çözer (cavity-zengin→NFV, kutu/ince-plaka→heightmap).
+        _nm = request.form.get("nesting_mode", "auto")
+        nesting_mode = _nm if _nm in ("auto", "nfv", "heightmap") else "auto"
         # NFV kalite seviyesi: "max" → donanım-tavanı oryantasyon (en kısa istif, en yavaş); default "fast" (n=8).
         nfv_quality = "max" if request.form.get("nfv_quality") == "max" else "fast"
         scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality}
@@ -1360,10 +1361,10 @@ def _register_routes(
                 "asamalar": [],
             }), 503
 
-        # Nesting modu (opt-in NFV "kalite modu"): otonom panosundan checkbox → JSON body.
-        # Default hızlı heightmap; "nfv" → cavity istif (daha kısa, daha yavaş).
+        # Nesting modu: "auto" (VARSAYILAN, veri-odaklı seçim) | "nfv" | "heightmap". otonom → JSON body.
         _otonom_body = request.get_json(silent=True) or {}
-        otonom_nesting_mode = "nfv" if _otonom_body.get("nesting_mode") == "nfv" else "heightmap"
+        _onm = _otonom_body.get("nesting_mode", "auto")
+        otonom_nesting_mode = _onm if _onm in ("auto", "nfv", "heightmap") else "auto"
         otonom_nfv_quality = "max" if _otonom_body.get("nfv_quality") == "max" else "fast"
 
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline

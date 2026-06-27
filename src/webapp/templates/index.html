@@ -45,14 +45,22 @@
         </div>
         {% endif %}
         <div style="margin-bottom: 12px; font-size: 14px;">
-            <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="nesting_mode" value="nfv"
-                       {% if nesting_mode == 'nfv' %}checked{% endif %}>
-                <span style="font-weight: 600;">Kalite modu (NFV cavity)</span>
+            <label style="font-weight: 600;">Nesting modu:</label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="auto"
+                       {% if nesting_mode == 'auto' or not nesting_mode %}checked{% endif %}> Otomatik (akıllı)
+            </label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="nfv"
+                       {% if nesting_mode == 'nfv' %}checked{% endif %}> NFV cavity (kalite)
+            </label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="heightmap"
+                       {% if nesting_mode == 'heightmap' %}checked{% endif %}> Heightmap (hızlı)
             </label>
             <div style="margin-top: 4px; color: var(--color-text-muted);">
-                Parçaları birbirinin oyuğuna yerleştirir &mdash; daha kısa istif (~%25),
-                ama daha yavaş. Kapalıysa hızlı standart yerleştirme kullanılır.
+                Otomatik: sistem parçalara göre seçer (cavity-zengin &rarr; NFV kalite; kutu/ince-plaka
+                &rarr; hızlı heightmap). Kalite asla düşmez; kararsızsa NFV (kalite-güvenli) seçilir.
             </div>
             <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
                 <input type="checkbox" name="nfv_quality" value="max"
@@ -141,12 +149,12 @@
         Teklif taslagi <strong>insan onay kapsisi</strong>ndan gecmedikce gonderilmez.
     </p>
     <div style="margin-bottom: 10px; font-size: 14px;">
-        <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
-            <input type="checkbox" id="otonom-nesting-mode" value="nfv">
-            <span style="font-weight: 600;">Kalite modu (NFV cavity)</span>
-        </label>
+        <label style="font-weight: 600;">Nesting modu:</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="auto" checked> Otomatik</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="nfv"> NFV cavity</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="heightmap"> Heightmap</label>
         <span style="color: var(--color-text-muted); margin-left: 6px;">
-            &mdash; daha kısa istif (~%25), daha yavaş. Kapalıysa hızlı standart.
+            &mdash; Otomatik: sistem seçer (kalite düşmez; cavity-zengin&rarr;NFV, kutu&rarr;hızlı).
         </span>
         <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
             <input type="checkbox" id="otonom-nfv-quality" value="max">
@@ -258,8 +266,8 @@
         ozetDiv.style.display = 'none';
         teklifDiv.style.display = 'none';
 
-        var nfvChk = document.getElementById('otonom-nesting-mode');
-        var nestingMode = (nfvChk && nfvChk.checked) ? 'nfv' : 'heightmap';
+        var nmEl = document.querySelector('input[name="otonom-nesting-mode"]:checked');
+        var nestingMode = (nmEl && nmEl.value) || 'auto';
         var nfvQualChk = document.getElementById('otonom-nfv-quality');
         var nfvQuality = (nfvQualChk && nfvQualChk.checked) ? 'max' : 'fast';
         fetch('/otonom', {

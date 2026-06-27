@@ -204,15 +204,19 @@ class TestOtonomNestingMode:
         assert resp.status_code == 200
         assert captured["mode"] == "nfv"
 
-    def test_otonom_defaults_to_heightmap(self, client_llm, monkeypatch):
+    def test_otonom_defaults_to_auto(self, client_llm, monkeypatch):
+        # 2026-06-27 akıllı mod: body boş → VARSAYILAN "auto" (veri-odaklı seçim).
         captured = self._capture(monkeypatch)
-        resp = client_llm.post("/otonom", json={})  # checkbox işaretsiz / body boş
+        resp = client_llm.post("/otonom", json={})  # mod belirtilmemiş
         assert resp.status_code == 200
-        assert captured["mode"] == "heightmap"
+        assert captured["mode"] == "auto"
 
-    def test_otonom_card_shows_quality_mode_checkbox(self, client_llm):
+    def test_otonom_card_shows_nesting_mode_radio(self, client_llm):
+        # 2026-06-27: checkbox → 3'lü radio (auto/nfv/heightmap).
         html = client_llm.get("/").data.decode("utf-8")
-        assert 'id="otonom-nesting-mode"' in html and "Kalite modu" in html
+        assert 'name="otonom-nesting-mode"' in html
+        assert 'value="auto"' in html and 'value="nfv"' in html
+        assert "Otomatik" in html
 
     def test_otonom_card_shows_quality_max_option(self, client_llm):
         html = client_llm.get("/").data.decode("utf-8")

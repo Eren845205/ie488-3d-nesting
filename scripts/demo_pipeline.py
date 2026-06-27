@@ -547,7 +547,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     pitch_fallback = payload["pitch_fallback"]
     n_orient = payload["n_orient"]
     seed = payload["seed"]
-    nesting_mode = payload.get("nesting_mode", "heightmap")
+    nesting_mode = payload.get("nesting_mode", "auto")  # akıllı default: veri-odaklı NFV/heightmap
     nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
@@ -573,6 +573,22 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     container = {"width_mm": _cw, "depth_mm": _cd, "height_mm": _ch}
 
     instance = _build_nesting_instance(all_parts, container)
+
+    # AKILLI MOD ("auto"): instance'tan veri-odaklı NFV/heightmap seçimi (predict_nfv_benefit).
+    # VARSAYILAN NFV (kalite-güvenli, K-12 NFV>=heightmap); heightmap SADECE net-kutu VEYA
+    # ince-plaka-dominant (NFV'nin %0-kazanç+yavaş olduğu durumlar) → kazan-kazan. Şüphede NFV
+    # → false-negative (cavity-zengin→heightmap=kalite kaybı) riski SIFIR. ÖLÇ-ÖNCE kanıtlı.
+    auto_reason = None
+    if nesting_mode == "auto":
+        from src.nesting3d.adaptive_params import predict_nfv_benefit
+        try:
+            _dec = predict_nfv_benefit(instance)
+            nesting_mode = _dec.mode
+            auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
+        except Exception as _auto_exc:
+            # Güvenli düşüş: auto türetilemezse hızlı heightmap (regresyon yok).
+            nesting_mode = "heightmap"
+            auto_reason = f"auto basarisiz ({_auto_exc}) -> heightmap (guvenli dusus)"
 
     try:
         pitch = suggest_pitch(instance)
@@ -760,6 +776,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         "n_parts": n_placed,
         "elapsed_sec": round(t_nest_elapsed, 3),
         "note": "",
+        "auto_mode_reason": auto_reason,  # "auto" seçimi gerekçesi (None=auto kullanılmadı)
+        "nesting_mode_used": nesting_mode,  # auto çözüldükten sonra fiilen kullanılan mod
         "pitch_mm": round(pitch, 2),
         "portfolio": portfolio_data,
         "tuner": {
@@ -1094,7 +1112,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "n_orient": n_orient,
             "seed": seed,
             "pricing_rules": scenario["pricing_rules"],
-            "nesting_mode": scenario.get("nesting_mode", "heightmap"),
+            "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality", "fast"),
         })
 
