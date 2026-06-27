@@ -175,7 +175,9 @@
 
     <!-- Agent Panosu -->
     <div id="otonom-pano" style="display:none; margin-top:16px;">
-        <div style="font-weight:600; font-size:15px; margin-bottom:10px;">Agent Zinciri</div>
+        <!-- Forge durum seridi: canli durum + gecen-sure sayaci (JS doldurur) -->
+        <div id="otonom-durum"></div>
+        <div style="font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-text-muted); margin-bottom:12px;">İşlem Hattı</div>
         <div id="otonom-asamalar"></div>
         <div id="otonom-ozet" style="margin-top:16px; display:none;"></div>
         <div id="otonom-teklif" style="margin-top:16px; display:none;"></div>
@@ -265,38 +267,118 @@
         asamalarDiv.innerHTML = '';
         ozetDiv.style.display = 'none';
         teklifDiv.style.display = 'none';
+        document.getElementById('otonom-detay-link').style.display = 'none';
 
         var nmEl = document.querySelector('input[name="otonom-nesting-mode"]:checked');
         var nestingMode = (nmEl && nmEl.value) || 'auto';
         var nfvQualChk = document.getElementById('otonom-nfv-quality');
         var nfvQuality = (nfvQualChk && nfvQualChk.checked) ? 'max' : 'fast';
-        fetch('/otonom', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
-            body: JSON.stringify({nesting_mode: nestingMode, nfv_quality: nfvQuality}),
-        })
-        .then(function(resp) { return resp.json(); })
-        .then(function(data) {
-            btn.disabled = false;
-            spinner.style.display = 'none';
 
-            pano.style.display = 'block';
+        // Canli durum seridi + gecen-sure sayaci BASLAT — kullanici aninda
+        // geri bildirim alir (mail cekme dakikalar surse bile "calisiyor" gorur).
+        window._otonomT0 = Date.now();
+        pano.style.display = 'block';
+        otonomDurumGuncelle('calisiyor', 'Baslatiliyor');
+        otonomTimerBaslat();
 
-            // Hata varsa (asamalar dolu olsa bile) -> pipeline TAMAMLANMADI,
-            // LAST_RESULT yazilmadi. Hatayi goster, "Detayli Sonuc" linkini
-            // GOSTERME (tiklayinca bos /sonuc'a ve ana ekrana atardi).
-            if (data.hata) {
-                hataDiv.textContent = 'Hata: ' + data.hata;
+        otonomBaslat();
+
+        // Asenkron: baslat -> job_id -> 2sn'de bir durum yokla. Tarayici
+        // timeout/blok OLMAZ; kullanici CANLI ilerlemeyi (calisiyor/bitti/cokme)
+        // gorur. nestingMode/nfvQuality/btn/spinner/... closure'dan erisilir.
+        function otonomBaslat() {
+            fetch('/otonom/baslat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+                body: JSON.stringify({nesting_mode: nestingMode, nfv_quality: nfvQuality}),
+            })
+            .then(function(resp) { return resp.json().then(function(j) { return {ok: resp.ok, status: resp.status, body: j}; }); })
+            .then(function(r) {
+                if (!r.ok || !r.body.job_id) {
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    pano.style.display = 'block';
+                    hataDiv.textContent = 'Hata: ' + (r.body.hata || ('Otonom baslatilamadi (HTTP ' + r.status + ')'));
+                    hataDiv.style.display = 'block';
+                    return;
+                }
+                pano.style.display = 'block';
+                otonomYokla(r.body.job_id);
+            })
+            .catch(function(err) {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                pano.style.display = 'block';
+                hataDiv.textContent = 'Ag hatasi: ' + err;
                 hataDiv.style.display = 'block';
-                document.getElementById('otonom-detay-link').style.display = 'none';
-                // asamalar timeline'i yine de gosterilir (nerede durdugu gorulsun)
-            } else {
-                // Otonom pipeline'i kostu ve LAST_RESULT'a yazildi -> detayli ekran linki
-                document.getElementById('otonom-detay-link').style.display = 'block';
-            }
+            });
+        }
+
+        function otonomYokla(jobId) {
+            var iv = setInterval(function() {
+                fetch('/otonom/durum/' + jobId)
+                .then(function(resp) { return resp.json(); })
+                .then(function(snap) {
+                    if (snap.durum === 'calisiyor') {
+                        otonomRender({asamalar: snap.asamalar || []}, false);  // kismi: canli timeline
+                        return;
+                    }
+                    clearInterval(iv);
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    if (snap.durum === 'hata') {
+                        var d = snap.sonuc || {};
+                        if (!d.hata) { d.hata = snap.hata || 'Otonom is basarisiz oldu.'; }
+                        if (!d.asamalar) { d.asamalar = snap.asamalar || []; }
+                        otonomRender(d, true);
+                    } else {
+                        otonomRender(snap.sonuc || {asamalar: snap.asamalar || []}, true);
+                    }
+                })
+                .catch(function(err) {
+                    clearInterval(iv);
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    hataDiv.textContent = 'Ag hatasi (durum): ' + err;
+                    hataDiv.style.display = 'block';
+                });
+            }, 2000);
+        }
+    }
+
+    // Otonom render — KISMI (bitti=false: yalniz canli timeline) + NIHAI
+    // (bitti=true: + pipeline ozeti + teklif + detayli sonuc linki). Polling
+    // her tikte cagirir; senkron yapidaki render mantigi yeniden kullanilir.
+    function otonomRender(data, bitti) {
+        var asamalarDiv = document.getElementById('otonom-asamalar');
+        var ozetDiv = document.getElementById('otonom-ozet');
+        var teklifDiv = document.getElementById('otonom-teklif');
+        var hataDiv = document.getElementById('otonom-hata');
+        var pano = document.getElementById('otonom-pano');
+        pano.style.display = 'block';
+
+        // Aktif asama = pipeline sirasinda ilk HENUZ TAMAMLANMAMIS asama.
+        var asamalar = data.asamalar || [];
+        var tamamAdlar = asamalar.map(function(a) { return a.ad; });
+        var aktifAsama = null;
+        for (var ai = 0; ai < PIPELINE_ASAMALAR.length; ai++) {
+            if (tamamAdlar.indexOf(PIPELINE_ASAMALAR[ai]) < 0) { aktifAsama = PIPELINE_ASAMALAR[ai]; break; }
+        }
+
+        // Forge durum seridi: calisiyor (aktif asama) | bitti | hata
+        if (data.hata) { otonomDurumGuncelle('hata', null); otonomTimerDur(); }
+        else if (bitti) { otonomDurumGuncelle('bitti', null); otonomTimerDur(); }
+        else { otonomDurumGuncelle('calisiyor', ASAMA_ETIKET[aktifAsama] || aktifAsama || 'Isleniyor'); }
+
+        if (data.hata) {
+            hataDiv.textContent = 'Hata: ' + data.hata;
+            hataDiv.style.display = 'block';
+            document.getElementById('otonom-detay-link').style.display = 'none';
+        } else if (bitti) {
+            document.getElementById('otonom-detay-link').style.display = 'block';
+        }
 
             // Agent asamalari timeline — detay balonlari dahil
-            var asamalar = data.asamalar || [];
             var html = '<div class="agent-timeline">';
             asamalar.forEach(function(asama, idx) {
                 var durum = asama.durum || '';
@@ -449,8 +531,19 @@
 
                 html += '</div></div>';
             });
+            // CANLI "isleniyor" dugumu — sicak metal nabiz (yalniz is surerken)
+            if (!bitti && aktifAsama) {
+                html += '<div class="agent-step is-active" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">';
+                html += '<div class="agent-icon is-active" style="width:30px;height:30px;border-radius:50%;color:white;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;font-weight:700;">&#9881;</div>';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-weight:700;font-size:14px;">' + escapeHtml(aktifAsama) + '</div>';
+                html += '<div class="agent-proc">' + escapeHtml(ASAMA_ETIKET[aktifAsama] || 'Isleniyor') + '</div>';
+                html += '</div></div>';
+            }
             html += '</div>';
             asamalarDiv.innerHTML = html;
+
+            if (!bitti) { return; }  // kismi ilerleme: ozet/teklif/detay henuz yok
 
             // Pipeline ozet
             if (data.pipeline_ozet || data.toplam_fiyat !== undefined) {
@@ -499,13 +592,56 @@
                 teklifDiv.innerHTML = tkHtml;
                 teklifDiv.style.display = 'block';
             }
-        })
-        .catch(function(err) {
-            btn.disabled = false;
-            spinner.style.display = 'none';
-            hataDiv.textContent = 'Ag hatasi: ' + err;
-            hataDiv.style.display = 'block';
-        });
+    }
+
+    // Pipeline asama sirasi + insan-okur etiketler (aktif asama + durum seridi)
+    var PIPELINE_ASAMALAR = ['Mail-Cek', 'Parse', 'Onceliklendir', 'Nesting', 'Fiyat', 'Acikla', 'Teklif-Taslagi'];
+    var ASAMA_ETIKET = {
+        'Mail-Cek': 'Mailler cekiliyor',
+        'Parse': 'Siparisler ayristiriliyor',
+        'Onceliklendir': 'Onceliklendiriliyor',
+        'Nesting': 'Yerlesim (nesting) hesaplaniyor',
+        'Fiyat': 'Fiyatlandiriliyor',
+        'Acikla': 'Aciklama uretiliyor',
+        'Teklif-Taslagi': 'Teklif taslagi yaziliyor'
+    };
+
+    function otonomFmtSure(ms) {
+        var s = Math.max(0, Math.floor(ms / 1000));
+        var dk = Math.floor(s / 60), sn = s % 60;
+        return dk + ':' + (sn < 10 ? '0' : '') + sn;
+    }
+    function otonomTimerBaslat() {
+        otonomTimerDur();
+        window._otonomTimerIv = setInterval(function() {
+            var el = document.getElementById('otonom-timer-val');
+            if (el && window._otonomT0) { el.textContent = otonomFmtSure(Date.now() - window._otonomT0); }
+        }, 1000);
+    }
+    function otonomTimerDur() {
+        if (window._otonomTimerIv) { clearInterval(window._otonomTimerIv); window._otonomTimerIv = null; }
+    }
+    // Forge durum seridi: tek satirda durum (nokta nabzar) + aktif asama + canli sayac
+    function otonomDurumGuncelle(durum, aktifMetin) {
+        var el = document.getElementById('otonom-durum');
+        if (!el) { return; }
+        var sure = window._otonomT0 ? otonomFmtSure(Date.now() - window._otonomT0) : '0:00';
+        var cls, label, timerLbl;
+        if (durum === 'bitti') { cls = 'is-bitti'; label = 'Tamamlandi'; timerLbl = 'Toplam sure'; }
+        else if (durum === 'hata') { cls = 'is-hata'; label = 'Durdu'; timerLbl = 'Durma ani'; }
+        else { cls = 'is-calisiyor'; label = 'Calisiyor'; timerLbl = 'Gecen sure'; }
+        var stage = aktifMetin
+            ? '<span class="forge-status-stage">&rsaquo; <b>' + escapeHtml(aktifMetin) + '</b></span>' : '';
+        el.innerHTML =
+            '<div class="forge-status ' + cls + '">' +
+                '<span class="forge-status-dot"></span>' +
+                '<span class="forge-status-label">' + label + '</span>' +
+                stage +
+                '<span class="forge-timer-wrap">' +
+                    '<span class="forge-timer" id="otonom-timer-val">' + sure + '</span>' +
+                    '<span class="forge-timer-label">' + timerLbl + '</span>' +
+                '</span>' +
+            '</div>';
     }
 
     function escapeHtml(text) {

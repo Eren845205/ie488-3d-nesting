@@ -27,6 +27,7 @@ import logging
 import os
 import secrets
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -1321,11 +1322,24 @@ def _register_routes(
     # -----------------------------------------------------------------------
     # Otonom zincir rotasi (VİTRİN C)
     # -----------------------------------------------------------------------
+    # Kalici is gecmisi: tamamlanan her otonom isi ozet olarak diske yazilir
+    # (/gecmis sayfasi okur). Testte gecici dizin (izolasyon).
+    from src.runtime.otonom_gecmis import OtonomGecmisStore
+    if app.config.get("TESTING"):
+        import tempfile as _tf2
+        _gecmis_root = Path(_tf2.mkdtemp(prefix="otonom_gecmis_"))
+    else:
+        _gecmis_root = _ROOT / "data" / "otonom_gecmis"
+    _otonom_gecmis = OtonomGecmisStore(_gecmis_root)
+    app.config["OTONOM_GECMIS"] = _otonom_gecmis
 
-    @app.route("/otonom", methods=["POST"])
-    @_limit("2 per minute")
-    def otonom():
+    def _run_otonom_pipeline(otonom_nesting_mode, otonom_nfv_quality, on_stage=None):
         """Mail-cek → parse → onceliklendir → nesting → fiyat → acikla → teklif taslagi.
+
+        SENKRON /otonom ve ASENKRON /otonom/baslat ORTAK govdesi (DRY). request
+        objesi KULLANMAZ (mode/quality parametre) — arka-plan thread'inde request
+        context yok. (dict, http_status) tuple doner; on_stage verilirse her asama
+        eklendiginde CANLI haber verir (asenkron ilerleme paneli).
 
         Tum pipeline asamalarini otomatik kosturur; sonuclari agent-panosu formati
         ile dondurur. LLM olmadan mail parse edilemeyeceginden LLM gerekli.
@@ -1350,8 +1364,23 @@ def _register_routes(
           "teklif_onay_gerekli": true,
         }
         """
+        def _emit(asama):
+            # on_stage callback'i job'i ASLA dusurmemeli (asenkron ilerleme)
+            if on_stage is not None:
+                try:
+                    on_stage(asama)
+                except Exception:
+                    logger.debug("on_stage callback hatasi yutuldu", exc_info=True)
+
+        class _StageList(list):
+            # append edildikce on_stage'e CANLI haber ver. Senkron yolda (on_stage
+            # None) _emit no-op'tur; davranis BIREBIR ayni kalir.
+            def append(self, item):
+                super().append(item)
+                _emit(item)
+
         if not llm_active or llm_components is None:
-            return jsonify({
+            return {
                 "hata": (
                     "Otonom mod LLM gerektiriyor (mail parse icin). "
                     "Ollama calismiyor veya configs/llm.local.json eksik. "
@@ -1359,13 +1388,7 @@ def _register_routes(
                 ),
                 "mesaj": "LLM gerekli",
                 "asamalar": [],
-            }), 503
-
-        # Nesting modu: "auto" (VARSAYILAN, veri-odaklı seçim) | "nfv" | "heightmap". otonom → JSON body.
-        _otonom_body = request.get_json(silent=True) or {}
-        _onm = _otonom_body.get("nesting_mode", "auto")
-        otonom_nesting_mode = _onm if _onm in ("auto", "nfv", "heightmap") else "auto"
-        otonom_nfv_quality = "max" if _otonom_body.get("nfv_quality") == "max" else "fast"
+            }, 503
 
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
         from src.runtime.mail_ingest import make_mail_source, ingest_order
@@ -1373,7 +1396,7 @@ def _register_routes(
         from src.llm.roles.explainer import ExplainerInput
         from src.llm.structured import ValidationStatus
 
-        asamalar: List[Dict[str, Any]] = []
+        asamalar: List[Dict[str, Any]] = _StageList()
 
         # ------------------------------------------------------------------
         # ASAMA 1: Mail-Cek
@@ -1401,7 +1424,7 @@ def _register_routes(
         except Exception as exc:
             logger.warning("Otonom: Mail-Cek hatasi: %s", exc)
             asamalar.append({"ad": "Mail-Cek", "durum": "hata", "cikti": "Mail cekme basarisiz."})
-            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}), 500
+            return {"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}, 500
 
         # ------------------------------------------------------------------
         # ASAMA 2: Parse (her mail icin — ek varsa deterministik, yoksa LLM)
@@ -1538,10 +1561,10 @@ def _register_routes(
                 )
             else:
                 hata_msg = "Hic siparis cikartilamadi (LLM parse basarisiz)."
-            return jsonify({
+            return {
                 "hata": hata_msg,
                 "asamalar": asamalar,
-            }), 500
+            }, 500
 
         # ------------------------------------------------------------------
         # ASAMA 3-5: Onceliklendir + Nesting + Fiyat (run_pipeline)
@@ -1570,7 +1593,7 @@ def _register_routes(
             pipeline_result = run_pipeline(scenario)
         except Exception as exc:
             logger.exception("Otonom: pipeline hatasi: %s", exc)
-            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}), 500
+            return {"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}, 500
 
         # Detayli sonuc ekrani (/sonuc) icin: otonom sonucu da LAST_RESULT'a
         # yazilir; boylece kullanici "Detayli Sonucu Gor" ile tum tablolar +
@@ -1959,9 +1982,35 @@ def _register_routes(
         })
 
         # ------------------------------------------------------------------
+        # Kalici GECMISE yaz (senkron + async ortak yoldan gecer; /gecmis okur)
+        # ------------------------------------------------------------------
+        try:
+            _g_musteri = "-"
+            if ranked:
+                _g_musteri = ranked[0].customer
+                _farkli = len({getattr(o, "customer", "") for o in ranked})
+                if _farkli > 1:
+                    _g_musteri = f"{_g_musteri} +{_farkli - 1}"
+            _g_yuk = [nr.get("height_mm", 0.0) for nr in nesting_results.values()
+                      if nr.get("height_mm")]
+            _otonom_gecmis.kaydet({
+                "durum": "bitti",
+                "mod": otonom_nesting_mode,
+                "nfv_quality": otonom_nfv_quality,
+                "musteri": _g_musteri,
+                "siparis_sayisi": len(ranked),
+                "parti_sayisi": n_batches,
+                "min_yukseklik_mm": round(min(_g_yuk), 1) if _g_yuk else None,
+                "toplam_fiyat": round(toplam_fiyat, 2),
+                "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
+            })
+        except Exception:
+            logger.debug("Otonom gecmise yazilamadi", exc_info=True)
+
+        # ------------------------------------------------------------------
         # Yanit
         # ------------------------------------------------------------------
-        return jsonify({
+        return {
             "asamalar": asamalar,
             # Bulgu 6: paylasilan helper ile tutarli projeksiyon
             "nesting_results": {
@@ -1982,7 +2031,97 @@ def _register_routes(
             "aciklama_md": aciklama_md,
             "teklif_taslagi": teklif_taslagi,
             "teklif_onay_gerekli": True,
-        }), 200
+        }, 200
+
+    # -----------------------------------------------------------------------
+    # Senkron /otonom rotasi (geriye-uyum: mevcut testler + tek-tik JSON akisi)
+    # -----------------------------------------------------------------------
+    def _parse_otonom_istek():
+        """JSON body'den (nesting_mode, nfv_quality) coz — senkron + asenkron ortak."""
+        _body = request.get_json(silent=True) or {}
+        _onm = _body.get("nesting_mode", "auto")
+        _mode = _onm if _onm in ("auto", "nfv", "heightmap") else "auto"
+        _quality = "max" if _body.get("nfv_quality") == "max" else "fast"
+        return _mode, _quality
+
+    @app.route("/otonom", methods=["POST"])
+    @_limit("2 per minute")
+    def otonom():
+        """Senkron otonom: pipeline'i bekleyip tam JSON doner (mevcut davranis).
+
+        Asenkron/canli-ilerleme isteyen UI /otonom/baslat + /otonom/durum kullanir.
+        """
+        _mode, _quality = _parse_otonom_istek()
+        body, status = _run_otonom_pipeline(_mode, _quality)
+        return jsonify(body), status
+
+    # -----------------------------------------------------------------------
+    # ASENKRON otonom: baslat (job + arka-plan thread) + durum (polling)
+    # -----------------------------------------------------------------------
+    # Uzun suren otonom isi (NFV CPU'da dakikalar) senkron istekte tarayici
+    # timeout + sunucu blok yaratir. Job'i daemon thread'e alir; UI durumu
+    # /otonom/durum/<id> ile yoklayarak CANLI gosterir. Tek-is politikasi
+    # (OtonomJobStore): ayni anda en fazla 1 aktif is.
+    from src.runtime.otonom_jobs import OtonomJobStore
+    _otonom_jobs = OtonomJobStore()
+    app.config["OTONOM_JOBS"] = _otonom_jobs
+
+    @app.route("/otonom/baslat", methods=["POST"])
+    @_limit("2 per minute")
+    def otonom_baslat():
+        """Otonom isi arka-planda baslat — ANINDA job_id doner (202).
+
+        LLM yok -> 503 (senkron ile ayni kapi). Zaten calisan is varsa -> 409.
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({
+                "hata": (
+                    "Otonom mod LLM gerektiriyor (mail parse icin). "
+                    "Ollama calismiyor veya configs/llm.local.json eksik."
+                ),
+                "mesaj": "LLM gerekli",
+            }), 503
+
+        _mode, _quality = _parse_otonom_istek()
+        jid = _otonom_jobs.try_start(meta={"mode": _mode, "quality": _quality})
+        if jid is None:
+            return jsonify({
+                "hata": "Zaten calisan bir otonom is var; bitmesini bekleyin.",
+                "job_id": _otonom_jobs.active_job_id(),
+            }), 409
+
+        def _worker():
+            # Arka-plan: request/session context YOK (pipeline bunlari kullanmaz).
+            try:
+                body, status = _run_otonom_pipeline(
+                    _mode, _quality,
+                    on_stage=lambda asama: _otonom_jobs.add_stage(jid, asama),
+                )
+                _otonom_jobs.finish(jid, sonuc=body, status=status)
+            except Exception as exc:  # pragma: no cover - beklenmeyen
+                logger.exception("Otonom job (%s) hatasi: %s", jid, exc)
+                _otonom_jobs.fail(jid, hata="Sistem hatasi olustu, lutfen tekrar deneyin.")
+
+        threading.Thread(target=_worker, daemon=True, name=f"otonom-{jid}").start()
+        return jsonify({"job_id": jid, "durum": "calisiyor"}), 202
+
+    @app.route("/otonom/durum/<job_id>", methods=["GET"])
+    @_limit("600 per minute")  # hafif okuma; UI ~2sn'de bir yoklar (=30/dk), bol tolerans
+    def otonom_durum(job_id: str):
+        """Asenkron isin anlik durumu (polling). Bulunamazsa 404."""
+        snap = _otonom_jobs.snapshot(job_id)
+        if snap is None:
+            return jsonify({"hata": "Is bulunamadi (suresi dolmus olabilir)."}), 404
+        return jsonify(snap), 200
+
+    # -----------------------------------------------------------------------
+    # Is Gecmisi sayfasi (kalici — daha once islenen otonom isleri)
+    # -----------------------------------------------------------------------
+    @app.route("/gecmis", methods=["GET"])
+    def gecmis():
+        """Daha once islenen otonom nesting isleri (en yeni ustte)."""
+        kayitlar = _otonom_gecmis.liste(limit=100)
+        return render_template("gecmis.html", kayitlar=kayitlar)
 
     # -----------------------------------------------------------------------
     # Mail Ayarlari rotasi (UI'dan gercek gelen-kutusu baglama)
@@ -2565,7 +2704,9 @@ def _main() -> None:
     logging.basicConfig(level=logging.INFO)
     app = create_app(testing=False, llm_enabled=True)
     _startup_health_report(app)
-    app.run(host="127.0.0.1", port=8765, debug=False)
+    # threaded=True: asenkron otonom job thread'i koşarken polling istekleri
+    # (/otonom/durum) ve diger rotalar bloke olmadan islenebilsin.
+    app.run(host="127.0.0.1", port=8765, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
