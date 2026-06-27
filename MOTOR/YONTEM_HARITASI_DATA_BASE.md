@@ -7,7 +7,7 @@
 >
 > **Kapsam:** yalnız **nesting motoru** (algoritma / kalite / hız). App/iş tarafı (mail otomasyon, LLM,
 > dağıtım, IP, müşteri planı) ayrı dosyada: `APP_YOL_HARITASI.md` + ilgili memory'ler.
-> **Son güncelleme:** 2026-06-26 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
+> **Son güncelleme:** 2026-06-27 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
 
 ---
 
@@ -56,7 +56,9 @@ Literatür araştırması olduysa §4'e işle. Açık yön kapandıysa/açıldı
 
 ## §2 — ŞU ANKİ ÜRETİM ALGORİTMASI (canlı snapshot, 2026-06-26)
 
-İki mod var. **Default = heightmap** (hiç değişmedi). **NFV = opt-in "kalite modu"**.
+**Üç mod (2026-06-27, K-16):** `auto` = **DEFAULT** (akıllı seçim — `predict_nfv_benefit`: cavity-zengin→NFV,
+kutu/ince-plaka→heightmap; kalite-güvenli, şüphede NFV) · `nfv` (zorla cavity) · `heightmap` (zorla hızlı).
+Aşağıdaki 2A (heightmap) ve 2B (NFV) o modların çekirdeği; `auto` ikisinden birini veri-odaklı seçer.
 
 ### 2A. DEFAULT — Heightmap (coarse-to-fine + DBLF + SA portföy)
 | Bileşen | Nasıl | Adaptif mi? | Dosya |
@@ -188,6 +190,13 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Sonuç:** Tavan (180) = **ince büyük plakalar** (n3 15×178×228 oran 15.2 tepe-180; n7/n6/n8 benzer ~15-19mm kalın, 180-230mm geniş). Plan2'den FARKLI darboğaz tipi ama yine rotasyon-kapalı.
 - **NEDEN olmadı:** İnce plakalar düz yatıyor = **zaten minimum yükseklik** (15mm). Eğmek yüksekliği ARTIRIR (eski eğik-SA 181.5 > düz 180 = tam bunun kanıtı). Bread-rack uzun-dik parçayı yatırınca kazandırır; numune plakaları zaten yatık → rack tersine çalışır.
 - **Ders:** Her iki gerçek darboğaz da rotasyona kapalı: Plan2=düz-yatamayan-büyük-levha (istif zorunlu), numune=düz-zaten-optimal-ince-plaka (eğmek uzatır). SA-sürekli-rotasyon koşulmadı çünkü ölçüm "eğik-SA tekrarı" diyor (meta-ders #11 saatlerce SA'dan korudu). Numune 170 hedefi rotasyonla DEĞİL farklı kaldıraçla (placement/interleave) — VEYA 180 ≈ düz-istif-optimal kabul.
+
+#### [K-16] Akıllı otomatik mod seçimi (NFV/heightmap — `predict_nfv_benefit`)
+- **Durum:** ✅ GO (ÜRETİMDE, **default auto**) · **Tarih:** 2026-06-27 · **Kanıt:** `src/nesting3d/adaptive_params.py::predict_nfv_benefit`, `scripts/automode_proof.py`, `tests/test_adaptive_params.py`, commit `c89041c`, `RESUME_2026-06-27`
+- **Ne:** Instance'tan veri-odaklı NFV/heightmap kararı (voxelize'sız, `extract_features` bbox'tan). VARSAYILAN NFV; heightmap SADECE net-kutu (`mean_aspect_z<4`) VEYA ince-plaka-dominant (`thin_plate_ratio>0.6`). run_pipeline `nesting_mode="auto"` default; UI 3'lü radio.
+- **Sonuç:** 5 veride **false-negative=0** (plan1/2/3→nfv [kazanç 14/20/29%], numune/boxy→heightmap [%0]); tam suite **2078 passed** (default heightmap→auto regresyon YOK — kutu fixture auto→heightmap birebir).
+- **NEDEN oldu:** Kalite-riski ASİMETRİK: NFV yanlış-pozitif = sadece hız (NFV≥heightmap, K-12 kalite-güvenli); heightmap yanlış-negatif (cavity→heightmap) = %14-29 kalite kaybı → ŞÜPHEDE NFV → false-negative sıfır. Ayrıştırıcı `mean_aspect_z` ORTA-bant (6-13): düşük=kutu (cavity yok), çok-yüksek=ince-plaka (düz-optimal, K-14/K-15) → ikisi de kazanmaz.
+- **Ders:** Açıklanabilir-kural (mekanizma-türevli eşik + geniş marj) az-veride (5) ML'den sağlam (overfit yok). "Kalite düşmesin" şartı YAPISAL karşılanır: heightmap yalnız NFV'nin zaten kazanmadığı durumda. İleride telemetri→selection/ ML hook.
 
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
@@ -366,8 +375,8 @@ planında var (hocayla, [[project-konteyner-app-plani]]).
 ---
 
 ## EK — kaynak haritası (izlenebilirlik)
-- **Handoff'lar:** `RESUME_2026-06-{21,22,23,24,25,26}.md` (kronolojik, en güncel = **`RESUME_2026-06-26.md`**:
-  APP mail-filtreleme bug-fix + voxelize OOM (H-12) + çift-voxelize (H-13)).
+- **Handoff'lar:** `RESUME_2026-06-{21..27}.md` (kronolojik, en güncel = **`RESUME_2026-06-27.md`**: akıllı
+  mod seçimi K-16). Önceki: `RESUME_2026-06-26.md` (mail-fix + voxelize OOM H-12 + çift-voxelize H-13).
 - **NFV sayısal:** `ANALIZ_NFV.md` (§1-5 gelişim/overfit, §6-9 NO-GO kanıtları).
 - **Kıyas/M1-M6:** `MAGICS_ANALIZ.md`, `PLAN_KIYAS_IYILESTIRME.md`, memory [[project-kiyas-iyilestirme]].
 - **Backlog:** memory [[project-nfv-sonraki-oturum-backlog]] (madde 1-12).
