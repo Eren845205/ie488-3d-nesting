@@ -85,6 +85,7 @@ class RawMail:
     tarih: str
     message_id: str
     ekler: List[Attachment] = field(default_factory=list)
+    uid: Optional[str] = None  # IMAP UID (ImapMailbox doldurur; FakeMailbox None birakir — geriye uyum)
 
     def __repr__(self) -> str:
         return (
@@ -109,6 +110,14 @@ class MailSource(ABC):
         --------
         List[RawMail] -- bos liste eger yeni mail yoksa veya hata olusmusa.
         Hicbir zaman firlatmaz; hata durumunda bos liste + log.
+        """
+
+    def mark_processed(self, mail: "RawMail") -> None:
+        """Mail kesin olarak islendi — kalici idempotency kaydini yap.
+
+        Varsayilan: no-op. ImapMailbox override eder ve _idem_store'a yazar.
+        at-least-once semantigi icin process_inbox_once BASARILI islem sonrasi
+        bu metodu cagirir. Hicbir zaman firlatmaz.
         """
 
 
@@ -407,6 +416,7 @@ class ImapMailbox(MailSource):
             tarih=tarih,
             message_id=message_id,
             ekler=ekler,
+            uid=uid,  # at-least-once: mark_processed icin IMAP UID sakla
         )
 
     # ------------------------------------------------------------------
@@ -509,11 +519,8 @@ class ImapMailbox(MailSource):
                     raw_mail = self._extract_raw_mail(uid, raw_bytes)
                     result.append(raw_mail)
                     self._seen_uids.add(uid)
-                    # Fix-4: kalici store'a kaydet
-                    try:
-                        self._idem_store.register(self._idem_key(uid))
-                    except Exception:
-                        pass  # DuplicateKeyError veya store hatasi — in-memory set yeterli
+                    # at-least-once: kalici store'a kayit BURDA DEGİL — mark_processed'e ertelendi.
+                    # _seen_uids bu-process dedup'u saglar; kalici kayit ancak kesin islem sonrasi.
                 except Exception as fetch_exc:
                     logger.warning(
                         "ImapMailbox: UID %s isleme hatasi — %s", uid, fetch_exc
@@ -527,6 +534,32 @@ class ImapMailbox(MailSource):
                 pass
 
         return result
+
+    def mark_processed(self, mail: "RawMail") -> None:
+        """Mail'i kalici idempotency store'a kaydet (at-least-once).
+
+        process_inbox_once tarafindan kesin islem sonrasi cagirilir:
+          - spam / parse-fail (ingest None) -> LLM tekrar yakma
+          - needs_review -> pending_store'a alindi
+          - order + pipeline basarili -> kesin islem
+
+        mail.uid None ise no-op (FakeMailbox / geriye uyum).
+        DuplicateKeyError sessizce yutulur (tekrar cagri guvenli); diger store
+        hatalari (OperationalError/IOError vb.) LOGLANIR -- sessiz yutma
+        double-processing'i gorunmez yapardi.
+        """
+        if not mail.uid:
+            return
+        from src.runtime.idempotency import DuplicateKeyError
+        try:
+            self._idem_store.register(self._idem_key(mail.uid))
+        except DuplicateKeyError:
+            pass  # idempotent cagri -- beklenen, zaten kayitli
+        except Exception as exc:
+            logger.warning(
+                "mark_processed: store yazimi basarisiz uid=%s -- %s "
+                "(mail sonraki turda tekrar islenebilir)", mail.uid, exc,
+            )
 
 
 # ---------------------------------------------------------------------------

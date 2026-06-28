@@ -61,6 +61,11 @@ def process_inbox_once(
     from scripts.demo_pipeline import run_pipeline
     from src.runtime.mail_ingest import ingest_order
 
+    # mark_processed: at-least-once -- kayit yalniz kesin sonuc sonrasi.
+    # MailSource ABC concrete no-op tasir, ama testler/dis kaynaklar MailSource'tan
+    # TUREMEYEN duck-typed olabilir (orn. _OnceSource) -> getattr guard sart.
+    _mark = getattr(mail_source, "mark_processed", None)
+
     mails = mail_source.fetch_new()
     if not mails:
         return None
@@ -68,14 +73,21 @@ def process_inbox_once(
     fallback = deadline_fallback or _default_deadline(base_scenario)
 
     orders: List[Dict[str, Any]] = []
+    order_mails: List[Any] = []  # order üreten mailler — pipeline basarisinda register edilir
+
     for mail in mails:
         try:
             order = ingest_order(mail, parser_role, persist_root=persist_root)
         except Exception as exc:
             logger.warning("mail_poller: ingest hatasi (%s): %s", mail.gonderen, exc)
-            continue
+            continue  # gecici hata -> mark_processed ETME (sonraki tur tekrar dener)
+
         if not order:
+            # Spam / sinyal yok / parse fail -> kesin sonuc -> register (LLM tekrar yakma)
+            if _mark is not None:
+                _mark(mail)
             continue
+
         # Eksik-bilgi siparisi (ZIP var, adet yok) pipeline'a SOKULMAZ —
         # operator incelemesi gerekir; bos parca run_pipeline'i bozardi.
         # pending_store verildiyse operatorun /adet-gir'den islemesi icin kaydet.
@@ -101,10 +113,15 @@ def process_inbox_once(
                 "mail_poller: eksik-bilgi siparisi atlandi (%s) — sebep=%s",
                 mail.gonderen, order.get("review_reason"),
             )
+            # Kesin: pending'e alindi -> register (tekrar zip ayristirmaya girme)
+            if _mark is not None:
+                _mark(mail)
             continue
+
         if not order.get("deadline"):
             order["deadline"] = fallback
         orders.append(order)
+        order_mails.append(mail)
 
     if not orders:
         return None
@@ -117,7 +134,20 @@ def process_inbox_once(
     stl_container = next((o["container"] for o in orders if o.get("container")), None)
     scenario = {**scenario, "container": stl_container}  # None -> pipeline otomatik
 
-    return run_pipeline(scenario)
+    try:
+        result = run_pipeline(scenario)
+    except Exception as exc:
+        logger.warning(
+            "mail_poller: pipeline hatasi (gecici -- sonraki tur tekrar dener) -- %s", exc
+        )
+        return None  # kesin degil -> mark_processed ETME
+
+    # Pipeline basarili -> order-ureten mailleri kalici olarak kaydet
+    if _mark is not None:
+        for m in order_mails:
+            _mark(m)
+
+    return result
 
 
 def _default_deadline(base_scenario: Dict[str, Any]) -> str:
