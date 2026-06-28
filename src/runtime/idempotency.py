@@ -133,15 +133,21 @@ class SqliteIdempotencyStore(IdempotencyStore):
 
     def _conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn"):
-            self._local.conn = sqlite3.connect(
-                self._db_path, check_same_thread=False
-            )
+            # Her thread ilk erisimde kendi connection'ini kurar ve schema'yi da olusturur.
+            # Bu, daemon thread'den (poller) ilk cagri geldiginde "no such table" hatasini onler.
+            # check_same_thread=False: threading.local() zaten her thread'e ayri connection verir,
+            # bu yuzden parametre pratikte gereksizdir; ancak sqlite3'un ilave guvenlik kontrolunu
+            # kapatmak icin (connection baska contexte gecerse) explicit tutulur.
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.executescript(_DDL_IDEM)
+            conn.commit()
+            self._local.conn = conn
         return self._local.conn
 
     def _init_schema(self) -> None:
-        conn = self._conn()
-        conn.executescript(_DDL_IDEM)
-        conn.commit()
+        # Sadece ana thread'de ilk connection'i (ve schema'yi) olusturur.
+        # Yeni thread'ler _conn() uzerinden kendi schema'larini kurar.
+        self._conn()
 
     def register(self, key: str) -> None:
         from datetime import datetime, timezone

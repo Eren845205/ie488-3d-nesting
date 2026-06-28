@@ -18,6 +18,7 @@ data/telemetry/
 data/orders.json
 data/otonom_gecmis/
 data/pending_orders/
+data/idempotency.db
 
 # Playwright MCP geçici çıktıları (screenshot/snapshot/console)
 .playwright-mcp/

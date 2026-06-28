@@ -561,6 +561,16 @@ def _register_routes(
     _otonom_gecmis = OtonomGecmisStore(_gecmis_root)
     app.config["OTONOM_GECMIS"] = _otonom_gecmis
 
+    # Paylasilmis kalici idempotency deposu — poller tum turlarinda BU STORE'u kullanir.
+    # TESTING: :memory: (izolasyon); uretim: data/idempotency.db (restart-kalici).
+    from src.runtime.idempotency import SqliteIdempotencyStore as _SqliteIdemStore
+    if app.config.get("TESTING"):
+        _shared_idem_store = _SqliteIdemStore(db_path=":memory:")
+    else:
+        _idem_db_path = str(_ROOT / "data" / "idempotency.db")
+        _shared_idem_store = _SqliteIdemStore(db_path=_idem_db_path)
+    app.config["SHARED_IDEM_STORE"] = _shared_idem_store
+
     def _gecmis_kaydet(pipeline_result, *, mod, nfv_quality="fast",
                        asamalar=None, kaynak="manuel"):
         """Bir pipeline sonucunu is gecmisine ozet olarak yaz (DRY: manuel+otomatik).
@@ -615,7 +625,7 @@ def _register_routes(
         from src.runtime.mail_ingest import make_mail_source
         cfg = ({"source": "fake"} if app.config.get("TESTING")
                else _resolve_mail_source_config(_ROOT))
-        return make_mail_source(cfg)
+        return make_mail_source(cfg, idem_store=_shared_idem_store)
 
     def _poll_on_result(result):
         # Poll sonucu da /sonuc ekranina yazilir (tek-tik /run ile ayni yer)

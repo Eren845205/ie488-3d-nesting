@@ -40,6 +40,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from src.runtime.idempotency import idempotency_key as _idempotency_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -317,7 +319,7 @@ class ImapMailbox(MailSource):
     Zarif dusus: baglanti/auth hatasi -> bos liste + log (firlatmaz).
     """
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any], *, idem_store: Optional[Any] = None) -> None:
         self.host: str = config["host"]
         self.port: int = int(config.get("port", 993))
         self.user: str = config["user"]
@@ -342,9 +344,13 @@ class ImapMailbox(MailSource):
         self.category_filter: Optional[str] = config.get("category_filter", None)
         self.prefer_attachments: bool = bool(config.get("prefer_attachments", False))
         self._seen_uids: Set[str] = set()
-        # Fix-4: kalici idempotency deposu (SqliteIdempotencyStore ile)
-        from src.runtime.idempotency import SqliteIdempotencyStore
-        self._idem_store = SqliteIdempotencyStore()
+        # Fix-5: idem_store enjeksiyonu — None ise kendi :memory: store'u olustur (geriye uyum).
+        # Dis store verilirse poller turlar arasi idempotency state'i paylasir.
+        if idem_store is not None:
+            self._idem_store = idem_store
+        else:
+            from src.runtime.idempotency import SqliteIdempotencyStore
+            self._idem_store = SqliteIdempotencyStore()
 
     # ------------------------------------------------------------------
     # Internal: baglanti kur
@@ -408,8 +414,12 @@ class ImapMailbox(MailSource):
     # ------------------------------------------------------------------
 
     def _idem_key(self, uid: str) -> str:
-        """imap:{user}:{uid} formatinda kalici idempotency anahtari uretir (Fix-4)."""
-        return f"imap:{self.user}:{uid}"
+        """SHA-256 tabanli kalici idempotency anahtari uretir.
+
+        Girdi: "imap" sabiti + kullanici adresi + UID. E-posta adresi
+        plaintext gomulmez; idempotency_key() SHA-256 ozeti alir.
+        """
+        return _idempotency_key("imap", self.user, uid)
 
     def _fetch_uids(self, conn: imaplib.IMAP4) -> List[str]:
         """Islenecek UID'leri dondurur.
@@ -880,7 +890,7 @@ _PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
 _VALID_PROVIDERS = frozenset(_PROVIDER_PRESETS.keys())
 
 
-def make_mail_source(config: Dict[str, Any]) -> MailSource:
+def make_mail_source(config: Dict[str, Any], *, idem_store: Optional[Any] = None) -> MailSource:
     """Konfig sozlugundan uygun MailSource ornegi olusturur.
 
     Parametreler
@@ -888,18 +898,23 @@ def make_mail_source(config: Dict[str, Any]) -> MailSource:
     config : Asagidaki bicimlerden biri kabul edilir:
 
       {"source": "fake"}
-          → FakeMailbox (demo, kimlik gerekmez)
+          -> FakeMailbox (demo, kimlik gerekmez)
 
       {"source": "imap", "host": ..., "user": ..., "password": ...}
-          → ImapMailbox (geriye uyum — host elle verilir)
+          -> ImapMailbox (geriye uyum — host elle verilir)
 
       {"provider": "gmail"|"outlook"|"hotmail", "user": ..., "password": ...}
-          → ImapMailbox; host/port/use_ssl preset'ten doldurulur.
+          -> ImapMailbox; host/port/use_ssl preset'ten doldurulur.
             config'te acikca host verilmisse preset'i EZER (override).
             user + password yine config'ten gelir (preset doldurmaz).
 
       {} (ne source ne provider)
-          → FakeMailbox (varsayilan geriye uyum)
+          -> FakeMailbox (varsayilan geriye uyum)
+
+    idem_store : Opsiyonel paylasilmis IdempotencyStore. Verilirse ImapMailbox'a
+        iletilir; poller turlar arasi idempotency state'ini paylasir. None ise
+        ImapMailbox kendi :memory: store'unu olusturur (geriye uyum).
+        FakeMailbox bu parametreyi yoksayar.
 
     Firlatir
     --------
@@ -922,14 +937,14 @@ def make_mail_source(config: Dict[str, Any]) -> MailSource:
         resolved["provider"] = provider
         # source acikca verilmediyse "imap" sayilir
         resolved.setdefault("source", "imap")
-        return ImapMailbox(resolved)
+        return ImapMailbox(resolved, idem_store=idem_store)
 
     # Klasik source yolu
     source = config.get("source", "fake")
     if source == "fake":
         return FakeMailbox()
     if source == "imap":
-        return ImapMailbox(config)
+        return ImapMailbox(config, idem_store=idem_store)
     raise ValueError(
         f"Bilinmeyen mail source: {source!r}. "
         f"Gecerli degerler: 'fake', 'imap'."
