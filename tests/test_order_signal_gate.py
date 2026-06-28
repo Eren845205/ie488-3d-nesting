@@ -32,6 +32,26 @@ def test_sinyal_yok_kisisel():
     assert not _has_order_signal("Selam, yarinki toplanti saat kacta? Tesekkurler.")
 
 
+# --- P2: 2D boyut (NxN) tek basina siparis sinyali DEGIL (yanlis-pozitif onleme) ---
+
+def test_sinyal_yok_2d_boyut():
+    # 2D olcu spam'de cok gecer (ekran 80x60, "2x4", tarih) — gercek parca 3D'dir.
+    assert not _has_order_signal("Rezervasyon: 80x60 oda, 2 gece konaklama")
+
+
+def test_sinyal_yok_booking_benzeri():
+    # Gercek booking/seyahat spam'i: NxN var ama 3D degil, "adet" yok -> sinyal YOK
+    assert not _has_order_signal(
+        "Booking.com onay 5628620568. Oda 80x60, ekran 12x9, check-in saat 14."
+    )
+
+
+def test_sinyal_3d_boyut_korunur():
+    # 3D olcu (NxNxN) gercek parca sinyali — sikilastirmadan SONRA da gecmeli
+    assert _has_order_signal("Braket olcusu 80x60x30 mm")
+    assert _has_order_signal("90 x 45 x 20 mm aluminyum parca")
+
+
 # ---------------------------------------------------------------------------
 # Entegrasyon: ingest_order LLM kapisi
 # ---------------------------------------------------------------------------

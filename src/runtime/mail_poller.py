@@ -29,6 +29,28 @@ logger = logging.getLogger(__name__)
 # Tek-tur isleyici (saf, Flask'siz)
 # ---------------------------------------------------------------------------
 
+def _attachment_first(mails: List[Any]) -> List[Any]:
+    """Ek-li (ZIP/Excel) mailleri basa al -- kesin siparis spam-LLM kuyrugunda beklemesin.
+
+    P2: ZIP/Excel ekli mailler ingest_order'da LLM'siz deterministik yola gider;
+    serbest-metin mailler (sinyal varsa) yavas LLM'e gider. Ingest LOOP'unda ek-li
+    olanlari ONCE islemek, gercek siparisi spam-LLM gecikmesinden ayirir. Sirala
+    KARARLI (stable): her grup icinde giris sirasi korunur.
+    """
+    from src.runtime.mail_ingest import (
+        _find_attachment, _ZIP_EXTENSIONS, _STRUCTURED_EXTENSIONS,
+    )
+
+    def _has_att(m: Any) -> bool:
+        return bool(
+            _find_attachment(m, _ZIP_EXTENSIONS)
+            or _find_attachment(m, _STRUCTURED_EXTENSIONS)
+        )
+
+    # sorted KARARLI -> key=0 (ekli) once, key=1 (metin) sonra; grup-ici sira korunur.
+    return sorted(mails, key=lambda m: 0 if _has_att(m) else 1)
+
+
 def process_inbox_once(
     mail_source: Any,
     parser_role: Any,
@@ -75,7 +97,7 @@ def process_inbox_once(
     orders: List[Dict[str, Any]] = []
     order_mails: List[Any] = []  # order üreten mailler — pipeline basarisinda register edilir
 
-    for mail in mails:
+    for mail in _attachment_first(mails):
         try:
             order = ingest_order(mail, parser_role, persist_root=persist_root)
         except Exception as exc:

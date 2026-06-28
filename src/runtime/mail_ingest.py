@@ -654,8 +654,11 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
 _ZIP_EXTENSIONS = {".zip"}
 
-# Boyut deseni: "80x60x30", "80 x 60 x 30", "80×60" — sipariş sinyali (parça olcusu).
-_DIM_PATTERN = re.compile(r"\d+\s*[x×]\s*\d+", re.IGNORECASE)
+# Boyut deseni: 3D olcu "80x60x30", "80 x 60 x 30" — siparis sinyali (parca olcusu).
+# P2: 2D (NxN) KASITLI haric — 2D olculer spam'de cok gecer (ekran/oda/tarih: "80x60",
+# "2x4", "14x00") ve yanlis-pozitif uretip maili gereksiz LLM'e sokardi. Gercek uretim
+# parcasi 3 boyutludur; gercek serbest-metin siparisleri (Ford/Baykar demo) NxNxN tasir.
+_DIM_PATTERN = re.compile(r"\d+\s*[x×]\s*\d+\s*[x×]\s*\d+", re.IGNORECASE)
 
 
 def _has_order_signal(text: str) -> bool:
