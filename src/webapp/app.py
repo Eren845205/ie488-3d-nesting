@@ -550,6 +550,67 @@ def _register_routes(
     _pending_store = PendingOrderStore(_pending_root)
     app.config["PENDING_STORE"] = _pending_store
 
+    # Kalici is gecmisi (manuel /otonom + otomatik poller ORTAK yazar; /gecmis okur).
+    # Testte gecici dizin (izolasyon).
+    from src.runtime.otonom_gecmis import OtonomGecmisStore
+    if app.config.get("TESTING"):
+        import tempfile as _tfg
+        _gecmis_root = Path(_tfg.mkdtemp(prefix="otonom_gecmis_"))
+    else:
+        _gecmis_root = _ROOT / "data" / "otonom_gecmis"
+    _otonom_gecmis = OtonomGecmisStore(_gecmis_root)
+    app.config["OTONOM_GECMIS"] = _otonom_gecmis
+
+    def _gecmis_kaydet(pipeline_result, *, mod, nfv_quality="fast",
+                       asamalar=None, kaynak="manuel"):
+        """Bir pipeline sonucunu is gecmisine ozet olarak yaz (DRY: manuel+otomatik).
+
+        kaynak: "manuel" (operator /otonom butonu) | "otomatik" (poller).
+        asamalar: ham asama listesi (manuel'de var, poller'da None). Ozetlenir.
+        """
+        try:
+            ranked = pipeline_result.get("ranked_orders", [])
+            batches = pipeline_result.get("batches", [])
+            nesting_results = pipeline_result.get("nesting_results", {})
+            pricing_results = pipeline_result.get("pricing_results", {})
+            toplam_fiyat = sum(pr.get("total_price", 0.0) for pr in pricing_results.values())
+            _musteri = "-"
+            if ranked:
+                _musteri = ranked[0].customer
+                _farkli = len({getattr(o, "customer", "") for o in ranked})
+                if _farkli > 1:
+                    _musteri = f"{_musteri} +{_farkli - 1}"
+            _yuk = [nr.get("height_mm", 0.0) for nr in nesting_results.values() if nr.get("height_mm")]
+            _dol = [nr.get("density", 0.0) for nr in nesting_results.values() if nr.get("density")]
+            _secilen = None
+            _reason = None
+            if nesting_results:
+                _ilk = next(iter(nesting_results.values()))
+                _secilen = _ilk.get("nesting_mode_used")
+                _reason = _ilk.get("auto_mode_reason")
+            _asama_ozet = [
+                {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
+                for a in (asamalar or [])
+            ]
+            _otonom_gecmis.kaydet({
+                "durum": "bitti",
+                "kaynak": kaynak,
+                "mod": mod,
+                "secilen_mod": _secilen,
+                "auto_mode_reason": _reason,
+                "nfv_quality": nfv_quality,
+                "musteri": _musteri,
+                "siparis_sayisi": len(ranked),
+                "parti_sayisi": len(batches),
+                "min_yukseklik_mm": round(min(_yuk), 1) if _yuk else None,
+                "doluluk": round(sum(_dol) / len(_dol), 3) if _dol else None,
+                "toplam_fiyat": round(toplam_fiyat, 2),
+                "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
+                "asamalar": _asama_ozet,
+            })
+        except Exception:
+            logger.debug("Is gecmisine yazilamadi (kaynak=%s)", kaynak, exc_info=True)
+
     def _poll_make_source():
         from src.runtime.mail_ingest import make_mail_source
         cfg = ({"source": "fake"} if app.config.get("TESTING")
@@ -560,6 +621,9 @@ def _register_routes(
         # Poll sonucu da /sonuc ekranina yazilir (tek-tik /run ile ayni yer)
         result["used_demo"] = False
         app.config["LAST_RESULT"] = result
+        # OTOMATIK islenen is de kalici gecmise dussun — operator sonradan
+        # /gecmis'ten "sistem gece sunlari isledi" diye gorur (kaynak=otomatik).
+        _gecmis_kaydet(result, mod="auto", kaynak="otomatik")
 
     try:
         _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
@@ -589,6 +653,17 @@ def _register_routes(
 
     @app.route("/poll/baslat", methods=["POST"])
     def poll_baslat():
+        # Opsiyonel tarama araligi (saniye). UI 2/5/10 dk gonderir. Min 30s
+        # (cok sik tarama = bosa kaynak). Bir sonraki turda etkili.
+        _body = request.get_json(silent=True) or {}
+        _iv = _body.get("interval_s")
+        if _iv is not None:
+            try:
+                _ivn = int(_iv)
+                if _ivn >= 30:
+                    _poller.state.interval_s = _ivn
+            except (ValueError, TypeError):
+                pass
         _poller.start()
         return jsonify({"ok": True, "durum": _poller.state.snapshot()})
 
@@ -1322,17 +1397,8 @@ def _register_routes(
     # -----------------------------------------------------------------------
     # Otonom zincir rotasi (VİTRİN C)
     # -----------------------------------------------------------------------
-    # Kalici is gecmisi: tamamlanan her otonom isi ozet olarak diske yazilir
-    # (/gecmis sayfasi okur). Testte gecici dizin (izolasyon).
-    from src.runtime.otonom_gecmis import OtonomGecmisStore
-    if app.config.get("TESTING"):
-        import tempfile as _tf2
-        _gecmis_root = Path(_tf2.mkdtemp(prefix="otonom_gecmis_"))
-    else:
-        _gecmis_root = _ROOT / "data" / "otonom_gecmis"
-    _otonom_gecmis = OtonomGecmisStore(_gecmis_root)
-    app.config["OTONOM_GECMIS"] = _otonom_gecmis
-
+    # (Is gecmisi deposu + _gecmis_kaydet helper yukarida, poll bolumunden once
+    #  tanimli — manuel /otonom ile otomatik poller ORTAK kullanir.)
     def _run_otonom_pipeline(otonom_nesting_mode, otonom_nfv_quality, on_stage=None):
         """Mail-cek → parse → onceliklendir → nesting → fiyat → acikla → teklif taslagi.
 
@@ -1981,49 +2047,11 @@ def _register_routes(
             },
         })
 
-        # ------------------------------------------------------------------
-        # Kalici GECMISE yaz (senkron + async ortak yoldan gecer; /gecmis okur)
-        # ------------------------------------------------------------------
-        try:
-            _g_musteri = "-"
-            if ranked:
-                _g_musteri = ranked[0].customer
-                _farkli = len({getattr(o, "customer", "") for o in ranked})
-                if _farkli > 1:
-                    _g_musteri = f"{_g_musteri} +{_farkli - 1}"
-            _g_yuk = [nr.get("height_mm", 0.0) for nr in nesting_results.values()
-                      if nr.get("height_mm")]
-            _g_dol = [nr.get("density", 0.0) for nr in nesting_results.values()
-                      if nr.get("density")]
-            # auto modda gercekte secilen mod + gerekce (ilk parti temsili) — seffaflik
-            _g_secilen = None
-            _g_reason = None
-            if nesting_results:
-                _ilk_nr = next(iter(nesting_results.values()))
-                _g_secilen = _ilk_nr.get("nesting_mode_used")
-                _g_reason = _ilk_nr.get("auto_mode_reason")
-            # Asama OZETI (kucuk: ad/durum/cikti) — detay sayfasi icin; detay/watcher haric
-            _g_asamalar = [
-                {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
-                for a in asamalar
-            ]
-            _otonom_gecmis.kaydet({
-                "durum": "bitti",
-                "mod": otonom_nesting_mode,
-                "secilen_mod": _g_secilen,
-                "auto_mode_reason": _g_reason,
-                "nfv_quality": otonom_nfv_quality,
-                "musteri": _g_musteri,
-                "siparis_sayisi": len(ranked),
-                "parti_sayisi": n_batches,
-                "min_yukseklik_mm": round(min(_g_yuk), 1) if _g_yuk else None,
-                "doluluk": round(sum(_g_dol) / len(_g_dol), 3) if _g_dol else None,
-                "toplam_fiyat": round(toplam_fiyat, 2),
-                "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
-                "asamalar": _g_asamalar,
-            })
-        except Exception:
-            logger.debug("Otonom gecmise yazilamadi", exc_info=True)
+        # Kalici GECMISE yaz — manuel buton (kaynak=manuel). Otomatik poller ayni
+        # helper'i kaynak=otomatik ile kullanir (DRY; _poll_on_result).
+        _gecmis_kaydet(pipeline_result, mod=otonom_nesting_mode,
+                       nfv_quality=otonom_nfv_quality, asamalar=asamalar,
+                       kaynak="manuel")
 
         # ------------------------------------------------------------------
         # Yanit

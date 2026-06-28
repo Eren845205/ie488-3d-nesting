@@ -17,6 +17,11 @@
         {% else %}
             <span class="badge badge-red">{{ k.durum or 'Hata' }}</span>
         {% endif %}
+        {% if k.kaynak == 'otomatik' %}
+            <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);">&#9881; Otomatik işlendi</span>
+        {% elif k.kaynak == 'manuel' %}
+            <span class="badge" style="background:var(--surface-2); color:var(--muted); border-color:var(--line-2);">Manuel başlatıldı</span>
+        {% endif %}
     </div>
     <p style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-top:8px;">
         {{ (k.zaman or '') | replace('T', ' &nbsp; ') | safe }}

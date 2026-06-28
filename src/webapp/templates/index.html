@@ -192,6 +192,34 @@
     </div>
     <div id="otonom-hata" style="display:none; color:#c0392b; margin-top:10px; font-size:14px;"></div>
 </div>
+
+<!-- Otomatik Mod karti: sistem kendi kendine periyodik tarar (manuel butonun ALTERNATIFI) -->
+<div class="card" id="otomatik-card">
+    <div class="card-title">Otomatik Mod &mdash; Sistem Kendi Tarasın</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:14px;">
+        Açıkken sistem gelen kutusunu <strong>periyodik tarar</strong> ve <strong>yeni</strong>
+        siparişleri otomatik işler (çek &rarr; nesting &rarr; fiyat). Aynı mail iki kez işlenmez;
+        teklif maili otomatik <strong>gönderilmez</strong> &mdash; onay sizde kalır. Tüm sonuçlar
+        <a href="/gecmis" class="nav-link">İş Geçmişi</a>'ne kaydedilir.
+    </p>
+    <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+        <label class="forge-switch" title="Otomatik modu aç/kapat">
+            <input type="checkbox" id="otomatik-toggle" onchange="otomatikDegis()">
+            <span class="forge-slider"></span>
+        </label>
+        <span id="otomatik-durum-label" style="font-weight:600; font-size:14px; color:var(--color-text-muted);">Kapalı</span>
+        <label style="font-size:13px; color:var(--color-text-muted); display:inline-flex; align-items:center; gap:6px;">
+            Tarama aralığı:
+            <select id="otomatik-aralik" onchange="otomatikAralikDegis()"
+                    style="padding:5px 9px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:var(--font); font-size:13px;">
+                <option value="120">2 dakika</option>
+                <option value="300" selected>5 dakika</option>
+                <option value="600">10 dakika</option>
+            </select>
+        </label>
+    </div>
+    <div id="otomatik-pano" style="display:none; margin-top:16px;"></div>
+</div>
 {% endif %}
 
 {% if llm_active %}
@@ -649,6 +677,71 @@
         div.appendChild(document.createTextNode(String(text)));
         return div.innerHTML;
     }
+
+    // ---- Otomatik Mod (arka-plan poller: sistem kendi tarar) ----
+    var _otomatikIv = null;
+    function otomatikDegis() {
+        var on = document.getElementById('otomatik-toggle').checked;
+        var aralik = parseInt(document.getElementById('otomatik-aralik').value, 10) || 300;
+        if (on) {
+            fetch('/poll/baslat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+                body: JSON.stringify({interval_s: aralik})
+            }).then(function(r){ return r.json(); }).then(function(d){
+                otomatikDurumGuncelle(d.durum); otomatikYoklaBaslat();
+            }).catch(function(){});
+        } else {
+            fetch('/poll/durdur', {
+                method: 'POST', headers: {'X-CSRF-Token': '{{ csrf_token }}'}
+            }).then(function(r){ return r.json(); }).then(function(d){
+                otomatikDurumGuncelle(d.durum); otomatikYoklaDur();
+            }).catch(function(){});
+        }
+    }
+    function otomatikAralikDegis() {
+        // Acikken aralik degisirse yeniden baslat (yeni interval bir sonraki turda)
+        if (document.getElementById('otomatik-toggle').checked) { otomatikDegis(); }
+    }
+    function otomatikYoklaBaslat() {
+        otomatikYoklaDur();
+        _otomatikIv = setInterval(function(){
+            fetch('/poll/durum').then(function(r){ return r.json(); })
+                .then(otomatikDurumGuncelle).catch(function(){});
+        }, 5000);
+    }
+    function otomatikYoklaDur() { if (_otomatikIv) { clearInterval(_otomatikIv); _otomatikIv = null; } }
+    function otomatikDurumGuncelle(durum) {
+        if (!durum) { return; }
+        var lbl = document.getElementById('otomatik-durum-label');
+        var pano = document.getElementById('otomatik-pano');
+        document.getElementById('otomatik-toggle').checked = !!durum.enabled;
+        lbl.textContent = durum.enabled ? 'Açık' : 'Kapalı';
+        lbl.style.color = durum.enabled ? 'var(--accent-ink)' : 'var(--color-text-muted)';
+        if (durum.enabled) {
+            var dk = Math.round((durum.interval_s || 0) / 60);
+            var son = durum.last_poll_ts
+                ? new Date(durum.last_poll_ts * 1000).toLocaleTimeString('tr-TR') : 'henüz yok';
+            var bilgi = 'her ' + dk + ' dk · son tarama: ' + son + ' · ' +
+                        (durum.total_processed || 0) + ' iş işlendi · ' + (durum.runs || 0) + ' tarama';
+            var html = '<div class="forge-status is-calisiyor" style="margin-bottom:0;">' +
+                '<span class="forge-status-dot"></span>' +
+                '<span class="forge-status-label">Gözcü aktif</span>' +
+                '<span class="forge-status-stage">' + escapeHtml(bilgi) + '</span>';
+            if (durum.last_error) {
+                html += '<span style="color:var(--err); font-size:12px;">hata: ' + escapeHtml(durum.last_error) + '</span>';
+            }
+            html += '</div>';
+            pano.innerHTML = html;
+            pano.style.display = 'block';
+        } else {
+            pano.style.display = 'none';
+        }
+    }
+    // Sayfa yuklenince mevcut poller durumunu yansit (acik kalmissa toggle ON)
+    fetch('/poll/durum').then(function(r){ return r.json(); }).then(function(d){
+        otomatikDurumGuncelle(d); if (d && d.enabled) { otomatikYoklaBaslat(); }
+    }).catch(function(){});
     {% endif %}
 
     {% if llm_active %}
