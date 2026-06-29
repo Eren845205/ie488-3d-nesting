@@ -703,7 +703,13 @@ def _register_routes(
                     _poller.state.interval_s = _ivn
             except (ValueError, TypeError):
                 pass
-        _poller.start()
+        # Zaten calisiyorsa restart -> yeni interval ANINDA gecerli + yeni tarama
+        # hemen kosar (aksi halde eski interval'in bekleyen wait'i sururdu).
+        # Calismiyorsa start -> _loop ilk taramayi yine hemen yapar.
+        if _poller.is_running():
+            _poller.restart()
+        else:
+            _poller.start()
         return jsonify({"ok": True, "durum": _poller.state.snapshot()})
 
     @app.route("/poll/durdur", methods=["POST"])

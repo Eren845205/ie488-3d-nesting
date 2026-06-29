@@ -237,15 +237,23 @@ class MailPoller:
         self._now = now
         self._pending_store = pending_store
         self.state = PollState(interval_s=interval_s)
+        # _stop: AKTIF thread'in stop sinyali. Her start() TAZE bir Event yaratir
+        # -> eski thread eski (set edilmis) event'iyle olur, yenisi temiz event'le
+        # kosar. Boylece restart'ta join/clear gerekmez ve "ghost thread" olusmaz.
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        # _lock: start/stop/restart state-machine + sayac (runs/total_processed)
+        # atomikligi. restart kisa tutulur (eski thread'i BEKLEMEZ; uzun pipeline
+        # bloke etmesin), bu yuzden re-entrant degil; Lock yeterli.
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     def poll_once(self) -> Optional[Dict[str, Any]]:
         """Tek tur: kaynak uret + isle + durum guncelle + callback. Atmaz."""
-        self.state.runs += 1
-        if self._now is not None:
-            self.state.last_poll_ts = self._now()
+        with self._lock:
+            self.state.runs += 1
+            if self._now is not None:
+                self.state.last_poll_ts = self._now()
         try:
             source = self._make_source()
             result = process_inbox_once(
@@ -260,8 +268,9 @@ class MailPoller:
                 n = len(result.get("ranked_orders", [])) or len(
                     result.get("nesting_results", {})
                 )
-                self.state.last_processed = n
-                self.state.total_processed += n
+                with self._lock:
+                    self.state.last_processed = n
+                    self.state.total_processed += n
                 if self._on_result is not None:
                     try:
                         self._on_result(result)
@@ -276,23 +285,55 @@ class MailPoller:
             return None
 
     # ------------------------------------------------------------------
-    def _loop(self) -> None:
-        # Event.wait(interval): stop set edilince hemen cikar; aksi halde bekler.
-        while not self._stop.wait(self.state.interval_s):
+    def _loop(self, stop_ev: threading.Event) -> None:
+        # Her thread KENDI stop event'ini alir (self._stop degil) -> restart
+        # yeni thread baslatip bu thread'i clear etse bile bu dongu eski
+        # event'i dinler ve duzgun olur (ghost thread yok).
+        # ILK tarama HEMEN (interval beklemeden) — kullanici 'actim ama hic
+        # taramadi' gormesin. stop bu thread baslar baslamaz set edildiyse atla.
+        if not stop_ev.is_set():
+            self.poll_once()
+        # Sonraki turlar: Event.wait(interval) — stop set edilince hemen cikar.
+        while not stop_ev.wait(self.state.interval_s):
             self.poll_once()
 
-    def start(self) -> None:
-        """Daemon thread baslat (zaten calisiyorsa no-op)."""
+    def _start_locked(self) -> None:
+        """start() govdesi — cagiran self._lock TUTMALI. Taze event + thread."""
         if self._thread is not None and self._thread.is_alive():
             return
-        self._stop.clear()
+        self._stop = threading.Event()          # TAZE event (clear yerine yeni)
         self.state.enabled = True
         self._thread = threading.Thread(
-            target=self._loop, name="mail-poller", daemon=True
+            target=self._loop, args=(self._stop,), name="mail-poller", daemon=True
         )
         self._thread.start()
 
+    def start(self) -> None:
+        """Daemon thread baslat (zaten calisiyorsa no-op)."""
+        with self._lock:
+            self._start_locked()
+
+    def restart(self) -> None:
+        """Calisan poller'i durdurup yeni interval ile yeniden baslat.
+
+        Eski thread'e stop sinyali verilir ama BEKLENMEZ (NFV pipeline dakikalar
+        surebilir; join etmek UI'i kilitlerdi). Eski thread KENDI eski event'iyle
+        bir sonraki wait'te (veya pipeline bitince) temiz olur; yeni thread taze
+        event + guncel interval ile baslar. _loop ilk-tarama-hemen sayesinde
+        restart aninda yeni bir tur kosar.
+        """
+        with self._lock:
+            self._stop.set()                    # eski thread'e dur sinyali
+            self._thread = None                 # referansi birak (eski kendi olur)
+            self._start_locked()                # taze event + yeni thread
+
     def stop(self) -> None:
         """Thread'i durdur (bir sonraki wait'te cikar)."""
-        self._stop.set()
-        self.state.enabled = False
+        with self._lock:
+            self._stop.set()
+            self.state.enabled = False
+
+    def is_running(self) -> bool:
+        """Poller thread'i su an aktif mi? (route'lar private attr'a uzanmasin.)"""
+        with self._lock:
+            return self._thread is not None and self._thread.is_alive()

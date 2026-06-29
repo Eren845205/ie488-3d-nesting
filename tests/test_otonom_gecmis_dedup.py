@@ -1,13 +1,14 @@
 """test_otonom_gecmis_dedup.py — Downstream dedup: ayni mail/order tekrar yazilmaz.
 
-Kapsam (5 test):
+Kapsam (6 test):
   1. Ayni dedup_key ile iki kez kaydet -> liste() tek kayit dondurur;
      ikinci cagri ilk kaydi dondurur (id ayni).
   2. Farkli dedup_key -> iki kayit.
   3. dedup_key=None iki kez (ayni icerik) -> iki kayit (geriye uyum).
   4. _dedup_key alani diske yaziliyor (yeni store ornegi ayni dosyadan
      okuyunca dedup hala calisir = kalici).
-  5. Atomik: eslezamanli ayni dedup_key -> tek kayit (race condition yok).
+  5. _dedup_key ic alani liste()/get() ile disari sizmiyor (M2 gizlilik).
+  6. Atomik: eslezamanli ayni dedup_key -> tek kayit (race condition yok).
 """
 from __future__ import annotations
 

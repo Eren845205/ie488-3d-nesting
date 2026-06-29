@@ -1,6 +1,7 @@
 """tests/test_mail_poller.py — Arka plan poll modu testleri."""
 
 import io
+import threading
 import zipfile
 
 import pytest
@@ -127,3 +128,88 @@ def test_poller_start_stop(tmp_path):
     assert poller.state.enabled is True
     poller.stop()
     assert poller.state.enabled is False
+
+
+def test_poller_ilk_tarama_hemen_yapilir(tmp_path):
+    """start() -> ilk tarama interval BEKLEMEDEN hemen yapilir.
+
+    Onceki bug: _loop once wait(interval) yapip sonra tariyordu; 5 dk
+    interval'de kullanici 'actim ama 0 tarama' goruyordu. interval cok
+    buyuk (1 saat) verilir; ilk tarama yine de saniyeler icinde olmali.
+    """
+    tarandi = threading.Event()
+
+    def _kaynak():
+        tarandi.set()
+        return _EmptySource()
+
+    poller = MailPoller(
+        make_source=_kaynak, parser_role=None,
+        base_scenario=RICH_SCENARIO, persist_root=str(tmp_path),
+        interval_s=3600,  # 1 saat; eski davranista ilk tarama 1 saat sonra olurdu
+    )
+    poller.start()
+    try:
+        assert tarandi.wait(timeout=5.0), "ilk tarama interval beklemeden yapilmali"
+        assert poller.state.runs >= 1
+    finally:
+        poller.stop()
+
+
+def test_poller_restart_yeni_interval_yeni_thread(tmp_path):
+    """restart(): calisan poller'i durdurup yeni interval ile yeniden baslatir.
+
+    Onceki bug: interval degisince state.interval_s guncellenir ama start()
+    'zaten calisiyor' deyip no-op olur; thread'in mevcut wait'i eski
+    interval'i kullanmaya devam ederdi. restart() yeni thread baslatmali.
+    """
+    poller = MailPoller(
+        make_source=_EmptySource, parser_role=None,
+        base_scenario=RICH_SCENARIO, persist_root=str(tmp_path),
+        interval_s=3600,
+    )
+    poller.start()
+    eski_thread = poller._thread
+    poller.state.interval_s = 1
+    poller.restart()
+    try:
+        assert poller._thread is not eski_thread, "restart yeni thread baslatmali"
+        assert poller.state.enabled is True
+        # Eski thread JOIN edilmez (uzun pipeline UI'i kilitlemesin) -> kendi
+        # eski event'iyle asenkron olur; kisa sure icinde olmeli.
+        assert eski_thread is not None
+        eski_thread.join(timeout=5.0)
+        assert not eski_thread.is_alive(), "eski thread stop sinyaliyle olmeli"
+    finally:
+        poller.stop()
+
+
+def test_poller_tekrarli_restart_ghost_thread_birakmaz(tmp_path):
+    """Reviewer H1/M1: tekrarli restart geride 'ghost' poller thread birakmamali.
+
+    Eski mimari (tek paylasimli _stop + join+clear) uzun pipeline'da olumsuz
+    thread biraktirabiliyordu. Per-thread event mimarisinde her eski thread
+    KENDI event'iyle oldugu icin stop() sonrasi hic aktif mail-poller kalmamali.
+    """
+    import time
+
+    poller = MailPoller(
+        make_source=_EmptySource, parser_role=None,
+        base_scenario=RICH_SCENARIO, persist_root=str(tmp_path),
+        interval_s=3600,
+    )
+    poller.start()
+    for _ in range(5):
+        poller.restart()
+    poller.stop()
+
+    # Tum mail-poller thread'leri kisa sure icinde olmeli (ghost yok).
+    for _ in range(50):
+        alive = [t for t in threading.enumerate()
+                 if t.name == "mail-poller" and t.is_alive()]
+        if not alive:
+            break
+        time.sleep(0.1)
+    alive = [t for t in threading.enumerate()
+             if t.name == "mail-poller" and t.is_alive()]
+    assert not alive, f"ghost thread kaldi: {len(alive)} aktif"
