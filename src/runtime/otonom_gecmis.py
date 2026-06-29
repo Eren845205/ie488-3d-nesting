@@ -43,8 +43,34 @@ class OtonomGecmisStore:
         self._now_iso = now_iso
         self._lock = threading.Lock()
 
-    def kaydet(self, ozet: Dict[str, Any]) -> Dict[str, Any]:
-        """Bir is ozetini gecmise ekle; id + zaman eklenmis kaydi dondur."""
+    def kaydet(
+        self,
+        ozet: Dict[str, Any],
+        *,
+        dedup_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Bir is ozetini gecmise ekle; id + zaman eklenmis kaydi dondur.
+
+        dedup_key verilmisse: ayni _dedup_key degerli kayit zaten varsa
+        YAZMA — mevcut kaydi dondur (idempotent). Yoksa kayda _dedup_key
+        ekleyip yaz.
+        dedup_key=None ise: mevcut davranis (her cagri yeni kayit).
+        Kontrol-sonra-yaz tek self._lock icinde atomik yapilir.
+        """
+        if dedup_key is not None:
+            with self._lock:
+                for k in self._oku_kilitsiz():
+                    if k.get("_dedup_key") == dedup_key:
+                        return k
+                kayit = dict(ozet)
+                kayit["id"] = self._id_factory()
+                kayit["zaman"] = self._now_iso()
+                kayit["_dedup_key"] = dedup_key
+                line = json.dumps(kayit, ensure_ascii=False, default=str)
+                with self._path.open("a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+            return kayit
+
         kayit = dict(ozet)
         kayit["id"] = self._id_factory()
         kayit["zaman"] = self._now_iso()
@@ -58,26 +84,36 @@ class OtonomGecmisStore:
         """Kayitlar — EN YENI ustte. Bozuk satirlar atlanir (dayaniklilik)."""
         kayitlar = self._oku_hepsi()
         kayitlar.reverse()  # en yeni ustte
-        return kayitlar[:limit] if limit and limit > 0 else kayitlar
+        kayitlar = kayitlar[:limit] if limit and limit > 0 else kayitlar
+        return [self._strip_internal(k) for k in kayitlar]
 
     def get(self, kayit_id: str) -> Optional[Dict[str, Any]]:
         """id ile tek kayit; bulunamazsa None."""
         for k in self._oku_hepsi():
             if k.get("id") == kayit_id:
-                return k
+                return self._strip_internal(k)
         return None
 
     # -- ic --------------------------------------------------------------
 
-    def _oku_hepsi(self) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _strip_internal(kayit: Dict[str, Any]) -> Dict[str, Any]:
+        """`_`-onekli ic alanlari (_dedup_key vb.) public donuslerden ayikla.
+
+        Dedup kontrolu kaydet() icinde _oku_kilitsiz uzerinden yapilir;
+        bu ayiklama YALNIZ disa acik liste()/get() icindir -> dedup bozulmaz.
+        """
+        return {k: v for k, v in kayit.items() if not k.startswith("_")}
+
+    def _oku_kilitsiz(self) -> List[Dict[str, Any]]:
+        """Dosyadan lock almadan oku — yalnizca self._lock icinde cagrilmali."""
         if not self._path.exists():
             return []
         out: List[Dict[str, Any]] = []
-        with self._lock:
-            try:
-                lines = self._path.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                return []
+        try:
+            lines = self._path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
         for line in lines:
             line = line.strip()
             if not line:
@@ -89,3 +125,7 @@ class OtonomGecmisStore:
             if isinstance(obj, dict):
                 out.append(obj)
         return out
+
+    def _oku_hepsi(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return self._oku_kilitsiz()

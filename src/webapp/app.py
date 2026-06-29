@@ -602,24 +602,53 @@ def _register_routes(
                 {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
                 for a in (asamalar or [])
             ]
-            _otonom_gecmis.kaydet({
-                "durum": "bitti",
-                "kaynak": kaynak,
-                "mod": mod,
-                "secilen_mod": _secilen,
-                "auto_mode_reason": _reason,
-                "nfv_quality": nfv_quality,
-                "musteri": _musteri,
-                "siparis_sayisi": len(ranked),
-                "parti_sayisi": len(batches),
-                "min_yukseklik_mm": round(min(_yuk), 1) if _yuk else None,
-                "doluluk": round(sum(_dol) / len(_dol), 3) if _dol else None,
-                "toplam_fiyat": round(toplam_fiyat, 2),
-                "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
-                "asamalar": _asama_ozet,
-            })
+            # order_ids: ranked'daki her order'dan order_id topla; None/bos atla
+            _order_ids: list = []
+            for _o in ranked:
+                _oid = getattr(_o, "order_id", None)
+                if _oid:
+                    _order_ids.append(_oid)
+            _order_ids = sorted(set(_order_ids))
+            # dedup_key: yalniz kaynak=="otomatik" ve order_ids doluysa.
+            # JSON array string -> ayirici-collision yok (order_id formati
+            # degisse bile ikircilsiz; "|".join collision-safe degildi).
+            _dedup_key = None
+            if kaynak == "otomatik" and _order_ids:
+                _dedup_key = json.dumps(_order_ids)
+            elif kaynak == "otomatik" and ranked:
+                # Otomatik kayit ama order_id toplanamadi -> dedup atlanir
+                # (kayit yine yazilir, kaybolmaz; ama cift-kayit korumasi yok).
+                # Gozlemlenebilir sinyal: ranked dict dondurmeye gecerse fark edilir.
+                logger.warning(
+                    "gecmis_kaydet: otomatik kayit icin order_ids bos -- dedup atlanacak (ranked=%d)",
+                    len(ranked),
+                )
+            _otonom_gecmis.kaydet(
+                {
+                    "durum": "bitti",
+                    "kaynak": kaynak,
+                    "mod": mod,
+                    "secilen_mod": _secilen,
+                    "auto_mode_reason": _reason,
+                    "nfv_quality": nfv_quality,
+                    "musteri": _musteri,
+                    "siparis_sayisi": len(ranked),
+                    "parti_sayisi": len(batches),
+                    "min_yukseklik_mm": round(min(_yuk), 1) if _yuk else None,
+                    "doluluk": round(sum(_dol) / len(_dol), 3) if _dol else None,
+                    "toplam_fiyat": round(toplam_fiyat, 2),
+                    "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
+                    "asamalar": _asama_ozet,
+                    "order_ids": _order_ids,
+                },
+                dedup_key=_dedup_key,
+            )
         except Exception:
             logger.debug("Is gecmisine yazilamadi (kaynak=%s)", kaynak, exc_info=True)
+
+    # Testlerde dogrudan erisim icin config'e eklenir; uretimde de set edilir
+    # ama hicbir route geri okumaz -> zararsiz serbest referans (test izolasyonu).
+    app.config["GECMIS_KAYDET_FN"] = _gecmis_kaydet
 
     def _poll_make_source():
         from src.runtime.mail_ingest import make_mail_source

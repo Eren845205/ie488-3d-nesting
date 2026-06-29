@@ -93,3 +93,63 @@ class TestGecmisDetay:
         resp = client_no_llm.get("/gecmis/yokboyle")
         assert resp.status_code == 302
         assert "/gecmis" in resp.headers.get("Location", "")
+
+
+# ---------------------------------------------------------------------------
+# Downstream dedup — _gecmis_kaydet app-katmani testleri
+# ---------------------------------------------------------------------------
+
+class TestGecmisDedupOtomatik:
+    """Downstream dedup: kaynak=otomatik ayni order_ids -> tek kayit."""
+
+    def _make_fake_result(self, order_ids):
+        """order_id tasiyan Order stub'larla minimal pipeline_result."""
+        from datetime import date
+        from src.scheduling.models import Order
+        orders = [
+            Order(
+                order_id=oid,
+                customer="TESTMUST",
+                parts_ref="test",
+                total_quantity=1,
+                total_volume_cm3=0.0,
+                deadline=str(date.today()),
+                priority_class=1,
+            )
+            for oid in order_ids
+        ]
+        return {
+            "ranked_orders": orders,
+            "batches": [],
+            "nesting_results": {},
+            "pricing_results": {},
+            "elapsed_sec": 0.0,
+        }
+
+    def test_gecmis_kaydinda_order_ids_alani_var(self, app_with_llm):
+        """Gecmis kaydinda order_ids listesi olmali."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        result = self._make_fake_result(["ZIP-AABB1122"])
+        fn(result, mod="auto", kaynak="otomatik")
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        kayit = store.liste()[0]
+        assert "order_ids" in kayit
+        assert kayit["order_ids"] == ["ZIP-AABB1122"]
+
+    def test_otomatik_ayni_order_ids_tek_kayit(self, app_with_llm):
+        """kaynak=otomatik, ayni order_ids ile iki cagri -> tek kayit."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        result = self._make_fake_result(["ZIP-AABB1122"])
+        fn(result, mod="auto", kaynak="otomatik")
+        fn(result, mod="auto", kaynak="otomatik")
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        assert len(store.liste()) == 1
+
+    def test_manuel_iki_cagri_iki_kayit(self, app_with_llm):
+        """kaynak=manuel, iki cagri -> iki kayit (dedup uygulanmaz)."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        result = self._make_fake_result(["ZIP-AABB1122"])
+        fn(result, mod="auto", kaynak="manuel")
+        fn(result, mod="auto", kaynak="manuel")
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        assert len(store.liste()) == 2
