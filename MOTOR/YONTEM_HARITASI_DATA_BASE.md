@@ -7,7 +7,7 @@
 >
 > **Kapsam:** yalnız **nesting motoru** (algoritma / kalite / hız). App/iş tarafı (mail otomasyon, LLM,
 > dağıtım, IP, müşteri planı) ayrı dosyada: `APP_YOL_HARITASI.md` + ilgili memory'ler.
-> **Son güncelleme:** 2026-06-27 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
+> **Son güncelleme:** 2026-06-30 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
 
 ---
 
@@ -230,6 +230,7 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Ne:** occupancy CİHAZDA resident, place in-device, host'a yalnız 3-int; cuFFT plan-cache + periyodik free.
 - **Sonuç:** Plan2 51.1s = **5.5×** çapadan, RTX3060 6GB'de bile. Cross-dataset: plan1 2.7×, plan3 3.3×, plan2 5.5× (grid büyüdükçe artar). BİREBİR.
 - **NEDEN oldu:** Naive transfer-tuzağı (0.65×) + plan-cache OOM aşıldı; occupancy hiç host'a inmiyor.
+- **DOĞRULAMA 2026-06-30 (P3 — 596s'lik gerçek ağır cavity seti):** Canlı demoda 596s veren set = **Plan1+Plan3 birleşik** (forward'lar, nfv quality=fast, h=667.5/doluluk 0.369); o an cupy algılanmadığından CPU'ya düşmüştü. Bu makinede gerçek geometriyle (mail_stl_4F427959+CADD13C2) `solve_nfv force=gpu-resident` vs `cpu-kolA` ölçüldü — **ikisi BİREBİR aynı layout** (height eşit, H-04/H-05 invariant kanıt). Adetler ölçeklenerek seti kuşatan ölçüm (pitch 2.50, plaka 340×340, n=8): h=397→**1.67×**, h=512→**1.93×**, h=727→**2.01×** end-to-end (CPU 140/223/303s → GPU 84/116/151s). **Kazanç yükle BÜYÜR** (FFT-decode payı baskınlaşır). Ayrıştırma (h=727): voxelize **54s paylaşılan** (CPU, GPU hızlandırmaz) + decode CPU 266s → GPU 99.5s = **decode-only 2.67×**; end-to-end 2.08× voxelize'la seyrelir. → **Gerçek 596s seti (h=667.5, mult 3-4 arası) GPU'da ~2× hızlanır, kalite birebir.** Kanıt: `scripts/c3_gpu_596set.py`. NOT: decode-only hızlanma grid'le büyür (Plan2 daha büyük grid'de 5.5×, H-04 üstü); bu sette grid 11.8M olduğu için 2.67×. **Ders:** end-to-end GPU kazancının tavanı paylaşılan voxelize → §5 C1 (voxelize hızı) GPU faydasını da çoğaltır.
 
 #### [H-05] CPU Kol A — orient-thread paralel decode
 - **Durum:** ✅ GO (üretimde, GPU yoksa) · **Tarih:** 2026-06-23 · **Kanıt:** `scripts/c3_par_a.py`, `PARALLELLIK_TASARIM_2026-06-23.md`
@@ -349,7 +350,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
-| **C1** | **Büyük-parça voxelize SÜRESİ** (`_surface_cells` hızı + pitch R6, fine 0.5mm 159s/parça) | 6GB | Yüksek/RİSKLİ | **ORTA** (APP kullanılabilirlik) | H-13 sonrası AÇIK. `coarse_to_fine` FINE adımı büyük parçayı 0.5mm voxelize. pitch kabalaştırma=parça-kaybı+**H-06 duvarı**+cross-dataset kalite; `_surface_cells` algoritma-hızı daha güvenli. **ÖNCE çift-voxelize sonrası Plan2 gerçek süre ÖLÇ**. |
+| **C1** | **Büyük-parça voxelize SÜRESİ** (`_surface_cells` hızı + pitch R6, fine 0.5mm 159s/parça) | 6GB | Yüksek/RİSKLİ | **ORTA** (APP kullanılabilirlik) | H-13 sonrası AÇIK. `coarse_to_fine` FINE adımı büyük parçayı 0.5mm voxelize. pitch kabalaştırma=parça-kaybı+**H-06 duvarı**+cross-dataset kalite; `_surface_cells` algoritma-hızı daha güvenli. **YENİ GEREKÇE (2026-06-30, H-04 doğrulama):** voxelize NFV'de GPU-decode'la hızlanMAZ (CPU-bound, paylaşılan) → end-to-end GPU kazancının TAVANI = voxelize payı (596s-seti ölçümünde h=727'de 54s/320s = %17). Voxelize'ı hızlandırmak GPU faydasını da çoğaltır (decode zaten 2.67×). |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
 ilerleme = **SÜPER BİLGİSAYAR** (A1 sürekli rotasyon + ince-pitch için bol VRAM). Erişim konteyner-app
