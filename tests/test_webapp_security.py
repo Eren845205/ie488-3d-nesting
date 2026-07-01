@@ -123,6 +123,24 @@ def test_turkce_unicode_parola_kabul(monkeypatch):
     assert c.get("/oncelik").status_code == 200
 
 
+def test_giris_bruteforce_rate_limit(monkeypatch):
+    """FIX 2: ardisik yanlis-parola POST denemeleri limite takilmali (429)."""
+    c = _client(monkeypatch, admin="gizli123")
+    tok = _csrf(c, "/giris")
+    son = None
+    for _ in range(6):  # limit "5 per minute" -> 6. deneme 429 dondurmeli
+        son = c.post("/giris", data={"password": "yanlis", "_csrf": tok})
+    assert son.status_code == 429
+
+
+def test_giris_get_rate_limit_disinda(monkeypatch):
+    """FIX 2: rate-limit yalniz POST'u kisitlar; GET login sayfasi serbest kalir."""
+    c = _client(monkeypatch, admin="gizli123")
+    for _ in range(10):
+        r = c.get("/giris")
+        assert r.status_code == 200
+
+
 def test_acik_yonlendirme_korumasi(monkeypatch):
     c = _client(monkeypatch, admin="gizli123")
     tok = _csrf(c, "/giris")
@@ -130,3 +148,78 @@ def test_acik_yonlendirme_korumasi(monkeypatch):
     r = c.post("/giris?next=//evil.com", data={"password": "gizli123", "_csrf": tok})
     assert r.status_code == 302
     assert "evil.com" not in r.headers["Location"]
+
+
+# ---------------------------------------------------------------------------
+# Fail-open bind uyarisi (FIX 3)
+# ---------------------------------------------------------------------------
+
+def test_fail_open_uyari_lan_bind_parolasiz(monkeypatch):
+    from src.webapp.app import _fail_open_admin_warning
+    warn = _fail_open_admin_warning("0.0.0.0", "")
+    assert warn is not None
+    assert "ADMIN_PASSWORD" in warn
+
+
+def test_fail_open_uyari_yok_loopback_bind(monkeypatch):
+    from src.webapp.app import _fail_open_admin_warning
+    assert _fail_open_admin_warning("127.0.0.1", "") is None
+    assert _fail_open_admin_warning("localhost", "") is None
+    assert _fail_open_admin_warning("::1", "") is None
+
+
+def test_fail_open_uyari_yok_parola_setli(monkeypatch):
+    from src.webapp.app import _fail_open_admin_warning
+    assert _fail_open_admin_warning("0.0.0.0", "gizli123") is None
+
+
+def test_startup_health_report_lan_bind_uyari_basar(monkeypatch, capsys):
+    from src.webapp.app import _startup_health_report
+    monkeypatch.setenv("ADMIN_PASSWORD", "")
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    c = _client(monkeypatch)  # ADMIN_PASSWORD yok
+    _startup_health_report(c.application, host="0.0.0.0")
+    out = capsys.readouterr().out
+    assert "GUVENLIK" in out
+    assert "ADMIN_PASSWORD" in out
+
+
+# ---------------------------------------------------------------------------
+# Session cookie bayraklari (FIX 4)
+# ---------------------------------------------------------------------------
+
+def test_session_cookie_httponly_ve_samesite(monkeypatch):
+    c = _client(monkeypatch)
+    assert c.application.config["SESSION_COOKIE_HTTPONLY"] is True
+    assert c.application.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+
+
+def test_session_cookie_secure_env_ile_acilir(monkeypatch):
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.setenv("FLASK_COOKIE_SECURE", "true")
+    app = create_app(testing=False, llm_enabled=False, load_env=False)
+    assert app.config["SESSION_COOKIE_SECURE"] is True
+
+
+def test_session_cookie_secure_default_kapali(monkeypatch):
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("FLASK_COOKIE_SECURE", raising=False)
+    app = create_app(testing=False, llm_enabled=False, load_env=False)
+    assert app.config["SESSION_COOKIE_SECURE"] is False
+
+
+# ---------------------------------------------------------------------------
+# /run rate-limit (FIX 5)
+# ---------------------------------------------------------------------------
+
+def test_run_rate_limit_uygulanir(monkeypatch):
+    """FIX 5: /run agir pipeline; asiri istekte 429 donmeli."""
+    c = _client(monkeypatch)  # ADMIN_PASSWORD yok -> serbest erisim, sadece limit test edilir
+    tok = _csrf(c, "/")
+    son = None
+    # limit'in makul (dusuk) oldugunu varsayarak bol deneme yapip 429 ariyoruz
+    for _ in range(25):
+        son = c.post("/run", data={"scenario_type": "rich", "_csrf": tok})
+        if son.status_code == 429:
+            break
+    assert son.status_code == 429

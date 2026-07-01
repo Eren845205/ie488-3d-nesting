@@ -112,3 +112,51 @@ def test_adet_gir_isle_bulunamayan_id(client):
     resp = client.post("/adet-gir/YOK-123", data={"qty_x": "1"})
     assert resp.status_code == 302
     assert "hata=bulunamadi" in resp.headers.get("Location", "")
+
+
+# ---------------------------------------------------------------------------
+# Guvenlik: path traversal (FIX 1) — ham order_id ile disari yazim engellenir.
+# ---------------------------------------------------------------------------
+
+def test_adet_gir_path_traversal_disari_yazamaz(client, app, tmp_path=None):
+    """store.get() _safe_id ile 'ZIP-TEST01'e cozulur (Windows'ta basename()
+    backslash'i ayirir) ama ham order_id backslash icerir; sanitize edilmis
+    deger route'a geri donmezse _persist_dir proje kokunun disina (data/evil)
+    tasar. Fix sonrasi: dizin yalniz data/mail_stl altinda olusmali, disariya
+    HICBIR dosya yazilmamali."""
+    from src.webapp.app import _ROOT
+
+    _seed(app, order_id="ZIP-TEST01")
+    evil_dir = _ROOT / "data" / "evil"
+    assert not evil_dir.exists(), "test oncesi kalinti data/evil olmamali"
+
+    malicious = "..\\..\\..\\evil\\ZIP-TEST01"
+    try:
+        resp = client.post(f"/adet-gir/{malicious}", data={"qty_braket": "2", "qty_kapak": "1"})
+        assert resp.status_code == 302
+        assert not evil_dir.exists(), (
+            "path traversal: dosyalar data/mail_stl DISINA yazildi (data/evil)"
+        )
+    finally:
+        import shutil
+        if evil_dir.exists():
+            shutil.rmtree(evil_dir, ignore_errors=True)
+
+
+def test_adet_gir_path_traversal_mail_stl_icinde_kalir(client, app):
+    """Zararsiz/normal order_id icin dizin gercekten data/mail_stl altinda
+    olusturulmaya devam eder (regresyon: fix normal akisi kirmasin)."""
+    from src.webapp.app import _ROOT
+
+    _seed(app, order_id="ZIP-TEST01")
+    persist_dir = _ROOT / "data" / "mail_stl" / "adetgir_ZIP-TEST01"
+    try:
+        resp = client.post("/adet-gir/ZIP-TEST01", data={"qty_braket": "2", "qty_kapak": "1"})
+        assert resp.status_code == 302
+        assert "/sonuc" in resp.headers.get("Location", "")
+        assert persist_dir.exists()
+        assert persist_dir.resolve().is_relative_to((_ROOT / "data" / "mail_stl").resolve())
+    finally:
+        import shutil
+        if persist_dir.exists():
+            shutil.rmtree(persist_dir, ignore_errors=True)

@@ -411,6 +411,16 @@ def create_app(
     # Yuklem buyuklugu siniri — yükleme DoS'a karsi (Bulgu 1)
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
 
+    # Session cookie guvenlik bayraklari (FIX 4). HTTPONLY: JS erisimini
+    # engeller (XSS ile cookie calinmasini zorlastirir). SAMESITE=Lax: CSRF
+    # savunmasini destekler. SECURE: varsayilan KAPALI (localhost HTTP demo
+    # bozulmasin); TLS arkasinda deploy edilirse FLASK_COOKIE_SECURE=1 ile acilir.
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+        "FLASK_COOKIE_SECURE", ""
+    ).strip().lower() in ("1", "true", "yes")
+
     # Durum: her create_app() cagrisinda sifirlanir (test izolasyonu)
     app.config["LAST_RESULT"] = None
     # NOT: CONVERSATION_TURNS artik Flask session'da (per-kullanici); bu kaldir.
@@ -459,9 +469,9 @@ def _register_routes(
     """Tum rotalari app'e kaydeder."""
 
     # Rate-limit dekorator yardimcisi — limiter None ise gecmis decorator doner
-    def _limit(limit_string: str):
+    def _limit(limit_string: str, **limiter_kwargs):
         if limiter is not None:
-            return limiter.limit(limit_string)
+            return limiter.limit(limit_string, **limiter_kwargs)
         # no-op: ayni fonksiyonu olduğu gibi döndürür
         def _passthrough(f):
             return f
@@ -506,6 +516,7 @@ def _register_routes(
         return {"csrf_token": session.get("_csrf", "")}
 
     @app.route("/giris", methods=["GET", "POST"])
+    @_limit("5 per minute", methods=["POST"])  # brute-force korumasi (FIX 2); GET (login sayfasi) serbest
     def giris():
         """Admin giris ekrani. ADMIN_PASSWORD bossa dogrudan ana sayfaya gecer."""
         if not _ADMIN_PASSWORD:
@@ -536,7 +547,7 @@ def _register_routes(
     # Arka plan poll (otomatik tetik): periyodik kutu kontrolu -> pipeline
     # -----------------------------------------------------------------------
     from src.runtime.mail_poller import MailPoller
-    from src.runtime.pending_orders import PendingOrderStore
+    from src.runtime.pending_orders import PendingOrderStore, _safe_id as _safe_order_id
     from scripts.demo_pipeline import RICH_SCENARIO as _POLL_BASE_SCENARIO
 
     # Eksik-bilgi (ZIP var, adet yok) siparis deposu. Testte gecici dizine yazar
@@ -669,6 +680,15 @@ def _register_routes(
     except ValueError:
         _poll_interval = 120
 
+    # FIX 2(b): Manuel /otonom (sync + async) + poller ORTAK tekil-tarama kilidi.
+    # Ayni anda YALNIZ bir mailbox taramasi olsun ki sync istek, async job ve
+    # poller thread'i ayni maili paralel cekip iki kez islemesin. Non-blocking
+    # acquire ile kullanilir -> deadlock/UI blogu yok; tutuluysa 'mesgul' doner.
+    # Idempotency ayrica _shared_idem_store ile ORTAK (mark_processed) -> ayni
+    # mail hangi yoldan gelirse gelsin BIR kez islenir.
+    _scan_lock = threading.Lock()
+    app.config["OTONOM_SCAN_LOCK"] = _scan_lock
+
     _poller = MailPoller(
         make_source=_poll_make_source,
         parser_role=(llm_components or {}).get("parser_role"),
@@ -678,6 +698,7 @@ def _register_routes(
         on_result=_poll_on_result,
         now=time.time,
         pending_store=_pending_store,
+        inflight_lock=_scan_lock,
     )
     app.config["MAIL_POLLER"] = _poller
 
@@ -783,6 +804,7 @@ def _register_routes(
         )
 
     @app.route("/run", methods=["POST"])
+    @_limit("3 per minute")  # FIX 5: agir senkron pipeline (300-600s olabilir) — DoS/kaynak-tuketim korumasi
     def run():
         """Havuz doluysa havuz senaryosunu, bos ise demo senaryosunu kosturur.
 
@@ -1519,7 +1541,10 @@ def _register_routes(
             mail_cfg = ({"source": "fake"} if app.config.get("TESTING")
                         else _resolve_mail_source_config(_ROOT))
 
-            mail_source = make_mail_source(mail_cfg)
+            # FIX 2(a): poller ile ORTAK kalici idempotency store enjekte et.
+            # Aksi halde ImapMailbox her istekte :memory: store yaratir, hicbir
+            # mark_processed kalici olmaz -> son mailler tekrar tekrar islenir.
+            mail_source = make_mail_source(mail_cfg, idem_store=_shared_idem_store)
             raw_mails = mail_source.fetch_new()
             n_mail = len(raw_mails)
             _kaynak_etiket = mail_cfg.get("provider") or mail_cfg.get("source", "fake")
@@ -1545,6 +1570,21 @@ def _register_routes(
         parse_hatalar: List[str] = []
         parse_eksik: List[Dict[str, Any]] = []  # ZIP var, adet yok -> operator girmeli
         parse_karantina: List[str] = []
+        # FIX 2(a): pipeline BASARISI sonrasi mark edilecek order-ureten mailler
+        # (at-least-once: gecici hata olursa mark ETME -> tekrar denenir).
+        _order_mails: List[Any] = []
+
+        # mark_processed: kalici idempotency (poller ile ORTAK store). Poller'daki
+        # deseni izler -> KESIN sonuclanan mailler kapatilir (ayni mail bir kez).
+        _mail_mark = getattr(mail_source, "mark_processed", None)
+
+        def _mark_mail(_m):
+            if _mail_mark is None:
+                return
+            try:
+                _mail_mark(_m)
+            except Exception:
+                logger.debug("Otonom: mark_processed basarisiz", exc_info=True)
         parse_kaynak_sayac: Dict[str, int] = {
             "attachment_zip_stl": 0, "attachment_excel": 0, "attachment_csv": 0, "llm_text": 0,
         }
@@ -1586,6 +1626,8 @@ def _register_routes(
                         "stl_sayisi": len(order.get("stl_names", [])),
                         "stl_adlar": order.get("stl_names", []),
                     })
+                    # Kesin: pending'e alindi -> mark (tekrar ayristirmaya girme)
+                    _mark_mail(mail)
                 elif order is not None:
                     # Mail gonderenden oncelik ipucu al
                     govde_lower = mail.govde.lower()
@@ -1609,12 +1651,15 @@ def _register_routes(
                     parse_kaynak_sayac[src] = parse_kaynak_sayac.get(src, 0) + 1
 
                     parsed_orders.append(order)
+                    _order_mails.append(mail)  # mark yalniz pipeline basarisi sonrasi
                 else:
                     # None donus: injection suphesi karantina veya parse basarisiz.
                     # Ek yoksa LLM yolu denendiginden, parse_result'a erisim yok;
                     # ingest_order zaten karantina logunu yazmis olur — ozet icin
                     # gonderen bazli kayit yapiyoruz.
                     parse_hatalar.append(f"{mail.gonderen}: parse basarisiz veya karantinaya alindi")
+                    # Kesin sonuc (spam/karantina) -> mark (tekrar LLM'e gitme)
+                    _mark_mail(mail)
             except Exception as exc:
                 logger.warning("Otonom: Parse hatasi (mail=%s): %s", mail.gonderen, exc)
                 parse_hatalar.append(f"{mail.gonderen}: {exc}")
@@ -1711,6 +1756,12 @@ def _register_routes(
         # 3D onizleme + maliyet ekranina gidebilir (tek-tik /run ile ayni deneyim).
         pipeline_result["used_demo"] = False
         app.config["LAST_RESULT"] = pipeline_result
+
+        # FIX 2(a): at-least-once — order-ureten mailleri KESIN sonuc (pipeline
+        # basarisi) sonrasi kalici olarak isaretle (poller ile ORTAK store).
+        # Boylece ayni mail poller veya tekrar manuel kosumda BIR KEZ islenir.
+        for _m in _order_mails:
+            _mark_mail(_m)
 
         ranked = pipeline_result.get("ranked_orders", [])
         batches = pipeline_result.get("batches", [])
@@ -2143,7 +2194,19 @@ def _register_routes(
         Asenkron/canli-ilerleme isteyen UI /otonom/baslat + /otonom/durum kullanir.
         """
         _mode, _quality = _parse_otonom_istek()
-        body, status = _run_otonom_pipeline(_mode, _quality)
+        # FIX 2(b): poller + async job ile ORTAK tekil-tarama kilidi. Non-blocking
+        # -> baska bir tarama (poller/async/sync) suruyorsa bloklamadan 'mesgul'
+        # doner (paralel mailbox taramasi + cift islem yok, deadlock yok).
+        if not _scan_lock.acquire(blocking=False):
+            return jsonify({
+                "hata": ("Su anda bir mail taramasi zaten suruyor "
+                         "(otomatik gozcu veya baska bir istek); bitince tekrar deneyin."),
+                "mesaj": "Tarama mesgul",
+            }), 409
+        try:
+            body, status = _run_otonom_pipeline(_mode, _quality)
+        finally:
+            _scan_lock.release()
         return jsonify(body), status
 
     # -----------------------------------------------------------------------
@@ -2184,11 +2247,25 @@ def _register_routes(
         def _worker():
             # Arka-plan: request/session context YOK (pipeline bunlari kullanmaz).
             try:
-                body, status = _run_otonom_pipeline(
-                    _mode, _quality,
-                    on_stage=lambda asama: _otonom_jobs.add_stage(jid, asama),
-                )
-                _otonom_jobs.finish(jid, sonuc=body, status=status)
+                # FIX 2(b): poller + sync /otonom ile ORTAK tekil-tarama kilidi.
+                # Non-blocking -> baska tarama suruyorsa isi 'mesgul' bitir (bg
+                # thread'de bloklamak yerine; UI durumdan gorur, deadlock yok).
+                if not _scan_lock.acquire(blocking=False):
+                    _otonom_jobs.finish(jid, sonuc={
+                        "hata": ("Su anda bir mail taramasi zaten suruyor; "
+                                 "bitince tekrar deneyin."),
+                        "mesaj": "Tarama mesgul",
+                        "asamalar": [],
+                    }, status=409)
+                    return
+                try:
+                    body, status = _run_otonom_pipeline(
+                        _mode, _quality,
+                        on_stage=lambda asama: _otonom_jobs.add_stage(jid, asama),
+                    )
+                    _otonom_jobs.finish(jid, sonuc=body, status=status)
+                finally:
+                    _scan_lock.release()
             except Exception as exc:  # pragma: no cover - beklenmeyen
                 logger.exception("Otonom job (%s) hatasi: %s", jid, exc)
                 _otonom_jobs.fail(jid, hata="Sistem hatasi olustu, lutfen tekrar deneyin.")
@@ -2410,6 +2487,14 @@ def _register_routes(
         if meta is None:
             return redirect(url_for("adet_gir") + "?hata=bulunamadi")
 
+        # Guvenlik (path traversal, Bulgu FIX1): store.get() ic. _safe_id
+        # kullanir ama sanitize edilmis degeri route'a geri dondurmez — ham
+        # order_id asagida dizin adinda kullanilirsa (ozellikle Windows'ta
+        # backslash basename() tarafindan ayrildigindan get() gecebilir ama
+        # ham deger _persist_dir'i proje kokunun disina tasiyabilir) traversal
+        # olusur. Bu noktadan itibaren SADECE sanitize edilmis id kullanilir.
+        order_id = _safe_order_id(order_id)
+
         stl_map = _pending_store.load_stl_map(order_id)
         if not stl_map:
             _pending_store.remove(order_id)
@@ -2439,6 +2524,14 @@ def _register_routes(
             _pw, _pd, _ph = _c.get("width_mm"), _c.get("depth_mm"), _c.get("height_mm")
 
         _persist_dir = _ROOT / "data" / "mail_stl" / f"adetgir_{order_id}"
+        _mail_stl_root = (_ROOT / "data" / "mail_stl").resolve()
+        # Ekstra savunma (defense-in-depth): sanitize sonrasi bile path
+        # data/mail_stl disina tasarsa reddet (containment guard).
+        if not _persist_dir.resolve().is_relative_to(_mail_stl_root):
+            logger.warning(
+                "adet-gir: guvenlik ihlali (path containment) order_id=%s", order_id
+            )
+            return redirect(url_for("adet_gir") + "?hata=guvenlik")
         res = build_instance_from_order(
             stl_map, quantities,
             container_w_mm=_pw, container_d_mm=_pd, container_h_mm=_ph,
@@ -2762,12 +2855,39 @@ def _build_summaries(orders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return summaries
 
 
-def _startup_health_report(app: Flask) -> None:
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _fail_open_admin_warning(host: str, admin_password: str) -> Optional[str]:
+    """FIX 3: host loopback-disi + ADMIN_PASSWORD bos ise uyari metni doner.
+
+    Aksi halde (loopback bind VEYA parola set) None doner — baslatmayi
+    engellemez, sadece sessiz-acik-admin durumunu gorunur kilar.
+    """
+    if host not in _LOOPBACK_HOSTS and not admin_password:
+        return (
+            "GUVENLIK: ADMIN_PASSWORD BOS ve sunucu agdan erisilebilir bind "
+            f"({host}) ile baslatiliyor -- tum state-degistiren rotalar "
+            "(mail-ayar dahil) KIMLIKSIZ erisilebilir. ADMIN_PASSWORD ortam "
+            "degiskenini ayarlayin veya host'u 127.0.0.1'de birakin."
+        )
+    return None
+
+
+def _startup_health_report(app: Flask, host: str = "127.0.0.1") -> None:
     """Sunucu acilirken konsola net 'demo hazir mi' raporu bas (canli probe).
 
     Demo'dan ONCE Ollama kapaliysa/model cekilmemisse burada gorunur — demo
     sirasinda surpriz olmaz. Probe asla baslatmayi engellemez (sadece uyarir).
     """
+    _admin_pw = os.environ.get("ADMIN_PASSWORD", "")
+    _warn = _fail_open_admin_warning(host, _admin_pw)
+    if _warn:
+        logger.warning(_warn)
+        print("!" * 60)
+        print(f"  {_warn}")
+        print("!" * 60)
+
     llm = app.config.get("LLM_COMPONENTS")
     print("-" * 60)
     if not llm:
@@ -2806,10 +2926,13 @@ def _main() -> None:
             pass
     logging.basicConfig(level=logging.INFO)
     app = create_app(testing=False, llm_enabled=True)
-    _startup_health_report(app)
+    # FLASK_HOST varsayilan 127.0.0.1 (loopback) -- LAN'a acmak icin bilincli
+    # env ayari gerekir; FIX 3 bu durumda ADMIN_PASSWORD bossa uyarir.
+    _host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    _startup_health_report(app, host=_host)
     # threaded=True: asenkron otonom job thread'i koşarken polling istekleri
     # (/otonom/durum) ve diger rotalar bloke olmadan islenebilsin.
-    app.run(host="127.0.0.1", port=8765, debug=False, threaded=True)
+    app.run(host=_host, port=8765, debug=False, threaded=True)
 
 
 if __name__ == "__main__":
