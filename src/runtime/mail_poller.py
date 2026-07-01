@@ -228,6 +228,7 @@ class MailPoller:
         on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
         now: Optional[Callable[[], float]] = None,
         pending_store: Any = None,
+        inflight_lock: Optional[threading.Lock] = None,
     ) -> None:
         self._make_source = make_source
         self._parser_role = parser_role
@@ -242,10 +243,20 @@ class MailPoller:
         # kosar. Boylece restart'ta join/clear gerekmez ve "ghost thread" olusmaz.
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        # _lock: start/stop/restart state-machine + sayac (runs/total_processed)
-        # atomikligi. restart kisa tutulur (eski thread'i BEKLEMEZ; uzun pipeline
-        # bloke etmesin), bu yuzden re-entrant degil; Lock yeterli.
+        # _lock: start/stop/restart state-machine + tum PollState yazimlari
+        # (runs/total_processed/last_error/last_processed/last_poll_ts) atomikligi.
+        # restart kisa tutulur (eski thread'i BEKLEMEZ; uzun pipeline bloke
+        # etmesin), bu yuzden re-entrant degil; Lock yeterli.
         self._lock = threading.Lock()
+        # _inflight_lock (FIX 3): ayni anda YALNIZ bir tarama (fetch->pipeline->
+        # mark) yurusun. restart() eski thread'i JOIN etmeden yeni thread
+        # baslattigindan (UI kilitlenmesin), eski tur uzun NFV pipeline icindeyken
+        # yeni thread 'ilk-tarama-hemen' ile ayni maili PARALEL fetch edebilirdi
+        # (kayit yalniz pipeline sonunda -> ayni UID iki thread'de). Non-reentrant
+        # + acquire(blocking=False): kilit tutuluysa tarama ATLANIR (bloklamaz ->
+        # UI donmaz, join yok -> deadlock yok). app manuel /otonom ile ORTAK kilit
+        # enjekte eder (sync + async job + poller ayni mailbox'a paralel girmez).
+        self._inflight_lock = inflight_lock or threading.Lock()
 
     # ------------------------------------------------------------------
     def poll_once(self) -> Optional[Dict[str, Any]]:
@@ -254,6 +265,15 @@ class MailPoller:
             self.state.runs += 1
             if self._now is not None:
                 self.state.last_poll_ts = self._now()
+        # FIX 3: inflight-lock. Onceki tarama (restart oncesi eski thread) hala
+        # fetch/pipeline icindeyse yeni tarama ayni maili PARALEL cekmesin.
+        # Non-blocking: kilit tutuluysa bu turu ATLA (bloklama/join yok -> UI
+        # donmaz, deadlock yok). Eski tur bitince kilit serbest kalir.
+        if not self._inflight_lock.acquire(blocking=False):
+            logger.info(
+                "mail_poller: onceki tarama surerken yeni tarama atlandi (inflight-lock)"
+            )
+            return None
         try:
             source = self._make_source()
             result = process_inbox_once(
@@ -263,7 +283,8 @@ class MailPoller:
                 persist_root=self._persist_root,
                 pending_store=self._pending_store,
             )
-            self.state.last_error = None
+            with self._lock:
+                self.state.last_error = None
             if result is not None:
                 n = len(result.get("ranked_orders", [])) or len(
                     result.get("nesting_results", {})
@@ -277,12 +298,16 @@ class MailPoller:
                     except Exception as exc:
                         logger.warning("mail_poller: on_result hatasi: %s", exc)
             else:
-                self.state.last_processed = 0
+                with self._lock:
+                    self.state.last_processed = 0
             return result
         except Exception as exc:
-            self.state.last_error = str(exc)
+            with self._lock:
+                self.state.last_error = str(exc)
             logger.warning("mail_poller: poll_once hatasi: %s", exc)
             return None
+        finally:
+            self._inflight_lock.release()
 
     # ------------------------------------------------------------------
     def _loop(self, stop_ev: threading.Event) -> None:

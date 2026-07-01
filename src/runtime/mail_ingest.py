@@ -841,15 +841,33 @@ def ingest_order(
         # --- Deterministik yol: Excel/CSV ---
         ext = "." + structured_att.dosya_adi.rsplit(".", 1)[-1].lower()
         parts = parse_order_attachment(structured_att.dosya_adi, structured_att.icerik)
-        if not parts:
-            logger.warning(
-                "ingest_order: ek parse edildi ama parca listesi bos — %s",
-                structured_att.dosya_adi,
-            )
         source_tag = "attachment_excel" if ext in (".xlsx", ".xls", ".xlsm") else "attachment_csv"
         # Fix-7: deterministik order_id — uuid4 yerine sha256(message_id + dosya_adi)
         _det_raw = (mail.message_id + structured_att.dosya_adi).encode("utf-8")
         _det_hex = hashlib.sha256(_det_raw).hexdigest()[:8].upper()
+        if not parts:
+            # FIX 1: parca uretilemedi = KALICI-YAPISAL hata (taninmayan baslik /
+            # bos dosya / desteklenmeyen icerik). ZIP-STL 'skipped_no_qty' yolu ile
+            # SIMETRIK: sessizce parts=[] dondurup pipeline'i "Gecerli siparis yok"
+            # ile patlatma. Poller bunu GECICI hata sanip mark_processed CAGIRMAZ
+            # -> ayni mail her turda sonsuza yeniden islenir (veri kaybi, operatore
+            # gorunmez). needs_review ile isaretle: mail mark_processed ile KAPANIR
+            # + pending_store/operator gorunurlugune duser (adet-gir sayfasi).
+            logger.warning(
+                "ingest_order: ek parse edildi ama parca listesi bos "
+                "(kalici-yapisal hata) — operator incelemesine alindi: %s",
+                structured_att.dosya_adi,
+            )
+            return {
+                "needs_review": True,
+                "review_reason": "attachment_unparseable",
+                "order_id": f"ATT-{_det_hex}",
+                "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+                "parse_source": source_tag + "_incomplete",
+                "stl_names": [],
+                "_stl_map": {},
+                "parts": [],
+            }
         return {
             "order_id": f"ATT-{_det_hex}",
             "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
