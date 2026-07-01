@@ -95,3 +95,22 @@ def test_buyuk_kucuk_harf_adet():
 
 def test_determinizm():
     assert parse_quantities(GERCEK_MAIL) == parse_quantities(GERCEK_MAIL)
+
+
+# ---------------------------------------------------------------------------
+# Fix-1 (CRITICAL): asiri buyuk adet MAX_QTY'e clamp'lenir (OOM korumasi)
+# ---------------------------------------------------------------------------
+
+
+def test_absurd_qty_clamped_to_max_qty():
+    """'bomba 999999999 adet' gibi mail govdesi MAX_QTY'e clamp'lenir."""
+    from src.runtime.quantity_text_parser import MAX_QTY
+    q = parse_quantities("bomba 999999999 adet")
+    assert q["bomba"] == MAX_QTY
+    assert q["bomba"] < 999999999
+
+
+def test_normal_qty_unaffected_by_clamp():
+    """MAX_QTY altindaki gercekci adetler clamp'lenmeden aynen gecer (gercek mail: 22)."""
+    q = parse_quantities("braket 22 adet")
+    assert q["braket"] == 22

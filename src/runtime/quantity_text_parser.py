@@ -27,12 +27,20 @@ ayni dict.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 # Satir: "<ad> <sayi> adet"  — ad bosluk icerebilir (non-greedy), sayi tam,
 # "adet" kelimesi zorunlu (TR siparis dili). Sonrasi serbest (nokta vs).
 _QTY_LINE = re.compile(r"^(?P<ad>.+?)\s+(?P<adet>\d+)\s*adet\b", re.IGNORECASE)
+
+# Fix-1 (CRITICAL): mail govdesinde "<ad> 999999999 adet" gibi sinirsiz bir
+# sayi pipeline'i OOM'a dusurebilirdi. bkz. src/llm/roles/parser.py MAX_QTY
+# (ayni deger, ayni gerekce).
+MAX_QTY = 5000
 
 
 def parse_quantities(text: str) -> Dict[str, int]:
@@ -55,5 +63,12 @@ def parse_quantities(text: str) -> Dict[str, int]:
         adet = int(m.group("adet"))
         if not ad or adet <= 0:
             continue
+        if adet > MAX_QTY:
+            logger.warning(
+                "quantity_text_parser: '%s' adeti asiri buyuk (%d, izin verilen "
+                "ust sinir %d) — clamp'lendi.",
+                ad, adet, MAX_QTY,
+            )
+            adet = MAX_QTY
         result[ad] = result.get(ad, 0) + adet
     return result

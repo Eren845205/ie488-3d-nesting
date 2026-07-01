@@ -45,6 +45,10 @@ _QTY_ALIASES = {"adet", "miktar", "qty", "quantity", "adet_no", "count"}
 
 _EKSIK_BOYUT = 1.0   # mm — eksik boyut icin placeholder
 MAX_ROWS = 10_000    # Fix-2: xlsx/csv satir sayisi ust siniri (zip-bomb / asiri bellek)
+# Fix-1 (CRITICAL): 'adet' sutunu sinirsizdi -- bozuk/kotu niyetli ek dosyasi
+# asiri buyuk adet ile pipeline'i OOM'a dusurebilirdi. bkz. src/llm/roles/parser.py
+# MAX_QTY (ayni deger, ayni gerekce — endustriyel siparislerde gercekci ust sinir).
+MAX_QTY = 5000
 
 
 def _resolve_headers(raw_headers: List[str]) -> Dict[str, str]:
@@ -78,11 +82,22 @@ def _safe_float(val: Any, default: float = _EKSIK_BOYUT) -> float:
 
 
 def _safe_int(val: Any, default: int = 1) -> int:
-    """Degerden int uret; basarisiz olursa default dondur."""
+    """Degerden int uret; basarisiz olursa default dondur.
+
+    Fix-1: MAX_QTY ustundeki degerler clamp'lenir (asiri buyuk adet -> OOM riski).
+    """
     try:
-        return int(float(val))
+        v = int(float(val))
     except (TypeError, ValueError):
         return default
+    if v > MAX_QTY:
+        logger.warning(
+            "order_attachment_parser: adet asiri buyuk (%d, izin verilen ust "
+            "sinir %d) — clamp'lendi.",
+            v, MAX_QTY,
+        )
+        return MAX_QTY
+    return v
 
 
 def _rows_to_parts(

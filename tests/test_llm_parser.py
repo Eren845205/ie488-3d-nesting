@@ -304,6 +304,61 @@ def test_parsed_to_order_missing_dimensions_uses_placeholder():
 
 
 # ---------------------------------------------------------------------------
+# Fix-1 (CRITICAL): parsed_to_order — asiri buyuk 'adet' MAX_QTY'e clamp'lenir
+# ---------------------------------------------------------------------------
+
+
+def test_parsed_to_order_absurd_qty_clamped_to_max_qty():
+    """'999999999 adet' gibi asiri buyuk deger MAX_QTY'e clamp'lenir (OOM korumasi)."""
+    from src.llm.roles.parser import MAX_QTY
+
+    data = {
+        "musteri": {"ad": "Kotu Niyetli", "iletisim": None},
+        "termin": {"tarih": None, "ham_ifade": None},
+        "parcalar": [
+            {
+                "ad": "parca_bomba",
+                "adet": 999999999,
+                "boyut_mm": [10.0, 10.0, 10.0],
+                "agirlik_kg": None,
+                "kaynak": None,
+                "guven": None,
+            }
+        ],
+        "eksik_alanlar": [],
+        "notlar": None,
+        "injection_suphesi": False,
+    }
+    order = parsed_to_order(data)
+
+    assert order["parts"][0]["qty"] == MAX_QTY
+    assert order["parts"][0]["qty"] < 999999999
+
+
+def test_parsed_to_order_normal_qty_unaffected_by_clamp():
+    """MAX_QTY altindaki gercekci adetler clamp'lenmeden aynen gecer."""
+    data = {
+        "musteri": {"ad": "Ford", "iletisim": None},
+        "termin": {"tarih": None, "ham_ifade": None},
+        "parcalar": [
+            {
+                "ad": "braket",
+                "adet": 22,
+                "boyut_mm": [10.0, 10.0, 10.0],
+                "agirlik_kg": None,
+                "kaynak": None,
+                "guven": None,
+            }
+        ],
+        "eksik_alanlar": [],
+        "notlar": None,
+        "injection_suphesi": False,
+    }
+    order = parsed_to_order(data)
+    assert order["parts"][0]["qty"] == 22
+
+
+# ---------------------------------------------------------------------------
 # Test 6: parsed_to_order — musteri.ad None ise customer="Bilinmiyor"
 # ---------------------------------------------------------------------------
 

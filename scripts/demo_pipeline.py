@@ -997,6 +997,14 @@ def _run_batches_parallel(payloads: List[Dict[str, Any]]) -> Dict[str, Dict[str,
 # Ana pipeline
 # ---------------------------------------------------------------------------
 
+# Fix-1 (CRITICAL): siparis basina toplam parca adedi (total_qty) sinirsizdi.
+# parser/attachment katmanlari parca-basi adedi clamp'ler (MAX_QTY=5000) ama
+# cok sayida parca satiri toplamda yine asiri buyuyebilir (orn. 30 parca x
+# 5000 = 150.000). Kapasite/nesting motoru bu olcekte OOM'a dusebilir; kabul-
+# oncesi guard — mevcut "total_qty<=0" atlama desenininin simetrigi.
+MAX_ORDER_TOTAL_QTY = 100_000
+
+
 def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     """Sipariş havuzu → çizelgeleme → nesting → fiyatlama → rapor.
 
@@ -1048,6 +1056,18 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         # Order.validate total_quantity>0 ister.) Boyle siparis atlanir, gecerli
         # siparisler islenir; durum skipped_orders + warnings'e yazilir.
         if not parts_list or total_qty <= 0:
+            skipped_orders.append(od.get("order_id", "?"))
+            continue
+
+        # Fix-1 (CRITICAL): asiri buyuk toplam adet -> OOM riski. Simetrik
+        # atlama: gecerli siparisler islenmeye devam eder, bu siparis
+        # skipped_orders'da sessizce degil GORUNUR sekilde atlanir.
+        if total_qty > MAX_ORDER_TOTAL_QTY:
+            logger.warning(
+                "run_pipeline: siparis %s toplam adet asiri buyuk (%d > "
+                "MAX_ORDER_TOTAL_QTY=%d) — atlandi.",
+                od.get("order_id", "?"), total_qty, MAX_ORDER_TOTAL_QTY,
+            )
             skipped_orders.append(od.get("order_id", "?"))
             continue
 

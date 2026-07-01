@@ -146,6 +146,72 @@ def test_validate_additional_properties_invalid():
 
 
 # ---------------------------------------------------------------------------
+# Fix-3 (HIGH): jsonschema opsiyonel bagimlilik -- eksikse GORUNUR uyari
+# ---------------------------------------------------------------------------
+
+
+def test_jsonschema_available_reflects_import_flag():
+    """jsonschema_available() modulun ic _HAS_JSONSCHEMA bayragini yansitmali."""
+    from src.llm import structured as structured_module
+    assert structured_module.jsonschema_available() == structured_module._HAS_JSONSCHEMA
+
+
+def test_jsonschema_installed_in_this_env():
+    """Bu gelistirme ortaminda jsonschema kurulu olmali (requirements.txt'e
+    eklendi) -- katı dogrulama gercekten aktif."""
+    from src.llm.structured import jsonschema_available
+    assert jsonschema_available() is True
+
+
+def test_missing_jsonschema_logs_visible_warning(monkeypatch, caplog):
+    """jsonschema import edilemezse (ImportError) boot-zamaninda GORUNUR bir
+    uyari (logger.warning) verilmeli -- sessiz zayiflama olmamali.
+
+    NOT: modul importlib.reload() EDILMEZ — reload, bu modulden once dataclass
+    import etmis diger test modullerinde isinstance() kontrollerini kirar
+    (sinif kimligi degisir). Bunun yerine ImportError-tespit mantigi ayri bir
+    fonksiyona (_detect_jsonschema) cikarildi; sys.modules['jsonschema']=None
+    hilesiyle o fonksiyon DOGRUDAN cagrilir (modul yeniden yuklenmez).
+    """
+    import sys
+    from src.llm import structured as structured_module
+
+    monkeypatch.setitem(sys.modules, "jsonschema", None)
+    with caplog.at_level("WARNING"):
+        sonuc = structured_module._detect_jsonschema()
+
+    assert sonuc is False
+    assert any(
+        "jsonschema" in rec.message.lower() for rec in caplog.records
+    ), "jsonschema eksikligi icin GORUNUR log uyarisi bulunamadi"
+
+
+def test_missing_jsonschema_prints_to_stderr(monkeypatch, capsys):
+    """GORUNURLUK garantisi: logging config'i susturulmus olsa bile uyari
+    stderr'e de yazilir (print ile), boot sirasinda gozden kacmaz."""
+    import sys
+    from src.llm import structured as structured_module
+
+    monkeypatch.setitem(sys.modules, "jsonschema", None)
+    sonuc = structured_module._detect_jsonschema()
+
+    assert sonuc is False
+    captured = capsys.readouterr()
+    assert "jsonschema" in captured.err.lower()
+
+
+def test_detect_jsonschema_succeeds_when_installed():
+    """jsonschema gercekten kurulu oldugunda _detect_jsonschema True doner ve
+    modul-seviyesi 'jsonschema' adini modul global namespace'ine baglar."""
+    from src.llm import structured as structured_module
+
+    sonuc = structured_module._detect_jsonschema()
+
+    assert sonuc is True
+    assert hasattr(structured_module, "jsonschema")
+
+
+# ---------------------------------------------------------------------------
 # run_structured_chain
 # ---------------------------------------------------------------------------
 

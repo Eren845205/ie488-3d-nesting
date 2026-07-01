@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -33,13 +34,50 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # jsonschema opsiyonel import
 # ---------------------------------------------------------------------------
+#
+# Fix-3 (HIGH): jsonschema yoksa _minimal_validate SESSIZCE yalniz alan
+# VARLIGINA bakar, tip/format/enum kisitlarini dogrulamaz — bu sessiz bir
+# guvenlik zayiflamasidir. Boot/ilk-kullanimda GORUNUR uyari (logger.warning
+# + stderr print, logging config'inden bagimsiz olarak) verilir; jsonschema
+# artik requirements.txt'de listelidir.
+#
+# NOT (test edilebilirlik): tespit ayri bir fonksiyona (_detect_jsonschema)
+# cikarildi ki testler modulu importlib.reload() ETMEDEN ImportError dalini
+# dogrudan cagirabilsin — reload, bu modulden once dataclass import etmis
+# diger test modullerinde isinstance() kontrollerini kirar (sinif kimligi
+# degisir), bu yuzden kacinilmalidir.
 
-try:
-    import jsonschema
-    _HAS_JSONSCHEMA = True
-except ImportError:
-    _HAS_JSONSCHEMA = False
-    logger.warning("jsonschema yuklu degil — semasiz dogrulama modunda.")
+_JSONSCHEMA_MISSING_WARNING = (
+    "jsonschema paketi yuklu degil -- yapisal (tip/format/enum) dogrulama "
+    "ZAYIFLADI: _minimal_validate yalniz zorunlu-alan VARLIGINI kontrol eder, "
+    "TIP KISITLARINI dogrulamaz. Uretimde 'pip install jsonschema' ile kurun "
+    "(requirements.txt icinde listelidir)."
+)
+
+
+def _detect_jsonschema() -> bool:
+    """jsonschema import edilebilir mi kontrol eder; edilemezse GORUNUR uyari verir.
+
+    Basarili: modul-seviyesi 'jsonschema' adini baglar, True doner.
+    Basarisiz (ImportError): logger.warning + stderr print (logging config'inden
+    bagimsiz garanti gorunurluk), False doner. Sessiz zayiflama YOK.
+    """
+    try:
+        import jsonschema as _jsonschema_mod
+    except ImportError:
+        logger.warning(_JSONSCHEMA_MISSING_WARNING)
+        print(f"[UYARI] {_JSONSCHEMA_MISSING_WARNING}", file=sys.stderr)
+        return False
+    globals()["jsonschema"] = _jsonschema_mod
+    return True
+
+
+_HAS_JSONSCHEMA = _detect_jsonschema()
+
+
+def jsonschema_available() -> bool:
+    """jsonschema paketinin yuklu olup olmadigini dondurur (boot-check/test icin)."""
+    return _HAS_JSONSCHEMA
 
 
 # ---------------------------------------------------------------------------

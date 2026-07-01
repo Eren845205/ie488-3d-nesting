@@ -370,6 +370,67 @@ class TestEmptyOrderRobustness:
 
 
 # ---------------------------------------------------------------------------
+# Fix-1 (CRITICAL): siparis basina asiri buyuk toplam adet -> OOM koruma guard'i
+# ---------------------------------------------------------------------------
+
+
+class TestAbsurdQtyOrderRobustness:
+    """Bir siparisin toplam parca adedi MAX_ORDER_TOTAL_QTY'i asarsa siparis
+    tum partiyi cokertmez — atlanir, skipped_orders'da GORUNUR (mevcut bos-
+    siparis atlama desenininin simetrigi).
+
+    NOT: gercek MAX_ORDER_TOTAL_QTY (100_000) ile pipeline'i UCTAN UCA kosmak
+    testi asiri yavaslatir/OOM riski tasir (bu da tam bu Fix'in onledigi sey).
+    Bu yuzden testler modul sabitini kucuk bir degere monkeypatch'ler; boylece
+    gercek nesting/tuner asamalari kucuk, hizli adetlerle kosar.
+    """
+
+    def _scenario_with_qty(self, qty):
+        sc = copy.deepcopy(SMOKE_SCENARIO)
+        sc["orders"].append({
+            "order_id": "BOMBA-QTY",
+            "customer": "KotuNiyetli",
+            "deadline": "2026-07-20",
+            "priority_class": 3,
+            "parts": [
+                {"id": "pb1", "name": "bomba", "qty": qty,
+                 "source": "box", "width_mm": 10.0, "depth_mm": 10.0, "height_mm": 10.0},
+            ],
+        })
+        return sc
+
+    def test_absurd_qty_order_does_not_crash(self, monkeypatch):
+        """Limiti asan siparis varken pipeline gecerlileri isler, exception atmaz."""
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "MAX_ORDER_TOTAL_QTY", 5)
+        result = dp.run_pipeline(self._scenario_with_qty(6))
+        assert result is not None
+        ids = {o.order_id for o in result["ranked_orders"]}
+        assert "SMOKE-A" in ids and "SMOKE-B" in ids
+        assert "BOMBA-QTY" not in ids
+
+    def test_absurd_qty_order_surfaced_in_skipped(self, monkeypatch):
+        """Atlanan siparis sessizce dusurulmez — skipped_orders'da gorunur."""
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "MAX_ORDER_TOTAL_QTY", 5)
+        result = dp.run_pipeline(self._scenario_with_qty(6))
+        assert "BOMBA-QTY" in result["skipped_orders"]
+
+    def test_qty_at_limit_is_not_skipped(self, monkeypatch):
+        """Tam sinirda olan siparis atlanmaz (simetrik: '>' kullanilir, '>=' degil)."""
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "MAX_ORDER_TOTAL_QTY", 5)
+        result = dp.run_pipeline(self._scenario_with_qty(5))
+        assert "BOMBA-QTY" not in result["skipped_orders"]
+
+    def test_default_max_order_total_qty_is_reasonable(self):
+        """Modul sabiti tekli-yuzlu gercekci adetlerin (bkz. gercek mail: en fazla
+        22) USTUNDE ama sinirsiz DEGIL — asiri buyuk deger yakalanir."""
+        from scripts.demo_pipeline import MAX_ORDER_TOTAL_QTY
+        assert 0 < MAX_ORDER_TOTAL_QTY < 999_999_999
+
+
+# ---------------------------------------------------------------------------
 # Parti-paralel nesting: paralel == sıralı (determinizm) + gerçekten paralel
 # ---------------------------------------------------------------------------
 

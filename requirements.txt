@@ -12,5 +12,6 @@ fast-simplification
 pillow
 pytest
 flask-limiter
+jsonschema
 # sunum üretimi (opsiyonel)
 python-pptx

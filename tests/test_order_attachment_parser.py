@@ -257,6 +257,42 @@ class TestFlexibleHeaderMapping(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# C2) Fix-1 (CRITICAL): asiri buyuk adet MAX_QTY'e clamp'lenir
+# ---------------------------------------------------------------------------
+
+class TestAbsurdQtyClamped(unittest.TestCase):
+
+    def _parse_xlsx(self, headers, rows):
+        from src.runtime.order_attachment_parser import parse_order_attachment
+        xbytes = _make_xlsx_bytes(rows, headers)
+        return parse_order_attachment("siparis.xlsx", xbytes)
+
+    def test_xlsx_absurd_qty_clamped_to_max_qty(self):
+        """'999999999 adet' xlsx ekinden gelirse MAX_QTY'e clamp'lenir."""
+        from src.runtime.order_attachment_parser import MAX_QTY
+        headers = ["name", "width_mm", "depth_mm", "height_mm", "qty"]
+        rows = [{"name": "bomba", "width_mm": 10, "depth_mm": 10, "height_mm": 10,
+                  "qty": 999999999}]
+        result = self._parse_xlsx(headers, rows)
+        self.assertEqual(result[0]["qty"], MAX_QTY)
+        self.assertLess(result[0]["qty"], 999999999)
+
+    def test_csv_absurd_qty_clamped_to_max_qty(self):
+        """'999999999 adet' csv ekinden gelirse MAX_QTY'e clamp'lenir."""
+        from src.runtime.order_attachment_parser import parse_order_attachment, MAX_QTY
+        csv_text = "name,width_mm,depth_mm,height_mm,qty\nbomba,10,10,10,999999999\n"
+        result = parse_order_attachment("bomba.csv", csv_text.encode("utf-8"))
+        self.assertEqual(result[0]["qty"], MAX_QTY)
+
+    def test_normal_qty_unaffected_by_clamp(self):
+        """MAX_QTY altindaki gercekci adetler clamp'lenmeden aynen gecer."""
+        headers = ["name", "width_mm", "depth_mm", "height_mm", "qty"]
+        rows = [{"name": "p1", "width_mm": 10, "depth_mm": 10, "height_mm": 10, "qty": 22}]
+        result = self._parse_xlsx(headers, rows)
+        self.assertEqual(result[0]["qty"], 22)
+
+
+# ---------------------------------------------------------------------------
 # D) Bilinmeyen format -> bos + uyari
 # ---------------------------------------------------------------------------
 

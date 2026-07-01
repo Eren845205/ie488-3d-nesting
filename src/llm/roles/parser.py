@@ -87,6 +87,12 @@ _BOYUT_EKSIK_DEGER = 1.0  # mm cinsinden placeholder
 # Parcalarin hicbiri konteyneri asamayacagindan 5000 mm genis bir guvensizlik tampon.
 MAX_BOYUT_MM = 5000.0
 
+# Fix-1 (CRITICAL): 'adet' alaninin ust siniri yoktu -- kotu niyetli/bozuk mail
+# ("999999999 adet") pipeline'i OOM'a dusurebilirdi. Gercekci uretim siparisleri
+# tekli-yuzlu adetler tasir (bkz. tests/test_quantity_text_parser.py gercek mail
+# ornegi en fazla 22); 5000 genis ama sinirli bir guvensizlik tamponu.
+MAX_QTY = 5000
+
 
 def parsed_to_order(
     data: Dict[str, Any],
@@ -147,6 +153,28 @@ def parsed_to_order(
             return _BOYUT_EKSIK_DEGER
         return v
 
+    def _safe_qty(raw_val: Any, alan_adi: str) -> int:
+        """raw_val'i int'e cevirir; MAX_QTY ile clamp'ler (Fix-1: sinirsiz adet -> OOM)."""
+        try:
+            v = int(raw_val) if raw_val else 1
+        except (ValueError, TypeError):
+            logger.warning(
+                "parsed_to_order: %s int'e donusturulemedi (%r) — varsayilan 1 kullanildi.",
+                alan_adi, raw_val,
+            )
+            return 1
+        if v <= 0:
+            return 1
+        if v > MAX_QTY:
+            logger.warning(
+                "parsed_to_order: %s asiri buyuk (%d, izin verilen ust sinir %d) "
+                "— clamp'lendi.",
+                alan_adi, v, MAX_QTY,
+            )
+            eksik_alanlar_boyut.append(alan_adi)
+            return MAX_QTY
+        return v
+
     for i, p in enumerate(parcalar):
         boyut = p.get("boyut_mm") or []
         en = _safe_boyut(boyut[0], f"parcalar[{i}].boyut_mm[0]") if len(boyut) > 0 else _BOYUT_EKSIK_DEGER
@@ -155,7 +183,7 @@ def parsed_to_order(
         parts.append({
             "id": f"parsed_{i+1}",
             "name": (p.get("ad") or f"parca_{i+1}").strip(),
-            "qty": int(p.get("adet") or 1),
+            "qty": _safe_qty(p.get("adet"), f"parcalar[{i}].adet"),
             "source": "box",
             "width_mm": en,
             "depth_mm": boy,

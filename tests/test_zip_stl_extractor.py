@@ -204,6 +204,98 @@ class TestBoyutLimiti:
 
 
 # ---------------------------------------------------------------------------
+# Fix-2 (HIGH): decompress-ONCESI on-eleme + chunk'li okuma (zip-bomb)
+# ---------------------------------------------------------------------------
+
+class TestZipBombOnEleme:
+    """Tek girisli yuksek-oranli zip (zip-bomb) icin: (a) ZipInfo'nun bildirdigi
+    acilmis boyut (file_size) kalan butceyi zaten asiyorsa girisi HIC acmadan/
+    okumadan reddet; (b) gecen girisler chunk'li okunur (tek `.read()` cagrisiyla
+    tum icerik bellege alinmaz)."""
+
+    def test_declared_size_preempts_any_read_for_oversized_single_entry(self, monkeypatch):
+        """Tek giris zaten limiti asiyorsa (bilgi.file_size > butce), o girisin
+        icerigi ne zf.read (tum-dosya) ne de akis (.read chunk'lari) ile
+        okunur — pre-check decompress'ten ONCE devreye girer.
+
+        NOT: zipfile.ZipFile(...) constructor'i kendi ic dogrulamasi icin
+        (data-descriptor tespiti) SON girisi zf.open() ile acabilir — bu
+        zipfile'in KENDI davranisidir, extract_stls'in kontrolu disinda.
+        Bu yuzden asil kanit: acilan akistan HICBIR BAYT OKUNMAMASI (ne
+        ZipFile.read ne de ZipExtFile.read cagrilir).
+        """
+        read_calls = []
+        stream_read_calls = []
+        orig_read = zipfile.ZipFile.read
+        orig_stream_read = zipfile.ZipExtFile.read
+
+        def _tracking_read(self, *a, **kw):
+            read_calls.append(a)
+            return orig_read(self, *a, **kw)
+
+        def _tracking_stream_read(self, *a, **kw):
+            stream_read_calls.append(a)
+            return orig_stream_read(self, *a, **kw)
+
+        monkeypatch.setattr(zipfile.ZipFile, "read", _tracking_read)
+        monkeypatch.setattr(zipfile.ZipExtFile, "read", _tracking_stream_read)
+
+        buyuk_stl = b"x" * (2 * 1024 * 1024)  # 2 MB
+        zip_bytes = _make_zip({"buyuk.stl": buyuk_stl})
+
+        with pytest.raises(ValueError, match="boyut"):
+            extract_stls(zip_bytes, max_total_mb=1.0)
+
+        assert not read_calls, (
+            "declared file_size zaten limiti asiyordu; ZipFile.read (tum-dosya) "
+            f"hic cagrilmamaliydi (read_calls={read_calls})"
+        )
+        assert not stream_read_calls, (
+            "declared file_size zaten limiti asiyordu; akistan HICBIR bayt "
+            f"okunmamaliydi (stream_read_calls={stream_read_calls})"
+        )
+
+    def test_second_entry_preempted_by_running_total(self):
+        """Ilk giris butceyi doldurursa, ikinci giris (kendi basina makul boyutta
+        olsa bile) acilan-toplam ile birlikte asimi tetikler ve okunmadan reddedilir."""
+        bir_mb = b"x" * (1024 * 1024)
+        zip_bytes = _make_zip({"a.stl": bir_mb, "b.stl": bir_mb})
+        # max=1.5MB: ilk giris (1MB) gecer, ikinci giris (1MB) toplami 2MB'a
+        # cikarir -> 1.5MB siniri asilir.
+        with pytest.raises(ValueError, match="boyut"):
+            extract_stls(zip_bytes, max_total_mb=1.5)
+
+    def test_chunked_reading_no_single_full_file_read_call(self, monkeypatch):
+        """Gecen (limit-alti) giris chunk'lar halinde okunur; ZipExtFile.read
+        parametresiz/negatif (tum-dosyayi-tek-seferde) cagrilmaz."""
+        call_sizes = []
+        orig_read = zipfile.ZipExtFile.read
+
+        def _tracking_read(self, n=-1, *a, **kw):
+            call_sizes.append(n)
+            return orig_read(self, n, *a, **kw)
+
+        monkeypatch.setattr(zipfile.ZipExtFile, "read", _tracking_read)
+
+        zip_bytes = _make_zip({"a.stl": b"solid a\nendsolid a" * 100})
+        sonuc = extract_stls(zip_bytes)
+
+        assert "a" in sonuc
+        assert call_sizes, "ZipExtFile.read hic cagrilmadi"
+        assert all(n is not None and n > 0 for n in call_sizes), (
+            f"tum-dosya-tek-seferde okuma tespit edildi (chunk boyutu verilmemis): {call_sizes}"
+        )
+
+    def test_multi_chunk_entry_still_extracted_correctly(self):
+        """Tek chunk sinirindan (1 MB) buyuk ama limit-alti bir giris dogru
+        sekilde parca-parca birlestirilip donmeli (bytes bozulmamali)."""
+        icerik = bytes((i % 256) for i in range(1024 * 1024 + 777))  # ~1MB + fazla
+        zip_bytes = _make_zip({"coklu_chunk.stl": icerik})
+        sonuc = extract_stls(zip_bytes, max_total_mb=5.0)
+        assert sonuc["coklu_chunk"] == icerik
+
+
+# ---------------------------------------------------------------------------
 # Test 6: Bozuk byte (b"not a zip") -> bos dict, firlatmaz
 # ---------------------------------------------------------------------------
 

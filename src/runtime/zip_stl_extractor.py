@@ -31,6 +31,13 @@ import zipfile
 
 logger = logging.getLogger(__name__)
 
+# Fix-2 (HIGH): tek-girisli yuksek-oranli zip (zip-bomb) korumasi. Once ZipInfo'nun
+# bildirdigi acilmis boyutla (bilgi.file_size) on-eleme yapilir (hic decompress
+# edilmeden reddedilir); gecerse okuma bu boyutta chunk'lar halinde yapilir ve her
+# chunk sonrasi biriken toplam kontrol edilir (bildirilen boyut bozuk/yalan olsa
+# bile akis erken kesilir).
+_CHUNK_SIZE = 1 << 20  # 1 MB
+
 
 def extract_stls(
     zip_bytes: bytes,
@@ -104,18 +111,36 @@ def extract_stls(
                         bilgi.filename,
                     )
 
-                # Dosyayi oku
-                icerik = zf.read(bilgi.filename)
-
-                # Boyut bombasi kontrolu
-                toplam_bayt += len(icerik)
-                if toplam_bayt > max_total_bytes:
+                # Fix-2 (a): decompress-ONCESI on-eleme — ZipInfo'nun bildirdigi
+                # acilmis boyut (bilgi.file_size) kalan butceyi zaten asiyorsa bu
+                # girisi HIC acma/okuma (zip-bomb: kucuk sikistirilmis boyut, dev
+                # acilmis boyut).
+                if toplam_bayt + bilgi.file_size > max_total_bytes:
                     raise ValueError(
                         f"zip_stl_extractor: acilan STL boyutu siniri asildi — "
-                        f"toplam {toplam_bayt / (1024 * 1024):.2f} MB > "
-                        f"max {max_total_mb:.2f} MB (zip-bomb korumasI)"
+                        f"tahmini toplam {(toplam_bayt + bilgi.file_size) / (1024 * 1024):.2f} MB > "
+                        f"max {max_total_mb:.2f} MB (zip-bomb korumasI, dosya={bilgi.filename!r})"
                     )
 
+                # Fix-2 (b): gercek okuma chunk'li — bildirilen boyut yanlis/bozuk
+                # olsa bile akis sirasinda gercek bayt sayisi kontrol edilir, tek
+                # seferde tum icerik belleğe alinmaz.
+                parca_baytlari = bytearray()
+                with zf.open(bilgi) as kaynak:
+                    while True:
+                        chunk = kaynak.read(_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        parca_baytlari.extend(chunk)
+                        if toplam_bayt + len(parca_baytlari) > max_total_bytes:
+                            raise ValueError(
+                                f"zip_stl_extractor: acilan STL boyutu siniri asildi — "
+                                f"toplam {(toplam_bayt + len(parca_baytlari)) / (1024 * 1024):.2f} MB > "
+                                f"max {max_total_mb:.2f} MB (zip-bomb korumasI, dosya={bilgi.filename!r})"
+                            )
+
+                icerik = bytes(parca_baytlari)
+                toplam_bayt += len(icerik)
                 sonuc[anahtar] = icerik
 
     except zipfile.BadZipFile as hata:
