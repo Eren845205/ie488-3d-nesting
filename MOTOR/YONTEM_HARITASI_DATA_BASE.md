@@ -7,7 +7,7 @@
 >
 > **Kapsam:** yalnız **nesting motoru** (algoritma / kalite / hız). App/iş tarafı (mail otomasyon, LLM,
 > dağıtım, IP, müşteri planı) ayrı dosyada: `APP_YOL_HARITASI.md` + ilgili memory'ler.
-> **Son güncelleme:** 2026-07-02 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
+> **Son güncelleme:** 2026-07-03 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
 
 ---
 
@@ -198,12 +198,22 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN oldu:** Kalite-riski ASİMETRİK: NFV yanlış-pozitif = sadece hız (NFV≥heightmap, K-12 kalite-güvenli); heightmap yanlış-negatif (cavity→heightmap) = %14-29 kalite kaybı → ŞÜPHEDE NFV → false-negative sıfır. Ayrıştırıcı `mean_aspect_z` ORTA-bant (6-13): düşük=kutu (cavity yok), çok-yüksek=ince-plaka (düz-optimal, K-14/K-15) → ikisi de kazanmaz.
 - **Ders:** Açıklanabilir-kural (mekanizma-türevli eşik + geniş marj) az-veride (5) ML'den sağlam (overfit yok). "Kalite düşmesin" şartı YAPISAL karşılanır: heightmap yalnız NFV'nin zaten kazanmadığı durumda. İleride telemetri→selection/ ML hook.
 
+#### [K-17] Pozisyon-koruyan FINE z-kompaksiyon (kuantizasyon vergisi tahsilatı)
+- **Durum:** ✅ GO (probe; üretime BAĞLANMADI — bekliyor) · **Tarih:** 2026-07-03 · **Kanıt:** `scripts/c1_fine_zcompact.py`
+- **Ne:** NFV @2.0mm kazanan layout'un pozisyonları korunarak kullanılan (tip,oi)'ler 0.5mm'de yeniden voxelize edilir (margin mm-eşdeğer: 1 hücre@2.0 = 4 hücre@0.5); parçalar önce ORİJİNAL z'lerine konur (alçaltma YOK), sonra settle döngüsü herkes yerleşikken teması bulana kadar oturtur + sığmayana hücre-içi xy-jitter + tavana-yakına jitter-alçaltma. FFT YOK → H-11 bellek duvarına takılmaz (~500MB); H-14 sonrası fine voxelize ekonomik (sipariş başına ~1-2dk + settle saniyeler).
+- **Sonuç:** Plan3 844→830.5 (**+%1.6**) · Plan2 522→516 (**+%1.1**, Magics açığı %6.1→%4.9) · Plan1 116→115.5 (+%0.4). Üçü de ≥0; kazanç cavity/istif yoğunluğuyla orantılı (mekanizma-tutarlı, overfit değil). Plan2 fine tavanı = P282335 istifi TAM TEMASTA → kalan açık levha geometrisinin kendisi (rotasyon = A1, K-14 doğrulandı).
+- **NEDEN oldu:** 2.0mm hücre kuantizasyonu her istif arayüzünde (a) bir-sonraki-2mm-sınırına yuvarlama + (b) konservatif yüzey-sarmanın ~1 hücrelik şişirmesini biriktirir; fine'da oturtmak bu vergiyi geri alır. K-11 monotoniklik teoremiyle ÇELİŞMEZ (parça sökülmüyor; aynı yerleşim ince ölçekte oturtuluyor).
+- **Ders:** (1) İlk sürüm min-z sırasında ANINDA alçaltıyordu → oyuk-zengin plan3'te iç-içe parçalarda (per-kolon komşuluk ≠ min-z sırası) önce işlenen parça henüz yerleşmemiş komşunun yerine düştü (-123mm!). Yerleştir-VE-oturt ayrımı şart: alçaltma yalnız herkes yerleşikken. Cross-dataset kapısı bu hatayı yakaladı (meta-ders #2'nin en sert örneği: plan1/plan2 pozititken plan3 çökmüştü). (2) Fine örnekleme coarse'un kaçırdığı yüzeyi işaretleyebilir → "fine ⊆ coarse" varsayımı mm-uzayda garantili DEĞİL; jitter-fix gerekli.
+
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
 > ölü/doygun**. Plan2 darboğazı = ~20 büyük levha (düz yatamaz, istiflenir); numune darboğazı = ince plakalar
 > (düz zaten optimal, K-15) — **her ikisi de rotasyona kapalı, farklı sebeplerle**. Magics %6 açığı = fine
 > pitch (0.5mm) + büyük levhaların global rotasyonu (ikisi de 6GB OOM/erişilemez) → **SÜPER BİLGİSAYAR** tek
 > yol (§5 A1). NOT: A1'in küçük-N (numune) 6GB-fizibilite umudu da K-15 ile zayıfladı (numune rotasyon-kapalı).
+> **GÜNCELLEME 2026-07-03 (K-17):** "Tükendi" hükmü ALGORİTMİK kaldıraçlar içindi; H-14 (voxelize 3×)
+> KUANTİZASYON kaldıracını ekonomik yaptı — pozisyon-koruyan fine z-kompaksiyon 6GB'de **+%0.4-1.6**
+> (Plan2 522→516, açık %6.1→%4.9) tahsil ediyor. Yapısal açığın kalanı (levha rotasyonu) hâlâ A1.
 
 ### 3.2 HIZ (kaliteyi BOZMADAN — birebir/exact)
 
@@ -358,6 +368,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
+| **K-17p** | **K-17 fine z-kompaksiyonu ÜRETİME BAĞLA** (solve_nfv post-pass: fine=pitch/4, bellek pre-flight, h-iyileşmezse-coarse-korunur guard) | 6GB | Orta | **+%0.4-1.6 kalite** (ölçüldü, K-17) | Probe GO; kalite-yönü tek taraflı → default-on aday. n=12 kombinasyonu da ölçülebilir (K-05 +%1.1, H-14 sonrası maliyeti düştü). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
