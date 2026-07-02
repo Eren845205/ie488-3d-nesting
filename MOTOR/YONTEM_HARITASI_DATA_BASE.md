@@ -7,7 +7,7 @@
 >
 > **Kapsam:** yalnız **nesting motoru** (algoritma / kalite / hız). App/iş tarafı (mail otomasyon, LLM,
 > dağıtım, IP, müşteri planı) ayrı dosyada: `APP_YOL_HARITASI.md` + ilgili memory'ler.
-> **Son güncelleme:** 2026-06-30 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
+> **Son güncelleme:** 2026-07-02 · **Branch:** `m1-cavity-nfv` · **Rollback tag:** `checkpoint-2026-06-22-faz1-2`
 
 ---
 
@@ -291,11 +291,19 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN oldu:** Gereksiz tekrar voxelize; yalnız tuner/DBLF voxel_parts gerektiriyor. Voxelize hata yakalama + DBLF None-guard korundu.
 - **Ders:** **YARI çözüm** — coarse_to_fine FINE adımı (büyük parça 159s @0.5mm) DURUYOR; asıl kök pitch R6 = ayrı/riskli (§5).
 
+#### [H-14] C1 — Voxelize hızlandırma: `_surface_cells` eksen-bazlı + `_slice_voxelize` bbox-kırpma
+- **Durum:** ✅ GO (ÜRETİMDE) · **Tarih:** 2026-07-02 · **Kanıt:** `scripts/c1_voxprofile.py` (teşhis) + `scripts/c1_voxspeed.py` (prototip+kapı), `tests/test_voxelize_c1_exact.py`, `voxelize.py`
+- **Ne:** (1) Profil (meta-ders #11): P155308 @0.5mm 150s/oryantasyonun **%84'ü `_surface_cells`** (915M barycentric nokta: pts-üretim 84s + işaretleme 41.5s), %13 `contains_xy`, %3 `section_multiplane`. (2) `_surface_cells` → eksen-bazlı hesap + `out=` buffer-reuse + int32 indeks — eleman başına AYNI çarpım/toplam sırası (IEEE deterministik) = **bit-düzeyi aynı grid**; kazanç taze dev-array tahsisleri (page-fault) + int64 trafiği + reshape kopyalarının kalkması. (3) `_slice_voxelize` → poligon bbox-kırpma (bbox dışı merkez strictly-outside → contains False, maske özdeş; H-03 xy-kırpmanın 2D analoğu).
+- **Sonuç:** P155308 @0.5mm: surface 125.9→40.7s (**3.1×**), slice 25.8→8.1s (**3.2×**) → oryantasyon başına 151.6→48.8s = **3.1× uçtan uca**. Cross-dataset **9/9 birebir** (Plan2 ×2 + mail Plan1/Plan3 setleri ×4, pitch 2.0/1.0/0.5). Donmuş-referans testi kalıcı (sentetik 5 şekil × 3 pitch + chunk-sınırı + boş-grid ValueError = 33 test yeşil).
+- **NEDEN oldu:** Darboğaz FLOP değil BELLEK TRAFİĞİ/tahsisti — eski kod chunk başına ~7 taze (mk,n_bary,3) float64 array üretiyordu (malloc + page-zero); buffer-reuse bunu sıfırlar, eksen-bazlı düzen aynı tavanla 3× büyük chunk açar (daha az Python-döngü turu). bbox-kırpma da test edilen nokta sayısını poligon alanına indirir (grid alanı değil).
+- **Ders:** H-06'nın "voxelizasyon darboğaz değil" bulgusu HEIGHTMAP @kaba pitch içindi; fine 0.5mm + büyük parçada voxelize BASKIN hale geliyor — darboğaz pitch'e göre yer değiştirir, her rejimde yeniden profille. §5 C1 gerekçesi (voxelize = GPU kazancının tavanı) ile birleşince NFV GPU uçtan-uca kazancını da büyütür.
+
 > **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA NFV hız kaldıraçları TÜKENDİ (NFV zaten 3-5.5×). **2026-06-26
 > ÜRETİM gerçek-veri yolu:** Plan2 default heightmap ÇÖKÜYORDU → **OOM-chunk (H-12) çökme giderildi (birebir)** +
-> **çift-voxelize (H-13) ~2× (birebir)**. KALAN büyük-parça darboğazı = `coarse_to_fine` FINE adımı 159s/parça
-> @0.5mm pitch (**pitch R6** — tek 1mm parça → 356mm parça da 0.5mm) → AÇIK/riskli iş (§5: surface_cells hız +
-> pitch politikası, H-06 duvarı + parça-kaybı + cross-dataset). Kalan başka: bit-pack popcount RawKernel / BVH.
+> **çift-voxelize (H-13) ~2× (birebir)**. **2026-07-02: C1 voxelize hızı (H-14) 3.1× birebir KAPANDI** —
+> fine adım 159s/parça → ~50s; NFV'de paylaşılan voxelize payı küçüldüğünden GPU uçtan-uca kazancı da büyür.
+> KALAN: pitch politikası R6 (tek 1mm parça → 356mm parça da 0.5mm; H-06 duvarı + parça-kaybı riski — hâlâ
+> AÇIK/riskli) · bit-pack popcount RawKernel / BVH (marjinal).
 
 ---
 
@@ -350,7 +358,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
-| **C1** | **Büyük-parça voxelize SÜRESİ** (`_surface_cells` hızı + pitch R6, fine 0.5mm 159s/parça) | 6GB | Yüksek/RİSKLİ | **ORTA** (APP kullanılabilirlik) | H-13 sonrası AÇIK. `coarse_to_fine` FINE adımı büyük parçayı 0.5mm voxelize. pitch kabalaştırma=parça-kaybı+**H-06 duvarı**+cross-dataset kalite; `_surface_cells` algoritma-hızı daha güvenli. **YENİ GEREKÇE (2026-06-30, H-04 doğrulama):** voxelize NFV'de GPU-decode'la hızlanMAZ (CPU-bound, paylaşılan) → end-to-end GPU kazancının TAVANI = voxelize payı (596s-seti ölçümünde h=727'de 54s/320s = %17). Voxelize'ı hızlandırmak GPU faydasını da çoğaltır (decode zaten 2.67×). |
+| **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
 ilerleme = **SÜPER BİLGİSAYAR** (A1 sürekli rotasyon + ince-pitch için bol VRAM). Erişim konteyner-app

@@ -51,6 +51,11 @@ PARALLEL_MIN_TYPES: int = 6
 PARALLEL_MIN_VOXELS: float = 5_000.0
 _PARALLEL_MAX_WORKERS: int = 16
 
+# _surface_cells eksen-bazlı buffer'ının (chunk_mk × n_bary) eleman tavanı —
+# ~0.19 GB float64 (H-12 OOM-guard'ın C1 karşılığı; chunk sınırı sonucu
+# değiştirmez, işaretleme idempotent). Test edilebilirlik için modül-seviyesi.
+_SURF_CHUNK_ELEMS: int = 24_000_000
+
 try:
     from shapely import contains_xy as _contains_xy
 except ImportError:  # slice yöntemi shapely ister; subdivide onsuz çalışır
@@ -199,17 +204,29 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
     )
     xs = (np.arange(n[0]) + 0.5) * pitch
     ys = (np.arange(n[1]) + 0.5) * pitch
-    XX, YY = np.meshgrid(xs, ys, indexing="ij")
-    px, py = XX.ravel(), YY.ravel()
 
+    # Poligon bbox-kırpma (C1, 2026-07-02): bbox dışındaki hücre merkezi
+    # strictly-outside → contains False; test etmemek maskeyi DEĞİŞTİRMEZ
+    # (birebir, H-03 xy-kırpmanın 2D analoğu). searchsorted left/right bbox
+    # SINIRINDAKİ (==) merkezleri dahil eder — konservatif. Grid tek geçişte
+    # k-başına yazıldığından |= tam eski "mask or + ata" ile özdeş.
+    # P155308 @0.5mm: contains_xy döngüsü 20.4s → bbox-kırpma ile slice
+    # toplamı 25.8→8.1s (3.2×).
     grid = np.zeros((n[0], n[1], n[2]), dtype=bool)
     for k, sec in enumerate(sections):
         if sec is None:
             continue
-        mask = np.zeros(px.shape, dtype=bool)
         for poly in sec.polygons_full:
-            mask |= _contains_xy(poly, px, py)
-        grid[:, :, k] = mask.reshape(n[0], n[1])
+            minx, miny, maxx, maxy = poly.bounds
+            i0 = int(np.searchsorted(xs, minx, side="left"))
+            i1 = int(np.searchsorted(xs, maxx, side="right"))
+            j0 = int(np.searchsorted(ys, miny, side="left"))
+            j1 = int(np.searchsorted(ys, maxy, side="right"))
+            if i0 >= i1 or j0 >= j1:
+                continue
+            sxx, syy = np.meshgrid(xs[i0:i1], ys[j0:j1], indexing="ij")
+            m = _contains_xy(poly, sxx.ravel(), syy.ravel())
+            grid[i0:i1, j0:j1, k] |= m.reshape(i1 - i0, j1 - j0)
     if not grid.any():
         # Fail-fast tanı: sessiz/şifreli assert yerine açık, aksiyon alınabilir
         # hata. Boş grid = pitch parçanın en küçük özelliği için fazla kaba;
@@ -241,6 +258,15 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
 
     AABB sınırındaki noktalar son hücreye clip edilir (grid şekli ceil ile
     zaten tüm AABB'yi kapsıyor) — 20 mm kutu @ pitch 5 hâlâ 4x4x4 kalır.
+
+    C1 hız yeniden-yazımı (2026-07-02): pts (mk, n_bary, 3) broadcast zinciri
+    yerine EKSEN-BAZLI hesap + önceden ayrılmış buffer'lar (out=) + int32
+    indeks. Eleman başına AYNI çarpım ve AYNI toplama sırası korunur
+    ((A·w + B·u) + C·v, sonra /pitch, floor, clip) → IEEE çift-duyarlık
+    deterministik = eski kodla BİT-DÜZEYİ aynı grid (tests/test_voxelize_c1_
+    exact.py donmuş-referans kapısı + 9 gerçek parça cross-dataset doğrulandı).
+    Kazanç taze S-boyutlu tahsislerin (page-fault) + int64 indeks trafiğinin +
+    reshape kopyalarının kalkması: P155308 @0.5mm 125.9→40.7s (3.1×).
     """
     tri = mesh.triangles  # (m, 3, 3)
     edge = np.linalg.norm(
@@ -249,33 +275,45 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
     k_per_tri = np.maximum(np.ceil(edge / (pitch / 2.0)).astype(int), 1)
 
     grid = np.zeros(shape, dtype=bool)
+    lims = [np.int32(int(s) - 1) for s in shape]
 
-    def _mark(points: np.ndarray) -> None:
-        idx = np.floor(points / pitch).astype(int)
-        np.clip(idx, 0, np.asarray(shape) - 1, out=idx)
-        grid[idx[:, 0], idx[:, 1], idx[:, 2]] = True
-
-    # Bellek tavanı: tek pts array'i (chunk_mk, n_bary, 3) bu eleman sayısını aşmaz.
-    # Büyük DÜZ yüzeyler (az ama dev üçgen — örn. plaka tabanı) ince pitch'te k_per_tri
-    # ~1000+ → n_bary ~5e5; mk*n_bary tek seferde alloc edilince OOM (Plan2 P155308
-    # 356mm @0.5mm: 4.87GB tek array → çöküyordu). Chunk AYNI hücreleri işaretler
-    # (BİREBİR aynı grid, _mark idempotent) ama belleği O(chunk_mk*n_bary)'a bağlar.
-    _PTS_CHUNK_ELEMS = 8_000_000  # ~0.19 GB / chunk (float64 *3*8 bayt)
+    # Bellek tavanı: eksen-bazlı buffer (chunk_mk, n_bary) bu eleman sayısını
+    # aşmaz (~0.19 GB float64). Eski pts'in 1/3 bellek ayak izi → aynı tavanla
+    # 3× büyük chunk. Chunk sınırı sonucu DEĞİŞTİRMEZ (işaretleme idempotent);
+    # OOM-guard H-12 korunur (Plan2 P155308 356mm @0.5mm tek-array 4.87GB çöküşü).
+    chunk_elems = _SURF_CHUNK_ELEMS
     for k in np.unique(k_per_tri):
         sub = tri[k_per_tri == k]  # (mk, 3, 3)
         # barycentric ızgara: (i/k, j/k, 1-i/k-j/k), i+j <= k
         ii, jj = np.meshgrid(np.arange(k + 1), np.arange(k + 1), indexing="ij")
         keep = (ii + jj) <= k
-        u = (ii[keep] / k)[None, :, None]
-        v = (jj[keep] / k)[None, :, None]
-        n_bary = int(keep.sum())
-        chunk_mk = max(1, _PTS_CHUNK_ELEMS // max(1, n_bary * 3))
+        u1 = ii[keep] / k          # (n_bary,)
+        v1 = jj[keep] / k
+        w1 = (1.0 - u1) - v1       # eski (1.0 - u - v) ile aynı eleman-sırası
+        n_bary = int(u1.size)
+        chunk_mk = max(1, chunk_elems // max(1, n_bary))
+
+        rows = min(chunk_mk, sub.shape[0])
+        buf = np.empty((rows, n_bary), dtype=np.float64)
+        tmp = np.empty_like(buf)
+        idx = [np.empty(buf.shape, dtype=np.int32) for _ in range(3)]
+
         for s0 in range(0, sub.shape[0], chunk_mk):
             chunk = sub[s0:s0 + chunk_mk]  # (<=chunk_mk, 3, 3)
-            pts = (chunk[:, 0:1, :] * (1.0 - u - v)
-                   + chunk[:, 1:2, :] * u
-                   + chunk[:, 2:3, :] * v)
-            _mark(pts.reshape(-1, 3))
+            mk = chunk.shape[0]
+            b, t = buf[:mk], tmp[:mk]
+            for c in range(3):
+                np.multiply(chunk[:, 0, c, None], w1[None, :], out=b)
+                np.multiply(chunk[:, 1, c, None], u1[None, :], out=t)
+                np.add(b, t, out=b)
+                np.multiply(chunk[:, 2, c, None], v1[None, :], out=t)
+                np.add(b, t, out=b)
+                np.divide(b, pitch, out=b)
+                np.floor(b, out=b)
+                ic = idx[c][:mk]
+                ic[...] = b                      # integral float → int32 (özdeş)
+                np.clip(ic, np.int32(0), lims[c], out=ic)
+            grid[idx[0][:mk], idx[1][:mk], idx[2][:mk]] = True
     return grid
 
 
