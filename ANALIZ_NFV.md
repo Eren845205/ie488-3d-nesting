@@ -63,7 +63,7 @@ Pitch + bellek guard sayesinde NFV "5 saat / OOM (Plan2 0.5mm)" → "**~2 dk (2.
 | **n=8 default** | ✅ **YOK (matematiksel garanti)** | 4⊂8 küme-içerme → NFV greedy n=8'de **her veride** ≥ n=4 kadar iyi. Veriye uydurma değil, set teorisi. `NFV_DEFAULT_ORIENTATIONS=8`. |
 | **Pitch seçici** | ✅ **Giderildi** (`a26d180`) | İlk hali (tek-oran 0.5) Plan2-overfit'ti, **Plan1'i çökertiyordu**. Düzeltme: güvenli 1.0'dan başla → bellek için adaptif kabalaştır → sığmazsa heightmap'e düş. plan1/2/3/boxy **hiçbiri çökmüyor**. |
 | **Plaka guard** (`621936c`) | ✅ Sigorta | En büyük parça + 2·margin plakaya sığmalı; sığmazsa feasible=False. boxy çökmesi giderildi; gerçek veride tetiklenmez. |
-| **quality="max"** | ✅ YOK | Sabit sayı değil — RAM'den türeyen donanım-tavanı (`_hw_max_orientations`: 16GB→12, datacenter→28). |
+| **quality="max"** | ✅ YOK | Sabit sayı değil — RAM'den türeyen seçim (`_quality_max_orientations`, K-18p 2026-07-03: RAM>=13GB→AX24 [24 eksen-hizalı, eğik 8..11 hariç — K-13 miyopi kanıtı], altı→n=8 taban). |
 
 **Genel değerlendirme:** Bu oturumun ANA İŞİ zaten **bir overfit'i bulup gidermekti** (pitch Plan1 çökmesi).
 Şu an her parametre türetilmiş: pitch ← min_feature (geometri) + RAM + plaka; oryantasyon ← küme-içerme +

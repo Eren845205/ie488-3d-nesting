@@ -208,6 +208,7 @@ def to_voxel_parts(
     n_orientations: int = 4,
     margin: int = 0,
     method: str = "slice",
+    allowed_orientations: Optional[tuple] = None,
 ) -> list:
     """Kutu instance'larini trimesh box mesh -> VoxelPart listesine dönüştür.
 
@@ -218,6 +219,10 @@ def to_voxel_parts(
     Kabul kriteri (PLAN_DEMO1.md 2.4): 20 mm kutu @ pitch=5 -> 64 voxel
     (4x4x4 = 64).  method="slice" (default) bu kriteri karşılar:
     ceil(20/5)=4 per side -> 4*4*4=64.
+
+    allowed_orientations: 28-pozluk master sete indeks tuple'ı — TÜM modellere
+    aynı poz kısıtı (K-18p: quality=max AX24 eksen-hizalı seti). Verilirse
+    n_orientations yok sayılır (voxelize_part önceliği).
 
     Returns:
         List[VoxelPart] — solver pipeline'ına doğrudan verilecek liste.
@@ -237,12 +242,15 @@ def to_voxel_parts(
         for name in name_to_mesh
     ]
 
+    overrides = ({name: allowed_orientations for name in name_to_mesh}
+                 if allowed_orientations is not None else None)
     return expand_quantities(
         combined,
         pitch,
         n_orientations=n_orientations,
         margin=margin,
         method=method,
+        orientation_overrides=overrides,
     )
 
 

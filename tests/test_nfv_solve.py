@@ -90,17 +90,19 @@ def test_determinism():
     assert abs(_solve().height_mm - _solve().height_mm) < 1e-9
 
 
-# --- oryantasyon: n=8 default (4⊂8 garanti) + quality=max donanım-tavanı (ÖLÇÜM 2026-06-24) ---
+# --- oryantasyon: n=8 default (4⊂8 garanti) + quality=max AX24 (K-18p, 2026-07-03) ---
 
 def test_quality_fast_default_uses_n8():
     r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
                   fine_pitch=FINE_PITCH, quality="fast", force="cpu-kolA")
     assert "n=8" in r.adaptive_reason  # default fast → sabit n=8
 
-def test_quality_max_uses_hw_ceil():
+def test_quality_max_uses_ax24_or_safe_floor():
     r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
                   fine_pitch=FINE_PITCH, quality="max", force="cpu-kolA")
-    assert "quality=max" in r.adaptive_reason  # donanım-tavanı yolu
+    assert "quality=max" in r.adaptive_reason
+    # RAM'e göre iki meşru yol: AX24 (>=13GB) veya n=8 güvenli taban
+    assert ("AX24" in r.adaptive_reason) or ("guvenli taban" in r.adaptive_reason)
 
 def test_explicit_n_overrides_quality():
     r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
@@ -108,11 +110,37 @@ def test_explicit_n_overrides_quality():
     # açık n verilince quality yok sayılır (reason'da n=8/quality=max ibaresi olmaz)
     assert "quality=max" not in r.adaptive_reason and "n=8" not in r.adaptive_reason
 
-def test_hw_max_orientations_scales_with_ram():
-    from src.nesting3d.nfv_solve import _hw_max_orientations, NFV_QUALITY_MAX_CEIL
-    assert _hw_max_orientations(4 * 10 ** 9) == 8        # düşük RAM → güvenli taban
-    assert _hw_max_orientations(16 * 10 ** 9) == 12      # laptop (ölçüldü)
-    assert _hw_max_orientations(64 * 10 ** 9) == NFV_QUALITY_MAX_CEIL  # datacenter → 28
+def test_quality_max_orientations_ram_ladder():
+    from src.nesting3d.nfv_solve import _quality_max_orientations, NFV_AX24
+    assert _quality_max_orientations(4 * 10 ** 9) is None          # düşük RAM → n=8 taban
+    assert _quality_max_orientations(16 * 10 ** 9) == NFV_AX24     # laptop (K-18'de ölçüldü)
+    assert _quality_max_orientations(64 * 10 ** 9) == NFV_AX24     # datacenter da AX24 (eğik yok, K-13)
+
+def test_ax24_excludes_tilted_poses():
+    """AX24 eğik pozları (master 8..11) İÇERMEMELİ (K-13: greedy eğik-miyopi) ve
+    n=8 default'u kapsamalı (küme-içerme: 8⊂24 → kalite >= n=8 aynı decode'da)."""
+    from src.nesting3d.nfv_solve import NFV_AX24
+    assert len(NFV_AX24) == 24
+    assert set(range(8)).issubset(NFV_AX24)
+    assert not set(NFV_AX24) & {8, 9, 10, 11}
+
+def test_quality_max_ax24_orientations_are_axis_aligned():
+    """AX24 yolu gerçekten 24 poz voxelize eder ve rot matrisleri eksen-hizalıdır
+    (matris elemanları {-1,0,1} — eğik pozlarda kesirli eleman olurdu)."""
+    import numpy as np
+    from src.nesting3d import nfv_solve as ns
+
+    if ns._quality_max_orientations(ns.probe_capabilities().ram_bytes) is None:
+        import pytest
+        pytest.skip("bu makinede RAM<13GB — AX24 yolu açılmaz")
+    r = solve_nfv(_make_instance(), plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+                  fine_pitch=FINE_PITCH, quality="max", force="cpu-kolA",
+                  fine_settle=False)
+    part = next(iter(r.fine_voxel_parts.values()))
+    assert len(part.orientations) == 24
+    for o in part.orientations:
+        rot = np.asarray(o.rot_matrix)[:3, :3]
+        assert np.allclose(np.abs(rot)[np.abs(rot) > 1e-9], 1.0), "eğik poz sızmış"
 
 
 def test_run_pipeline_opt_in_nfv_mode():

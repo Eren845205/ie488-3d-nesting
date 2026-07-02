@@ -21,40 +21,46 @@ from src.nesting3d.instances.pitch import suggest_nfv_pitch
 from src.nesting3d.capabilities import probe_capabilities
 from src.nesting3d.parallel_decode import best_decode
 
-# NFV oryantasyon seçimi (ÖLÇÜM 2026-06-24, c3_quality_levers):
+# NFV oryantasyon seçimi (ÖLÇÜM 2026-06-24 c3_quality_levers + 2026-07-03 K-18):
 #   * n=8 default. NEDEN SABİT-DEĞİL-AMA-SABİT: n=8 oryantasyon seti n=4'ü İÇERİR (4⊂8) → NFV greedy
 #     n=8'de en az n=4 kadar iyi seçer → kalite HER veride garantili >= n=4 (Plan2'ye overfit DEĞİL,
-#     küme-içerme matematiği). Sweet spot: 4→8 ~%6 kazanç; 8→12 sadece ~%1.1 + 3× yavaş + RAM-riskli.
+#     küme-içerme matematiği). Sweet spot: 4→8 ~%6 kazanç.
 #   * Adaptif DBLF-prob DENENDİ → NO-GO: heightmap-DBLF n-getiriyi TERS tahmin etti (Plan2 trail
 #     n=4:639<n=8:645 dedi ama NFV'de n=8=522<n=4=556 İYİ) + prob 919s yavaş. DBLF NFV'yi temsil etmez.
-#   * quality="max": donanım-tavanına kadar aç (RAM'e göre 8→12→28). 16GB laptop→12, datacenter→28.
+#   * quality="max" (K-18p, 2026-07-03): 24 EKSEN-HİZALI poz (AX24 = master 0..7 + 12..27).
+#     Eski ilk-N merdiveni (8→12→28) EĞİK pozları (8..11) içeriyordu — K-13/K-15 kanıtı: greedy eğik
+#     pozu miyop kullanır (zarar/nötr). AX24 eğiksiz; 8⊂24 küme-içerme + K-18 ölçümü: plan2
+#     n24+settle 512.5 (n8 baz 522'den −%1.8; n24 baz 520.0 = K-13 A24 kontrolüyle birebir sanity).
+#     Bedel decode ~3-4× → default'a DEĞİL yalnız quality=max'a. RAM<13GB → n=8 güvenli taban
+#     (AX24 16GB'de plan2 226-parçada ölçülerek doğrulandı, K-18 koşusu).
 NFV_DEFAULT_ORIENTATIONS = 8
-NFV_QUALITY_MAX_CEIL = 28  # algoritmik tavan (24 simetri + eğik açılar); ötesi boşa
+NFV_AX24 = tuple(range(8)) + tuple(range(12, 28))  # 24 eksen-hizalı (eğik 8..11 HARİÇ)
 
 
-def _hw_max_orientations(ram_bytes: int) -> int:
-    """quality='max': donanımın güvenle kaldırabileceği en yüksek oryantasyon (RAM-tavanı).
-    Ölçüm-kalibre (16GB: n=12 OK / n=28 OOM). Datacenter (>=28GB) → 28. Sabit değil, RAM'den türer."""
-    gb = ram_bytes / 1e9
-    if gb >= 28:
-        return NFV_QUALITY_MAX_CEIL  # 28 — bol RAM (datacenter/süper bilgisayar)
-    if gb >= 13:
-        return 12                    # ~16GB laptop — ölçüldü: n=12 sığar, n=28 OOM
-    return NFV_DEFAULT_ORIENTATIONS  # düşük RAM — güvenli taban
+def _quality_max_orientations(ram_bytes: int):
+    """quality='max' poz seti: RAM yeterse AX24 (24 eksen-hizalı, K-18), yoksa None (→ n=8).
+    Sabit değil: seçim RAM'den türer; set içeriği K-13 (eğik-miyopi) + K-18 ölçümüne dayanır."""
+    if ram_bytes / 1e9 >= 13:
+        return NFV_AX24
+    return None  # düşük RAM — güvenli taban n=8
 
 
-def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin):
+def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
+                  allowed_orientations=None):
     """coarse_to_fine._voxelize_with_fallback mantığı + margin (o fonksiyon margin geçmiyor).
-    İnce-duvar parça pitch'te kaybolursa (ValueError) pitch'i kıs, floor'a kadar dene. (parts, used)."""
+    İnce-duvar parça pitch'te kaybolursa (ValueError) pitch'i kıs, floor'a kadar dene. (parts, used).
+    allowed_orientations verilirse (K-18p AX24) n_orientations yok sayılır."""
     cur = pitch
     while True:
         try:
-            return to_voxel_parts(instance, cur, n_orientations=n_orientations, margin=margin), cur
+            return to_voxel_parts(instance, cur, n_orientations=n_orientations, margin=margin,
+                                  allowed_orientations=allowed_orientations), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
                 return (to_voxel_parts(instance, floor_pitch, n_orientations=n_orientations,
-                                       margin=margin), floor_pitch)
+                                       margin=margin,
+                                       allowed_orientations=allowed_orientations), floor_pitch)
             cur = nxt
 
 
@@ -75,7 +81,7 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
       * Açık int verilirse o kullanılır.
       * None (varsayılan) → quality'ye göre:
           - quality="fast"  → n=8 (4⊂8 → kalite her veride >= n=4, sweet spot; ÖLÇÜM gerekçesi yukarıda).
-          - quality="max"   → donanım-tavanı (RAM'e göre 8→12→28; _hw_max_orientations).
+          - quality="max"   → AX24: 24 eksen-hizalı poz, eğiksiz (K-18p; RAM<13GB → n=8 taban).
     """
     t0 = time.perf_counter()
     nfv_reason = None
@@ -87,14 +93,21 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         # feasible=False → en kaba pitch bile bellek bütçesini aşıyor; yine de denenir (best_decode
         # GPU→CPU→seri graceful fallback ile en uygun yolu bulur), ama reason raporlanır (uyarı).
     n_reason = None
+    allowed_orients = None
     if n_orientations is None:
         if quality == "max":
-            n_orientations = _hw_max_orientations(probe_capabilities().ram_bytes)
-            n_reason = f"quality=max n={n_orientations} (donanim-tavani)"
+            allowed_orients = _quality_max_orientations(probe_capabilities().ram_bytes)
+            if allowed_orients is not None:
+                n_orientations = len(allowed_orients)
+                n_reason = f"quality=max AX24 n={n_orientations} (24 eksen-hizali, K-18)"
+            else:
+                n_orientations = NFV_DEFAULT_ORIENTATIONS
+                n_reason = f"quality=max ama RAM<13GB -> n={n_orientations} guvenli taban"
         else:
             n_orientations = NFV_DEFAULT_ORIENTATIONS
             n_reason = f"n={n_orientations} (default, 4subset8 garanti)"
-    parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin)
+    parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin,
+                                      allowed_orientations=allowed_orients)
     nx, ny = int(plate_w_mm // used_pitch), int(plate_d_mm // used_pitch)
 
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force)
