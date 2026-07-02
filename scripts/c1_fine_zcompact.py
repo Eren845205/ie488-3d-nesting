@@ -21,7 +21,10 @@ K-11 monotoniklik teoremiyle CELISMEZ: parca sokup yeniden yerlestirmiyoruz
 (o olu); ayni yerlesimi daha ince olcekte 'oturtuyoruz' — kuantizasyon bosalimi.
 
 URETIME DOKUNMAZ — scripts/ only. ASCII cikti.
-Kullanim: python scripts/c1_fine_zcompact.py [plan2|plan3|plan1] [fine_pitch=0.5]
+Kullanim: python scripts/c1_fine_zcompact.py [plan2|plan3|plan1] [fine_pitch=0.5] [n8|n24]
+  n24 = 24 eksen-hizali poz (master 0..7 + 12..27, Ry ailesi dahil; egik 8..11 HARIC —
+  K-13: egik pozlar greedy'de miyop). K-13 A24 kontrolu plan2'de 520 olcmustu (baz 522);
+  yeni bilgi = n24 + settle TOPLAMI.
 """
 from __future__ import annotations
 import sys
@@ -33,7 +36,7 @@ sys.path.insert(0, str(_ROOT))
 
 import numpy as np
 from src.nesting3d.instances.stl_order_loader import build_instance_from_order
-from src.nesting3d.instances.format import to_voxel_parts
+from src.nesting3d.instances.format import to_voxel_parts, _make_mesh
 from src.nesting3d.extreme_point import OccupancyBin3D, _drop_fallback
 from src.nesting3d.voxelize import voxelize_part, rotation_matrices
 from scripts.c3_generality import _blb_nfv_fast, DATASETS, PITCH, MARGIN
@@ -66,9 +69,13 @@ def decode_with_placements(parts, nx, ny):
     return ob.height_mm(), placements
 
 
+AX24 = tuple(range(8)) + tuple(range(12, 28))  # 24 eksen-hizali (egik 8..11 haric)
+
+
 def main():
     ds = sys.argv[1] if len(sys.argv) > 1 else "plan2"
     fine = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
+    omode = sys.argv[3] if len(sys.argv) > 3 else "n8"
     scale = PITCH / fine
     if abs(scale - round(scale)) > 1e-9:
         raise SystemExit(f"PITCH/fine tam sayi olmali (simdi {scale})")
@@ -85,13 +92,26 @@ def main():
     pw, pd = float(inst.container.width_mm), float(inst.container.depth_mm)
     nx, ny = int(pw // PITCH), int(pd // PITCH)
 
-    print(f"[{ds}] plaka {pw:.1f}x{pd:.1f}  coarse={PITCH}  fine={fine}  scale={scale}")
+    print(f"[{ds}] plaka {pw:.1f}x{pd:.1f}  coarse={PITCH}  fine={fine}  scale={scale}  omode={omode}")
     t0 = time.perf_counter()
-    parts = to_voxel_parts(inst, PITCH, n_orientations=8, margin=MARGIN, method="slice")
+    if omode == "n24":
+        # to_voxel_parts orientation_overrides gecmiyor -> expand_quantities direkt
+        from src.nesting3d.voxelize import expand_quantities
+        name_to_qty, name_to_mesh = {}, {}
+        for p in inst.parts:
+            if p.name not in name_to_mesh:
+                name_to_mesh[p.name] = _make_mesh(p)
+            name_to_qty[p.name] = name_to_qty.get(p.name, 0) + p.qty
+        combined = [(n, name_to_mesh[n], name_to_qty[n]) for n in name_to_mesh]
+        parts = expand_quantities(combined, PITCH, margin=MARGIN, method="slice",
+                                  orientation_overrides={n: AX24 for n in name_to_mesh})
+    else:
+        parts = to_voxel_parts(inst, PITCH, n_orientations=8, margin=MARGIN, method="slice")
     print(f"coarse voxelize: {time.perf_counter()-t0:.1f}s  ({len(parts)} parca)")
 
     # coarse decode pahali (~9dk CPU) ve deterministik -> diske cache
-    cache_f = _ROOT / "data" / "mail_stl" / f"zc_{ds}" / "coarse_decode.npz"
+    suffix = "" if omode == "n8" else f"_{omode}"
+    cache_f = _ROOT / "data" / "mail_stl" / f"zc_{ds}" / f"coarse_decode{suffix}.npz"
     by_id = {p.id: p for p in parts}
     if cache_f.exists():
         # pickle YOK: str + int array'ler (kendi urettigimiz cache olsa da guvenli taraf)
@@ -111,7 +131,7 @@ def main():
                                 dtype=np.int64))
 
     # ---- kullanilan (tip, oi) ciftlerini fine'da tek-oryantasyon voxelize ----
-    master8 = rotation_matrices(8)
+    # rot matrisi coarse parcanin kendi orientation'indan alinir -> n8/n24 ayni yol
     t0 = time.perf_counter()
     fine_cache = {}
     for part, oi, _x, _y, _z in placements:
@@ -119,8 +139,8 @@ def main():
         if key in fine_cache:
             continue
         vp = voxelize_part(part.name, part.mesh, fine,
-                           rot_matrices=[master8[oi]], margin=fine_margin,
-                           method="slice")
+                           rot_matrices=[part.orientations[oi].rot_matrix],
+                           margin=fine_margin, method="slice")
         fine_cache[key] = vp.orientations[0].grid
     print(f"fine voxelize ({len(fine_cache)} tip-oi): {time.perf_counter()-t0:.1f}s")
 

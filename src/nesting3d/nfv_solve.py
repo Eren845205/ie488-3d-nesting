@@ -59,8 +59,14 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin):
 
 
 def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
-              n_orientations=None, quality="fast", margin=1, seed=42, force=None) -> CoarseToFineResult:
+              n_orientations=None, quality="fast", margin=1, seed=42, force=None,
+              fine_settle=True) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
+
+    fine_settle=True (default): K-17 pozisyon-koruyan fine z-kompaksiyon post-pass'i —
+    kazanan layout used_pitch/4'te yeniden oturtulur, kuantizasyon vergisi geri alınır
+    (ölçüm: plan3 +%1.6 / plan2 +%1.1 / plan1 +%0.4). Kalite yönü TEK TARAFLI: yükseklik
+    iyileşmezse (veya bellek/hata) coarse sonucu AYNEN korunur → default-on güvenli.
 
     fine_pitch=None (varsayılan) → NFV-farkında pitch otomatik seçilir (suggest_nfv_pitch):
     parçayı kaybetmeyen EN KABA güvenli pitch + bellek/plaka guard. Açık pitch → opt-in override.
@@ -98,6 +104,23 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     parts_by_id = {p.id: p for p in parts}
     for (pid, oi, x, y, z) in raw:
         bin3d.place(parts_by_id[pid], oi, x, y, z)
+
+    # K-17 fine-settle post-pass: kuantizasyon vergisini geri al (yalnız iyileştirirse).
+    settle_note = None
+    result_pitch = used_pitch
+    if fine_settle:
+        from src.nesting3d.fine_settle import fine_settle_raw
+        s = fine_settle_raw(raw, parts_by_id,
+                            plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+                            pitch=used_pitch, margin=margin,
+                            h_coarse_mm=bin3d.max_height_mm())
+        if s is not None:
+            fine_bin = Bin3D(plate_w_mm, plate_d_mm, s.fine_pitch)
+            for (pid, oi, xf, yf, zf) in s.raw_fine:
+                fine_bin.place(s.fine_parts[pid], oi, xf, yf, zf)
+            settle_note = (f"settle {bin3d.max_height_mm():.1f}->"
+                           f"{fine_bin.max_height_mm():.1f}mm @{s.fine_pitch}mm")
+            bin3d, parts_by_id, result_pitch = fine_bin, s.fine_parts, s.fine_pitch
     elapsed = time.perf_counter() - t0
 
     h = bin3d.max_height_mm()
@@ -110,9 +133,11 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
 
     return CoarseToFineResult(
         placements=bin3d.placements, bin3d=bin3d, height_mm=h, density=density,
-        winning_config="nfv", coarse_height_mm=h, coarse_pitch=used_pitch, fine_pitch=used_pitch,
+        winning_config="nfv", coarse_height_mm=h, coarse_pitch=used_pitch,
+        fine_pitch=result_pitch,  # settle kabul edildiyse used_pitch/scale — GLB/export bu pitch'le hizalanır
         coarse_time_s=0.0, fine_time_s=elapsed, n_placed=len(bin3d.placements),
         tune_result=tune_result, fine_voxel_parts=parts_by_id, fine_angle_used=False,
         adaptive_reason=f"nfv strategy={strategy}" + (f" | {nfv_reason}" if nfv_reason else "")
-        + (f" | {n_reason}" if n_reason else ""),
+        + (f" | {n_reason}" if n_reason else "")
+        + (f" | {settle_note}" if settle_note else ""),
     )

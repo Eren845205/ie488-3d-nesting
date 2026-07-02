@@ -778,7 +778,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         "note": "",
         "auto_mode_reason": auto_reason,  # "auto" seçimi gerekçesi (None=auto kullanılmadı)
         "nesting_mode_used": nesting_mode,  # auto çözüldükten sonra fiilen kullanılan mod
-        "pitch_mm": round(pitch, 2),
+        # GLB/STL export placements'ı bu pitch'le mm'e çevirir → SONUCUN pitch'i şart:
+        # NFV fine-settle (K-17) kabul edilirse placements used_pitch/4 hücrelerindedir;
+        # ince-duvar fallback'te de used_pitch istenen pitch'ten sapabilir.
+        "pitch_mm": round(_c2f_result.fine_pitch if _c2f_result is not None else pitch, 2),
         "portfolio": portfolio_data,
         "tuner": {
             "winning_config": winner_config,
