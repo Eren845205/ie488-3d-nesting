@@ -653,6 +653,9 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
 _ZIP_EXTENSIONS = {".zip"}
+# Adet listesi eki: "Adet listesi.txt" gibi duz-metin adet kaynagi (Deneme4
+# gercek maili boyle geldi — govde + txt eki AYNI listeyi tasiyordu).
+_TXT_EXTENSIONS = {".txt"}
 
 # Boyut deseni: 3D olcu "80x60x30", "80 x 60 x 30" — siparis sinyali (parca olcusu).
 # P2: 2D (NxN) KASITLI haric — 2D olculer spam'de cok gecer (ekran/oda/tarih: "80x60",
@@ -699,15 +702,91 @@ def _find_attachment(mail: RawMail, extensions: Set[str]) -> Optional[Attachment
     return None
 
 
+def _decode_text_bytes(data: bytes) -> str:
+    """Duz-metin ek baytlarini metne cevir (TR mail gercekligi: UTF-8 ya da
+    Windows cp1254; ikisi de degilse latin-1 replace ile asla firlatmaz)."""
+    for enc in ("utf-8-sig", "cp1254"):
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1", errors="replace")
+
+
+def _llm_zip_quantity_fallback(
+    parser_role: Any,
+    body: str,
+    txt_text: str,
+    stl_names: list,
+) -> Optional[Dict[str, int]]:
+    """LLM'den adet cikarimi — cikti ZIP'in GERCEK dosya adlarina TOPRAKLANIR.
+
+    Deterministik parser govdeyi cozemediginde son care: mevcut ParserRole
+    (yapilandirilmis siparis semasi + injection kontrolu + audit) calistirilir,
+    dondurdugu kalem listesi match_quantities_to_stls ile ZIP'teki gercek
+    dosya adlarina eslenir. LLM'in uydurdugu adlar hicbir dosyaya eslesmez ->
+    kendiliginden duser (halusinasyon topraklamasi). Kabul karari CAGIRANDA:
+    tam kapsama + checksum dogrulamasi gecmeyen sonuc KULLANILMAZ.
+
+    Returns:
+        {gercek_stl_adi: adet} veya None (LLM yok/basarisiz/injection).
+    """
+    from src.runtime.quantity_text_parser import MAX_QTY, match_quantities_to_stls
+
+    text = body if not txt_text else f"{body}\n\n[Adet listesi eki]\n{txt_text}"
+    try:
+        result = parser_role.parse(text)
+    except Exception as exc:
+        logger.warning("ingest_order: LLM adet fallback hatasi — %s", exc)
+        return None
+    order_dict = getattr(result, "order_dict", None)
+    if order_dict is None:
+        return None
+    if getattr(result, "injection_suphesi", False):
+        logger.warning(
+            "ingest_order: LLM adet fallback injection_suphesi bildirdi — "
+            "sonuc KULLANILMIYOR (guvenli taraf)."
+        )
+        return None
+
+    llm_q: Dict[str, int] = {}
+    for p in order_dict.get("parts", []) or []:
+        name = str(p.get("name") or p.get("id") or "").strip()
+        try:
+            qty = int(p.get("qty", 0))
+        except (TypeError, ValueError):
+            continue
+        if name and 0 < qty:
+            llm_q[name] = min(qty, MAX_QTY)
+    if not llm_q:
+        return None
+
+    matched, _uk, _us = match_quantities_to_stls(llm_q, stl_names)
+    return matched or None
+
+
 def _ingest_zip_stl_order(
     mail: RawMail,
     zip_att: Attachment,
     persist_root: Optional[str],
+    parser_role: Any = None,
 ) -> Optional[Dict[str, Any]]:
-    """ZIP ekli STL siparisini isle: zip ac + govdeden adet + esleme + bbox.
+    """ZIP ekli STL siparisini isle: zip ac + adet cikar + esleme + bbox.
 
-    Mail govdesi '<ad> <adet> adet' satirlari icerir; zip icindeki <ad>.stl
-    dosyalariyla birebir eslestirilir. Eslesmeyen STL/adet atlanir.
+    ADET KAYNAKLARI (katmanli — insansiz otomatik isleme hedefi):
+      1. Mail govdesi — '<ad> <adet> adet' VE '<ad> - <adet>' kaliplari.
+      2. .txt eki ("Adet listesi.txt") — govdede olmayan adlari tamamlar.
+      3. LLM fallback (parser_role verildiyse) — YALNIZ deterministik katman
+         tam kapsayamadiginda; cikti ZIP'in gercek dosya adlarina topraklanir
+         ve asagidaki dogrulamayi gecmeden KULLANILMAZ.
+
+    ESLEME: match_quantities_to_stls (toleransli — case/TR-karakter/altcizgi
+    + "-25pcs" tipi adet-ipucu sonekleri; belirsiz coklu aday eslenmez).
+
+    CAPRAZ DOGRULAMA (checksum): govde/txt "588 parça" tipi toplam beyani
+    tasiyorsa, eslenen adetlerin toplami bu beyanla TUTMALI. Tutarsizlik =
+    celiski -> needs_review 'quantity_conflict' (yanlis adetle uretim
+    planlamaktansa istisna kuyruguna dusur). Beyan yoksa eski davranis korunur.
 
     Dondurur: SCENARIO uyumlu order dict (parts source='stl', stl_path kalici)
     + 'skipped_*' alanlari. Eslesen parca yoksa None.
@@ -717,7 +796,11 @@ def _ingest_zip_stl_order(
     birakilir (cekirdek politika her parti icin parcalardan otomatik turetir).
     """
     from src.runtime.zip_stl_extractor import extract_stls
-    from src.runtime.quantity_text_parser import parse_quantities
+    from src.runtime.quantity_text_parser import (
+        match_quantities_to_stls,
+        parse_declared_total,
+        parse_quantities,
+    )
     from src.nesting3d.instances.stl_order_loader import build_instance_from_order
 
     try:
@@ -729,7 +812,79 @@ def _ingest_zip_stl_order(
         logger.warning("ingest_order: ZIP icinde STL bulunamadi — %s", zip_att.dosya_adi)
         return None
 
-    quantities = parse_quantities(mail.govde or "")
+    body = mail.govde or ""
+    stl_names = list(stl_map)
+
+    # Katman 1+2: govde + .txt eki (govde oncelikli, txt eksikleri tamamlar)
+    quantities_raw = parse_quantities(body)
+    quantity_source = "body" if quantities_raw else "none"
+    txt_att = _find_attachment(mail, _TXT_EXTENSIONS)
+    txt_text = _decode_text_bytes(txt_att.icerik) if txt_att is not None else ""
+    if txt_text:
+        txt_q = parse_quantities(txt_text)
+        added = False
+        for k, v in txt_q.items():
+            if k not in quantities_raw:
+                quantities_raw[k] = v
+                added = True
+        if added:
+            quantity_source = "body+txt" if quantity_source == "body" else "txt"
+
+    declared_total = parse_declared_total(body)
+    if declared_total is None and txt_text:
+        declared_total = parse_declared_total(txt_text)
+
+    matched, unmatched_keys, unmatched_stls = match_quantities_to_stls(
+        quantities_raw, stl_names
+    )
+
+    def _validated(q: Dict[str, int]) -> bool:
+        """Insansiz kabul kosulu: TAM kapsama + (beyan varsa) checksum."""
+        return bool(q) and len(q) == len(stl_names) and (
+            declared_total is None or sum(q.values()) == declared_total
+        )
+
+    # Katman 3: LLM fallback — yalniz deterministik katman dogrulanamadiysa.
+    # Kabul esigi deterministik katmandan SIKI: tam kapsama + checksum sart
+    # (LLM ciktisi ancak matematiksel teyitle insansiz akisa girer).
+    if parser_role is not None and not _validated(matched):
+        llm_matched = _llm_zip_quantity_fallback(parser_role, body, txt_text, stl_names)
+        if llm_matched is not None and _validated(llm_matched):
+            logger.info(
+                "ingest_order: LLM adet fallback DOGRULANDI (%d parca, toplam %d"
+                "%s) — insansiz akista kullaniliyor.",
+                len(llm_matched), sum(llm_matched.values()),
+                f", beyan {declared_total} tuttu" if declared_total else "",
+            )
+            matched = llm_matched
+            unmatched_keys = []
+            unmatched_stls = []
+            quantity_source = "llm_grounded"
+
+    # Celiski kapisi: beyan var ama eslenen toplam tutmuyor -> istisna kuyrugu.
+    # (Yanlis adetle nesting kosturmak sessiz uretim hatasi olur; operator
+    # /adet-gir'den gercek adetleri girer. Beyan yoksa eski davranis surer.)
+    if matched and declared_total is not None and sum(matched.values()) != declared_total:
+        _det_hex = hashlib.sha256(mail.message_id.encode("utf-8")).hexdigest()[:8].upper()
+        logger.warning(
+            "ingest_order: adet celiskisi — beyan %d, eslenen toplam %d (%s); "
+            "operator incelemesine alindi.",
+            declared_total, sum(matched.values()), zip_att.dosya_adi,
+        )
+        return {
+            "needs_review": True,
+            "review_reason": "quantity_conflict",
+            "order_id": f"ZIP-{_det_hex}",
+            "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+            "parse_source": "attachment_zip_stl_incomplete",
+            "stl_names": sorted(stl_names),
+            "declared_total": declared_total,
+            "parsed_total": sum(matched.values()),
+            "_stl_map": dict(stl_map),
+            "parts": [],
+        }
+
+    quantities = matched
 
     # STL'leri mesaj-bazli kalici klasore yaz (nesting voxelize edene kadar yasamali)
     _det_hex = hashlib.sha256(mail.message_id.encode("utf-8")).hexdigest()[:8].upper()
@@ -792,7 +947,12 @@ def _ingest_zip_stl_order(
         "priority_class": 2,
         "parts": parts,
         "parse_source": "attachment_zip_stl",
-        "skipped_no_stl": res.skipped_no_stl,
+        "quantity_source": quantity_source,
+        # skipped_no_stl: bozuk mesh'ler (loader) + mailde olup ZIP'te
+        # eslesmeyen adlar (on-eslestirme artigi — eski davranisla uyumlu).
+        "skipped_no_stl": res.skipped_no_stl + [
+            k for k in unmatched_keys if k not in res.skipped_no_stl
+        ],
         "skipped_no_qty": res.skipped_no_qty,
     }
     # Yalniz GERCEK plaka (env) verildiyse pipeline'a ilet; aksi halde
@@ -810,7 +970,9 @@ def ingest_order(
     """Mail'den siparis dict'i cikar — ek tipine gore yonlendirir.
 
     Oncelik sirasi:
-      1. .zip eki  -> STL siparisi (zip ac + govdeden adet + esleme; LLM YOK)
+      1. .zip eki  -> STL siparisi (zip ac + govde/txt-eki adet + toleransli
+         esleme; deterministik cozulemezse TOPRAKLANMIS LLM fallback — cikti
+         gercek dosya adlarina eslenip checksum'la dogrulanmadan kullanilmaz)
       2. .xlsx/.csv eki -> parse_order_attachment (LLM YOK)
       3. ek yok -> parser_role.parse(mail.govde) (LLM — serbest metin)
 
@@ -832,7 +994,9 @@ def ingest_order(
     # --- En yuksek oncelik: ZIP-STL eki ---
     zip_att = _find_attachment(mail, _ZIP_EXTENSIONS)
     if zip_att is not None:
-        return _ingest_zip_stl_order(mail, zip_att, persist_root)
+        # parser_role: deterministik adet cikarimi tam kapsayamazsa
+        # topraklanmis LLM fallback icin (bkz. _ingest_zip_stl_order).
+        return _ingest_zip_stl_order(mail, zip_att, persist_root, parser_role)
 
     # Yapılandırılmış ek kontrolu
     structured_att = _find_attachment(mail, _STRUCTURED_EXTENSIONS)
