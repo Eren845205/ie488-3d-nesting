@@ -58,6 +58,8 @@ def append_run(
     density: float,
     time_s: float,
     winner_flag: bool,
+    suggested_pitch_mm: Optional[float] = None,
+    applied_pitch_mm: Optional[float] = None,
     **extra: Any,
 ) -> None:
     """Bir kosu sonucunu JSONL dosyasina ekle (append-only).
@@ -79,6 +81,12 @@ def append_run(
         density:        Doluluk orani 0..1.
         time_s:         Cozucu calisma suresi (saniye).
         winner_flag:    Bu satir bu instance icin en iyi cozucu mu?
+        suggested_pitch_mm: Cozucu-oncesi ONERILEN pitch (mm). None ise satira
+                        YAZILMAZ (geriye-uyum). Neden ayri: musait RAM bellek
+                        pre-flight'i sessizce geri-kabalastirabilir; onerilen vs
+                        uygulanan ayri kayit -> cidar-duyarli faz "etkisiz"
+                        gorunmesin (suggested ince, applied kaba fark eder).
+        applied_pitch_mm: Cozucude FIILEN uygulanan pitch (mm). None ise yazilmaz.
         **extra:        Ileride sema genislemesi icin ek alanlar
                         (eski satirlari bozmaz).
 
@@ -104,6 +112,12 @@ def append_run(
         "time_s": float(time_s),
         "winner_flag": bool(winner_flag),
     }
+    # Opsiyonel pitch alanlari — yalniz verildiginde yaz (None -> satira KONULMAZ,
+    # eski davranis birebir korunur; okurken eksik anahtar = None).
+    if suggested_pitch_mm is not None:
+        row["suggested_pitch_mm"] = float(suggested_pitch_mm)
+    if applied_pitch_mm is not None:
+        row["applied_pitch_mm"] = float(applied_pitch_mm)
     # Ek alanlari ekle (sema genislemesi)
     row.update(extra)
 

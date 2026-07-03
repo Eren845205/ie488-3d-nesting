@@ -649,6 +649,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     nesting_mode = payload.get("nesting_mode", "auto")  # akıllı default: veri-odaklı NFV/heightmap
     nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
     time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
+    wall_aware_pitch = bool(payload.get("wall_aware_pitch", False))  # K-19 OPT-IN; False=davranis birebir
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -722,9 +723,23 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             auto_reason = f"auto basarisiz ({_auto_exc}) -> heightmap (guvenli dusus)"
 
     try:
-        pitch = suggest_pitch(instance)
+        # K-19 OPT-IN: wall_aware_pitch True + kabuk-ailesi + guven kapisi -> cidar
+        # turevli ince pitch; False (default) -> mevcut davranis BIT-OZDES.
+        pitch = suggest_pitch(instance, wall_aware=wall_aware_pitch)
     except Exception:
         pitch = pitch_fallback
+
+    # SUGGESTED vs APPLIED pitch izi (rapor-only): suggest_pitch ONERISI
+    # (cidar-duyarli ideal ince pitch); applied nfv bellek pre-flight'i / fallback
+    # ile kabalasabilir. Ikisini AYRI tut ki sessiz geri-kabalastirma faz'i
+    # "etkisiz" gostermesin (K-19 telemetri gerekcesi).
+    # M2 (F3): bu alanlar simdilik yalniz _instr raporunda tasinir; kalici telemetri
+    # kablosu (telemetry.append_run'a suggested/applied gecisi) F5'te — demo_pipeline
+    # append_run cagirmiyor, kapsam buyutmemek icin burada yeni cagri EKLENMEZ.
+    _suggested_pitch = pitch
+    _instr["suggested_pitch_mm"] = round(_suggested_pitch, 3)
+    _instr["applied_pitch_mm"] = round(pitch, 3)
+    _instr["wall_aware_pitch"] = wall_aware_pitch
 
     nfv_pitch_reason = None
     if nesting_mode == "nfv":
@@ -739,6 +754,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 instance, plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
                 ram_bytes=probe_capabilities().ram_bytes,
+                wall_aware=wall_aware_pitch,  # K-19 OPT-IN (plaka-boyut kosullu iceride)
             )
             if _nfv_feasible:
                 pitch = _nfv_pitch
@@ -749,6 +765,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 nfv_pitch_reason = f"NFV->heightmap dususu (bellek): {nfv_pitch_reason}"
         except Exception:
             pass  # türetme başarısızsa suggest_pitch'te kal (güvenli düşüş)
+
+    # APPLIED pitch nihai (nfv bellek pre-flight sonrasi kabalasmis olabilir);
+    # suggested (ideal ince) ile fark = sessiz geri-kabalastirma izi.
+    _instr["applied_pitch_mm"] = round(pitch, 3)
 
     selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
 
@@ -881,6 +901,12 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     if _c2f_result is not None:
         winner_result = _c2f_result
         voxel_parts_3d = _c2f_result.fine_voxel_parts
+        # M1 (F3): solver ICI geri-kabalastirma (nfv_solve used_pitch / coarse_to_fine
+        # fine_pitch) sonrasi GERCEK sonuc pitch'i suggest'ten sapabilir -> applied'i
+        # solver sonucuyla guncelle ki sessiz kabalasma telemetride gorunur olsun.
+        # (heightmap/tuner yolunda solver'a giren pitch = uygulanan pitch; orada line
+        # 768'deki applied_pitch_mm oldugu gibi kalir.)
+        _instr["applied_pitch_mm"] = round(_c2f_result.fine_pitch, 3)
     else:
         winner_result = tune_result.result
         voxel_parts_3d = {p.id: p for p in voxel_parts}
@@ -1297,6 +1323,10 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality", "fast"),
             "time_budget_sec": scenario.get("time_budget_sec"),  # #22: None = bugünkü davranış
+            # K-19 OPT-IN cidar-duyarli pitch. Yoksa False = gozcu/default davranis
+            # DEGISMEZ (BIT-OZDES). True olunca suggest_pitch/suggest_nfv_pitch'e
+            # wall_aware=True gecer (kabuk-ailesi + guven kapisi iceride).
+            "wall_aware_pitch": bool(scenario.get("wall_aware_pitch", False)),
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5

@@ -240,3 +240,56 @@ class TestBoxOnlyDavranisKoruma:
         result = run_pipeline(_mini_scenario())
         pr = next(iter(result["pricing_results"].values()))
         assert pr["inputs"]["hacim_m3"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# M1 (F3): suggested vs applied pitch — solver-ICI geri-kabalastirma gorunurlugu
+# ---------------------------------------------------------------------------
+
+class TestSuggestedVsAppliedPitch:
+    def test_heightmap_yolu_suggested_esittir_applied(self):
+        # Heightmap/tuner yolu: solver'a giren pitch = uygulanan pitch -> ikisi ESIT.
+        # (Silent re-coarsening YOK; iki alan da raporda gorunur.)
+        result = run_pipeline(_mini_scenario())
+        nr = next(iter(result["nesting_results"].values()))
+        assert "suggested_pitch_mm" in nr and "applied_pitch_mm" in nr
+        assert nr["applied_pitch_mm"] == pytest.approx(nr["suggested_pitch_mm"])
+
+    def test_solver_kabalasmasi_applied_pitchte_gorunur(self, monkeypatch):
+        # M1 kanit: solver ICI (nfv bellek pre-flight / c2f) pitch'i kabalastirirsa
+        # applied_pitch_mm GERCEK sonuc pitch'ini yansitmali (suggested'tan sapar).
+        # c2f cozucusunu sahte sonucla degistir: fine_pitch = suggested'tan FARKLI.
+        from types import SimpleNamespace
+
+        import src.nesting3d.coarse_to_fine as c2f_mod
+
+        RESULT_PITCH = 99.0  # suggested (12mm) ile ASLA cakismaz -> ayrim netlesir
+
+        def _fake_c2f(instance, *, plate_w_mm, plate_d_mm, coarse_pitch,
+                      fine_pitch, budget, seed):
+            bin3d = Bin3D(plate_w_mm, plate_d_mm, RESULT_PITCH)
+            tune_result = SimpleNamespace(
+                winning_config_name="fake", baseline_height_mm=100.0,
+                improvement_mm=0.0, all_results=[], result=None,
+            )
+            return c2f_mod.CoarseToFineResult(
+                placements=[], bin3d=bin3d, height_mm=100.0, density=0.5,
+                winning_config="fake", coarse_height_mm=100.0,
+                coarse_pitch=coarse_pitch, fine_pitch=RESULT_PITCH,
+                coarse_time_s=0.0, fine_time_s=0.0, n_placed=0,
+                tune_result=tune_result, fine_voxel_parts={},
+                adaptive_reason=None,
+            )
+
+        monkeypatch.setattr(c2f_mod, "solve_coarse_to_fine", _fake_c2f)
+
+        # c2f dalini tetikle: qty > C2F_THRESHOLD (40).
+        sc = _mini_scenario()
+        sc["orders"][0]["parts"][0]["qty"] = 60
+        result = run_pipeline(sc)
+        nr = next(iter(result["nesting_results"].values()))
+
+        # applied = solver sonuc pitch'i; suggested = ideal ince pitch -> FARKLI.
+        assert nr["applied_pitch_mm"] == pytest.approx(RESULT_PITCH)
+        assert nr["suggested_pitch_mm"] != pytest.approx(RESULT_PITCH)
+        assert nr["suggested_pitch_mm"] < nr["applied_pitch_mm"]

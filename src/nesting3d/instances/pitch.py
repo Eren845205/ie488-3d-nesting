@@ -53,6 +53,71 @@ def min_feature_mm(instance: "NestingInstance") -> float:
     )
 
 
+# --- K-19: Cidar-duyarli (wall-aware) OPT-IN pitch turetmesi -------------------
+# YONTEM_HARITASI §3.1 K-19 / §5 K-19p (F3). Kabuk ailesinde (thin_shell/tube)
+# ORTAK pitch, bbox-min yerine CIDAR kalinligindan turer. Cidar tahmini = 2V/A;
+# bu deger F1 loader tarafindan watertight+fill<0.5 kabuklarda PartSpec.wall_mm'e
+# YAZILIR (burada YENIDEN trimesh.load YOK — hazir alan okunur). Kabuk parcanin
+# gercek "en ince ozelligi" cidardir (bbox-min degil) -> pitch cok daha ince
+# olur ve ince cavity duvarlari cozunur (Deneme4: 377.3->282.0mm, -%25).
+#
+# Tetik AND-kapisi (suggest_pitch / suggest_nfv_pitch icinde):
+#   (a) cagiran wall_aware=True   (DEFAULT False = mevcut davranis BIT-OZDES),
+#   (b) classify_prelim family in {thin_shell, tube},
+#   (c) family guveni >= WALL_AWARE_CONF_THRESHOLD (parametreyle ezilebilir).
+# H-06 (per-part pitch NO-GO) ihlali DEGIL: pitch yine herkes icin TEK; yalniz
+# turetim kurali cidar-duyarli.
+#
+# WALL_AWARE_CONF_THRESHOLD turetimi (gercek-veri family guvenleri, K-19 olcum):
+#   Iki tablo ile olculdu (qty-agirlik family oylamasini kaydirir, ikisi de raporlanir).
+#   ASIL KAPI = URETIM qty-agirlikli guvenler (siparis adetleri dahil):
+#     deneme4=0.87 -> TETIKLER; plan2=0.58; plan3=0.56; plan1=0.53 (mixed_scale);
+#     numune=0.59 (mixed_scale); boxy=0.69 (solid_bulk) -> esige headroom ~0.17.
+#   Dry-run qty=1 (bilgi amacli, f3_dryrun; adetsiz family oylamasi):
+#     deneme4=0.89; plan2=0.66; plan1=0.64; numune=0.65; plan3=0.52; boxy=0.67
+#     -> esige headroom ~0.09 (deneme4 haric en yakin non-tetik = plan2 0.66).
+#   Esik (max non-tetik, deneme4] araliginda olmali. 0.75 secildi. Guvenlik payi
+#   MUHAFAZAKAR okunmali: qty=1 tablosunda en yakin non-tetik guven 0.66 -> min
+#   headroom yalniz ~0.09 (deneme4 tarafinda pay 0.89-0.75=0.14). boxy her iki
+#   tabloda da family=solid_bulk (family kapisi zaten reddeder; guven kapisi ikinci
+#   savunma). SABIT-SIHIRLI-SAYI DEGIL — wall_conf_threshold parametresiyle ezilir;
+#   default degeri veri-ayriminden turetildi (dar qty=1 payi = ilerideki setlerde
+#   yeniden olcum gerektirebilir).
+WALL_AWARE_CONF_THRESHOLD: float = 0.75
+_WALL_AWARE_FAMILIES: tuple = ("thin_shell", "tube")
+
+
+def wall_feature_mm(instance: "NestingInstance") -> float:
+    """Cidar-duyarli en kucuk ozellik (mm): parca basina wall_mm (varsa) yoksa bbox-min.
+
+    F1 loader watertight kabuklarda PartSpec.wall_mm = 2V/A doldurur. wall_mm None
+    olan parcalar (loader dolduramadi / kabuk degil) bbox-min ile katilir. Sonuc
+    TEK ORTAK deger (min); solve pitch buradan tek skaler turetir (H-06).
+    """
+    vals = []
+    for p in instance.parts:
+        if p.wall_mm is not None and p.wall_mm > 0:
+            vals.append(float(p.wall_mm))
+        else:
+            vals.append(min(p.width_mm, p.depth_mm, p.height_mm))
+    return min(vals)
+
+
+def _wall_aware_triggers(
+    instance: "NestingInstance", conf_threshold: float,
+) -> tuple:
+    """(tetiklendi_mi, family, confidence) — cidar dali AND-kapisi (b)+(c).
+
+    classify_prelim (bbox + loader verisi) ile family+guven turer; family kabuk
+    ailesinde VE guven esik ustundeyse tetikler. Import lazy (dongusel bagimlilik
+    yok + cagirmadan maliyet yok).
+    """
+    from src.nesting3d.instances.family import classify_prelim
+    fam, conf = classify_prelim(instance)
+    triggered = fam in _WALL_AWARE_FAMILIES and conf >= conf_threshold
+    return triggered, fam, conf
+
+
 # --- NFV "kalite modu" pitch türetmesi (backlog #1, ölçüm 2026-06-23) ---------
 # NFV (FFT-cavity) çözücüsü suggest_pitch'in TERSİ bir pitch ister:
 #   * suggest_pitch: min_dim/2.5 → İNCE pitch (heightmap'te ince ucuz, kalite için iyi).
@@ -96,6 +161,8 @@ def suggest_nfv_pitch(
     cells_per_gb: float = NFV_CELLS_PER_GB,
     floor: float = DEFAULT_FLOOR,
     margin: int = 1,
+    wall_aware: bool = False,
+    wall_conf_threshold: float = WALL_AWARE_CONF_THRESHOLD,
 ) -> tuple[float, bool, str]:
     """NFV cavity çözücüsü için pitch öner: parça-GÜVENLİ pitch + plaka-oranı + bellek kabalaştırma.
 
@@ -130,16 +197,35 @@ def suggest_nfv_pitch(
     min_plate = min(plate_w_mm, plate_d_mm)
     budget = (ram_bytes / 1e9) * cells_per_gb
 
+    # K-19 OPT-IN cidar dali (PLAKA-BOYUT KOSULLU, H-11 FFT bellek duvari korunur):
+    # kabuk-ailesi + yeterli guven olunca en kucuk ozellik = CIDAR (mf'yi wall ile
+    # degistir). ANCAK NFV'de ince pitch FFT grid'ini kubik buyutur -> buyuk plakada
+    # OOM. Bu yuzden cidar pitch'i YALNIZ grid butceye SIGIYORSA uygulanir; sigmazsa
+    # min_feature davranisi korunur (heightmap yolu asil hedef; NFV OOM'a girmez).
+    wall_prefix = ""
+    if wall_aware:
+        _triggered, _fam, _conf = _wall_aware_triggers(instance, wall_conf_threshold)
+        if _triggered:
+            wf = wall_feature_mm(instance)
+            if wf < mf - 1e-12:  # cidar gercekten bbox-min'den ince
+                _cand = max(floor, wf / safe_ratio)
+                if _nfv_grid_cells(_cand, plate_w_mm, plate_d_mm) <= budget:
+                    mf = wf
+                    wall_prefix = f"cidar-duyarli ({_fam} conf={_conf:.2f}, wall={wf:.2f}mm); "
+                else:
+                    wall_prefix = (f"cidar-atlandi (plaka buyuk/FFT-bellek H-11, "
+                                   f"wall={wf:.2f}mm); ")
+
     # Plaka-oranı tavanı: en büyük parça(voxel) + 2·margin <= plaka(voxel)
     #   → max_dim + 2·margin·pitch <= min_plate → pitch <= (min_plate - max_dim)/(2·margin).
     m = max(1, int(margin))
     if max_dim >= min_plate:
         return (max(floor, mf / safe_ratio), False,
-                f"en buyuk parca {max_dim:.0f}mm >= plaka {min_plate:.0f}mm -> sigmaz, heightmap onerilir")
+                wall_prefix + f"en buyuk parca {max_dim:.0f}mm >= plaka {min_plate:.0f}mm -> sigmaz, heightmap onerilir")
     plate_ceil = (min_plate - max_dim) / (2 * m)
     if plate_ceil < floor:
         return (floor, False,
-                f"plaka-orani tavani {plate_ceil:.2f}mm < floor {floor}mm (parca plakaya cok yakin) "
+                wall_prefix + f"plaka-orani tavani {plate_ceil:.2f}mm < floor {floor}mm (parca plakaya cok yakin) "
                 f"-> NFV riskli, heightmap onerilir")
 
     pitch_safe = min(max(floor, mf / safe_ratio), plate_ceil)   # parça-garanti, plakaya sığar
@@ -150,7 +236,7 @@ def suggest_nfv_pitch(
     if cells <= budget:
         limiter = ("plaka-orani" if plate_ceil < mf / safe_ratio - 1e-9
                    else f"guvenli min_feature={mf:.2f}/{safe_ratio}")
-        return pitch, True, (f"nfv-pitch={pitch:.2f}mm ({limiter}); "
+        return pitch, True, (wall_prefix + f"nfv-pitch={pitch:.2f}mm ({limiter}); "
                              f"grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
 
     # Bellek asiyor -> bellek sigana kadar kabalastir (deterministik, voxelize sinirina kadar).
@@ -159,10 +245,10 @@ def suggest_nfv_pitch(
         cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
 
     if cells <= budget:
-        return pitch, True, (f"nfv-pitch={pitch:.2f}mm (bellek icin kabalastirildi, "
+        return pitch, True, (wall_prefix + f"nfv-pitch={pitch:.2f}mm (bellek icin kabalastirildi, "
                              f"oran={mf / pitch:.2f}); grid~{cells / 1e6:.1f}M <= butce {budget / 1e6:.0f}M")
     # Voxelize sinirina kadar kabalastik ama bellek hala yetmiyor -> NFV bu instance+donanimda riskli.
-    return pitch, False, (f"nfv-pitch={pitch:.2f}mm ama grid~{cells / 1e6:.1f}M > butce "
+    return pitch, False, (wall_prefix + f"nfv-pitch={pitch:.2f}mm ama grid~{cells / 1e6:.1f}M > butce "
                           f"{budget / 1e6:.0f}M (RAM {ram_bytes / 1e9:.0f}GB) -> bellek-riskli, "
                           f"heightmap onerilir")
 
@@ -173,6 +259,8 @@ def suggest_pitch(
     factor: float = DEFAULT_FACTOR,
     floor: float = DEFAULT_FLOOR,
     ceil: float = DEFAULT_CEIL,
+    wall_aware: bool = False,
+    wall_conf_threshold: float = WALL_AWARE_CONF_THRESHOLD,
 ) -> float:
     """Instance için voxel pitch öner: min_dim / factor, [floor, ceil]'e kelepçeli.
 
@@ -181,6 +269,13 @@ def suggest_pitch(
         factor:   En küçük özellik kaç voxel'e bölünsün (varsayılan 2.5).
         floor:    Pitch alt sınırı, mm (varsayılan 2.0).
         ceil:     Pitch üst sınırı, mm (varsayılan 15.0).
+        wall_aware: OPT-IN cidar-duyarli dal (K-19). DEFAULT False -> mevcut
+                    davranis BIT-OZDES. True + kabuk-ailesi + yeterli guven
+                    olunca en kucuk ozellik = CIDAR (wall_mm) alinir -> daha
+                    ince pitch (ince cavity duvarlari cozunur). Tetik tek ORTAK
+                    pitch uretir (H-06 korunur).
+        wall_conf_threshold: cidar dali guven esigi (default WALL_AWARE_CONF_THRESHOLD;
+                    veri-ayriminden turetildi, override edilebilir).
 
     Returns:
         Önerilen pitch (mm). Determinist: aynı instance → aynı pitch.
@@ -193,5 +288,10 @@ def suggest_pitch(
     if not instance.parts:
         raise ValueError("Boş instance: pitch türetilemez (parça yok).")
 
-    raw = min_feature_mm(instance) / factor
+    feature = min_feature_mm(instance)
+    if wall_aware:
+        triggered, _fam, _conf = _wall_aware_triggers(instance, wall_conf_threshold)
+        if triggered:
+            feature = min(feature, wall_feature_mm(instance))
+    raw = feature / factor
     return max(floor, min(ceil, raw))
