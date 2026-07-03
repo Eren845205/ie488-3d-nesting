@@ -51,6 +51,102 @@ class TestOtomatikGecmis:
         assert kayit["kaynak"] == "manuel"
 
 
+class TestOtomatikModPolitikasi:
+    """Kullanici karari 2026-07-03: gozcu HER ZAMAN NFV kalite modunda kosar.
+
+    Gerekce: auto->heightmap sezgiseli kutu-oranina bakip ince cidarli KABUK
+    parcalarda yaniliyordu (Deneme4: 377mm heightmap vs Magics 250mm hedef).
+    Heightmap yalniz manuel ekranda bilincli secenek olarak kalir."""
+
+    def test_poller_senaryosu_nfv_quality_max(self, app_with_llm):
+        poller = app_with_llm.config["MAIL_POLLER"]
+        assert poller._base_scenario.get("nesting_mode") == "nfv"
+        assert poller._base_scenario.get("nfv_quality") == "max"
+
+    def test_otomatik_gecmis_kaydi_nfv_etiketli(self, app_with_llm):
+        poller = app_with_llm.config["MAIL_POLLER"]
+        poller.poll_once()
+        kayit = app_with_llm.config["OTONOM_GECMIS"].liste()[0]
+        assert kayit["mod"] == "nfv"
+        assert kayit["nfv_quality"] == "max"
+
+
+class TestKesinSonucGecmisKaydi:
+    """P0 (2026-07-03): sifir-sonuclu kosu gecmise 'hata' olarak duser,
+    hata notu tasir ve BASARILI kaydin dedup anahtarini tuketmez."""
+
+    @staticmethod
+    def _fail_result():
+        from types import SimpleNamespace
+        return {
+            "ranked_orders": [SimpleNamespace(customer="FSM", order_id="ZIP-X1")],
+            "batches": [1],
+            "nesting_results": {"B001": {"height_mm": 0.0,
+                                         "note": "Tuner hatasi: voxel bos"}},
+            "pricing_results": {},
+            "elapsed_sec": 5.0,
+        }
+
+    @staticmethod
+    def _ok_result():
+        from types import SimpleNamespace
+        return {
+            "ranked_orders": [SimpleNamespace(customer="FSM", order_id="ZIP-X1")],
+            "batches": [1],
+            "nesting_results": {"B001": {"height_mm": 42.0, "density": 0.5}},
+            "pricing_results": {"B001": {"total_price": 200.0}},
+            "elapsed_sec": 7.0,
+        }
+
+    def test_sifir_sonuc_hata_kaydi_ve_ozet(self, app_with_llm):
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        gecmis = app_with_llm.config["OTONOM_GECMIS"]
+        fn(self._fail_result(), mod="nfv", kaynak="otomatik")
+        kayit = gecmis.liste()[0]
+        assert kayit["durum"] == "hata"
+        assert "Tuner hatasi" in kayit["hata_ozeti"]
+
+    def test_kismi_basari_kaydi(self, app_with_llm):
+        """R1 #3: bazi partiler uretemezse durum='kismi' + basarisiz parti
+        notu; sonraki TAM basari kaydi ayri anahtarla YAZILIR."""
+        from types import SimpleNamespace
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        gecmis = app_with_llm.config["OTONOM_GECMIS"]
+        partial = {
+            "ranked_orders": [SimpleNamespace(customer="FSM", order_id="ZIP-X1")],
+            "batches": [1, 2],
+            "nesting_results": {
+                "B001": {"height_mm": 42.0, "density": 0.5},
+                "B002": {"height_mm": 0.0, "note": "Tuner hatasi: parti B"},
+            },
+            "pricing_results": {}, "elapsed_sec": 5.0,
+        }
+        fn(partial, mod="nfv", kaynak="otomatik")
+        fn(partial, mod="nfv", kaynak="otomatik")   # retry — cogalmasin
+        fn(self._ok_result(), mod="nfv", kaynak="otomatik")
+        kayitlar = gecmis.liste()
+        durumlar = [k["durum"] for k in kayitlar]
+        assert durumlar.count("kismi") == 1
+        assert durumlar.count("bitti") == 1
+        kismi = next(k for k in kayitlar if k["durum"] == "kismi")
+        assert "parti B" in kismi["hata_ozeti"]
+
+    def test_hata_kaydi_basarili_kaydi_bloklamaz(self, app_with_llm):
+        """Bugunku canli olay: hata kaydi dedup anahtarini tuketseydi,
+        duzeltme sonrasi basarili kosunun kaydi GORUNMEZ olurdu."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        gecmis = app_with_llm.config["OTONOM_GECMIS"]
+        fn(self._fail_result(), mod="nfv", kaynak="otomatik")
+        fn(self._fail_result(), mod="nfv", kaynak="otomatik")  # retry ayni hata
+        fn(self._ok_result(), mod="nfv", kaynak="otomatik")    # duzeltme sonrasi
+        kayitlar = gecmis.liste()
+        durumlar = [k["durum"] for k in kayitlar]
+        assert durumlar.count("hata") == 1    # retry cogaltmadi (hata-dedup)
+        assert durumlar.count("bitti") == 1   # basari kaydi YAZILDI
+        bitti = next(k for k in kayitlar if k["durum"] == "bitti")
+        assert bitti["min_yukseklik_mm"] == 42.0
+
+
 class TestPollAralik:
     def test_poll_baslat_interval_uygular(self, client_llm, app_with_llm):
         resp = client_llm.post("/poll/baslat", json={"interval_s": 600})

@@ -96,6 +96,185 @@ def test_poller_poll_once_callback_ve_durum(tmp_path):
     assert poller.state.last_error is None
 
 
+# ---------------------------------------------------------------------------
+# Kesin-sonuc tanimi (P0, 2026-07-03 canli dersi): nesting gecerli yukseklik
+# uretmediyse mail "islendi" SAYILMAZ -> sonraki tur otomatik yeniden dener.
+# ---------------------------------------------------------------------------
+
+
+class _MarkSpySource(_OnceSource):
+    def __init__(self, mails):
+        super().__init__(mails)
+        self.marked = []
+
+    def mark_processed(self, mail):
+        self.marked.append(mail.message_id)
+
+
+def test_nesting_produced_output_tanimi():
+    from src.runtime.mail_poller import nesting_produced_output
+    assert nesting_produced_output(None) is False
+    assert nesting_produced_output({}) is False
+    assert nesting_produced_output({"nesting_results": {}}) is False
+    assert nesting_produced_output(
+        {"nesting_results": {"B001": {"height_mm": 0.0, "note": "Tuner hatasi"}}}
+    ) is False
+    assert nesting_produced_output(
+        {"nesting_results": {"B001": {"height_mm": 0.0}, "B002": {"height_mm": 12.5}}}
+    ) is True
+
+
+def test_sifir_sonuclu_kosu_mark_edilmez(tmp_path, monkeypatch):
+    """Nesting hatasi yutulup height=0 dondugunde mail KALICI kaydedilmez —
+    motor duzeltmesi sonrasi sonraki tarama kendiliginden telafi eder.
+    (Deneme4 canli olayi: idempotency'yi elle silmek zorunda kalmistik.)"""
+    import scripts.demo_pipeline as dp
+
+    def _fake_run_pipeline(scenario):
+        return {"nesting_results": {"B001": {"height_mm": 0.0,
+                                             "note": "Tuner hatasi: voxel bos"}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _fake_run_pipeline)
+    src = _MarkSpySource([_zip_mail(mid="<P0-FAIL@x>")])
+    res = process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path),
+    )
+    assert res is not None          # sonuc doner (gecmis "hata" kaydi icin)
+    assert src.marked == []          # ama mail ISLENDI SAYILMADI
+
+
+def test_gecerli_sonuclu_kosu_mark_edilir(tmp_path, monkeypatch):
+    import scripts.demo_pipeline as dp
+
+    def _fake_run_pipeline(scenario):
+        return {"nesting_results": {"B001": {"height_mm": 42.0}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _fake_run_pipeline)
+    src = _MarkSpySource([_zip_mail(mid="<P0-OK@x>")])
+    res = process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path),
+    )
+    assert res is not None
+    assert src.marked == ["<P0-OK@x>"]
+
+
+def test_kismi_basari_mark_edilmez(tmp_path, monkeypatch):
+    """R1 #3: 2 partiden 1'i basarili = KISMI — mail islendi sayilmaz
+    (basarisiz partinin siparisleri sessizce kaybolmasin)."""
+    import scripts.demo_pipeline as dp
+
+    def _fake_run_pipeline(scenario):
+        return {"nesting_results": {
+                    "B001": {"height_mm": 42.0},
+                    "B002": {"height_mm": 0.0, "note": "Tuner hatasi: X"}},
+                "ranked_orders": [], "batches": [1, 2], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _fake_run_pipeline)
+    src = _MarkSpySource([_zip_mail(mid="<P0-KISMI@x>")])
+    res = process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path),
+    )
+    assert res is not None
+    assert src.marked == []
+
+
+def test_on_result_mark_oncesi_ve_hatasi_marki_engeller(tmp_path, monkeypatch):
+    """R1 #4: on_result (gecmis kaydi) mark'tan ONCE kosar; istisna atarsa
+    mail islendi SAYILMAZ ('gorunmez is' olusamaz)."""
+    import scripts.demo_pipeline as dp
+
+    def _fake_run_pipeline(scenario):
+        return {"nesting_results": {"B001": {"height_mm": 42.0}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _fake_run_pipeline)
+
+    # (a) siralama: on_result cagrildiginda mark HENUZ yapilmamis olmali
+    src = _MarkSpySource([_zip_mail(mid="<P0-SIRA@x>")])
+    marked_at_callback = []
+
+    def _peek(result):
+        marked_at_callback.append(list(src.marked))
+
+    process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), on_result=_peek,
+    )
+    assert marked_at_callback == [[]]        # callback aninda mark yoktu
+    assert src.marked == ["<P0-SIRA@x>"]     # sonrasinda mark yapildi
+
+    # (b) on_result patlarsa mark ATLANIR
+    src2 = _MarkSpySource([_zip_mail(mid="<P0-GKAYIT@x>")])
+
+    def _boom(result):
+        raise IOError("disk dolu — gecmis yazilamadi")
+
+    res2 = process_inbox_once(
+        src2, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), on_result=_boom,
+    )
+    assert res2 is not None
+    assert src2.marked == []
+
+
+def test_process_inbox_once_on_stage_pipeline_oncesi(tmp_path):
+    """on_stage callback'i pipeline BASLARKEN insan-okur metinle cagrilir
+    (kullanici istegi: 'islenmeye alindi' gorunurlugu — is bitmeden sinyal)."""
+    stages = []
+    src = _OnceSource([_zip_mail()])
+    res = process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), on_stage=stages.append,
+    )
+    assert res is not None
+    assert len(stages) == 1
+    assert "işlenmeye alındı" in stages[0]
+    assert "5 parça" in stages[0]  # braket 3 + kapak 2
+
+
+def test_process_inbox_once_on_stage_hatasi_yutulur(tmp_path):
+    """on_stage patlasa bile akis KIRILMAZ (gorunurluk yan-kanal)."""
+    def _bad_stage(_msg):
+        raise RuntimeError("UI koptu")
+    src = _OnceSource([_zip_mail()])
+    res = process_inbox_once(
+        src, parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), on_stage=_bad_stage,
+    )
+    assert res is not None  # pipeline yine kostu
+
+
+def test_poller_inflight_gorunurlugu(tmp_path):
+    """poll_once SIRASINDA inflight=True + detay dolu; bitince temiz."""
+    seen = {}
+
+    def _probe(_result):
+        # on_result pipeline bitiminde ama poll_once icinde kosar ->
+        # inflight hala True olmali (finally'de temizlenir)
+        seen["inflight"] = poller.state.inflight
+        seen["detail_was_set"] = bool(seen.get("detail_was_set"))
+
+    stages = []
+    poller = MailPoller(
+        make_source=lambda: _OnceSource([_zip_mail()]),
+        parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), interval_s=1,
+        on_result=_probe,
+    )
+    res = poller.poll_once()
+    assert res is not None
+    assert seen["inflight"] is True             # kosarken gorunur
+    assert poller.state.inflight is False       # bitince temiz
+    assert poller.state.inflight_detail == ""
+    snap = poller.state.snapshot()
+    assert "inflight" in snap and "inflight_detail" in snap
+
+
 def test_poller_hata_yutulur_durum_yazilir(tmp_path):
     def _boom():
         raise RuntimeError("kaynak patladi")

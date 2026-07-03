@@ -85,8 +85,16 @@
                     <td>
                         {% if k.durum == 'bitti' %}
                             <span class="badge badge-green">Tamamlandı</span>
+                        {% elif k.durum == 'kismi' %}
+                            <span class="badge badge-yellow" {% if k.hata_ozeti %}title="{{ k.hata_ozeti }}"{% endif %}>Kısmî</span>
+                            {% if k.hata_ozeti %}
+                            <br><span style="font-size:10px; color:var(--warn, #b8860b); display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ k.hata_ozeti }}">{{ k.hata_ozeti }}</span>
+                            {% endif %}
                         {% else %}
-                            <span class="badge badge-red">{{ k.durum or 'Hata' }}</span>
+                            <span class="badge badge-red" {% if k.hata_ozeti %}title="{{ k.hata_ozeti }}"{% endif %}>{{ k.durum or 'Hata' }}</span>
+                            {% if k.hata_ozeti %}
+                            <br><span style="font-size:10px; color:var(--err); display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ k.hata_ozeti }}">{{ k.hata_ozeti }}</span>
+                            {% endif %}
                         {% endif %}
                     </td>
                     <td style="text-align:right; color:var(--accent); font-weight:700; font-size:16px;">&rsaquo;</td>

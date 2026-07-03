@@ -728,6 +728,10 @@
                 '<span class="forge-status-dot"></span>' +
                 '<span class="forge-status-label">Gözcü aktif</span>' +
                 '<span class="forge-status-stage">' + escapeHtml(bilgi) + '</span>';
+            if (durum.inflight && durum.inflight_detail) {
+                html += '<span style="color:var(--accent-ink); font-size:12px; font-weight:600;">⚙ ' +
+                        escapeHtml(durum.inflight_detail) + '</span>';
+            }
             if (durum.last_error) {
                 html += '<span style="color:var(--err); font-size:12px;">hata: ' + escapeHtml(durum.last_error) + '</span>';
             }

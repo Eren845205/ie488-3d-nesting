@@ -609,6 +609,34 @@ def _register_routes(
                 _ilk = next(iter(nesting_results.values()))
                 _secilen = _ilk.get("nesting_mode_used")
                 _reason = _ilk.get("auto_mode_reason")
+            # KESIN-SONUC tanimi poller ile ORTAK (2026-07-03 canli dersi + R1):
+            #   bitti = TUM partiler gecerli yukseklik uretti
+            #   kismi = bazilari uretti (kalanlar not'la kayboldu — R1 #3)
+            #   hata  = hicbiri uretmedi
+            # Basarisiz partilerin yutulan notlari kayda cikar (operator
+            # gorunurlugu) ve dedup anahtari durum-onekiyle ayrisir ki mail
+            # yeniden denendiginde BASARILI kaydin onunu kesmesin.
+            from src.runtime.mail_poller import (
+                nesting_fully_succeeded, nesting_produced_output,
+            )
+            _tam = nesting_fully_succeeded(pipeline_result)
+            _uretti = nesting_produced_output(pipeline_result)
+            _durum = "bitti" if _tam else ("kismi" if _uretti else "hata")
+            _basarili = _tam
+            _hata_ozeti = None
+            if not _tam:
+                _notlar = [
+                    str(nr.get("note") or "").strip()
+                    for nr in nesting_results.values()
+                    if not float(nr.get("height_mm") or 0.0) > 0.0
+                ]
+                _notlar = [n for n in _notlar if n]
+                if _notlar:
+                    _hata_ozeti = ("; ".join(_notlar))[:500]
+                elif _uretti:
+                    _hata_ozeti = "Bazi partiler nesting sonucu uretemedi."
+                else:
+                    _hata_ozeti = "Nesting sonucu uretilemedi (parti/nesting kaydi bos)."
             _asama_ozet = [
                 {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
                 for a in (asamalar or [])
@@ -626,6 +654,10 @@ def _register_routes(
             _dedup_key = None
             if kaynak == "otomatik" and _order_ids:
                 _dedup_key = json.dumps(_order_ids)
+                if _durum != "bitti":
+                    # Hata/kismi kaydi kendi anahtarinda dedup'lanir (her
+                    # retry'da cogalmasin) ama basari anahtarini TUKETMEZ.
+                    _dedup_key = f"{_durum}:" + _dedup_key
             elif kaynak == "otomatik" and ranked:
                 # Otomatik kayit ama order_id toplanamadi -> dedup atlanir
                 # (kayit yine yazilir, kaybolmaz; ama cift-kayit korumasi yok).
@@ -636,7 +668,8 @@ def _register_routes(
                 )
             _otonom_gecmis.kaydet(
                 {
-                    "durum": "bitti",
+                    "durum": _durum,
+                    "hata_ozeti": _hata_ozeti,
                     "kaynak": kaynak,
                     "mod": mod,
                     "secilen_mod": _secilen,
@@ -654,8 +687,12 @@ def _register_routes(
                 },
                 dedup_key=_dedup_key,
             )
+            return True
         except Exception:
-            logger.debug("Is gecmisine yazilamadi (kaynak=%s)", kaynak, exc_info=True)
+            # R1 #4: sessiz debug DEGIL gorunur hata — cagiran (poller yolu)
+            # False'a gore mail'i islendi saymamayi secebilir.
+            logger.error("Is gecmisine YAZILAMADI (kaynak=%s)", kaynak, exc_info=True)
+            return False
 
     # Testlerde dogrudan erisim icin config'e eklenir; uretimde de set edilir
     # ama hicbir route geri okumaz -> zararsiz serbest referans (test izolasyonu).
@@ -673,7 +710,11 @@ def _register_routes(
         app.config["LAST_RESULT"] = result
         # OTOMATIK islenen is de kalici gecmise dussun — operator sonradan
         # /gecmis'ten "sistem gece sunlari isledi" diye gorur (kaynak=otomatik).
-        _gecmis_kaydet(result, mod="auto", kaynak="otomatik")
+        # mod/nfv_quality _POLL_SCENARIO politikasiyla ayni (nfv + max).
+        # R1 #4: kayit yazilamadiysa RAISE — process_inbox_once mark'i atlar,
+        # mail sonraki turda yeniden denenir ("gorunmez is" olusamaz).
+        if not _gecmis_kaydet(result, mod="nfv", nfv_quality="max", kaynak="otomatik"):
+            raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
 
     try:
         _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
@@ -689,10 +730,22 @@ def _register_routes(
     _scan_lock = threading.Lock()
     app.config["OTONOM_SCAN_LOCK"] = _scan_lock
 
+    # OTOMATIK MOD POLITIKASI (kullanici karari 2026-07-03): gozcu HER ZAMAN
+    # NFV kalite modunda kosar (quality=max). Gerekce: auto->heightmap sezgiseli
+    # parca KUTU oranina bakiyor; ince cidarli KABUK parcalarda (Deneme4 dugme
+    # seti: bbox dolulugu ~%12) "cavity yok" diye yaniliyor — 377mm heightmap
+    # vs Magics 250mm. Musteri en iyi yerlestirmeyi bekler; sure ikincil.
+    # Heightmap YALNIZ manuel ekranda (operator bilincli secerse) kalir.
+    # quality=max kendi RAM on-kontrolunu yapar (<13GB -> n=8 taban) ve
+    # fine-settle/GPU fallback'leri guard'lidir — zarif dusus korunur.
+    _POLL_SCENARIO = {
+        **_POLL_BASE_SCENARIO, "nesting_mode": "nfv", "nfv_quality": "max",
+    }
+
     _poller = MailPoller(
         make_source=_poll_make_source,
         parser_role=(llm_components or {}).get("parser_role"),
-        base_scenario=_POLL_BASE_SCENARIO,
+        base_scenario=_POLL_SCENARIO,
         persist_root=str(_ROOT / "data" / "mail_stl"),
         interval_s=_poll_interval,
         on_result=_poll_on_result,
@@ -885,8 +938,22 @@ def _register_routes(
         # Sohbet gecmisi: session'dan oku (per-kullanici)
         _sohbet = session.get("conversation_turns", [])
 
+        # R1 #6: nesting sonucsuz/kismi ise ekran "tamamlanmis" gibi
+        # gorunmesin — /gecmis "hata" derken /sonuc'un sessiz kalmasi
+        # operatoru yaniltiyordu.
+        from src.runtime.mail_poller import (
+            nesting_fully_succeeded as _nfs_ok,
+            nesting_produced_output as _npo_ok,
+        )
+        _nesting_uyari = None
+        if not _npo_ok(result):
+            _nesting_uyari = "hata"
+        elif not _nfs_ok(result):
+            _nesting_uyari = "kismi"
+
         return render_template(
             "sonuc.html",
+            nesting_uyari=_nesting_uyari,
             ranked=ranked,
             batches=batches,
             warnings=warnings,
@@ -1757,11 +1824,21 @@ def _register_routes(
         pipeline_result["used_demo"] = False
         app.config["LAST_RESULT"] = pipeline_result
 
-        # FIX 2(a): at-least-once — order-ureten mailleri KESIN sonuc (pipeline
-        # basarisi) sonrasi kalici olarak isaretle (poller ile ORTAK store).
-        # Boylece ayni mail poller veya tekrar manuel kosumda BIR KEZ islenir.
-        for _m in _order_mails:
-            _mark_mail(_m)
+        # FIX 2(a) + R1 #2/#3: at-least-once — order-ureten mailler yalniz
+        # TAM basari (tum partiler gecerli yukseklik) sonrasi kalici isaretlenir
+        # (poller ile ORTAK store + ORTAK kesin-sonuc tanimi). Sifir/kismi
+        # sonucta mark YOK -> mail poller/manuel sonraki kosuda yeniden denenir;
+        # aksi halde motor duzeltmesi sonrasi otomatik telafi imkansiz olurdu
+        # (2026-07-03 Deneme4 canli dersi).
+        from src.runtime.mail_poller import nesting_fully_succeeded as _nfs
+        if _nfs(pipeline_result):
+            for _m in _order_mails:
+                _mark_mail(_m)
+        else:
+            logger.warning(
+                "Otonom: nesting TAM sonuc uretmedi — mail(ler) islendi "
+                "SAYILMADI (sonraki kosuda yeniden denenebilir)."
+            )
 
         ranked = pipeline_result.get("ranked_orders", [])
         batches = pipeline_result.get("batches", [])
@@ -2570,6 +2647,24 @@ def _register_routes(
 
         result["used_demo"] = False
         app.config["LAST_RESULT"] = result
+
+        # R1 #5: operator adet-girisi de kalici gecmise duser (denetim izi) —
+        # durum (bitti/kismi/hata) + hata notlari _gecmis_kaydet icinde cozulur.
+        _gecmis_kaydet(result, mod="auto", kaynak="manuel")
+
+        # R1 #1 (CRITICAL): bekleyen kayit + STL byte'lari YALNIZ gecerli
+        # nesting sonucu varsa silinir. Sifir-sonucta pending KORUNUR —
+        # operator emegi + kaynak STL'ler imha edilmez, hata gorunur sekilde
+        # /adet-gir'e doner (motor duzeltmesi sonrasi ayni kayittan yeniden
+        # denenebilir).
+        from src.runtime.mail_poller import nesting_produced_output as _npo
+        if not _npo(result):
+            logger.warning(
+                "adet-gir: nesting sonuc uretmedi — bekleyen siparis %s "
+                "KORUNDU (silinmedi), operator yeniden deneyebilir.", order_id,
+            )
+            return redirect(url_for("adet_gir") + "?hata=nesting")
+
         # Basariyla islendi -> bekleyen kayidi temizle, sonuc ekranina git.
         _pending_store.remove(order_id)
         return redirect(url_for("sonuc"))

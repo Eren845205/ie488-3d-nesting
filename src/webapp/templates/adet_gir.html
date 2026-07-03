@@ -23,6 +23,11 @@
     <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
         Sipariş kuruldu ama hesaplama (nesting/fiyat) sırasında hata oluştu.
     </div>
+    {% elif hata == "nesting" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Sipariş kuruldu ama nesting geçerli bir sonuç üretemedi — <strong>siparişiniz ve STL'ler korundu</strong>,
+        aşağıdaki listeden yeniden deneyebilirsiniz. Ayrıntı İş Geçmişi'ndeki hata kaydında.
+    </div>
     {% elif hata == "bulunamadi" %}
     <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
         Sipariş bulunamadı (zaten işlenmiş veya silinmiş olabilir).

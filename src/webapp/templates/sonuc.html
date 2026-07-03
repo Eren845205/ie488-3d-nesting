@@ -15,6 +15,20 @@
 </div>
 {% endif %}
 
+{% if nesting_uyari == "hata" %}
+<div style="margin-bottom:16px; padding:12px 14px; border-radius:8px; background:#fff0f0; border:1px solid #e08585; font-size:14px;">
+    <strong>&#9888; Nesting sonucu üretilemedi.</strong> Aşağıdaki tablolar eksik/sıfır değerler içerir;
+    bu koşu <em>tamamlanmış bir iş değildir</em>. Ayrıntılı hata notu
+    <a href="/gecmis">İş Geçmişi</a> kaydında.
+</div>
+{% elif nesting_uyari == "kismi" %}
+<div style="margin-bottom:16px; padding:12px 14px; border-radius:8px; background:#fff8e6; border:1px solid #e0c268; font-size:14px;">
+    <strong>&#9888; Kısmî sonuç:</strong> bazı partiler nesting sonucu üretemedi &mdash;
+    aşağıda yükseklik/doluluk değeri boş olan partiler işlenememiştir. Ayrıntı
+    <a href="/gecmis">İş Geçmişi</a> kaydında.
+</div>
+{% endif %}
+
 <!-- Ozet kartlar -->
 <div class="summary-grid">
     <div class="summary-card">

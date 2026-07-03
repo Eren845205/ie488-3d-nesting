@@ -104,6 +104,7 @@ function pollGoster(s) {
     document.getElementById('poll-kapa').style.display = s.enabled ? 'inline-block' : 'none';
     var parts = ['Aralık: ' + s.interval_s + ' sn', 'Tur: ' + s.runs,
                  'Toplam işlenen sipariş: ' + s.total_processed];
+    if (s.inflight && s.inflight_detail) parts.push('⚙ ' + s.inflight_detail);
     if (s.last_error) parts.push('Son hata: ' + s.last_error);
     document.getElementById('poll-detay').textContent = parts.join(' · ');
 }

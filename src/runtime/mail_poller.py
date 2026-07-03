@@ -59,6 +59,8 @@ def process_inbox_once(
     persist_root: Optional[str] = None,
     deadline_fallback: str = "",
     pending_store: Any = None,
+    on_stage: Optional[Any] = None,
+    on_result: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     """Gelen kutusunu BIR kez isle: cek -> parse -> pipeline.
 
@@ -75,6 +77,15 @@ def process_inbox_once(
         pending_store: PendingOrderStore (opsiyonel). Verilirse "ZIP var ama adet
                        yok" siparisleri burada operator incelemesine kaydedilir;
                        None ise yalniz atlanir (geriye uyum).
+        on_stage:      Opsiyonel callback(str) — uzun asamalarin BASINDA insan-okur
+                       durum metniyle cagrilir (orn. pipeline'a girerken
+                       "2 siparis pipeline'da (588 parca)"). UI canli gorunurlugu
+                       icin; hatasi yutulur, akisi etkilemez.
+        on_result:     Opsiyonel callback(result) — pipeline sonucu ile,
+                       mark_processed'dan ONCE cagrilir (R1 #4 siralama fix'i:
+                       gecmis/gozlemci kaydi yazilamazsa mail islendi SAYILMAZ,
+                       "gorunmez is" olusamaz). Callback istisna atarsa mail
+                       kalici isaretlenmez ve sonraki turda yeniden denenir.
 
     Returns:
         run_pipeline ciktisi (dict) — yeni siparis islendiyse.
@@ -148,6 +159,20 @@ def process_inbox_once(
     if not orders:
         return None
 
+    # Canli gorunurluk: pipeline UZUN surebilir (buyuk nesting) — operatore
+    # "is alindi, yerlestirme kosuyor" sinyalini SIMDI ver, bitince sayac artar.
+    if on_stage is not None:
+        try:
+            _n_parca = sum(
+                int(p.get("qty", 0) or 0) for o in orders for p in o.get("parts", [])
+            )
+            on_stage(
+                f"{len(orders)} sipariş işlenmeye alındı — nesting koşuyor"
+                f" ({_n_parca} parça)"
+            )
+        except Exception:
+            pass  # gorunurluk akisi asla bozmaz
+
     scenario = {**base_scenario, "orders": orders}
     # Plaka: bir siparis GERCEK plaka tasiyorsa (env PLATE_*) onu uygula.
     # Aksi halde base_scenario'nun demo container'ini BIRAK (None) ki run_pipeline
@@ -164,12 +189,86 @@ def process_inbox_once(
         )
         return None  # kesin degil -> mark_processed ETME
 
-    # Pipeline basarili -> order-ureten mailleri kalici olarak kaydet
+    # SIRALAMA (R1 #4): gecmis/gozlemci kaydi mark'tan ONCE. Ters sira
+    # "gorunmez is" uretir: mail kalici isaretlenir ama gecmis yazimi (disk
+    # dolu vb.) sessizce duserse operator isin yapildigini asla goremez ve
+    # mail bir daha cekilmez. Kayit yazilamazsa mark atlanir -> yeniden dene.
+    if on_result is not None:
+        try:
+            on_result(result)
+        except Exception as exc:
+            logger.error(
+                "mail_poller: on_result/gecmis kaydi basarisiz (%s) — "
+                "mail(ler) ISLENDI SAYILMADI, sonraki tur yeniden denenecek.", exc,
+            )
+            return result
+
+    # "KESIN SONUC" TANIMI (2026-07-03 canli dersi + R1 #3): run_pipeline'in
+    # donmesi yetmez — nesting adimi hatasini YUTUP note alanina yazar
+    # (height=0). Kalici isaretleme TAM basari ister:
+    #   * hicbir parti uretmedi  -> gecmiste durum="hata"  -> mark YOK
+    #   * bazilari uretti (kismi)-> gecmiste durum="kismi" -> mark YOK
+    #     (eksik partilerin siparisleri sessizce kaybolmasin; sonraki tur
+    #     tum mail yeniden denenir — at-least-once, is idempotent)
+    #   * tumu uretti            -> mark (mail bir daha islenmez)
+    if not nesting_fully_succeeded(result):
+        if nesting_produced_output(result):
+            logger.warning(
+                "mail_poller: KISMI basari — bazi partiler nesting uretemedi; "
+                "mail(ler) islendi SAYILMADI, sonraki tur yeniden denenecek."
+            )
+        else:
+            logger.warning(
+                "mail_poller: pipeline dondu ama hicbir parti gecerli nesting "
+                "uretmedi (tum yukseklikler 0/bos) — mail(ler) ISLENDI "
+                "SAYILMADI, sonraki tur yeniden denenecek."
+            )
+        return result
+
+    # TAM basari -> order-ureten mailleri kalici olarak kaydet
     if _mark is not None:
         for m in order_mails:
             _mark(m)
 
     return result
+
+
+def nesting_fully_succeeded(result: Optional[Dict[str, Any]]) -> bool:
+    """TUM partiler gecerli yukseklik uretti mi? (mark_processed esigi)
+
+    R1 denetim bulgusu (kismi-basari yutmasi): 3 partiden 1'i basarili diye
+    mail "tam islendi" sayilirsa, kalan 2 partinin siparisleri hicbir yerde
+    gorunmeden kaybolur (eksik teslimat). Bu yuzden kalici isaretleme (mail
+    bir daha islenmesin karari) TAM basari ister; kismi basari gecmise
+    durum="kismi" olarak dusur ve mail sonraki turda yeniden denenir.
+    """
+    if not result:
+        return False
+    nesting = result.get("nesting_results") or {}
+    if not nesting:
+        return False
+    return all(
+        float((nr or {}).get("height_mm") or 0.0) > 0.0
+        for nr in nesting.values()
+    )
+
+
+def nesting_produced_output(result: Optional[Dict[str, Any]]) -> bool:
+    """Pipeline sonucu GECERLI nesting iceriyor mu? (kesin-sonuc tanimi)
+
+    Gecerli = nesting_results'ta en az bir parti pozitif yukseklik uretmis.
+    run_pipeline nesting hatalarini yutup {height_mm: 0, note: "..."} dondurur;
+    bu yuzden "istisna atmadi" != "sonuc uretti". Poller (mark_processed) ve
+    gecmis kaydi (durum=bitti/hata + dedup) AYNI tanimi paylasir — ikisi
+    ayrissa ya kayip mail ya gorunmez kayit dogar.
+    """
+    if not result:
+        return False
+    nesting = result.get("nesting_results") or {}
+    return any(
+        float((nr or {}).get("height_mm") or 0.0) > 0.0
+        for nr in nesting.values()
+    )
 
 
 def _default_deadline(base_scenario: Dict[str, Any]) -> str:
@@ -196,6 +295,11 @@ class PollState:
     total_processed: int = 0                    # kumulatif
     last_error: Optional[str] = None
     runs: int = 0                               # toplam tur sayisi
+    # Canli gorunurluk: tur su an kosuyorsa True + insan-okur asama metni.
+    # "1 tarama 0 is" belirsizligini cozer — uzun nesting kosusunda operator
+    # isin ALINDIGINI gorur ("2 siparis pipeline'da..."), bitince sayac artar.
+    inflight: bool = False
+    inflight_detail: str = ""
 
     def snapshot(self) -> Dict[str, Any]:
         return {
@@ -206,6 +310,8 @@ class PollState:
             "total_processed": self.total_processed,
             "last_error": self.last_error,
             "runs": self.runs,
+            "inflight": self.inflight,
+            "inflight_detail": self.inflight_detail,
         }
 
 
@@ -275,13 +381,25 @@ class MailPoller:
             )
             return None
         try:
+            with self._lock:
+                self.state.inflight = True
+                self.state.inflight_detail = "kutu taranıyor"
+
+            def _stage(msg: str) -> None:
+                with self._lock:
+                    self.state.inflight_detail = str(msg)
+
             source = self._make_source()
+            # on_result process_inbox_once ICINDE, mark_processed'dan ONCE
+            # cagrilir (R1 #4 siralamasi) — burada ikinci kez CAGRILMAZ.
             result = process_inbox_once(
                 source,
                 self._parser_role,
                 base_scenario=self._base_scenario,
                 persist_root=self._persist_root,
                 pending_store=self._pending_store,
+                on_stage=_stage,
+                on_result=self._on_result,
             )
             with self._lock:
                 self.state.last_error = None
@@ -292,11 +410,6 @@ class MailPoller:
                 with self._lock:
                     self.state.last_processed = n
                     self.state.total_processed += n
-                if self._on_result is not None:
-                    try:
-                        self._on_result(result)
-                    except Exception as exc:
-                        logger.warning("mail_poller: on_result hatasi: %s", exc)
             else:
                 with self._lock:
                     self.state.last_processed = 0
@@ -307,6 +420,9 @@ class MailPoller:
             logger.warning("mail_poller: poll_once hatasi: %s", exc)
             return None
         finally:
+            with self._lock:
+                self.state.inflight = False
+                self.state.inflight_detail = ""
             self._inflight_lock.release()
 
     # ------------------------------------------------------------------

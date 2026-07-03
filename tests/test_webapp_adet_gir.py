@@ -66,6 +66,47 @@ def test_adet_gir_bekleyeni_listeler(client, app):
     assert 'name="qty_kapak"' in html
 
 
+def test_adet_gir_sifir_sonucta_pending_korunur(client, app, monkeypatch):
+    """R1 #1 (CRITICAL): nesting sonuc uretemezse bekleyen kayit + STL'ler
+    SILINMEZ; operator ?hata=nesting ile bilgilendirilir, gecmise hata duser."""
+    import scripts.demo_pipeline as dp
+
+    store = _seed(app, order_id="ZIP-TESTF1")
+
+    def _fail(scenario):
+        return {"nesting_results": {"B001": {"height_mm": 0.0,
+                                             "note": "Tuner hatasi: voxel bos"}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {},
+                "elapsed_sec": 1.0}
+
+    monkeypatch.setattr(dp, "run_pipeline", _fail)
+    resp = client.post(
+        "/adet-gir/ZIP-TESTF1",
+        data={"qty_braket": "2", "qty_kapak": "3"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert "hata=nesting" in resp.headers.get("Location", "")
+    # Bekleyen kayit KORUNDU (veri imhasi yok — yeniden denenebilir)
+    assert store.get("ZIP-TESTF1") is not None
+    # Gecmise hata kaydi dustu (gorunurluk)
+    kayitlar = app.config["OTONOM_GECMIS"].liste()
+    assert kayitlar
+    assert kayitlar[0]["durum"] == "hata"
+    assert kayitlar[0]["kaynak"] == "manuel"
+    assert "Tuner hatasi" in kayitlar[0]["hata_ozeti"]
+
+
+def test_adet_gir_basarida_gecmise_yazar(client, app):
+    """R1 #5: basarili adet-girisi de denetim izine (gecmis) duser."""
+    _seed(app, order_id="ZIP-TESTOK")
+    client.post("/adet-gir/ZIP-TESTOK",
+                data={"qty_braket": "2", "qty_kapak": "3"})
+    kayitlar = app.config["OTONOM_GECMIS"].liste()
+    assert any(k["kaynak"] == "manuel" and k["durum"] == "bitti"
+               for k in kayitlar)
+
+
 def test_adet_gir_isle_pipeline_kosar_ve_temizler(client, app):
     store = _seed(app)
     resp = client.post(
