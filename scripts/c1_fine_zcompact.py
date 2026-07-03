@@ -21,10 +21,12 @@ K-11 monotoniklik teoremiyle CELISMEZ: parca sokup yeniden yerlestirmiyoruz
 (o olu); ayni yerlesimi daha ince olcekte 'oturtuyoruz' — kuantizasyon bosalimi.
 
 URETIME DOKUNMAZ — scripts/ only. ASCII cikti.
-Kullanim: python scripts/c1_fine_zcompact.py [plan2|plan3|plan1] [fine_pitch=0.5] [n8|n24]
+Kullanim: python scripts/c1_fine_zcompact.py [plan2|plan3|plan1] [fine_pitch=0.5] [n8|n24] [probe|prod]
   n24 = 24 eksen-hizali poz (master 0..7 + 12..27, Ry ailesi dahil; egik 8..11 HARIC —
   K-13: egik pozlar greedy'de miyop). K-13 A24 kontrolu plan2'de 520 olcmustu (baz 522);
   yeni bilgi = n24 + settle TOPLAMI.
+  prod = coarse decode uretimdeki best_decode ile (GPU-resident -> CPU fallback;
+  H-04/H-05 birebir-invariant kanitli, ~3-5x hizli). Default probe = eski CPU greedy.
 """
 from __future__ import annotations
 import sys
@@ -72,10 +74,24 @@ def decode_with_placements(parts, nx, ny):
 AX24 = tuple(range(8)) + tuple(range(12, 28))  # 24 eksen-hizali (egik 8..11 haric)
 
 
+def decode_prod(parts, nx, ny):
+    """Uretim best_decode ile coarse decode (GPU-resident -> cpu-kolA -> seri fallback).
+    H-04/H-05: stratejiler birebir ayni layout uretir; probe greedy ile ayni BLB mantigi."""
+    from src.nesting3d.parallel_decode import best_decode
+    by_id = {p.id: p for p in parts}
+    _, raw, strategy = best_decode(parts, nx, ny, pitch=PITCH)
+    placements = [(by_id[pid], oi, x, y, z) for (pid, oi, x, y, z) in raw]
+    h = max(z + p.orientations[oi].grid.shape[2]
+            for p, oi, _x, _y, z in placements) * PITCH
+    print(f"  decode stratejisi: {strategy}")
+    return h, placements
+
+
 def main():
     ds = sys.argv[1] if len(sys.argv) > 1 else "plan2"
     fine = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
     omode = sys.argv[3] if len(sys.argv) > 3 else "n8"
+    dmode = sys.argv[4] if len(sys.argv) > 4 else "probe"
     scale = PITCH / fine
     if abs(scale - round(scale)) > 1e-9:
         raise SystemExit(f"PITCH/fine tam sayi olmali (simdi {scale})")
@@ -110,7 +126,8 @@ def main():
     print(f"coarse voxelize: {time.perf_counter()-t0:.1f}s  ({len(parts)} parca)")
 
     # coarse decode pahali (~9dk CPU) ve deterministik -> diske cache
-    suffix = "" if omode == "n8" else f"_{omode}"
+    # (prod decode ayri cache: tie-break farklari olabilir, karistirma)
+    suffix = ("" if omode == "n8" else f"_{omode}") + ("_prod" if dmode == "prod" else "")
     cache_f = _ROOT / "data" / "mail_stl" / f"zc_{ds}" / f"coarse_decode{suffix}.npz"
     by_id = {p.id: p for p in parts}
     if cache_f.exists():
@@ -122,8 +139,12 @@ def main():
         print(f"BAZ decode @2.0mm n=8: {h_base:.1f}mm  (CACHE)")
     else:
         t0 = time.perf_counter()
-        h_base, placements = decode_with_placements(parts, nx, ny)
-        print(f"BAZ decode @2.0mm n=8: {h_base:.1f}mm  ({time.perf_counter()-t0:.1f}s)")
+        if dmode == "prod":
+            h_base, placements = decode_prod(parts, nx, ny)
+        else:
+            h_base, placements = decode_with_placements(parts, nx, ny)
+        print(f"BAZ decode @2.0mm ({omode},{dmode}): {h_base:.1f}mm  "
+              f"({time.perf_counter()-t0:.1f}s)")
         cache_f.parent.mkdir(parents=True, exist_ok=True)
         np.savez(cache_f, h=np.float64(h_base),
                  ids=np.array([p.id for p, *_ in placements]),

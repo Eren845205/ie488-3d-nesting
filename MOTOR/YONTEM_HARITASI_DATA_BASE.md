@@ -205,12 +205,13 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN oldu:** 2.0mm hücre kuantizasyonu her istif arayüzünde (a) bir-sonraki-2mm-sınırına yuvarlama + (b) konservatif yüzey-sarmanın ~1 hücrelik şişirmesini biriktirir; fine'da oturtmak bu vergiyi geri alır. K-11 monotoniklik teoremiyle ÇELİŞMEZ (parça sökülmüyor; aynı yerleşim ince ölçekte oturtuluyor).
 - **Ders:** (1) İlk sürüm min-z sırasında ANINDA alçaltıyordu → oyuk-zengin plan3'te iç-içe parçalarda (per-kolon komşuluk ≠ min-z sırası) önce işlenen parça henüz yerleşmemiş komşunun yerine düştü (-123mm!). Yerleştir-VE-oturt ayrımı şart: alçaltma yalnız herkes yerleşikken. Cross-dataset kapısı bu hatayı yakaladı (meta-ders #2'nin en sert örneği: plan1/plan2 pozititken plan3 çökmüştü). (2) Fine örnekleme coarse'un kaçırdığı yüzeyi işaretleyebilir → "fine ⊆ coarse" varsayımı mm-uzayda garantili DEĞİL; jitter-fix gerekli.
 
-#### [K-18] n=24 eksen-hizalı oryantasyon + K-17 settle kombinasyonu
-- **Durum:** 🟡 ÖLÇÜLDÜ (plan2; üretime bağlama AÇIK karar) · **Tarih:** 2026-07-03 · **Kanıt:** `scripts/c1_fine_zcompact.py plan2 0.5 n24`
-- **Ne:** NFV decode master pozların 24 eksen-hizalısıyla (0..7 + 12..27, Ry ailesi dahil; eğik 8..11 HARİÇ — K-13 miyopi) + üstüne K-17 settle. Sanity: n=24 baz 520.0 = K-13 A24 kontrolüyle BİREBİR (bağımsız tekrar).
-- **Sonuç:** Plan2 **512.5mm** (n=8 baz 522'den **−9.5mm = %1.8**; ayrışım: n=24 −2.0 + settle −7.5). Magics açığı %6.1→**%4.2**. Tavan sürücülerinde yeni Ry pozları fiilen seçilmiş (oi 20/22/23). Bedel: decode CPU ~4× (1827s vs 450s; GPU'da ~3-5dk beklenir).
-- **NEDEN:** Küme-içerme (8⊂24) kalite garantisi + settle'ın vergisi pozdan bağımsız. n=24'ün tek başına katkısı küçük (−2, diskret doygunluk K-05/K-13 ile tutarlı) ama settle ile toplanıyor.
-- **AÇIK karar:** üretim `quality="max"` merdiveni şu an ilk-N master pozu (eğik 8..11 DAHİL) kullanıyor; AX24 (eğiksiz 24) hem K-13 kanıtına daha uygun hem ölçülen kazanç burada. Bağlanacaksa: `_hw_max_orientations` revizyonu + RAM-tavanı yeniden ölçümü + cross-dataset. Hız bedeli nedeniyle default'a DEĞİL, quality=max'a aday.
+#### [K-18] n=24 eksen-hizalı oryantasyon (AX24) + K-17 settle kombinasyonu
+- **Durum:** ✅ GO (**ÜRETİMDE** — `quality="max"` = AX24, commit `f44ee80`; cross-dataset 3/3) · **Tarih:** 2026-07-03 · **Kanıt:** `scripts/c1_fine_zcompact.py <ds> 0.5 n24 [prod]`
+- **Ne:** NFV decode master pozların 24 eksen-hizalısıyla (0..7 + 12..27, Ry ailesi dahil; eğik 8..11 HARİÇ — K-13 miyopi) + üstüne K-17 settle. Sanity: plan2 n=24 baz 520.0 = K-13 A24 kontrolüyle BİREBİR; plan1 n=8 prod-decode (gpu-resident) 116.0 = CPU probe BİREBİR (H-04 invariant yeniden doğrulandı, decode 616→45s = 13.6×).
+- **Sonuç (n8 baz → n24+settle):** plan1 **116.0→108.0 (−%6.9)** · plan2 **522.0→512.5 (−%1.8**, Magics açığı %6.1→**%4.2)** · plan3 **844.0→755.5 (−%10.5!)**. n8+settle'a karşı da 3/3 kazançlı (−7.5 / −3.5 / **−75.0**). Ayrışım veri-tipine göre değişiyor: plan2 settle-baskın (−7.5 settle), plan1 poz-baskın (−8 poz, settle 0), plan3 İKİSİ BİRDEN (−64 poz + −24.5 settle; 100/109 parça ort 14.3mm alçaldı) → iki kaldıraç TAMAMLAYICI, overfit değil.
+- **NEDEN:** Küme-içerme (8⊂24) + Ry ailesi bazı parçalara (bobin, 171600003) n=8'de OLMAYAN en-basık duruşu açıyor; settle'ın kuantizasyon vergisi pozdan bağımsız tahsil ediliyor. n=24 layout'u daha sıkı istiflendiğinden settle'a daha çok vergi bırakıyor (plan3).
+- **Bedel:** decode ~3-4× (yalnız opt-in quality=max; GPU-resident'ta plan1 45s / plan3 ~25dk). RAM<13GB → n=8 güvenli taban.
+- **Ders:** K-05'in "8→12 sadece +%1.1" ölçümü eğik-pozlu ilk-12 setiyleydi; doğru genişletme EKSEN-HİZALI aile (Ry) imiş — poz seti seçerken "kaç poz" değil "HANGİ pozlar" sorusu belirleyici.
 
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
@@ -218,9 +219,11 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > (düz zaten optimal, K-15) — **her ikisi de rotasyona kapalı, farklı sebeplerle**. Magics %6 açığı = fine
 > pitch (0.5mm) + büyük levhaların global rotasyonu (ikisi de 6GB OOM/erişilemez) → **SÜPER BİLGİSAYAR** tek
 > yol (§5 A1). NOT: A1'in küçük-N (numune) 6GB-fizibilite umudu da K-15 ile zayıfladı (numune rotasyon-kapalı).
-> **GÜNCELLEME 2026-07-03 (K-17):** "Tükendi" hükmü ALGORİTMİK kaldıraçlar içindi; H-14 (voxelize 3×)
-> KUANTİZASYON kaldıracını ekonomik yaptı — pozisyon-koruyan fine z-kompaksiyon 6GB'de **+%0.4-1.6**
-> (Plan2 522→516, açık %6.1→%4.9) tahsil ediyor. Yapısal açığın kalanı (levha rotasyonu) hâlâ A1.
+> **GÜNCELLEME 2026-07-03 (K-17 + K-18):** "Tükendi" hükmü ALGORİTMİK kaldıraçlar içindi; H-14
+> (voxelize 3×) iki yeni kaldıracı ekonomik yaptı ve İKİSİ DE ÜRETİMDE:
+> **K-17 fine-settle** (NFV default-on): kuantizasyon vergisi +%0.4-1.6 (Plan2 522→516, açık %4.9).
+> **K-18 AX24** (quality=max): +settle ile plan1 −%6.9 / plan2 −%1.8 (512.5, açık **%4.2**) /
+> plan3 **−%10.5** (844→755.5). Yapısal açığın kalanı (levha sürekli-rotasyonu) hâlâ A1.
 
 ### 3.2 HIZ (kaliteyi BOZMADAN — birebir/exact)
 
@@ -376,7 +379,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
 | ~~K-17p~~ | ~~K-17 üretime bağla~~ → **KAPANDI 2026-07-03** (commit `07f697b`: `fine_settle.py` + solve_nfv default-on + pitch_mm export hizası) | 6GB | — | +%0.4-1.6 ÜRETİMDE | |
-| **K-18p** | n=24 eksen-hizalıyı `quality="max"` merdivenine bağla (AX24, eğiksiz; K-18) | 6GB | Orta | Plan2 −9.5mm toplam (512.5, açık %4.2) | Decode ~4× CPU (GPU'da makul); RAM-tavanı + cross-dataset ölçümü ister. Default'a değil, max'a. |
+| ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
