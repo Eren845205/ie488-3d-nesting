@@ -221,6 +221,13 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Bedel/risk:** 131 dk/koşu (tek sipariş!) → zaman bütçesi (#22) + F4-B identical-part fast-path ŞART; RAM 0.8GB (heightmap FFT'siz, H-11 duvarı yok). **Cross-dataset HENÜZ YOK** (yalnız Deneme4). Üretime bağlama tetiği kritik: neredeyse TÜM gerçek parçalar kabuk çıkıyor (plan1 pitch 1.02→0.61, plan3 1.00→0.55 olurdu) → tetik `family∈{thin_shell,tube}` + süre/RAM ön-kapıları + eski setlerde ≤%1 regresyon kapısı olmadan bağlanamaz (süre patlaması riski).
 - **Ders:** (1) Aile-tanıma olmadan bu kaldıraç kördü — "pitch'i geometri belirlesin" ilkesi kabukta bbox-min değil CİDAR ister. (2) K-12 ("NFV≥heightmap") kabuk ailesinde kaba pitch'te kırılmıştı; kök neden pitch'miş — doğru pitch'te heightmap bile 282'ye indi. NFV@fine kombinasyonu (F3+K-18) ayrı ölçüm ister.
 
+#### [K-20] Identical-part hizalı kule şablonu (F4-B fast-path) — Deneme4
+- **Durum:** ❌ NO-GO (çözücü-yerine-geçme olarak; SÜRE içgörüsü değerli) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/f4b_fastpath.py` (opt-in; reviewer düzeltmeli: kanıtlı/tahmini sınırlar ayrık)
+- **Ne:** MDPI Appl.Sci 16(1):148 katman-çoğaltma fikri: tip başına TEK voxelize → optimal tek katman → hizalı dikey çoğaltma (nest_advance = Bin3D drop kuralına BİREBİR, test-kilitli) + kompozisyon bracket'i.
+- **Sonuç (Deneme4 @0.5mm, 6 poz):** tahmini hizalı-kule **527.5mm** vs K-19 heightmap **282.0** — kule yaklaşımı %87 GERİDE; garantili bracket [87.5 .. 753.5] K-19'u kapsıyor (kesin hüküm gerçek yerleşim ister ama fark kapanmaz görünüyor). Telescope eden grup **2/13** — çoğu düğme hizalı istifte kabuk-oturması YAPMIYOR. Süre: **82s (96× hızlı)**, tamamı voxelize (compute 0.02s).
+- **NEDEN olmadı:** K-19 kazancının mekanizması hizalı bardak-istifi DEĞİL — ince pitch'te çözünen kabukların drop_map'le YANAL KARIŞIK paketlenmesi (farklı tipler birbirinin boşluğuna). Saf dikey çoğaltma bu serbestliği atıyor.
+- **Ders:** (1) "Özdeş parça = kule" sezgisi kabukta ölçümle çürüdü — kazanç yanal serbestlikte. (2) SÜRE içgörüsü kalıcı: tip-başına-tek-voxelize yapısal (to_voxel_parts zaten paylaşıyor) → 131dk'nın maliyeti voxelize değil 588 parçanın @0.5 DROP döngüsü; hızlandırma hedefi drop/decode tarafı. (3) Reviewer dersi: "kanıtlanabilir sınır" etiketi matematiksel kanıt ister — grid-sayımlı kule alt-sınır DEĞİLDİR (karşı-örnekli).
+
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
 > ölü/doygun**. Plan2 darboğazı = ~20 büyük levha (düz yatamaz, istiflenir); numune darboğazı = ince plakalar
