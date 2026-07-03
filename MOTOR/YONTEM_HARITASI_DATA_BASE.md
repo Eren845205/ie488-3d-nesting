@@ -213,6 +213,14 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Bedel:** decode ~3-4× (yalnız opt-in quality=max; GPU-resident'ta plan1 45s / plan3 ~25dk). RAM<13GB → n=8 güvenli taban.
 - **Ders:** K-05'in "8→12 sadece +%1.1" ölçümü eğik-pozlu ilk-12 setiyleydi; doğru genişletme EKSEN-HİZALI aile (Ry) imiş — poz seti seçerken "kaç poz" değil "HANGİ pozlar" sorusu belirleyici.
 
+#### [K-19] Cidar-duyarlı ORTAK pitch (kabuk ailesinde min_feature = 2V/A)
+- **Durum:** ✅ GO (probe — üretime BAĞLANMADI; bağlama = aile-genelleştirme programı F3, ayrı sprint) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k19_cidar_pitch_olcum.py` (Deneme4 offline repro + monkeypatch, opt-in)
+- **Ne:** Heightmap yolu, tek ORTAK pitch. `pitch.min_feature_mm` yaması: parça "cidar tahmini" = 2V/A (yalnız watertight + fill<0.5 kabuklarda; aksi bbox-min) → Deneme4 min_feature 7.26→0.81 → pitch 2.9 yerine **0.5mm**. **H-06 (per-part pitch) ihlali DEĞİL** — pitch yine herkes için tek; yalnız türetim kuralı cidar-duyarlı.
+- **Sonuç (Deneme4, 588 parça, auto-plaka):** **282.0mm / 7865s (131 dk) / tepe RAM 0.80GB** · density 0.156. Kıyas: heightmap@2.9 377.3 (**−%25.3**) · NFV-max@kaba 386.4 (−%27.0) · **Magics 250.24 açığı ~%54 → %12.7**. Tek deneyde şimdiye dek ölçülen EN BÜYÜK kalite sıçraması.
+- **NEDEN oldu:** İnce cidarlı kabuk (0.8-1.35mm) kaba voxel'de katı-blok şişer (`9d99553` boş-grid guard yan etkisi, R3 #25) → iç içe geçme/bardak-istifi imkânsızlaşır. 0.5mm'de kabuklar çözünür → çanlar birbirine oturur. Mekanizma-tutarlı: kazanç yüksekliğin kabuk-istif payıyla orantılı.
+- **Bedel/risk:** 131 dk/koşu (tek sipariş!) → zaman bütçesi (#22) + F4-B identical-part fast-path ŞART; RAM 0.8GB (heightmap FFT'siz, H-11 duvarı yok). **Cross-dataset HENÜZ YOK** (yalnız Deneme4). Üretime bağlama tetiği kritik: neredeyse TÜM gerçek parçalar kabuk çıkıyor (plan1 pitch 1.02→0.61, plan3 1.00→0.55 olurdu) → tetik `family∈{thin_shell,tube}` + süre/RAM ön-kapıları + eski setlerde ≤%1 regresyon kapısı olmadan bağlanamaz (süre patlaması riski).
+- **Ders:** (1) Aile-tanıma olmadan bu kaldıraç kördü — "pitch'i geometri belirlesin" ilkesi kabukta bbox-min değil CİDAR ister. (2) K-12 ("NFV≥heightmap") kabuk ailesinde kaba pitch'te kırılmıştı; kök neden pitch'miş — doğru pitch'te heightmap bile 282'ye indi. NFV@fine kombinasyonu (F3+K-18) ayrı ölçüm ister.
+
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
 > ölü/doygun**. Plan2 darboğazı = ~20 büyük levha (düz yatamaz, istiflenir); numune darboğazı = ince plakalar
@@ -224,6 +232,9 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **K-17 fine-settle** (NFV default-on): kuantizasyon vergisi +%0.4-1.6 (Plan2 522→516, açık %4.9).
 > **K-18 AX24** (quality=max): +settle ile plan1 −%6.9 / plan2 −%1.8 (512.5, açık **%4.2**) /
 > plan3 **−%10.5** (844→755.5). Yapısal açığın kalanı (levha sürekli-rotasyonu) hâlâ A1.
+> **GÜNCELLEME 2026-07-04 (K-19):** "Tükendi" hükmü PLAN-aileleri içindi; yeni aile = yeni kaldıraç:
+> kabuk ailesinde (Deneme4) cidar-duyarlı pitch TEK BAŞINA **−%25.3** (377.3→282.0, Magics açığı
+> %54→**%12.7**) — bedeli 131 dk/koşu. Üretime bağlama = program F3 (K-19p, §5).
 
 ### 3.2 HIZ (kaliteyi BOZMADAN — birebir/exact)
 
@@ -380,6 +391,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
 | ~~K-17p~~ | ~~K-17 üretime bağla~~ → **KAPANDI 2026-07-03** (commit `07f697b`: `fine_settle.py` + solve_nfv default-on + pitch_mm export hizası) | 6GB | — | +%0.4-1.6 ÜRETİMDE | |
 | ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
+| **K-19p/F3** | Cidar-duyarlı pitch'i üretime bağla (tetik: `family∈{thin_shell,tube}`; K-19 GO — Deneme4 377.3→**282.0**, Magics açığı %12.7) | 6GB | Orta | **YÜKSEK (kabuk ailesi)** | Ön-şart: zaman bütçesi aktif + cross-dataset ≤%1 + süre-patlaması guard'ı (131dk/koşu!). Aile-genelleştirme programı F3; F4-B fast-path ile birlikte değerlendir. |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
