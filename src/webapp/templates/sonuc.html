@@ -231,10 +231,25 @@
             <div class="info-value">{{ "%.1f"|format(nr.get('height_mm', 0.0)) }} mm</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Doluluk Orani</div>
+            <div class="info-label">Doluluk Orani (voxel)</div>
             <div class="info-value">
                 {% set density_pct = nr.get('density', 0.0) * 100 %}
                 {{ "%.1f"|format(density_pct) }}%
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Hacim-Doluluk (gercek)</div>
+            <div class="info-value">
+                {{ "%.1f"|format(nr.get('volume_fill_pct', 0.0)) }}%
+                {% if nr.get('volume_missing_parts', 0) %}
+                <span style="font-size:11px; color:#b45309;">(hacim eksik: {{ nr.get('volume_missing_parts') }} parca)</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Kullanilan Plaka (WxD)</div>
+            <div class="info-value">
+                {{ "%.0f"|format(nr.get('plate_w_mm', 0.0)) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0)) }} mm
             </div>
         </div>
         <div class="info-item">
@@ -256,6 +271,32 @@
         </div>
         {% endif %}
     </div>
+
+    <!-- #18 Plaka otomatik-türetildi uyarısı (ASCII) -->
+    {% if nr.get('plate_auto') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff8e6; border: 1px solid #e0c268; border-radius: 8px; font-size: 13px; color: #92400e;">
+        <strong>&#9888; Plaka siparisten TURETILDI</strong> &mdash; gercek platform olcusu girilmedi.
+        Kullanilan plaka {{ "%.0f"|format(nr.get('plate_w_mm', 0.0)) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0)) }} mm
+        en buyuk parcadan otomatik hesaplandi. Gercek yazici tablasi farkliysa
+        <a href="/plaka-ayar">/plaka-ayar</a> ekranindan girin.
+    </div>
+    {% endif %}
+
+    <!-- #22 Zaman butcesi asimi izi -->
+    {% if nr.get('budget_exceeded') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff0f0; border: 1px solid #e08585; border-radius: 8px; font-size: 13px; color: #b45309;">
+        <strong>&#9888; Zaman butcesi asildi</strong> &mdash; bu sonuc ayrilan sure icinde
+        elde edilen EN IYI cozumdur (butce olmasa daha iyi olabilirdi).
+        {% if nr.get('time_budget_sec') %}Butce: {{ nr.get('time_budget_sec') }} sn.{% endif %}
+    </div>
+    {% endif %}
+
+    <!-- #23/#24 RAM on-guard izi (rapor-only) -->
+    {% if nr.get('ram_guard_reason') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff8e6; border: 1px solid #e0c268; border-radius: 8px; font-size: 12px; color: #92400e;">
+        <strong>&#9888; Bellek uyarisi:</strong> {{ nr.get('ram_guard_reason') }}
+    </div>
+    {% endif %}
 
     <!-- Seçim Modeli Kararı — önce hangi algoritma? -->
     {% set sel = nr.get('selection') %}
@@ -427,6 +468,9 @@
             <li>{{ line }}</li>
             {% endfor %}
         </ul>
+        <p style="font-size: 11px; color: var(--color-text-muted); margin-top: 8px;">
+            Hacim bileseni STL parcalarin gercek mesh hacmini (true_fill x bbox) icerir.
+        </p>
         {% endif %}
     </div>
 </div>

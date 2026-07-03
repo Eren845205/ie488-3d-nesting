@@ -49,6 +49,8 @@
 | 19 | MEDIUM | Doluluk metriği yüzey-şişirilmiş voxel'den → pitch-bağımlı, kabukta şişer → haksız doluluk-indirimi | bin3d.py:221-227 |
 | 20 | — | KULLANICI KURALI (2026-07-03): plaka verilmediyse algoritma EN İYİ plakayı kendisi seçsin — aday merdiveni (taban ×1/×1.25/×1.5/×2) + kaba koşu + W·D·H hacim ölçütü; #16'yı da kapatır | tasarım hazır, görevde |
 
+**Bugün kapananlar (bu dalganın fiyat-hacmi ayağı):** #17 STL fiyat-hacmi=0 → KAPANDI 2026-07-03: STL gerçek mesh hacmi (`true_fill*bbox`) artık `_parts_real_volume_mm3` üzerinden fiyat girdisine (`hacim_m3`) VE parti gruplamaya (`Order.total_volume_cm3`) yansıyor — kod davranışı zaten böyleydi, bu karar bilinçli kabul edildi ve testle kilitlendi (`test_reporting_wave_f0`).
+
 ### DALGA 4 — Motor fiziği + performans (R3 + R4; ÖLÇ-ÖNCE)
 | # | Sev | Bulgu | Yer |
 |---|-----|-------|-----|

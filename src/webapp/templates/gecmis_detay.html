@@ -71,9 +71,28 @@
             <div class="info-value">{% if k.min_yukseklik_mm is not none %}{{ '%.1f'|format(k.min_yukseklik_mm) }} mm{% else %}&mdash;{% endif %}</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Doluluk</div>
+            <div class="info-label">Doluluk (voxel)</div>
             <div class="info-value">{% if k.doluluk is not none %}{{ '%.1f'|format(k.doluluk * 100) }}%{% else %}&mdash;{% endif %}</div>
         </div>
+        <div class="info-item">
+            <div class="info-label">Hacim-Doluluk (gercek)</div>
+            <div class="info-value">
+                {% if k.hacim_doluluk_pct is not none %}{{ '%.1f'|format(k.hacim_doluluk_pct) }}%{% else %}&mdash;{% endif %}
+                {% if k.hacim_eksik_parca %}<span style="font-size:11px; color:#b45309;">(eksik: {{ k.hacim_eksik_parca }})</span>{% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Kullanilan Plaka</div>
+            <div class="info-value">
+                {% if k.plate_w_mm and k.plate_d_mm %}{{ '%.0f'|format(k.plate_w_mm) }} x {{ '%.0f'|format(k.plate_d_mm) }} mm{% if k.plate_auto %} <span class="badge" style="font-size:11px; background:#fff8e6; color:#92400e; border-color:#e0c268;">oto-turetildi</span>{% endif %}{% else %}&mdash;{% endif %}
+            </div>
+        </div>
+        {% if k.budget_exceeded %}
+        <div class="info-item">
+            <div class="info-label">Zaman Butcesi</div>
+            <div class="info-value"><span class="badge" style="font-size:11px; background:#fff0f0; color:#b45309; border-color:#e08585;">asildi</span></div>
+        </div>
+        {% endif %}
         <div class="info-item">
             <div class="info-label">Toplam Fiyat</div>
             <div class="info-value" style="color:var(--ok);">{{ '%.2f'|format(k.toplam_fiyat or 0) }} USD</div>

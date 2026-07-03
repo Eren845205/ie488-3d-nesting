@@ -225,3 +225,25 @@ class Bin3D:
             return 0.0
         envelope = self.plate_w_mm * self.plate_d_mm * h
         return self.placed_voxels * self.pitch ** 3 / envelope
+
+    def mesh_fill_ratio(self, part_volume_mm3: float) -> float:
+        """Real mesh volume / used envelope (base area x max height).
+
+        Second, independent fill metric that sits ALONGSIDE packing_density
+        (which is left untouched).  packing_density uses the SWOLLEN voxel
+        volume (placed_voxels * pitch**3) — voxelization rounds each part up to
+        the pitch grid, so that number over-states occupancy on coarse pitches.
+        This metric instead takes the TRUE mesh volume supplied by the caller
+        (box parts = full w*d*h; STL parts = true_fill * bbox) and divides by the
+        same envelope, giving the real material-fill fraction of the build box.
+
+        The two are different axes on purpose (voxel-swelled vs. real-mesh); the
+        report shows both.  Returns 0.0 when height/envelope is non-positive.
+        """
+        h = self.max_height_mm()
+        if h <= 0:
+            return 0.0
+        envelope = self.plate_w_mm * self.plate_d_mm * h
+        if envelope <= 0 or part_volume_mm3 <= 0:
+            return 0.0
+        return float(part_volume_mm3) / envelope

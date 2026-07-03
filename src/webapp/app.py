@@ -605,10 +605,25 @@ def _register_routes(
             _dol = [nr.get("density", 0.0) for nr in nesting_results.values() if nr.get("density")]
             _secilen = None
             _reason = None
+            # #18 plaka + #17/#19 hacim-doluluk + #22 butce izi: ilk partiden ozetle
+            # (operator gecmis-detay gorunurlugu; cozucu davranisi degismez — rapor-only).
+            _plate_w = _plate_d = None
+            _plate_auto_flag = None
+            _hacim_doluluk = None
+            _hacim_eksik = None
+            _budget_asildi = False
             if nesting_results:
                 _ilk = next(iter(nesting_results.values()))
                 _secilen = _ilk.get("nesting_mode_used")
                 _reason = _ilk.get("auto_mode_reason")
+                _plate_w = _ilk.get("plate_w_mm")
+                _plate_d = _ilk.get("plate_d_mm")
+                _plate_auto_flag = _ilk.get("plate_auto")
+                _hacim_doluluk = _ilk.get("volume_fill_pct")
+                _hacim_eksik = _ilk.get("volume_missing_parts")
+                _budget_asildi = any(
+                    nr.get("budget_exceeded") for nr in nesting_results.values()
+                )
             # KESIN-SONUC tanimi poller ile ORTAK (2026-07-03 canli dersi + R1):
             #   bitti = TUM partiler gecerli yukseklik uretti
             #   kismi = bazilari uretti (kalanlar not'la kayboldu — R1 #3)
@@ -680,6 +695,12 @@ def _register_routes(
                     "parti_sayisi": len(batches),
                     "min_yukseklik_mm": round(min(_yuk), 1) if _yuk else None,
                     "doluluk": round(sum(_dol) / len(_dol), 3) if _dol else None,
+                    "plate_w_mm": _plate_w,
+                    "plate_d_mm": _plate_d,
+                    "plate_auto": _plate_auto_flag,
+                    "hacim_doluluk_pct": _hacim_doluluk,
+                    "hacim_eksik_parca": _hacim_eksik,
+                    "budget_exceeded": _budget_asildi,
                     "toplam_fiyat": round(toplam_fiyat, 2),
                     "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
                     "asamalar": _asama_ozet,
@@ -2622,6 +2643,9 @@ def _register_routes(
                 "id": p.id, "name": p.name, "qty": p.qty, "source": "stl",
                 "stl_path": p.stl_path, "width_mm": p.width_mm,
                 "depth_mm": p.depth_mm, "height_mm": p.height_mm,
+                # #17/#19: gercek-hacim doluluk% icin true_fill tasi (None ise
+                # 'hacim eksik' sayilir). wall/family de raporlama icin gecer.
+                "true_fill": p.true_fill, "wall_mm": p.wall_mm, "family": p.family,
             }
             for p in res.instance.parts
         ]

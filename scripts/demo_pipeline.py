@@ -369,18 +369,117 @@ RICH_SCENARIO: Dict[str, Any] = {
 # Yardımcı: hacim hesabı (cm3 → m3)
 # ---------------------------------------------------------------------------
 
-def _parts_volume_cm3(parts_list: List[Dict[str, Any]]) -> float:
-    """Parça listesinden toplam hacmi cm3 cinsinden hesaplar."""
+def _part_real_volume_mm3(p: Dict[str, Any]) -> tuple:
+    """Tek parca GERCEK hacmi (mm3) + 'hacim-bilinmiyor' bayragi.
+
+    box  -> w*d*h (dolu kutu; gercek hacim = bbox hacmi).
+    stl  -> true_fill * w*d*h. true_fill = gercek mesh V / bbox V (watertight
+            parcada stl_order_loader doldurur). true_fill None ise parca gercek
+            hacmi BILINMIYOR -> (0.0, True); cagiran 'hacim eksik parca' sayar.
+
+    Donus: (hacim_mm3, bilinmiyor_mu). Adet (qty) burada CARPILMAZ — cagiran
+    _parts_real_volume_mm3 qty ile olcekler.
+    """
+    w = p.get("width_mm") or 0.0
+    d = p.get("depth_mm") or 0.0
+    h = p.get("height_mm") or 0.0
+    if p.get("source") == "box":
+        return float(w) * float(d) * float(h), False
+    # stl (veya bbox'i olan diger kaynak): gercek doluluk true_fill'den gelir.
+    tf = p.get("true_fill")
+    if tf is None:
+        return 0.0, True  # gercek hacim bilinmiyor (watertight degil / olculemedi)
+    return float(tf) * float(w) * float(d) * float(h), False
+
+
+def _parts_real_volume_mm3(parts_list: List[Dict[str, Any]]) -> tuple:
+    """Parca listesinin toplam GERCEK hacmi (mm3) + hacim-eksik parca sayisi.
+
+    box tam kutu; stl true_fill*bbox. true_fill'siz stl parcalar toplama
+    KATILMAZ ama adetleri 'missing' olarak sayilir (rapor izi #17/#19).
+    Donus: (toplam_mm3, hacim_eksik_parca_adedi).
+
+    BILINCLI KARAR 2026-07-03 (DENETIM_RAPORU_2026-07-03.md Dalga-3 #17 kapanisi):
+    STL siparislerde gercek mesh hacmi (true_fill*bbox) artik yalniz raporda
+    DEGIL, fiyat girdisine (_build_pricing_inputs -> hacim_m3) VE parti
+    gruplamaya (Order.total_volume_cm3 -> batch.total_volume_cm3) yansir. Yani
+    STL hacmi fiyati ve parti hacmini ETKILER (eskiden STL hacmi 0 yutulurdu).
+    true_fill None -> 0 katki (eski davranis korunur) + volume_missing_parts izi.
+    """
     total = 0.0
+    missing = 0
     for p in parts_list:
-        if p.get("source") == "box":
-            w = p.get("width_mm", 0.0)
-            d = p.get("depth_mm", 0.0)
-            h = p.get("height_mm", 0.0)
-            qty = p.get("qty", 1)
-            # mm3 → cm3: / 1000
-            total += (w * d * h / 1000.0) * qty
-    return total
+        qty = int(p.get("qty", 1))
+        vol, unknown = _part_real_volume_mm3(p)
+        if unknown:
+            missing += qty
+        else:
+            total += vol * qty
+    return total, missing
+
+
+def _parts_volume_cm3(parts_list: List[Dict[str, Any]]) -> float:
+    """Parça listesinden toplam hacmi cm3 cinsinden hesaplar.
+
+    #17/#19: STL parcalar da sayilir (true_fill*bbox). ESKIDEN yalniz box
+    parcalar sayilirdi -> STL siparislerin hacmi 0 gorunuyordu. box-only kosu
+    (default demo senaryolari) BIREBIR ayni sonucu verir (davranis korunur).
+
+    BILINCLI KARAR 2026-07-03 (Dalga-3 #17 kapanisi): bu deger Order.total_volume_cm3
+    olarak akar -> batch.total_volume_cm3 -> _build_pricing_inputs hacim_m3. Boylece
+    STL gercek hacmi fiyat + parti girdisine yansir (rapor-only DEGIL). true_fill
+    None ise ilgili parca 0 katki verir (eski davranis) + volume_missing_parts izi.
+    """
+    total_mm3, _ = _parts_real_volume_mm3(parts_list)
+    return total_mm3 / 1000.0  # mm3 -> cm3
+
+
+# ---------------------------------------------------------------------------
+# Yardımcı: RAM ön-guard (#23/#24) — RAPOR-ONLY
+# ---------------------------------------------------------------------------
+#
+# Bu guard bellek-riskini yalniz RAPORLAR (pitch'i DEGISTIRMEZ). Karar: "emin
+# olamadigin yerde rapor-only kal" (dalga direktifi). Boylece HICBIR kosuda
+# (default demo dahil) cozucu davranisi degismez; yalniz 'bellek yetmeyecek'
+# asiri durumda gorunur bir iz (reason alani) birakilir.
+#
+# Esik SABIT-SIHIRLI-SAYI DEGIL: suggest_nfv_pitch'teki fren formulunun ayni
+# desenidir — budget = (ram_available_bytes/1e9) * NFV_CELLS_PER_GB. Karsilastirma
+# grid hucre TAHMINI (envelope proxy nx*ny*nz) vs bu butce. ram_available_bytes
+# None ise (RAM okunamadi) guard DEVRE DISI (CPU-only davranis korunur).
+
+def _ram_guard_reason(
+    pitch: float,
+    plate_w_mm: float,
+    plate_d_mm: float,
+    ram_available_bytes: Optional[int],
+) -> Optional[str]:
+    """Bellek riskini rapor-only degerlendir; riskliyse ASCII reason, degilse None.
+
+    RAPOR-ONLY: pitch/davranis DEGISMEZ. ram_available_bytes None -> None
+    (guard kapali). Tahmin envelope proxy (heightmap/coarse occupancy grid'inin
+    ust-sinir hucre sayisi); budget suggest_nfv_pitch ile ayni turetilmis oran.
+    """
+    if ram_available_bytes is None or ram_available_bytes <= 0 or pitch <= 0:
+        return None
+    try:
+        from src.nesting3d.instances.pitch import (
+            NFV_CELLS_PER_GB, _nfv_grid_cells,
+        )
+        cells = _nfv_grid_cells(pitch, plate_w_mm, plate_d_mm)
+        budget = (ram_available_bytes / 1e9) * NFV_CELLS_PER_GB
+        if cells > budget:
+            return (
+                "RAM-guard (rapor-only): tahmini grid ~%.0fM hucre @pitch %.2fmm "
+                "> bellek butcesi ~%.0fM (bos RAM %.1fGB) -> bellek-riskli; pitch "
+                "DEGISTIRILMEDI (davranis korundu), operator daha kaba pitch/plaka "
+                "veya daha fazla RAM dusunmeli." % (
+                    cells / 1e6, pitch, budget / 1e6, ram_available_bytes / 1e9,
+                )
+            )
+    except Exception:
+        return None  # tahmin kurulamazsa sessiz-guvenli (guard yok say)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -549,13 +648,21 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     seed = payload["seed"]
     nesting_mode = payload.get("nesting_mode", "auto")  # akıllı default: veri-odaklı NFV/heightmap
     nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
+    time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
     _sel_prefilter, _sel_model = _load_selection_model_safe()
 
+    # ENSTRUMANTASYON (rapor-only, #17/#18/#19/#22/#23): tum donus yollarina
+    # (basari + fallback + hata) MERGE edilen ortak alanlar. Cozucu sonucu
+    # (yukseklik/yerlesim) DEGISMEZ — yalniz gorunurluk. _instr mutable; _ret
+    # cagri aninda okur, deger ogrenildikce guncellenir.
+    _instr: Dict[str, Any] = {}
+
     def _ret(nesting, pricing):
-        return {"batch_id": batch_id, "nesting": nesting, "pricing": pricing}
+        merged = {**nesting, **_instr}
+        return {"batch_id": batch_id, "nesting": merged, "pricing": pricing}
 
     if not all_parts:
         return _ret(
@@ -571,6 +678,30 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     ]
     _cw, _cd, _ch, _plate_auto = resolve_container(container_cfg, _pdims)
     container = {"width_mm": _cw, "depth_mm": _cd, "height_mm": _ch}
+
+    # #18 PLAKA RAPORLAMA: kullanilan plaka W×D + otomatik-turetildi bayragi tum
+    # donus yollarina tasinsin (web + gecmis operator gorunurlugu icin).
+    # #17/#19 HACIM: gercek parca hacmi (box tam, stl true_fill*bbox) + hacim-eksik
+    # parca sayisi (height'tan bagimsiz — burada hesaplanir; volume_fill_pct
+    # height ogrenilince eklenir).
+    _mesh_vol_mm3, _vol_missing = _parts_real_volume_mm3(all_parts)
+    _instr.update({
+        "plate_w_mm": round(_cw, 2),
+        "plate_d_mm": round(_cd, 2),
+        "plate_auto": bool(_plate_auto),
+        "mesh_volume_cm3": round(_mesh_vol_mm3 / 1000.0, 2),
+        "volume_missing_parts": int(_vol_missing),
+        "volume_fill_pct": 0.0,  # height bilinince guncellenir
+        "budget_exceeded": False,  # #22: bütçe aşımı; solve sonrası guncellenir
+        "time_budget_sec": time_budget_sec,
+    })
+
+    def _set_volume_fill(height_mm: float) -> None:
+        """Envelope (plaka x yukseklik) bazli gercek-mesh doluluk yuzdesi (#17/#19)."""
+        env = _cw * _cd * float(height_mm or 0.0)
+        _instr["volume_fill_pct"] = round(
+            (_mesh_vol_mm3 / env * 100.0) if env > 0 and _mesh_vol_mm3 > 0 else 0.0, 1
+        )
 
     instance = _build_nesting_instance(all_parts, container)
 
@@ -621,6 +752,23 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     selection_pred = _predict_selection(_sel_prefilter, _sel_model, instance)
 
+    # #23/#24 RAM ON-GUARD (RAPOR-ONLY): pitch nihai; bellek riskini yalniz
+    # RAPORLA (pitch DEGISTIRME). Default kosularda (bol RAM + kaba pitch + kucuk
+    # plaka) None doner -> hicbir iz, davranis birebir. Yalniz asiri durumda
+    # (bellek yetmeyecek) reason alani gorunur olur.
+    try:
+        from src.nesting3d.capabilities import probe_capabilities as _probe_ram
+        _ram_avail = _probe_ram().ram_available_bytes
+        _rg = _ram_guard_reason(
+            pitch, float(container["width_mm"]), float(container["depth_mm"]),
+            _ram_avail,
+        )
+        if _rg:
+            _instr["ram_guard_reason"] = _rg
+            logger.warning("nesting[%s]: %s", batch_id, _rg)
+    except Exception:
+        pass  # guard tahmini kurulamazsa sessiz-guvenli (davranis degismez)
+
     # ÇİFT-VOXELİZE KALDIRMA: voxel_parts SADECE tuner + DBLF-fallback yolunda gerekli.
     # NFV (solve_nfv) ve coarse_to_fine KENDİ voxelize'larını yapar → buradaki fine voxelize
     # o yollarda BOŞA olurdu (Plan2 büyük parça @0.5mm = 159s/parça çift). Yol kararı için gereken
@@ -648,6 +796,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
                 quality=nfv_quality,
                 seed=seed,
+                time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
             )
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD:
@@ -691,6 +840,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 )
             _placements, bin3d = _dblf(voxel_parts, factory)
             t_nest_elapsed = _time.perf_counter() - t_nest_start
+            _set_volume_fill(bin3d.max_height_mm())  # #17/#19
             nesting = {
                 "height_mm": bin3d.max_height_mm(),
                 "density": bin3d.packing_density(),
@@ -739,6 +889,15 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     n_placed = len(winner_result.placements)
     winner_config = tune_result.winning_config_name
     baseline_height = tune_result.baseline_height_mm
+
+    # #17/#19 gercek-mesh doluluk% (envelope = plaka x bu yukseklik).
+    _set_volume_fill(height_mm)
+    # #22 ZAMAN BUTCESI izi: solve_nfv budget asiminda strategy'ye "budget_exceeded"
+    # yazar; bu iz adaptive_reason'a tasinir. time_budget_sec None ise asla tetiklenmez
+    # (bugünkü davranış birebir).
+    if _c2f_result is not None:
+        _areason = getattr(_c2f_result, "adaptive_reason", None) or ""
+        _instr["budget_exceeded"] = "budget_exceeded" in _areason
 
     dblf_height = baseline_height
     gain_pct = (
@@ -1137,6 +1296,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "pricing_rules": scenario["pricing_rules"],
             "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality", "fast"),
+            "time_budget_sec": scenario.get("time_budget_sec"),  # #22: None = bugünkü davranış
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5
@@ -1265,10 +1425,10 @@ def _build_report_markdown(
     lines.append("## 3. Nesting Sonuclari")
     lines.append("")
     lines.append(
-        "| Parti | Pitch (mm) | Yukseklik (mm) | Doluluk (%) | Parca | Sure (s) | Kazanan | DBLF'ye Kazanc% | Not |"
+        "| Parti | Plaka (WxD mm) | Pitch (mm) | Yukseklik (mm) | Doluluk (%) | Hacim-Doluluk (%) | Parca | Sure (s) | Kazanan | DBLF'ye Kazanc% | Not |"
     )
     lines.append(
-        "|-------|------------|----------------|-------------|-------|----------|---------|-----------------|-----|"
+        "|-------|----------------|------------|----------------|-------------|-------------------|-------|----------|---------|-----------------|-----|"
     )
     for b in batches:
         nr = nesting_results.get(b.batch_id, {})
@@ -1281,10 +1441,25 @@ def _build_report_markdown(
         port = nr.get("portfolio") or {}
         winner_name = port.get("winner", "dblf")
         gain_pct = port.get("gain_pct", 0.0)
+        # #18 plaka + #17/#19 hacim-doluluk (iki eksen: mm yukseklik YANINDA hacim-%)
+        _pw = nr.get("plate_w_mm")
+        _pd = nr.get("plate_d_mm")
+        _plate_str = (f"{_pw:.0f}x{_pd:.0f}" if _pw and _pd else "-")
+        if nr.get("plate_auto"):
+            _plate_str += " (oto)"
+        _vfp = nr.get("volume_fill_pct", 0.0)
+        _vmiss = nr.get("volume_missing_parts", 0)
+        _vfp_str = f"{_vfp:.1f}" + (f" (eksik:{_vmiss})" if _vmiss else "")
         lines.append(
-            f"| {b.batch_id} | {pitch_mm} | {h:.1f} | {d * 100:.1f} "
-            f"| {n} | {t:.2f} | {winner_name} | {gain_pct:.1f}% | {note} |"
+            f"| {b.batch_id} | {_plate_str} | {pitch_mm} | {h:.1f} | {d * 100:.1f} "
+            f"| {_vfp_str} | {n} | {t:.2f} | {winner_name} | {gain_pct:.1f}% | {note} |"
         )
+    lines.append("")
+    lines.append(
+        "> Plaka `(oto)` = siparisten TURETILDI (gercek platform olcusu girilmedi). "
+        "Hacim-Doluluk = gercek parca hacmi / zarf (mm yuksekligin YANINDA ikinci eksen); "
+        "`eksik:N` = gercek hacmi bilinmeyen (true_fill'siz) parca adedi."
+    )
     lines.append("")
 
     # --- Bölüm 3b: Instance-Tuner konfig kıyas tabloları ---

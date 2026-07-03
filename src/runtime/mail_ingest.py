@@ -937,6 +937,9 @@ def _ingest_zip_stl_order(
             "id": p.id, "name": p.name, "qty": p.qty, "source": "stl",
             "stl_path": p.stl_path, "width_mm": p.width_mm,
             "depth_mm": p.depth_mm, "height_mm": p.height_mm,
+            # #17/#19: gercek-hacim doluluk% icin true_fill tasi (None ise
+            # 'hacim eksik' sayilir). wall/family raporlama meta'si.
+            "true_fill": p.true_fill, "wall_mm": p.wall_mm, "family": p.family,
         }
         for p in res.instance.parts
     ]
