@@ -98,6 +98,12 @@ class PartSpec:
     # stl field
     stl_path: Optional[str] = None
 
+    # F1 aile taksonomisi — opsiyonel geometri/aile metasi (geriye uyumlu).
+    # None ise dict'e YAZILMAZ; eski kayitlar (bu alanlar yokken) sorunsuz okunur.
+    wall_mm: Optional[float] = None      # tahmini cidar kalinligi (2V/A), shell ise
+    family: Optional[str] = None         # per-parca aile etiketi (family.py)
+    true_fill: Optional[float] = None    # gercek doluluk V/bbox_vol (watertight)
+
     def to_dict(self) -> dict:
         d: dict = {
             "id": self.id,
@@ -111,6 +117,13 @@ class PartSpec:
             d["height_mm"] = self.height_mm
         else:
             d["stl_path"] = self.stl_path
+        # Opsiyonel taksonomi alanlari — yalnizca dolu ise yaz (geriye uyum).
+        if self.wall_mm is not None:
+            d["wall_mm"] = self.wall_mm
+        if self.family is not None:
+            d["family"] = self.family
+        if self.true_fill is not None:
+            d["true_fill"] = self.true_fill
         return d
 
     @classmethod
@@ -131,6 +144,9 @@ class PartSpec:
             depth_mm=float(d["depth_mm"]) if d.get("depth_mm") is not None else None,
             height_mm=float(d["height_mm"]) if d.get("height_mm") is not None else None,
             stl_path=d.get("stl_path"),
+            wall_mm=float(d["wall_mm"]) if d.get("wall_mm") is not None else None,
+            family=d.get("family"),
+            true_fill=float(d["true_fill"]) if d.get("true_fill") is not None else None,
         )
 
 

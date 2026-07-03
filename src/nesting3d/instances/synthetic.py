@@ -33,12 +33,28 @@ long_rods:
     yüksek; Ry rotasyonu varsa yatırarak istiflemek kritik.
     Parametreler: n_parts, cross_min, cross_max, length_min, length_max,
     container, seed.
+
+shell_bells:
+    İnce cidarlı yarım-küre/çan KABUKLARI (trimesh ile içi boş; cidar ~1mm).
+    Düşük true_fill + yüksek shell_score; F1 taksonomisinde 'thin_shell' ailesi.
+    Parçalar box-source olarak temsil edilir ama wall_mm/true_fill ölçülür
+    (gerçek trimesh kabuk hacim/yüzeyinden 2V/A).
+    Parametreler: n_parts, r_min, r_max, wall_min, wall_max, container, seed.
+
+hollow_tubes:
+    İnce cidarlı BORULAR (trimesh annulus; uzun + içi boş).  Düşük true_fill +
+    yüksek uzama; F1 taksonomisinde 'tube' ailesi.
+    Parametreler: n_parts, r_min, r_max, wall_min, wall_max, length_min,
+    length_max, container, seed.
 """
 
 from __future__ import annotations
 
 import random
 from typing import List, Optional, Tuple
+
+import numpy as np
+import trimesh
 
 from src.nesting3d.instances.format import (
     ContainerSpec,
@@ -69,6 +85,155 @@ def _box_part(pid: str, name: str, qty: int, w: float, d: float, h: float) -> Pa
 
 def _uniform(rng: random.Random, lo: float, hi: float) -> float:
     return rng.uniform(lo, hi)
+
+
+def _shell_partspec(
+    pid: str, name: str, qty: int, mesh: "trimesh.Trimesh"
+) -> PartSpec:
+    """İçi boş bir trimesh KABUK'tan box-source PartSpec üret (wall/true_fill ölçülü).
+
+    Parça voxelize köprüsünde box olarak temsil edilir; ancak wall_mm ve
+    true_fill gerçek kabuk geometrisinden (2V/A, V/bbox_vol) ölçülür — böylece
+    F1 taksonomisi parçayı thin_shell/tube olarak tanır.  Kati parçalarda
+    (true_fill >= 0.5) wall_mm None kalır (shell değildir).
+
+    UYARI: source="box" + stl_path=None oldugundan bu parçalar gerçek
+    nesting/voxelize akışına girerse içi-boş geometri KAYBOLUR — bbox'ları
+    kadar KATI BLOK olarak istiflenirler. shell_bells/hollow_tubes YALNIZ
+    F1 taksonomi / özellik-vektörü / sınıflandırma testleri içindir;
+    doluluk-yükseklik benchmark'ında kullanılırsa sonuç yanıltıcı olur.
+    """
+    mesh.apply_translation(-mesh.bounds[0])
+    e = mesh.extents
+    w, d, h = float(e[0]), float(e[1]), float(e[2])
+    bbox_vol = w * d * h
+
+    volume = abs(float(mesh.volume)) if mesh.is_watertight else None
+    area = float(mesh.area)
+
+    true_fill = None
+    wall_mm = None
+    if volume is not None and volume > 0.0 and bbox_vol > 0.0:
+        true_fill = volume / bbox_vol
+        if area > 0.0 and true_fill < 0.5:
+            wall_mm = 2.0 * volume / area
+
+    return PartSpec(
+        id=pid,
+        name=name,
+        qty=qty,
+        source="box",
+        width_mm=round(w, 3),
+        depth_mm=round(d, 3),
+        height_mm=round(h, 3),
+        wall_mm=round(wall_mm, 4) if wall_mm is not None else None,
+        true_fill=round(true_fill, 6) if true_fill is not None else None,
+    )
+
+
+def _bell_shell_mesh(radius: float, wall: float, sections: int = 48) -> "trimesh.Trimesh":
+    """İnce cidarlı yarım-küre/çan kabuğu (revolve ile watertight).
+
+    Dış ve iç yarım-küre profillerini birleştirip 360° döndürür; boolean
+    backend GEREKMEZ (deterministik + sağlam).
+    """
+    ri = max(radius - wall, radius * 0.05)
+    n = 40
+    th = np.linspace(0.0, np.pi / 2.0, n)
+    outer = np.column_stack([radius * np.sin(th), radius * np.cos(th)])
+    inner = np.column_stack([ri * np.sin(th[::-1]), ri * np.cos(th[::-1])])
+    profile = np.vstack([outer, inner])
+    return trimesh.creation.revolve(profile, sections=sections)
+
+
+# ---------------------------------------------------------------------------
+# Üreticiler — F1 shell aileleri
+# ---------------------------------------------------------------------------
+
+def shell_bells(
+    n_parts: int = 8,
+    r_min: float = 20.0,
+    r_max: float = 60.0,
+    wall_min: float = 0.8,
+    wall_max: float = 1.6,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """İnce cidarlı yarım-küre/çan kabukları (thin_shell ailesi).
+
+    Args:
+        n_parts:   Kabuk sayısı (her biri adet=1).
+        r_min:     Yarıçap alt sınırı (mm).
+        r_max:     Yarıçap üst sınırı (mm).
+        wall_min:  Cidar kalınlığı alt sınırı (mm).
+        wall_max:  Cidar kalınlığı üst sınırı (mm).
+        container: Konteyner tanımı; None ise 300x300xNone.
+        seed:      Deterministik üretim için seed.
+
+    Returns:
+        NestingInstance
+    """
+    rng = random.Random(seed)
+    cnt = container or _default_container()
+    parts: List[PartSpec] = []
+    for i in range(n_parts):
+        r = _uniform(rng, r_min, r_max)
+        wall = _uniform(rng, wall_min, wall_max)
+        mesh = _bell_shell_mesh(r, wall)
+        parts.append(
+            _shell_partspec(f"bell_{i+1:02d}", f"bell_{i+1:02d}", 1, mesh)
+        )
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={"family": "shell_bells", "seed": seed, "n_parts": n_parts},
+    )
+
+
+def hollow_tubes(
+    n_parts: int = 8,
+    r_min: float = 8.0,
+    r_max: float = 18.0,
+    wall_min: float = 1.0,
+    wall_max: float = 2.0,
+    length_min: float = 90.0,
+    length_max: float = 180.0,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """İnce cidarlı borular (tube ailesi; uzun + içi boş).
+
+    Args:
+        n_parts:    Boru sayısı (her biri adet=1).
+        r_min:      Dış yarıçap alt sınırı (mm).
+        r_max:      Dış yarıçap üst sınırı (mm).
+        wall_min:   Cidar kalınlığı alt sınırı (mm).
+        wall_max:   Cidar kalınlığı üst sınırı (mm).
+        length_min: Boru boyu alt sınırı (mm).
+        length_max: Boru boyu üst sınırı (mm).
+        container:  Konteyner tanımı; None ise 300x300xNone.
+        seed:       Deterministik üretim için seed.
+
+    Returns:
+        NestingInstance
+    """
+    rng = random.Random(seed)
+    cnt = container or _default_container()
+    parts: List[PartSpec] = []
+    for i in range(n_parts):
+        r = _uniform(rng, r_min, r_max)
+        wall = _uniform(rng, wall_min, wall_max)
+        length = _uniform(rng, length_min, length_max)
+        r_inner = max(r - wall, r * 0.1)
+        mesh = trimesh.creation.annulus(r_min=r_inner, r_max=r, height=length)
+        parts.append(
+            _shell_partspec(f"tube_{i+1:02d}", f"tube_{i+1:02d}", 1, mesh)
+        )
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={"family": "hollow_tubes", "seed": seed, "n_parts": n_parts},
+    )
 
 
 # ---------------------------------------------------------------------------

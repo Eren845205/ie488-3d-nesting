@@ -168,9 +168,16 @@ def _std(xs: List[float]) -> float:
 def extract_features(instance: NestingInstance) -> FeatureVector:
     """NestingInstance -> FeatureVector (deterministik, birim testli).
 
-    Yalnızca box-source parçalar işlenir.  STL-source parçaların boyutları
-    bilinmediğinden (dosya okunmadan) boyut sıfır kabul edilir — bu, STL
-    source ağırlıklı instance'larda vektörün anlamlı olmayacağını gösterir.
+    box-source parçalarda boyutlar PartSpec'te dolu gelir.  STL-source
+    parçalarda boyutlar da genellikle dolu gelir: stl_order_loader parçayı
+    kurarken bounding-box extents'i width_mm/depth_mm/height_mm alanlarına
+    yazar.  Boyut yine de eksikse (None) 0.0 kabul edilir.
+
+    NOT (F1 taksonomisi): Bu fonksiyonun döndürdüğü 20-uzunluklu vektör
+    DONMUŞ bir sözleşmedir (seçim modeli onu tüketir) — adı/sırası/değeri
+    değişmez.  Yeni aile-farkında özellikler (wall_est/true_fill_mean/
+    shell_score) için extract_features_extended / extract_family_features
+    kullanılır (bu vektörü SONA ekler, mevcut 20'yi bozmaz).
 
     Args:
         instance: NestingInstance
@@ -324,3 +331,124 @@ def extract_features(instance: NestingInstance) -> FeatureVector:
     )
 
     return FeatureVector(values=values, names=list(FEATURE_NAMES))
+
+
+# ---------------------------------------------------------------------------
+# F1 aile-farkında özellikler (ADDITIVE — mevcut 20-vektör DONMUŞ kalır)
+# ---------------------------------------------------------------------------
+#
+# Tasarım kararı: extract_features() ve FEATURE_NAMES (20) hiç değiştirilmedi;
+# yeni özellikler ayrı bir uzatılmış API üzerinden verilir.  Böylece 20-uzunluklu
+# vektörü tüketen seçim modeli ve mevcut testler BOZULMAZ; yeni tüketiciler
+# uzatılmış vektörün SONUNA eklenmiş 3 aile özelliğini alır.
+
+FAMILY_FEATURE_NAMES: List[str] = [
+    "wall_est",         # parçaların en ince tahmini cidarı (mm); shell yoksa 0.0
+    "true_fill_mean",   # qty-ağırlıklı ortalama gerçek doluluk (0..1)
+    "shell_score",      # qty-ağırlıklı 0..1 kabuklaşma skoru (birimsiz)
+]
+
+# Uzatılmış vektör: mevcut 20 + 3 (SONA eklenmiş).
+EXTENDED_FEATURE_NAMES: List[str] = list(FEATURE_NAMES) + list(FAMILY_FEATURE_NAMES)
+
+
+def _wall_est(parts: List[PartSpec]) -> float:
+    """Parçaların wall_mm'lerinden en ince cidar (None'lar dışlanır).
+
+    Hiç shell/wall yoksa güvenli varsayılan 0.0 (shell bilgisi yok).
+    """
+    walls = [p.wall_mm for p in parts if p.wall_mm is not None and p.wall_mm > 0.0]
+    if not walls:
+        return 0.0
+    return float(min(walls))
+
+
+def _effective_true_fill(part: PartSpec) -> float:
+    """Parça için etkin doluluk (qty-ağırlıklı ortalamada kullanılır).
+
+    box-source: true_fill yoksa 1.0 (tanım gereği dolu kutu).
+    stl-source: true_fill dolu ise o değer; None ise ölçülememiş -> atlanır
+                (çağıran skip eder).
+    """
+    if part.true_fill is not None:
+        return float(part.true_fill)
+    if part.source == "box":
+        return 1.0
+    return -1.0  # sentinel: ölçülememiş stl (çağıran atlar)
+
+
+def _true_fill_mean(parts: List[PartSpec]) -> float:
+    """qty-ağırlıklı ortalama gerçek doluluk (ölçülememiş stl'ler dışlanır)."""
+    total = 0.0
+    n = 0
+    for p in parts:
+        tf = _effective_true_fill(p)
+        if tf < 0.0:
+            continue
+        q = max(int(p.qty), 0)
+        total += tf * q
+        n += q
+    if n == 0:
+        return 1.0  # bilgi yoksa kati varsay (nötr)
+    return total / n
+
+
+def _part_shell_score(part: PartSpec) -> float:
+    """Tek parça kabuklaşma skoru (0..1); wall_mm/min_bbox_kenar oranından türer.
+
+    r = wall_mm / min_bbox_kenar.  İnce cidar (küçük r) -> yüksek skor.
+    r <= 0.05 -> 1.0 (belirgin kabuk);  r >= 0.20 -> 0.0 (kabuk değil).
+    wall_mm yoksa (kati) -> 0.0.
+    """
+    if part.wall_mm is None or part.wall_mm <= 0.0:
+        return 0.0
+    edges = [e for e in (part.width_mm, part.depth_mm, part.height_mm)
+             if e is not None and e > 0.0]
+    if not edges:
+        return 0.0
+    min_edge = min(edges)
+    r = part.wall_mm / min_edge
+    lo, hi = 0.05, 0.20
+    if r <= lo:
+        return 1.0
+    if r >= hi:
+        return 0.0
+    return (hi - r) / (hi - lo)
+
+
+def _shell_score(parts: List[PartSpec]) -> float:
+    """qty-ağırlıklı ortalama kabuklaşma skoru (0..1)."""
+    total = 0.0
+    n = 0
+    for p in parts:
+        s = _part_shell_score(p)
+        q = max(int(p.qty), 0)
+        total += s * q
+        n += q
+    if n == 0:
+        return 0.0
+    return total / n
+
+
+def extract_family_features(instance: NestingInstance) -> Dict[str, float]:
+    """Yalnızca F1 aile-farkında 3 özelliği döndür (isim->değer)."""
+    parts = instance.parts
+    return {
+        "wall_est": float(_wall_est(parts)),
+        "true_fill_mean": float(_true_fill_mean(parts)),
+        "shell_score": float(_shell_score(parts)),
+    }
+
+
+def extract_features_extended(instance: NestingInstance) -> FeatureVector:
+    """20 temel özellik + 3 aile özelliği (SONA eklenmiş) -> FeatureVector.
+
+    values[0:20] extract_features() ile BİREBİR aynıdır; [20:23] aile
+    özellikleridir.  names = EXTENDED_FEATURE_NAMES.
+    """
+    base = extract_features(instance)
+    fam = extract_family_features(instance)
+    values = list(base.values) + [
+        fam["wall_est"], fam["true_fill_mean"], fam["shell_score"],
+    ]
+    return FeatureVector(values=values, names=list(EXTENDED_FEATURE_NAMES))

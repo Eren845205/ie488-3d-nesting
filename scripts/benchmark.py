@@ -56,6 +56,8 @@ from src.nesting3d.instances.synthetic import (
     high_qty_repeat,
     thin_plates,
     long_rods,
+    shell_bells,
+    hollow_tubes,
 )
 from src.nesting3d.instances.br_loader import load_br_instance
 from src.nesting3d.bin3d import Bin3D
@@ -85,6 +87,8 @@ _FAMILY_BUILDERS = {
     "high_qty_repeat": high_qty_repeat,
     "thin_plates": thin_plates,
     "long_rods": long_rods,
+    "shell_bells": shell_bells,
+    "hollow_tubes": hollow_tubes,
 }
 
 # Tablo MD kolonlari (ozellik kolonlari sonraya eklenir)

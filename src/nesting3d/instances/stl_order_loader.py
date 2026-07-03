@@ -37,7 +37,7 @@ import tempfile
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
+from typing import NamedTuple, Optional, Union
 
 import trimesh
 
@@ -65,10 +65,30 @@ class StlOrderResult:
 # Yardimci
 # ---------------------------------------------------------------------------
 
-def _bbox_from_bytes(name: str, stl_bytes: bytes) -> Optional[tuple[float, float, float]]:
-    """STL bytes'indan bounding-box extents (w, d, h) mm dondur.
+class MeshMeasure(NamedTuple):
+    """_bbox_from_bytes ciktisi: bbox extents + opsiyonel hacim/yuzey.
 
-    Hata durumunda None dondurur (cagiran skipped_no_stl'e ekler).
+    w/d/h:  bounding-box extents (mm) — her zaman dolu.
+    volume: mesh watertight ise abs(hacim) (mm^3); degilse None (guvenli dusus).
+    area:   mesh yuzey alani (mm^2); hesap patlarsa None.
+    """
+
+    w: float
+    d: float
+    h: float
+    volume: Optional[float]
+    area: Optional[float]
+
+
+def _bbox_from_bytes(name: str, stl_bytes: bytes) -> Optional[MeshMeasure]:
+    """STL bytes'indan bbox extents (w, d, h) + hacim/yuzey olcumu dondur.
+
+    Ikinci bir trimesh.load YOK — ayni yuklemeden hem extents hem (watertight
+    ise) hacim ve yuzey alani cikarilir.  Watertight degilse veya olcum patlarsa
+    volume=None (guvenli dusus) — cagiran wall_mm/true_fill'i None birakir.
+
+    Hata durumunda (yuklenemez/bos mesh) None dondurur (cagiran
+    skipped_no_stl'e ekler).
     """
     try:
         mesh = trimesh.load(
@@ -86,7 +106,44 @@ def _bbox_from_bytes(name: str, stl_bytes: bytes) -> Optional[tuple[float, float
 
     mesh.apply_translation(-mesh.bounds[0])
     e = mesh.extents
-    return float(e[0]), float(e[1]), float(e[2])
+
+    volume: Optional[float] = None
+    area: Optional[float] = None
+    try:
+        area = float(mesh.area)
+        if area <= 0.0:
+            area = None
+        if mesh.is_watertight:
+            volume = abs(float(mesh.volume))
+            if volume <= 0.0:
+                volume = None
+    except Exception as exc:  # olcum patlarsa geometri metasi olmadan devam
+        logger.warning("Mesh olcumu basarisiz '%s': %s", name, exc)
+        volume = None
+
+    return MeshMeasure(float(e[0]), float(e[1]), float(e[2]), volume, area)
+
+
+def _wall_and_fill(
+    measure: MeshMeasure,
+) -> tuple[Optional[float], Optional[float]]:
+    """MeshMeasure'dan (wall_mm, true_fill) turet.
+
+    true_fill = V / bbox_vol (V ve bbox_vol > 0 ise; aksi None).
+    wall_mm   = 2V/A (V,A > 0 VE true_fill < 0.5 shell kapisiyla; aksi None).
+
+    Kati parca (true_fill ~ 1.0) shell degildir -> wall_mm None.
+    """
+    bbox_vol = measure.w * measure.d * measure.h
+    v = measure.volume
+    a = measure.area
+    if v is None or v <= 0.0 or bbox_vol <= 0.0:
+        return None, None
+    true_fill = v / bbox_vol
+    wall_mm: Optional[float] = None
+    if a is not None and a > 0.0 and true_fill < 0.5:
+        wall_mm = 2.0 * v / a
+    return wall_mm, true_fill
 
 
 def _write_temp_stl(stl_bytes: bytes) -> str:
@@ -195,13 +252,14 @@ def build_instance_from_order(
             stl_bytes = stl_map[stl_key]
             qty = quantities[qty_key]
 
-            bbox = _bbox_from_bytes(name, stl_bytes)
-            if bbox is None:
+            measure = _bbox_from_bytes(name, stl_bytes)
+            if measure is None:
                 skipped_no_stl.append(name)
                 logger.warning("Parca '%s': Bozuk mesh — skipped_no_stl'e eklendi.", name)
                 continue
 
-            w, d, h = bbox
+            w, d, h = measure.w, measure.d, measure.h
+            wall_mm, true_fill = _wall_and_fill(measure)
 
             if persist_path is not None:
                 stl_path = _write_persist_stl(persist_path, name, stl_bytes)
@@ -219,6 +277,8 @@ def build_instance_from_order(
                     width_mm=w,
                     depth_mm=d,
                     height_mm=h,
+                    wall_mm=wall_mm,
+                    true_fill=true_fill,
                 )
             )
 
