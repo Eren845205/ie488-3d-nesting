@@ -12,7 +12,7 @@ CEVAP STRATEJİSİ = doluluk SPEKTRUMUNDA NFV-greedy vs heightmap.
     girmiyorsa  -> yöntem GENEL, güvenle bağlanır
     giriyorsa   -> overfit DEĞİL ama körlemesine bağlanamaz -> adaptif/best-of-both ŞART
 
-Dataset arg: plan1 | plan2 | plan3 | boxy
+Dataset arg: plan1 | plan2 | plan3 | deneme4 | boxy
 Çıktı: parça sayısı, kutuluk (ort doluluk), heightmap(dblf), NFV(decode_fast), delta%.
 
 ÜRETİME DOKUNMAZ — sadece scripts/, src/ salt-okunur. Kaba pitch (hızlı, adil kıyas).
@@ -70,6 +70,25 @@ DATASETS = {
             "194301273": 1, "153000507": 5, "153000508": 11, "171600003": 11,
             "124601728": 5, "152900295": 4, "152900079": 10, "153004449": 4,
             "152000218": 7, "171600022": 4, "152000217": 7,
+        },
+    },
+    "deneme4": {  # ilk dış-müşteri seti (2026-07-03, FSM) — ince-cidarlı kabuk ailesi
+        # (0.8-1.35mm çan-düğme + 2 dev ROBT plakası). Magics referansı 250.24mm
+        # (plaka bilinmiyor -> otomatik; hoca plaka cevabı gelince "plate" doldurulacak).
+        # STL'ler repo içinde KALICI; adetler mail gövdesi "Ad - Sayı" + 588 checksum kanıtlı.
+        "stl_dir": _ROOT / "data" / "mail_stl" / "mail_stl_AD786DF3", "plate": None,
+        "qty": {
+            "ASY-0176446": 62, "ASY-0176446-1": 126,
+            "part239392_ROBT UST v27": 1, "part239391_ROBT ALT v27": 1,
+            "01_202201790014_00-K179 Dugme Aksesuari": 12,
+            "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu": 12,
+            "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs": 26,  # gerçek adet 26 (mail+checksum; "-25pcs" dosya adı yanıltıcı)
+            "03_00-K179 Dugme Tek Fonksiyonlu": 200,
+            "04_T00-K179 Dugme Fonksiyonsuz": 56,
+            "05_00-K179 WBT Dugme": 20,
+            "09_00-K179 Dugme Kilidi": 27,
+            "10_T00-K179 Kilitli Dugme": 25,
+            "17_00-K179 SSB Dugme": 20,
         },
     },
 }

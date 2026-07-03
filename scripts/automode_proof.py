@@ -1,4 +1,4 @@
-"""KANIT: akıllı-mod kuralı 5 veride false-negative=0 (cavity-zengin ASLA heightmap'e gitmez).
+"""KANIT: akıllı-mod kuralı 6 veride false-negative=0 (cavity-zengin ASLA heightmap'e gitmez).
 Kalite riski = cavity-zengin(kazanç>0) -> heightmap (false-negative). Bu OLMAMALI.
 NFV seçmek her zaman kalite-güvenli (K-12: NFV>=heightmap). Kural prototipi burada doğrulanır."""
 import os, sys
@@ -11,7 +11,8 @@ from src.nesting3d.instances.features import extract_features
 from src.nesting3d.models import NUMUNE_DIR, NUMUNE_QUANTITIES
 
 # Bilinen NFV kazancı (ANALIZ_NFV). kazanç>0 = cavity-zengin (NFV kazanır, heightmap'e gitmemeli).
-KNOWN = {"plan2": 29, "plan3": 20, "plan1": 14, "numune": 0, "boxy": 0}
+# deneme4: kabuk ailesi — NFV@coarse (386.4) heightmap'i (377.3) GEÇEMEDİ (K-12 kabukta kırıldı) -> kazanç 0.
+KNOWN = {"plan2": 29, "plan3": 20, "plan1": 14, "numune": 0, "boxy": 0, "deneme4": 0}
 
 # --- KURAL PROTOTİPİ (üretime taşınacak predict_nfv_benefit) ---
 BOX_ASPECT_THR = 4.0    # mean_aspect_z < bu -> net kutu (cavity yok). plan'lar 6.4+ (geniş marj).
@@ -49,11 +50,11 @@ def make_instance(ds):
     return build_instance_from_order(stl_map, cfg["qty"], **kwargs).instance
 
 
-print("KANIT — akıllı-mod kuralı 5 veride:", flush=True)
+print("KANIT — akıllı-mod kuralı 6 veride:", flush=True)
 print("-" * 90, flush=True)
 false_neg = []
 wrong_hint = []
-for ds in ["plan2", "plan3", "plan1", "numune", "boxy"]:
+for ds in ["plan2", "plan3", "plan1", "numune", "boxy", "deneme4"]:
     inst = make_instance(ds)
     mode, reason = predict_nfv_benefit(inst)
     gain = KNOWN[ds]
