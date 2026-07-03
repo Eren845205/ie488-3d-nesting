@@ -183,7 +183,9 @@ def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     return g
 
 
-def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
+def _slice_voxelize(
+    mesh: trimesh.Trimesh, pitch: float, *, allow_empty: bool = False
+) -> np.ndarray:
     """Watertight mesh -> bool grid via z-slicing at voxel centres.
 
     Her z-katmanında mesh kesiti alınır (section_multiplane) ve voxel
@@ -192,6 +194,15 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
     hacim-doğru: subdivide yüzeye değen her voxeli doldurur, ince plakaları
     ~2x şişirir (numune kalibrasyonu 2026-06-10).  Mesh min-köşesi origin'de
     olmalı (voxelize_part bunu garanti eder).
+
+    allow_empty: True ise boş grid HATA DEĞİL — boş grid aynen döner.
+    voxelize_part bunu kullanır: ince CİDARLI kabuk parçalarda (bbox dolgun
+    ama et kalınlığı << pitch; gerçek örnek Deneme4 'Dugme Kilidi', bbox
+    doluluğu %12) hiçbir hücre MERKEZİ malzemeye düşmez → slice boş; ama
+    hemen ardından _surface_cells yüzeye değen hücreleri konservatif işaretler
+    ve BİRLEŞİM dolu olur. Boş-grid kararı bu yüzden birleşimden SONRA
+    verilmeli (bkz. voxelize_part). Default False: doğrudan çağıranlar için
+    eski fail-fast davranışı birebir korunur.
     """
     if _contains_xy is None:
         raise ImportError("slice voxelization için shapely gerekli")
@@ -227,11 +238,13 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
             sxx, syy = np.meshgrid(xs[i0:i1], ys[j0:j1], indexing="ij")
             m = _contains_xy(poly, sxx.ravel(), syy.ravel())
             grid[i0:i1, j0:j1, k] |= m.reshape(i1 - i0, j1 - j0)
-    if not grid.any():
+    if not grid.any() and not allow_empty:
         # Fail-fast tanı: sessiz/şifreli assert yerine açık, aksiyon alınabilir
         # hata. Boş grid = pitch parçanın en küçük özelliği için fazla kaba;
         # hiçbir dilim merkezi parçaya düşmemiş. Ana çözüm clamp DEĞİL, adaptif
         # pitch (instances/pitch.py suggest_pitch) — bu guard onu zorlar.
+        # (allow_empty=True yolunda karar voxelize_part'ta, yüzey birleşimi
+        # SONRASINDA verilir — ince cidarlı kabuk parçalar orada kurtulur.)
         ext = mesh.extents  # bounding-box boyutları (mm)
         min_feat = float(min(ext))
         raise ValueError(
@@ -375,8 +388,22 @@ def voxelize_part(
         m.apply_translation(-m.bounds[0])
 
         if method == "slice":
-            grid = _slice_voxelize(m, pitch)
+            # allow_empty: ince CİDARLI kabuk parçada (et kalınlığı << pitch,
+            # bbox dolgun — Deneme4 'Dugme Kilidi' %12 doluluk) slice boş
+            # dönebilir; yüzey hücreleri konservatif işaretleyince birleşim
+            # dolar. Boş-grid kararı bu yüzden BİRLEŞİMDEN SONRA verilir.
+            grid = _slice_voxelize(m, pitch, allow_empty=True)
             grid |= _surface_cells(m, pitch, grid.shape)  # konservatif sarma
+            if not grid.any():
+                ext_m = m.extents
+                min_feat = float(min(ext_m))
+                raise ValueError(
+                    f"Voxelizasyon boş grid üretti (slice + yüzey birleşimi "
+                    f"sonrası): pitch={pitch:.3f} mm, parçanın en küçük boyutu "
+                    f"({min_feat:.3f} mm) için fazla kaba. Pitch'i küçültün "
+                    f"veya adaptif pitch kullanın "
+                    f"(instances.pitch.suggest_pitch). bbox_extents={ext_m}"
+                )
             origin = np.full(3, pitch / 2.0)
         else:
             vg = m.voxelized(pitch).fill()

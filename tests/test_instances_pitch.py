@@ -190,20 +190,27 @@ class TestVoxelizationRegression:
 
 
 class TestVoxelizerFailFastGuard:
-    """Voxelizer fail-fast guard: çok kaba pitch'te şifreli assert değil,
-    açık aksiyon alınabilir ValueError vermeli (2026-06-14 kullanıcı şartı)."""
+    """Voxelizer kaba-pitch sözleşmesi.
 
-    def test_too_coarse_pitch_raises_clear_value_error(self):
+    2026-06-14 kullanıcı şartı iki ilkeydi: (1) şifreli assert değil açık hata,
+    (2) parça KAYBOLMAMALI. 2026-07-03 kabuk-parça düzeltmesiyle (Deneme4
+    'Dugme Kilidi': slice boş ama yüzey dolu) sözleşme güçlendi: çok kaba
+    pitch'te bile parça yüzey-sarma ile KONSERVATİF korunur — kaybolmak yerine
+    şişer (güvenli taraf). Doğrudan _slice_voxelize çağrısının fail-fast
+    ValueError'u ayrıca korunur (tests/test_voxelize_shell_parts.py +
+    tests/test_voxelize_c1_exact.py)."""
+
+    def test_too_coarse_pitch_preserves_parts_conservatively(self):
         from src.nesting3d.instances.format import to_voxel_parts
 
-        # thin_plates @ pitch=15: kalınlık 3-12mm < pitch/2 → eskiden çöküyordu.
+        # thin_plates @ pitch=15: kalınlık 3-12mm < pitch/2 → eskiden slice
+        # boş kalıp çöküyordu; artık yüzey birleşimi parçayı korur.
         inst = thin_plates(n_parts=8, seed=4)
-        with pytest.raises(ValueError) as excinfo:
-            to_voxel_parts(inst, 15.0, n_orientations=4)
-        msg = str(excinfo.value)
-        # Mesaj pitch'i ve adaptif pitch yönlendirmesini içermeli.
-        assert "pitch" in msg.lower()
-        assert "suggest_pitch" in msg
+        parts = to_voxel_parts(inst, 15.0, n_orientations=4)
+        assert parts, "hiç parça dönmedi"
+        for vp in parts:
+            for o in vp.orientations:
+                assert o.voxel_count > 0, f"{vp.name}: parça voxel'de KAYBOLDU"
 
 
 class TestErrorPaths:
