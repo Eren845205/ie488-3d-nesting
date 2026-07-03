@@ -78,7 +78,19 @@ def _ram_bytes() -> int:
                     return int(line.split()[1]) * 1024
     except Exception:
         pass
-    try:  # Windows
+    ms = _win_memory_status()  # Windows
+    if ms is not None:
+        try:
+            return int(ms.ullTotalPhys)
+        except Exception:
+            pass
+    return 4 * 1024 ** 3  # muhafazakâr default 4GB
+
+
+def _win_memory_status():
+    """Windows GlobalMemoryStatusEx cagirir (total + AVAILABLE fiziksel bellek); basarisiz/olmayan
+    platformda None. Yapi lokal tanimli (module-level ctypes hard-dep YOK — Linux'ta import edilmez)."""
+    try:
         import ctypes
 
         class _MS(ctypes.Structure):
@@ -88,11 +100,37 @@ def _ram_bytes() -> int:
                         ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
                         ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
         ms = _MS(); ms.dwLength = ctypes.sizeof(_MS)
-        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
-        return int(ms.ullTotalPhys)
+        ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms))
+        if not ok:
+            return None
+        return ms
+    except Exception:
+        return None
+
+
+def _ram_available_bytes() -> Optional[int]:
+    """best-effort KULLANILABILIR (available, total DEGIL) RAM. Alinamazsa None (konservatif —
+    cagiran taraf None'i 'bilinmiyor' olarak yorumlar, freni tetiklemez). Yeni hard-dep YOK:
+    psutil.available -> /proc/meminfo MemAvailable -> Windows ullAvailPhys -> None."""
+    try:
+        import psutil  # type: ignore
+        return int(psutil.virtual_memory().available)
     except Exception:
         pass
-    return 4 * 1024 ** 3  # muhafazakâr default 4GB
+    try:  # Linux
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except Exception:
+        pass
+    ms = _win_memory_status()  # Windows
+    if ms is not None:
+        try:
+            return int(ms.ullAvailPhys)
+        except Exception:
+            pass
+    return None
 
 
 @dataclass
@@ -104,9 +142,13 @@ class Capabilities:
     fast_fft: bool
     fast_name: Optional[str]
     slurm: bool
+    ram_available_bytes: Optional[int] = None  # KULLANILABILIR RAM (None=olculemedi); total AYRI
 
     def summary(self) -> str:
-        return (f"cpu={self.cpu_count} ram={self.ram_bytes / 1e9:.1f}GB gpu={self.gpu}"
+        avail = ("?" if self.ram_available_bytes is None
+                 else f"{self.ram_available_bytes / 1e9:.1f}")
+        return (f"cpu={self.cpu_count} ram={self.ram_bytes / 1e9:.1f}GB"
+                f"(avail={avail}GB) gpu={self.gpu}"
                 f"(fp64={self.gpu_fp64}) fast_fft={self.fast_name or '-'} slurm={self.slurm}")
 
 
@@ -131,6 +173,7 @@ def probe_capabilities(*, refresh: bool = False) -> Capabilities:
     _CACHE = Capabilities(
         cpu_count=_affinity_cpu_count(),
         ram_bytes=_ram_bytes(),
+        ram_available_bytes=_ram_available_bytes(),
         gpu=gpu, gpu_fp64=gpu_fp64,
         fast_fft=fast is not None, fast_name=fname,
         slurm=bool(os.environ.get("SLURM_JOB_ID") or os.environ.get("SLURM_ARRAY_TASK_ID")),

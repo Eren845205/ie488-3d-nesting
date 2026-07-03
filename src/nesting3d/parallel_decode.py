@@ -9,6 +9,7 @@ Birebir: hangi yol seçilirse seçilsin AYNI yükseklik+placements (kalite-korum
 İÇİNDE scoped (ThreadPool contextvar propagate ETMEZ); per_fft=cpu//n_threads (oversubscribe yok).
 """
 from __future__ import annotations
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
@@ -59,9 +60,13 @@ def _worth_threading(ob, n_eligible) -> bool:
 # --------------------------------------------------------------------------
 
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
-           return_placements=False, fft_workers=None):
+           return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
-    AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement])."""
+    AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
+
+    time_budget_sec=None (default) → DAVRANIS AYNEN (butce kontrolu YOK, sifir ek yuk). Verilirse:
+    her parca dis-donguden ONCE gecen sure kontrol edilir; asilirsa o ana kadarki KISMI en iyi layout
+    ile temiz dusus (istisna YOK) + budget_status (dict verilirse) 'budget_exceeded'=True isaretlenir."""
     if feasible_mask is None:
         feasible_mask, _ = get_backend()
     cpu = probe_capabilities().cpu_count
@@ -82,10 +87,15 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
     sorted_parts = sorted(parts, key=lambda vp: -vp.volume_voxels)
 
     executor = None
+    t0 = time.perf_counter()
     try:
         if parallel:
             executor = ThreadPoolExecutor(max_workers=nt)
         for part in sorted_parts:
+            if time_budget_sec is not None and (time.perf_counter() - t0) >= time_budget_sec:
+                if budget_status is not None:
+                    budget_status["budget_exceeded"] = True
+                break  # temiz kismi dusus: o ana kadar yerlesenler korunur
             cur_max = ob.max_height_voxels()
             elig = _eligible_orients(part, nx, ny)
             if parallel and _worth_threading(ob, len(elig)):
@@ -166,10 +176,14 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
         z_cap *= 2
 
 
-def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False):
+def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
+               time_budget_sec=None, budget_status=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
-    yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer)."""
+    yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
+
+    time_budget_sec=None (default) → davranis AYNEN. Verilirse butce asiminda o ana kadarki kismi
+    layout ile temiz dusus + budget_status['budget_exceeded']=True."""
     cp = probe_cupy()
     if cp is None:
         raise RuntimeError("cupy/GPU yok")
@@ -195,7 +209,12 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False):
     placements: List[RawPlacement] = []
     cur_max = 0
     n_placed = 0
+    t0 = time.perf_counter()
     for part in sorted(parts, key=lambda vp: -vp.volume_voxels):
+        if time_budget_sec is not None and (time.perf_counter() - t0) >= time_budget_sec:
+            if budget_status is not None:
+                budget_status["budget_exceeded"] = True
+            break  # temiz kismi dusus
         best_key = None; best = None
         for oi, orient in enumerate(part.orientations):
             _, gf, gshape = _grids(orient)
@@ -239,23 +258,33 @@ def choose_strategy(caps=None) -> str:
     return "serial"
 
 
-def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False):
+def _mark_budget(strategy: str, status: dict) -> str:
+    """Butce asildiysa strateji string'ine ASCII iz ekle (reason'a/adaptive_reason'a akar)."""
+    return f"{strategy} budget_exceeded" if status.get("budget_exceeded") else strategy
+
+
+def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
-    GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ."""
+    GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
+
+    time_budget_sec=None (default) → davranis AYNEN (strategy string DEGISMEZ). Butce asilirsa kismi
+    en iyi sonuc dondurulur ve strategy'ye ' budget_exceeded' izi eklenir (iz string'de gorunur)."""
     caps = probe_capabilities()
     strat = force or choose_strategy(caps)
+    status: dict = {}
 
     if strat == "gpu-resident":
         try:
-            h, raw = decode_gpu(parts, nx, ny, pitch=pitch, return_placements=True)
-            return h, raw, "gpu-resident"
+            h, raw = decode_gpu(parts, nx, ny, pitch=pitch, return_placements=True,
+                                time_budget_sec=time_budget_sec, budget_status=status)
+            return h, raw, _mark_budget("gpu-resident", status)
         except Exception as e:
             if verbose:
-                print(f"  [dispatch] GPU-resident başarısız ({type(e).__name__}) → CPU Kol A")
+                print(f"  [dispatch] GPU-resident basarisiz ({type(e).__name__}) -> CPU Kol A")
             strat = "cpu-kolA"
 
     fm, _ = get_backend("scipy")  # CPU yolunda scipy (naive GPU ölçekte kaybediyor)
     parallel = strat == "cpu-kolA"
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
-                    return_placements=True)
-    return h, raw, ("cpu-kolA" if parallel else "serial")
+                    return_placements=True, time_budget_sec=time_budget_sec, budget_status=status)
+    return h, raw, _mark_budget(("cpu-kolA" if parallel else "serial"), status)

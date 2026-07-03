@@ -37,12 +37,54 @@ NFV_DEFAULT_ORIENTATIONS = 8
 NFV_AX24 = tuple(range(8)) + tuple(range(12, 28))  # 24 eksen-hizalı (eğik 8..11 HARİÇ)
 
 
-def _quality_max_orientations(ram_bytes: int):
-    """quality='max' poz seti: RAM yeterse AX24 (24 eksen-hizalı, K-18), yoksa None (→ n=8).
-    Sabit değil: seçim RAM'den türer; set içeriği K-13 (eğik-miyopi) + K-18 ölçümüne dayanır."""
-    if ram_bytes / 1e9 >= 13:
-        return NFV_AX24
-    return None  # düşük RAM — güvenli taban n=8
+# AX24 kapisi: mevcut total-RAM esigi (bu makinede 16GB>=13 -> AX24 KORUNUR). Sihirli sabit degil,
+# K-18 olcumunde 16GB'de plan2-226 AX24 dogrulandigi icin toplam-RAM tavani.
+_AX24_TOTAL_RAM_GB = 13.0
+
+
+def _quality_max_decision(ram_bytes, *, n_parts=None, ram_available_bytes=None,
+                          grid_cells=None, bytes_per_cell=8.0, safety_factor=2.0,
+                          avail_headroom=0.8):
+    """quality='max' oryantasyon karari + gerekce. Doner: (orients|None, reason).
+
+    Katman 1 (KORUNUR): total RAM < _AX24_TOTAL_RAM_GB -> n=8 guvenli taban (mevcut davranis birebir).
+    Katman 2 (YENI emniyet freni, OPSIYONEL): sadece n_parts + ram_available_bytes + grid_cells'in
+      HEPSI verilirse devreye girer. Tahmini decode/voxel-parts bellek ihtiyaci turemis esikten:
+          est = safety_factor * n_parts * len(NFV_AX24) * grid_cells * bytes_per_cell
+      (fizik: AX24'te parca basina 24 oryantasyon gridi + FFT float64 gecici seti resident; bellek
+       oryantasyon SAYISIYLA buyur -> AX24'un n=8'e gore asil bedeli). Kullanilabilir butce
+      avail_headroom * ram_available_bytes'i asarsa n=8'e dus (OOM koruma). SABIT SIHIRLI SAYI YOK:
+      esik olculebilir (parca, grid, available) buyuklukten turer + tum katsayilar parametreyle
+      override edilebilir. Girdilerden herhangi biri None -> fren KAPALI (davranis degismez)."""
+    if ram_bytes / 1e9 < _AX24_TOTAL_RAM_GB:
+        return None, "RAM<13GB -> n=8 guvenli taban"
+    if n_parts is not None and ram_available_bytes is not None and grid_cells is not None:
+        est = safety_factor * float(n_parts) * len(NFV_AX24) * float(grid_cells) * bytes_per_cell
+        budget = avail_headroom * float(ram_available_bytes)
+        if est > budget:
+            return None, (f"AX24 emniyet freni: est {est / 1e9:.2f}GB > "
+                          f"available*{avail_headroom:g} {budget / 1e9:.2f}GB -> n=8 guvenli taban")
+    return NFV_AX24, f"AX24 n={len(NFV_AX24)} (24 eksen-hizali, K-18)"
+
+
+def _quality_max_orientations(ram_bytes, **kw):
+    """Geriye-uyum ince katman: yalniz poz setini (None|NFV_AX24) dondurur (reason'i atar).
+    Mevcut cagiranlar (test dahil) bu imzayi kullanir; yeni fren yolu _quality_max_decision'da."""
+    return _quality_max_decision(ram_bytes, **kw)[0]
+
+
+def _grid_cells_estimate(instance, pitch):
+    """En buyuk parca bounding-box'inin verilen pitch'te tahmini voxel hucre sayisi (grid buyuklugu
+    proxy'si). Olcu alinamazsa (mesh parca, boyut yok, gecersiz pitch) None -> fren kapali/konservatif."""
+    if pitch is None or pitch <= 0:
+        return None
+    best = 0.0
+    for p in getattr(instance, "parts", []) or []:
+        w = getattr(p, "width_mm", None) or 0.0
+        d = getattr(p, "depth_mm", None) or 0.0
+        h = getattr(p, "height_mm", None) or 0.0
+        best = max(best, (w / pitch) * (d / pitch) * (h / pitch))
+    return best or None
 
 
 def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
@@ -66,7 +108,8 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
 
 def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               n_orientations=None, quality="fast", margin=1, seed=42, force=None,
-              fine_settle=True) -> CoarseToFineResult:
+              fine_settle=True, orient_ram_brake=False,
+              time_budget_sec=None) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     fine_settle=True (default): K-17 pozisyon-koruyan fine z-kompaksiyon post-pass'i —
@@ -96,13 +139,19 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     allowed_orients = None
     if n_orientations is None:
         if quality == "max":
-            allowed_orients = _quality_max_orientations(probe_capabilities().ram_bytes)
-            if allowed_orients is not None:
-                n_orientations = len(allowed_orients)
-                n_reason = f"quality=max AX24 n={n_orientations} (24 eksen-hizali, K-18)"
-            else:
-                n_orientations = NFV_DEFAULT_ORIENTATIONS
-                n_reason = f"quality=max ama RAM<13GB -> n={n_orientations} guvenli taban"
+            caps = probe_capabilities()
+            brake_kw = {}
+            if orient_ram_brake:
+                # opt-in emniyet freni: parca-sayisi + available-RAM + grid tahmininden turemis esik.
+                # default (orient_ram_brake=False) -> brake_kw bos -> mevcut AX24/taban davranisi BIREBIR.
+                brake_kw = dict(
+                    n_parts=int(sum(getattr(p, "qty", 1) or 1 for p in getattr(instance, "parts", []) or [])),
+                    ram_available_bytes=caps.ram_available_bytes,
+                    grid_cells=_grid_cells_estimate(instance, fine_pitch),
+                )
+            allowed_orients, detail = _quality_max_decision(caps.ram_bytes, **brake_kw)
+            n_reason = f"quality=max {detail}"
+            n_orientations = len(allowed_orients) if allowed_orients is not None else NFV_DEFAULT_ORIENTATIONS
         else:
             n_orientations = NFV_DEFAULT_ORIENTATIONS
             n_reason = f"n={n_orientations} (default, 4subset8 garanti)"
@@ -110,18 +159,38 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
                                       allowed_orientations=allowed_orients)
     nx, ny = int(plate_w_mm // used_pitch), int(plate_d_mm // used_pitch)
 
-    _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force)
+    # ÇİFT-SAAT FIX: decode kendi t0'ini sifirdan baslattigi icin TAM butceyi alirdi (voxelize'da
+    # gecen sure sayilmazdi -> replay-tarafi kesme ile birlesince bitmis gecerli layout kesilebiliyordu).
+    # KALAN butceyi gecir: voxelize'da tuketilen sure dusulur. <=0 ise 0.0 (butce voxelize'da bitti ->
+    # decode aninda temiz-bos dusus + budget_exceeded izi). None -> None (default davranis BIREBIR).
+    if time_budget_sec is None:
+        decode_budget = None
+    else:
+        decode_budget = time_budget_sec - (time.perf_counter() - t0)
+        if decode_budget <= 0:
+            decode_budget = 0.0
+
+    _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
+                                   time_budget_sec=decode_budget)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
+    # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un
+    # dondurdugu raw neyse AYNEN oynat (ikinci kez kesme YOK -> bitmis gecerli layout korunur).
     bin3d = Bin3D(plate_w_mm, plate_d_mm, used_pitch)
     parts_by_id = {p.id: p for p in parts}
+    budget_exceeded = time_budget_sec is not None and "budget_exceeded" in strategy
     for (pid, oi, x, y, z) in raw:
         bin3d.place(parts_by_id[pid], oi, x, y, z)
 
     # K-17 fine-settle post-pass: kuantizasyon vergisini geri al (yalnız iyileştirirse).
+    # Butce aktif VE asilmissa settle'i ATLA: tam raw ile kosarsa decode'un kestigi parcalari sessizce
+    # geri getirir (n_placed ile celisir) + MAX_SETTLE_SWEEPS butceyi sinirsiz asabilir. Butce henuz
+    # asilmadiysa settle'a dokunma (v1: settle'in icine butce sizdirmak kapsam disi).
     settle_note = None
     result_pitch = used_pitch
-    if fine_settle:
+    if fine_settle and budget_exceeded:
+        settle_note = "settle skipped (budget)"
+    elif fine_settle:
         from src.nesting3d.fine_settle import fine_settle_raw
         s = fine_settle_raw(raw, parts_by_id,
                             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
