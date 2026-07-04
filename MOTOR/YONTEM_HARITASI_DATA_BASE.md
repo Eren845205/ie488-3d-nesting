@@ -228,7 +228,7 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Ne:** MDPI Appl.Sci 16(1):148 katman-çoğaltma fikri: tip başına TEK voxelize → optimal tek katman → hizalı dikey çoğaltma (nest_advance = Bin3D drop kuralına BİREBİR, test-kilitli) + kompozisyon bracket'i.
 - **Sonuç (Deneme4 @0.5mm, 6 poz):** tahmini hizalı-kule **527.5mm** vs K-19 heightmap **282.0** — kule yaklaşımı %87 GERİDE; garantili bracket [87.5 .. 753.5] K-19'u kapsıyor (kesin hüküm gerçek yerleşim ister ama fark kapanmaz görünüyor). Telescope eden grup **2/13** — çoğu düğme hizalı istifte kabuk-oturması YAPMIYOR. Süre: **82s (96× hızlı)**, tamamı voxelize (compute 0.02s).
 - **NEDEN olmadı:** K-19 kazancının mekanizması hizalı bardak-istifi DEĞİL — ince pitch'te çözünen kabukların drop_map'le YANAL KARIŞIK paketlenmesi (farklı tipler birbirinin boşluğuna). Saf dikey çoğaltma bu serbestliği atıyor.
-- **Ders:** (1) "Özdeş parça = kule" sezgisi kabukta ölçümle çürüdü — kazanç yanal serbestlikte. (2) SÜRE içgörüsü kalıcı: tip-başına-tek-voxelize yapısal (to_voxel_parts zaten paylaşıyor) → 131dk'nın maliyeti voxelize değil 588 parçanın @0.5 DROP döngüsü; hızlandırma hedefi drop/decode tarafı. (3) Reviewer dersi: "kanıtlanabilir sınır" etiketi matematiksel kanıt ister — grid-sayımlı kule alt-sınır DEĞİLDİR (karşı-örnekli).
+- **Ders:** (1) "Özdeş parça = kule" sezgisi kabukta ölçümle çürüdü — kazanç yanal serbestlikte. (2) ~~SÜRE içgörüsü: 131dk'nın maliyeti drop döngüsü~~ → **H-15 DÜZELTMESİ (2026-07-04): bu atıf ölçümsüz genellemeydi ve YANLIŞTI — drop toplamı ~479s (%8); asıl maliyet ince-açı rafinesi (%92, üstelik sonuca hiç girmeden). Bkz. H-15.** (3) Reviewer dersi: "kanıtlanabilir sınır" etiketi matematiksel kanıt ister — grid-sayımlı kule alt-sınır DEĞİLDİR (karşı-örnekli).
 
 > **KALİTE ÖZET:** 6GB'de açığı kapatacak algoritma kaldıraçları TÜKENDİ — pitch + eksen-oryantasyon +
 > sıra + tie-break + compaction + **sürekli-serbest-rotasyon (K-13) + koordineli-rack (K-14)** = **7'si de
@@ -376,12 +376,21 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **NEDEN oldu:** Darboğaz FLOP değil BELLEK TRAFİĞİ/tahsisti — eski kod chunk başına ~7 taze (mk,n_bary,3) float64 array üretiyordu (malloc + page-zero); buffer-reuse bunu sıfırlar, eksen-bazlı düzen aynı tavanla 3× büyük chunk açar (daha az Python-döngü turu). bbox-kırpma da test edilen nokta sayısını poligon alanına indirir (grid alanı değil).
 - **Ders:** H-06'nın "voxelizasyon darboğaz değil" bulgusu HEIGHTMAP @kaba pitch içindi; fine 0.5mm + büyük parçada voxelize BASKIN hale geliyor — darboğaz pitch'e göre yer değiştirir, her rejimde yeniden profille. §5 C1 gerekçesi (voxelize = GPU kazancının tavanı) ile birleşince NFV GPU uçtan-uca kazancını da büyütür.
 
+#### [H-15] Kabuk fine-yolu SÜRE profili — asıl maliyet İNCE-AÇI RAFİNESİ (drop değil!)
+- **Durum:** ✅ TEŞHİS TAMAM (fix = H-15p, üretime bağlama ayrı iş) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/h15_on_analiz.py` (63s; K-19 v2 replay + örneklemeli drop ölçümü, replay kapısı 282.0)
+- **Ne:** K-19/zincir-testi 104.5 dk'sının nereye gittiği ÖLÇÜLDÜ. Örneklemeli drop_map profili (41 çağrı, gerçek bin durumlarında): tüm tipler genel yolda (fast-path %0 — kabuk ayak izi konkav + taban değişken), toplam ekstrapolasyon **~479s = döngünün yalnız %8'i**. **K-20'nin "maliyet drop döngüsü" atfı ÖLÇÜMLE YANLIŞLANDI.**
+- **Asıl maliyet (~5800s, %92): ince-açı rafine aşaması.** `recommend`: kutuluk 0.470 < 0.85 → ±5°/1°-adım/z AÇIK → ~11 açı-adaylı İKİNCİ tam yerleşim geçişi (~11×479s) + her (tip, kazanan-poz) için @0.5 EK voxelize. **VE SONUCA HİÇ GİRMEMİŞ:** F4-A kapısı final layout'u standart n=4 ile BİT-ÖZDEŞ kurdu + pickle orientation_idx ⊆ {0..3} → `fine_angle_safe` bazı seçti; rafine geçiş çöpe gitti. Mekanizma: çan/düğme z'de ~dönel-simetrik → z-açı no-op, faturası 11×.
+- **H-15p fix reçetesi (öncelik sırasıyla):** (1) **Aile/simetri-farkındalı rafine atlama** — thin_shell tetiğinde (veya parça-bazlı z-dönel-simetri tespitiyle) fine_angle kapat: 104.5 dk → **~10-15 dk (~8×), kalite riski SIFIR** (bu ailede rafine zaten hiç kazanmıyor; `fine_angle_used` telemetriye eklensin). (2) Dirty-region drop_map önbelleği — tip-bitişik bloklar sayesinde kapsam %98, baz geçişi 479→~100s bandına iner (bit-özdeş korunabilir). (3) GPU drop_map — artık marjinal (baz geçiş küçüldü).
+- **Ders:** (1) Meta-ders #11'in (her rejimde yeniden profille) bir örneği daha: K-20 süre atfı ölçümsüz genellemeydi. (2) `fine_angle_safe` kalite açısından mükemmel ama SÜRE açısından kör — "asla zarar vermez ama hep ödetir"; adaptif kararlara maliyet/kazanç telemetrisi şart. (3) Kutuluk sinyali simetriyi görmez: kutuluk-düşük ≠ açı-kazançlı (dönel simetri karşı örneği).
+
 > **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA NFV hız kaldıraçları TÜKENDİ (NFV zaten 3-5.5×). **2026-06-26
 > ÜRETİM gerçek-veri yolu:** Plan2 default heightmap ÇÖKÜYORDU → **OOM-chunk (H-12) çökme giderildi (birebir)** +
 > **çift-voxelize (H-13) ~2× (birebir)**. **2026-07-02: C1 voxelize hızı (H-14) 3.1× birebir KAPANDI** —
 > fine adım 159s/parça → ~50s; NFV'de paylaşılan voxelize payı küçüldüğünden GPU uçtan-uca kazancı da büyür.
-> KALAN: pitch politikası R6 (tek 1mm parça → 356mm parça da 0.5mm; H-06 duvarı + parça-kaybı riski — hâlâ
-> AÇIK/riskli) · bit-pack popcount RawKernel / BVH (marjinal).
+> **2026-07-04: H-15 — kabuk fine-yolunda sürenin %92'si ince-açı rafinesi (sonuca hiç girmeden!); H-15p
+> aile-farkındalı atlama = 104.5dk → ~10-15dk beklenen, kalite riski sıfır. F3 rollout'unun süre endişesinin
+> asıl cevabı bu.** KALAN: H-15p bağlama · dirty-cache drop (%98 kapsam) · pitch politikası R6 (riskli) ·
+> bit-pack popcount RawKernel / BVH (marjinal).
 
 ---
 
@@ -442,6 +451,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | DÜŞÜK-ORTA (K-22b sonrası düştü) | K-21: NFV@1.0 262.5 ama 554/588 kilit. Mini-hali (9-ASY hedefli legal-insert) K-22b ile ÖLÇÜLDÜ: −0.5mm + 39 kilit = NO-GO, geometri doymuş. Tam decode-içi kısıt hâlâ açık ama beklenti düştü; önce K-23. |
 | ~~K-23~~ | ~~Kuyruk-öne SIRA deneyi~~ → **TEŞHİSLE KAPANDI 2026-07-04** (koşusuz NO-GO: özdeş parçada sıra etkisiz + çan içleri drop'a kapalı + tavanı ASY bloğu tek başına kuruyor — §3.1 K-23) | 6GB | — | — | 282.0 = drop semantiğinde YAPISAL kabuk tavanı. |
 | **K-24** | Bilinçli zincir-ekimi dekodu (özdeş kabuk çanlarını giriş-ofsetiyle KASITLI tohumla; denge tavanı ~152mm analitik ödül) | 6GB | Yüksek | DÜŞÜK-ORTA (spekülatif) | K-20 hizalı-kule farkı: telescope ofsetini planlayıcı seçer, yanal karışım korunur. K-23 teşhis verisi girdi (10 kök / 6 kapalı iç / adım 10.7mm). Ölç-önce: önce 62-çanlık izole mini-instance'ta prototip; genel decode'a dokunma. |
+| **H-15p** | Aile/simetri-farkındalı ince-açı atlama (kabuk fine-yolu 104.5dk → ~10-15dk) | 6GB | Düşük-Orta | **YÜKSEK — kalite riski SIFIR** (rafine bu ailede sonuca hiç girmiyor, H-15 kanıtı) | Tetik: thin_shell (F3 yolu) veya parça-bazlı z-dönel-simetri tespiti; `fine_angle_used` telemetriye. F3 rollout'unun süre-patlaması endişesinin asıl cevabı. İkinci adım: dirty-region drop cache (%98 kapsam, bit-özdeş). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
