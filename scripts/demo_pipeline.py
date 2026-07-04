@@ -515,6 +515,13 @@ def _build_nesting_instance(
                 depth_mm=p.get("depth_mm"),
                 height_mm=p.get("height_mm"),
                 stl_path=p.get("stl_path"),
+                # F5/F1 aile sinyali: loader (stl_order_loader) doldurdugu cidar/doluluk
+                # metasini PartSpec'e tasi ki auto mod-secimi (predict_nfv_benefit aile
+                # katmani) kabuk aileyi gorebilsin. Yoksa (box/eski dict) None = davranis
+                # DEGISMEZ (classify_prelim kati kabul eder).
+                wall_mm=p.get("wall_mm"),
+                true_fill=p.get("true_fill"),
+                family=p.get("family"),
             )
         )
 
@@ -650,6 +657,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
     time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
     wall_aware_pitch = bool(payload.get("wall_aware_pitch", False))  # K-19 OPT-IN; False=davranis birebir
+    auto_family_routing = bool(payload.get("auto_family_routing", False))  # F5 OPT-IN; False=davranis birebir
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -714,9 +722,17 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     if nesting_mode == "auto":
         from src.nesting3d.adaptive_params import predict_nfv_benefit
         try:
-            _dec = predict_nfv_benefit(instance)
+            # F5 OPT-IN: family_routing=auto_family_routing -> bayrak kapaliyken aile
+            # katmani predict icinde HIC calismaz (mod/gerekce/wall_aware v1 BIT-OZDES);
+            # acikken kabuk-ailesi mod-flip + wall_aware onerisi BIRLIKTE gelir (tek kapi,
+            # asimetri yok).
+            _dec = predict_nfv_benefit(instance, family_routing=auto_family_routing)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
+            # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
+            # ac. Bayrak False iken wall_aware zaten hic uretilmez. Guvenli getattr okuma.
+            if auto_family_routing and getattr(_dec, "wall_aware", False):
+                wall_aware_pitch = True
         except Exception as _auto_exc:
             # Güvenli düşüş: auto türetilemezse hızlı heightmap (regresyon yok).
             nesting_mode = "heightmap"
@@ -1327,6 +1343,12 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # DEGISMEZ (BIT-OZDES). True olunca suggest_pitch/suggest_nfv_pitch'e
             # wall_aware=True gecer (kabuk-ailesi + guven kapisi iceride).
             "wall_aware_pitch": bool(scenario.get("wall_aware_pitch", False)),
+            # F5 OPT-IN aile-yonlendirme. Yoksa False = davranis DEGISMEZ (BIT-OZDES):
+            # predict_nfv_benefit'e family_routing=False geter -> aile katmani HIC calismaz.
+            # True VE nesting_mode=="auto" iken: kabuk-ailesi mod-flip + wall_aware_pitch
+            # otomatik acilir (yukarida _process_batch icinde).
+            # webapp/gozcu kablosu bilinctli olarak YOK — rollout ayri karar (F5 asama 2).
+            "auto_family_routing": bool(scenario.get("auto_family_routing", False)),
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5

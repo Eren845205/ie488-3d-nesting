@@ -25,8 +25,11 @@ poz/açı knob'larına uygulanmış halidir; ileride öğrenen tahminciye yükse
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import List
+
+_LOG = logging.getLogger(__name__)
 
 
 # Bu değerin ÜSTÜ "kutu" sayılır → ince-açı atlanır. Plan1/Plan2 gerçek verisiyle
@@ -113,29 +116,89 @@ THIN_PLATE_THR: float = 0.6
 
 @dataclass
 class ModeDecision:
-    """Akıllı mod kararı + ŞEFFAFLIK için açıklanabilir gerekçe."""
+    """Akıllı mod kararı + ŞEFFAFLIK için açıklanabilir gerekçe.
+
+    wall_aware: makine-okur ÖNERİ (reason-dışı yapısal alan) — karar cidar-duyarlı
+    pitch (K-19 / F3 `wall_aware`) yolunu öneriyor mu. DEFAULT False = geriye uyum;
+    yalnız `predict_nfv_benefit(..., family_routing=True)` iken F5 aile-katmanı (kabuk
+    ailesi) tetiklendiğinde True olur (opt-in). Mevcut tüketiciler
+    (.mode/.reason okuyanlar) etkilenmez; yeni tüketici `getattr(dec, "wall_aware", False)`
+    deseniyle okur.
+    """
 
     mode: str       # "nfv" | "heightmap"
     reason: str
+    wall_aware: bool = False
 
 
 def predict_nfv_benefit(
     instance,
     *,
+    family_routing: bool = False,
     box_aspect_thr: float = BOX_ASPECT_THR,
     thin_plate_thr: float = THIN_PLATE_THR,
+    wall_aware_conf_thr: float | None = None,
 ) -> ModeDecision:
     """Instance'a NFV cavity mi heightmap mi uygun — veri-odaklı, açıklanabilir, kalite-güvenli.
 
-    VARSAYILAN NFV; heightmap SADECE net-kutu VEYA ince-plaka-dominant (NFV'nin kazanmadığı +
-    boşuna yavaş olduğu durumlar). NFV >= heightmap (K-12) olduğundan NFV seçimi ASLA kaliteden
-    kaybettirmez; şüphede NFV seçilir (false-negative = kalite kaybı riskini sıfırlar).
-    ÖLÇ-ÖNCE kanıtlı: Plan1/2/3 → nfv, numune/boxy → heightmap, false-negative=0.
+    Kural sırası:
+      0) AİLE KATMANI (F5, OPT-IN — yalnız `family_routing=True` iken): classify_prelim ailesi
+         kabuk (thin_shell/tube) VE güven >= WALL_AWARE_CONF_THRESHOLD (F3 sabiti, pitch.py'den —
+         tek kaynak) → heightmap + `wall_aware=True` önerisi. Gerekçe: kabukta K-12
+         (NFV>=heightmap) KIRILIR (K-19: NFV-max@kaba 386.4 > heightmap@cidar-pitch 282.0);
+         doğru yol cidar-duyarlı pitch. `family_routing=True` iken Deneme4 ince-kabuk "net-kutu"
+         DEĞİL "kabuk" gerekçesiyle heightmap'e gider.
+      1) NET-KUTU: mean_aspect_z < box_aspect_thr → heightmap (cavity yok).
+      2) İNCE-PLAKA: thin_plate_ratio > thin_plate_thr → heightmap (düz zaten optimal).
+      3) Aksi → nfv (kalite-güvenli).
+
+    `family_routing` DEFAULT False = v1 BİT-ÖZDEŞ: aile katmanı hiç çalışmaz, mod/gerekçe/
+    wall_aware her şey v1 kurallarıyla (net-kutu / ince-plaka / nfv) döner. `family_routing=True`
+    iken aile katmanı adım 0'da devreye girer; tetiklemezse (unknown / düşük-güven / kabuk-olmayan)
+    yine mevcut kural AYNEN çalışır (konservatif). Aile katmanı türetilemezse (import/veri hatası)
+    logla + mevcut kurala düşülür.
+
+    NOT (asimetri düzeltmesi, F5 aşama 1): mod-flip (kabuk→heightmap) ile downstream aksiyon
+    (cidar-pitch) ARTIK AYNI bayrağa bağlı — `family_routing=False` iken ikisi de kapalı,
+    `True` iken ikisi de birlikte gelir. Böylece "davranış değişmez" iddiası tek bayrakla tutar.
+
+    VARSAYILAN NFV; heightmap SADECE net-kutu VEYA ince-plaka-dominant (VEYA family_routing=True
+    iken kabuk-ailesi). NFV >= heightmap (K-12, kabuk-DIŞI) olduğundan NFV seçimi kaliteden
+    kaybettirmez; şüphede NFV → false-negative (cavity-zengin→heightmap) riskini sıfırlar.
+    ÖLÇ-ÖNCE kanıtlı (family_routing=True): Plan1/2/3 → nfv, numune/boxy → heightmap,
+    deneme4 → heightmap+wall_aware, false-negative=0.
 
     Özellikler `extract_features` ile parça bbox'larından türetilir (box + STL; STL'de
     build_instance_from_order bbox'ları doldurur). İleride telemetri birikince selection/
     altyapısıyla öğrenen sürüme yükseltilebilir (adaptive_params felsefesi).
     """
+    # --- F5 aile katmanı (OPT-IN — yalnız family_routing=True) ----------------
+    # Kabuk ailesi (thin_shell/tube) + yeterli güven → heightmap + wall_aware önerisi.
+    # Eşik + aile listesi F3'ten (pitch.py) import edilir → çift kaynak yok; F5 aile
+    # kapısı F3 wall_aware kapısıyla BİREBİR aynı yerde tetiklenir. Import lazy
+    # (döngüsel import yok); türetilemezse loglanır + mevcut kurala düşülür (konservatif).
+    if family_routing:
+        try:
+            from src.nesting3d.instances.family import classify_prelim
+            from src.nesting3d.instances.pitch import (
+                WALL_AWARE_CONF_THRESHOLD as _WA_THR,
+                _WALL_AWARE_FAMILIES as _WA_FAMS,
+            )
+            _thr = _WA_THR if wall_aware_conf_thr is None else float(wall_aware_conf_thr)
+            _fam, _conf = classify_prelim(instance)
+            if _fam in _WA_FAMS and _conf >= _thr:
+                return ModeDecision(
+                    "heightmap",
+                    f"kabuk ailesi ({_fam}, guven={_conf:.2f} >= {_thr:.2f}): cidar-pitch "
+                    f"yolu; K-12 kabukta gecersiz (K-19)",
+                    wall_aware=True,
+                )
+        except Exception as _exc:
+            _LOG.warning(
+                "aile katmani turetilemedi, v1 kurallara dusuldu: %s",
+                type(_exc).__name__,
+            )
+
     from src.nesting3d.instances.features import extract_features
     fv = extract_features(instance)
     feats = dict(zip(fv.names, fv.values))

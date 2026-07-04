@@ -270,6 +270,96 @@ class TestSmokePipeline:
         )
 
 
+def _shell_scenario(auto_family_routing=None):
+    """F5 opt-in testleri için kabuk-profilli minik senaryo.
+
+    Parça source='box' (dilim-voxelizer dims'ten hızlı üretir) ama wall_mm+düşük
+    true_fill enjekte edilir → classify_prelim thin_shell (güven ~0.87) görür →
+    predict_nfv_benefit aile katmanı wall_aware önerir. Dims küçük (hızlı voxelize).
+    """
+    parts = [{
+        "id": "sh1", "name": "kabuk_parca", "qty": 2, "source": "box",
+        "width_mm": 30.0, "depth_mm": 30.0, "height_mm": 24.0,
+        "wall_mm": 2.0, "true_fill": 0.15,  # F5/F1 kabuk sinyali (loader'ın doldurduğu meta)
+    }]
+    sc = {
+        "ref_date": date(2026, 6, 13),
+        "seed": 7,
+        "capacity": {"num_machines": 1, "batch_duration_hours": 8.0,
+                     "shifts_per_day": 1, "max_volume_per_batch_cm3": 200_000.0},
+        "container": {"width_mm": 220.0, "depth_mm": 220.0},
+        "pitch": 20.0,
+        "n_orientations": 2,
+        "portfolio_budget": 10,
+        "nesting_mode": "auto",
+        "orders": [{
+            "order_id": "SHELL-A", "customer": "KabukCo",
+            "deadline": "2026-07-01", "priority_class": 1, "parts": parts,
+        }],
+        "pricing_rules": SMOKE_SCENARIO["pricing_rules"],
+    }
+    if auto_family_routing is not None:
+        sc["auto_family_routing"] = auto_family_routing
+    return sc
+
+
+class TestF5AutoFamilyRouting:
+    """F5 opt-in aile-yönlendirme kablosu (demo_pipeline).
+
+    Sözleşme: auto_family_routing default False → davranış BİT-ÖZDEŞ (wall_aware_pitch
+    açılmaz). True + nesting_mode='auto' + kabuk-ailesi → wall_aware_pitch OTOMATİK açılır.
+    """
+
+    def _nesting_rows(self, result):
+        return [nr for nr in result["nesting_results"].values()
+                if nr.get("n_parts", 0) > 0]
+
+    def test_flag_yok_wall_aware_kapali(self):
+        """Bayrak yok (default) → v1: aile katmanı çalışmaz, wall_aware_pitch False.
+
+        family_routing=False geçtiğinden kabuk fixture'ı bile 'kabuk' gerekçesi ALMAZ
+        (v1 kuralları) — mod-flip de wall_aware da üretilmez (asimetri yok).
+        """
+        result = run_pipeline(_shell_scenario())
+        rows = self._nesting_rows(result)
+        assert rows, "kabuk partisi çözülmedi"
+        for nr in rows:
+            assert nr.get("wall_aware_pitch") is False
+            assert "kabuk" not in (nr.get("auto_mode_reason") or "").lower()
+
+    def test_flag_kapali_acikca_wall_aware_kapali(self):
+        """Bayrak açıkça False → wall_aware_pitch False."""
+        result = run_pipeline(_shell_scenario(auto_family_routing=False))
+        for nr in self._nesting_rows(result):
+            assert nr.get("wall_aware_pitch") is False
+
+    def test_flag_acik_kabuk_wall_aware_aktif(self):
+        """Bayrak True + auto + kabuk-ailesi → wall_aware_pitch OTOMATİK True.
+
+        predict_nfv_benefit kabuk-ailesini yakalar (heightmap + wall_aware önerisi);
+        opt-in kablo bu öneriyi cidar-duyarlı pitch'e (F3) bağlar.
+        """
+        result = run_pipeline(_shell_scenario(auto_family_routing=True))
+        rows = self._nesting_rows(result)
+        assert rows, "kabuk partisi çözülmedi"
+        for nr in rows:
+            assert nr.get("wall_aware_pitch") is True, \
+                f"F5 opt-in wall_aware açılmadı: {nr.get('auto_mode_reason')}"
+            # Aile katmanı gerekçesi şeffaf: 'kabuk' geçmeli (auto->heightmap: kabuk...)
+            assert "kabuk" in (nr.get("auto_mode_reason") or "").lower()
+
+    def test_kutu_flag_acik_bile_wall_aware_kapali(self):
+        """Katı kutu (kabuk sinyali yok) + bayrak True → wall_aware_pitch yine False.
+
+        Aile katmanı yalnız kabuk-ailesinde tetikler; kutuda öneri yok → opt-in
+        kablo hiçbir şey açmaz (yanlış-pozitif koruması).
+        """
+        result = run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "auto",
+                               "auto_family_routing": True})
+        for nr in self._nesting_rows(result):
+            assert nr.get("wall_aware_pitch") is False
+
+
 @pytest.mark.slow
 class TestRichScenario:
     """Zengin senaryo smoke testi — portföyün ayırt ettiği yoğun vaka.
