@@ -377,22 +377,22 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **Ders:** H-06'nın "voxelizasyon darboğaz değil" bulgusu HEIGHTMAP @kaba pitch içindi; fine 0.5mm + büyük parçada voxelize BASKIN hale geliyor — darboğaz pitch'e göre yer değiştirir, her rejimde yeniden profille. §5 C1 gerekçesi (voxelize = GPU kazancının tavanı) ile birleşince NFV GPU uçtan-uca kazancını da büyütür.
 
 #### [H-15] Kabuk fine-yolu SÜRE profili — asıl maliyet COARSE-TUNE (drop da rafine de değil!)
-- **Durum:** ✅ TEŞHİS TAMAM (fix = H-15p, bağlama sürüyor) · **Tarih:** 2026-07-04/05 · **Kanıt:** `scripts/h15_on_analiz.py` (drop profili) + `scripts/h15b_coarse_profil.py` (coarse atıf; sentez oranı **0.99**)
+- **Durum:** ✅✅ GO — **H-15p ÜRETİMDE (opt-in yol, commit `1cccad6`); E2E kapısı GEÇTİ: 6272s → 553s (9.2 dk, 11.3×), 282.0 BİREBİR** · **Tarih:** 2026-07-04/05 · **Kanıt:** `scripts/h15_on_analiz.py` + `scripts/h15b_coarse_profil.py` (sentez 0.99) + zincir testi v2 (telemetri: coarse 38.6s / fine 514.0s / winning=dblf_only / fine_angle 0.0)
 - **Ne:** K-19/zincir-testi 104.5 dk = 6270s'nin nereye gittiği İKİ adımda ölçüldü. (1) Örneklemeli drop profili: fast-path %0 (kabuk konkav+değişken taban), fine taban geçişi **~479s (%8)** → K-20'nin "maliyet drop döngüsü" atfı YANLIŞLANDI. (2) İlk atıf denemem "%92 ince-açı rafinesi" idi — **reviewer H1 bunu da yanlışladı:** demo_pipeline C2F çağrısı `adaptive`/`fine_angle_window` GEÇMİYOR → rafine üretimde HİÇ koşmuyor (bit-özdeş-n4 kanıtı "kullanılmadı" der, "koşmadı"yı ayırt edemezdi — atıf çıkarımdı).
 - **GERÇEK ATIF (h15b ölçümü): COARSE TUNE = ~5626s (%90).** `suggest_coarse_pitch(0.5)=1.5mm` (bbox-tabanlı tavan); tek dblf geçişi @1.5 = **32.1s**; `tune` = 7 konfig (baseline/sa×3/dblf/ga/tabu) × budget 25 iterasyon ≈ 7×25×32s. Sentez: 12s vox + 5626 tune + 90 fine-vox + 479 fine = **6207s vs gerçek 6270s (0.99)**.
 - **Boşa gidiyor kanıtı:** K-19 v2 kazanan sırası MÜKEMMEL tip-bloklu hacim-azalan — SA/GA kazansa sıra karışık olurdu → 5626s'lik arama düz DBLF sırasını geçememiş (E2E birebir kapısıyla kesinleşecek).
-- **H-15p fix reçetesi (rev-2, öncelik sırasıyla):** (1) **Kabuk yolunda kısıtlı coarse arama** — wall_aware tetiğinde `menu=dblf_only`: ~5626s → ~32s; beklenen 104.5 dk → **~10-12 dk, 282.0 BİREBİR şartlı** (E2E kapısı). (2) `skip_fine_angle` + telemetri (bağlandı; üretimde şimdilik defansif — reviewer H1: rafine zaten kapalı). (3) Dirty-region drop önbelleği — kalan 479s hedefi (%98 kapsam). (4) GPU drop — marjinal.
+- **H-15p fix (rev-2) — BAĞLANDI ve E2E-KANITLI:** (1) **Kabuk yolunda kısıtlı coarse arama** — wall_aware tetiğinde `menu={dblf_only}`: coarse 5626s → **38.6s ölçüldü**; zincir testi v2: **6272s → 553s (11.3×), 282.0 BİREBİR, kriter A+C PASS, RAM 1.11GB**. wall_aware False = birebir (menu=None). (2) `skip_fine_angle` + telemetri (`coarse_time_s/fine_time_s/winning_config/fine_angle_*` her C2F koşusunda rapor-only) bağlı; skip şimdilik defansif. (3) KALAN: dirty-region drop önbelleği — yeni darboğaz fine geçişi 514s (%93); tahmini 553s → ~100-150s bandı. (4) GPU drop — marjinal.
 - **Ders:** (1) Meta-ders #11 İKİ KEZ üst üste: K-20 "drop" dedi (ölçümsüz), ben "rafine" dedim (yarı-ölçümlü) — süre atfı ancak SENTEZ ORANI ~1.0 verince kapanır; "kalan pay = şüpheli X" çıkarımı atıf DEĞİLDİR. (2) Tuner portföyü özdeş-parça-bloklu kabuk verisinde değer üretmiyor — arama uzayı (sıra permütasyonu) tip-simetrisi yüzünden çökük; portföy bütçesi aile-farkındalı olmalı. (3) Reviewer'ın "efficacy" incelemesi (kablo gerçekten çalışıyor mu) en az korelasyon incelemesi kadar değerli — H1 olmasa sahte-güvenli 8× iddiası handoff'a girecekti.
 
 > **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA NFV hız kaldıraçları TÜKENDİ (NFV zaten 3-5.5×). **2026-06-26
 > ÜRETİM gerçek-veri yolu:** Plan2 default heightmap ÇÖKÜYORDU → **OOM-chunk (H-12) çökme giderildi (birebir)** +
 > **çift-voxelize (H-13) ~2× (birebir)**. **2026-07-02: C1 voxelize hızı (H-14) 3.1× birebir KAPANDI** —
 > fine adım 159s/parça → ~50s; NFV'de paylaşılan voxelize payı küçüldüğünden GPU uçtan-uca kazancı da büyür.
-> **2026-07-04/05: H-15 — kabuk fine-yolunda sürenin %90'ı COARSE-TUNE (7 konfig × 25 iter × 32s; sentez
-> 0.99) ve kazanan hep düz DBLF sırası; H-15p rev-2 = kabuk yolunda menu=dblf_only → 104.5dk → ~10-12dk
-> beklenen (E2E birebir kapılı). İlk iki atıf (K-20 "drop", ara "rafine") yanlıştı — süre atfı sentez-oranı
-> ~1.0 ister.** KALAN: H-15p E2E kanıtı · dirty-cache drop (fine 479s, %98 kapsam) · pitch R6 (riskli) ·
-> bit-pack popcount RawKernel / BVH (marjinal).
+> **2026-07-05: H-15/H-15p KAPANDI — kabuk fine-yolunda sürenin %90'ı COARSE-TUNE'du (sentez 0.99);
+> fix menu=dblf_only (opt-in, wall_aware tetiği) E2E'de kanıtlandı: 104.5dk → 9.2dk (11.3×), 282.0 BİREBİR.**
+> **F3/K-19p rollout'unun "süre patlaması" ön-şartı fiilen KARŞILANDI** (K-19 bedeli 131dk → ~9dk).
+> İlk iki atıf (K-20 "drop", ara "rafine") yanlıştı — süre atfı sentez-oranı ~1.0 ister. KALAN: dirty-cache
+> drop (yeni darboğaz fine 514s) · pitch R6 (riskli) · bit-pack popcount / BVH (marjinal).
 
 ---
 
@@ -453,7 +453,8 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | DÜŞÜK-ORTA (K-22b sonrası düştü) | K-21: NFV@1.0 262.5 ama 554/588 kilit. Mini-hali (9-ASY hedefli legal-insert) K-22b ile ÖLÇÜLDÜ: −0.5mm + 39 kilit = NO-GO, geometri doymuş. Tam decode-içi kısıt hâlâ açık ama beklenti düştü; önce K-23. |
 | ~~K-23~~ | ~~Kuyruk-öne SIRA deneyi~~ → **TEŞHİSLE KAPANDI 2026-07-04** (koşusuz NO-GO: özdeş parçada sıra etkisiz + çan içleri drop'a kapalı + tavanı ASY bloğu tek başına kuruyor — §3.1 K-23) | 6GB | — | — | 282.0 = drop semantiğinde YAPISAL kabuk tavanı. |
 | **K-24** | Bilinçli zincir-ekimi dekodu (özdeş kabuk çanlarını giriş-ofsetiyle KASITLI tohumla; denge tavanı ~152mm analitik ödül) | 6GB | Yüksek | DÜŞÜK-ORTA (spekülatif) | K-20 hizalı-kule farkı: telescope ofsetini planlayıcı seçer, yanal karışım korunur. K-23 teşhis verisi girdi (10 kök / 6 kapalı iç / adım 10.7mm). Ölç-önce: önce 62-çanlık izole mini-instance'ta prototip; genel decode'a dokunma. |
-| **H-15p** | Kabuk yolunda KISITLI coarse arama (`menu=dblf_only`) + `skip_fine_angle` defansif + telemetri (kabuk fine-yolu 104.5dk → ~10-12dk) | 6GB | Düşük-Orta | **YÜKSEK** — coarse-tune %90 pay (h15b sentez 0.99) ve kazanan hep düz DBLF sırası | Tetik: wall_aware/thin_shell (F3 yolu). E2E kapısı ŞART: zincir testi 282.0 BİREBİR + süre. Bağlama sürüyor (builder v2). İkinci adım: dirty-region drop cache (fine 479s hedefi). |
+| ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
+| **H-16** | Dirty-region drop_map önbelleği (tip-bitişik bloklar; kapsam %98) | 6GB | Orta | ORTA — yeni darboğaz fine geçişi 514s/553s (%93); hedef ~100-150s bandı (kabuk koşusu ~9dk → ~3-4dk) | Bit-özdeş korunabilir (int aritmetik, yerel güncelleme); H-01 drop_map üstüne. Ölç-önce: güncelleme penceresi maliyet modeli. |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
