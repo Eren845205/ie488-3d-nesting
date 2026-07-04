@@ -244,6 +244,18 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **GÜNCELLEME 2026-07-04 (K-19):** "Tükendi" hükmü PLAN-aileleri içindi; yeni aile = yeni kaldıraç:
 > kabuk ailesinde (Deneme4) cidar-duyarlı pitch TEK BAŞINA **−%25.3** (377.3→282.0, Magics açığı
 > %54→**%12.7**) — bedeli 131 dk/koşu. Üretime bağlama = program F3 (K-19p, §5).
+> **GÜNCELLEME 2026-07-04b (K-21):** Kabukta NFV-fine 262.5'e İNİYOR ama 554/588 KİLİTLİ = İLLEGAL;
+> LEGAL şampiyon K-19 282.0 (0 kilit). Çarpıcı: illegal 262.5 bile Magics'in LEGAL 250.24'üne
+> yetişemiyor → Magics avantajı salt kavite değil. Yeni yön: F2-v2 (sökülebilirlik-kısıtlı decode, §5).
+
+#### [K-21] Kabukta NFV @orta-ince pitch — "cavity-packing 282'nin altına LEGAL inebilir mi?"
+- **Durum:** ❌ İLLEGAL KAZANÇ (üretim yönünde NO-GO; F2-v2 gündem maddesi doğdu) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k21_nfv_fine_kabuk.py` (yerleşimler `data/mail_stl/k21_placements_p1_n8.pkl`, izlenmiyor)
+- **Ne:** Deneme4 (588, auto-plaka 301.6) → `solve_nfv(fine_pitch=1.0, time_budget_sec, fine_settle=default)` → `accessibility.check_result`. RESUME Sprint 3 §2 reçetesi.
+- **Koşu 1 (quality=max, 2h):** makine 15.7GB → AX24 kapısı (eşik <13GB) frenlemedi → kural gereği 24 poz (loglanmadı — çıkarım) + RAM talebi ~11GB private → disk takası → 121 dk'da **193/588 KISMİ** (hüküm üretmez; kısmi yön sinyali 160/193 kilit). Süreç dersi: bütçe kesmesi kısmi yerleşim bırakır → probe hüküm kapısına `n_placed==beklenen` kontrolü ŞART (ilk sürüm "illegal kazanç" basmıştı — düzeltildi).
+- **Koşu 2 (n=8, 3h):** **588/588, 95.1 dk**, strategy=cpu-kolA (GPU seçilmedi — @1.0 fine FFT 6GB VRAM'e sığmıyor olmalı, gözlem), settle 264.0→**262.5mm @0.5** (tepe RAM 7.97GB). K-19'un −%6.9 altı AMA **554/588 +Z kilitli (TEK dev grup)** = İLLEGAL/üretilemez.
+- **HÜKÜM:** K-19 hükmü LEGALLİK boyutuyla pekişti — NFV'nin kabuk kazancının özü kapalı-kaviteye gömme; sökülebilirlik şartı konunca kazanç buharlaşıyor. Kıyas metriği "yükseklik" değil **legal-yükseklik** olmalı (K-12 "NFV≥heightmap" kabukta bu metrikle TERSİNE döner).
+- **@0.8 İPTAL:** @1.0 talebi ~11GB / 15.7GB makine; @0.8 grid ~2× = bu makinede gerçekçi değil; üstelik hüküm nitel (kilit baskın) — pitch inceltmek kilidi çözmez.
+- **Ders:** (1) 262.5 (illegal) > Magics 250.24 (legal): Magics farkı kavite-gömme değil, muhtemelen sürekli-rotasyon (A1) + sökülebilir yerleşimin BİRLİKTE'si. (2) quality=max'ın 13GB RAM eşiği grid-farkındalı değil — 588 parça @1.0 fine'da 15.7GB makinede takasa düşürdü; `orient_ram_brake` opt-in'i tam bu senaryo için (F0), probe'larda da kullanılmalı.
 
 ### 3.2 HIZ (kaliteyi BOZMADAN — birebir/exact)
 
@@ -401,6 +413,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~K-17p~~ | ~~K-17 üretime bağla~~ → **KAPANDI 2026-07-03** (commit `07f697b`: `fine_settle.py` + solve_nfv default-on + pitch_mm export hizası) | 6GB | — | +%0.4-1.6 ÜRETİMDE | |
 | ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
 | **K-19p/F3** | Cidar-duyarlı pitch'i üretime bağla (tetik: `family∈{thin_shell,tube}`; K-19 GO — Deneme4 377.3→**282.0**, Magics açığı %12.7) | 6GB | Orta | **YÜKSEK (kabuk ailesi)** | Ön-şart: zaman bütçesi aktif + cross-dataset ≤%1 + süre-patlaması guard'ı (131dk/koşu!). Aile-genelleştirme programı F3; F4-B fast-path ile birlikte değerlendir. |
+| **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | ORTA — kabukta legal tavan 282.0↔262.5 arası (≤%7, K-21 kanıtı) | K-21: NFV@1.0 262.5 ama 554/588 kilit. Kısıt decode'a girince kazancın ne kadarı hayatta kalır BİLİNMİYOR — ölç-önce. F4-A bulgusu (tavan=9 ASY) hedefli ucuz alternatif de olabilir: yalnız kuyruk parçalarına kısıtlı yeniden-yerleşim. |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
