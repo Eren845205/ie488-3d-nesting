@@ -838,6 +838,26 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         elif estimated_n_parts > C2F_THRESHOLD:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
             from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
+            # H-15p: F3 cidar-pitch fiilen uygulandiginda (wall_aware_pitch True
+            # = kabuk/donel-simetrik aile) ince-aci rafinesi SONUCA girmiyor ama
+            # ~11x yerlesim + ek voxelize odetiyor -> atla (kalite riski sifir).
+            # wall_aware False iken skip=False -> davranis birebir.
+            #
+            # H-15p v2 (h15b_coarse_profil.py olcumu): asil maliyet ince-aci
+            # DEGIL, COARSE TUNE asamasi (~%90: 7 konfig x budget x ~32s/gecis).
+            # K-19 v2 kazanan sirasi MUKEMMEL tip-blok hacim-azalan -> SA/GA/Tabu
+            # duz DBLF sirasini gecemiyor bu ailede. wall_aware True iken coarse
+            # aramayi KISITLA: build_menu()'den yalniz dblf_only konfigi kullan.
+            # wall_aware False iken menu=None -> mevcut davranis birebir.
+            _coarse_menu = None
+            if wall_aware_pitch:
+                from src.nesting3d.tuner import build_menu as _build_menu
+                _full_menu = _build_menu()
+                _coarse_menu = {"dblf_only": _full_menu["dblf_only"]}
+                _instr["coarse_menu_reason"] = (
+                    "dblf_only: thin_shell/H-15p (coarse tune %90 pay, "
+                    "SA/GA kazandirmiyor)"
+                )
             _c2f_result = solve_coarse_to_fine(
                 instance,
                 plate_w_mm=float(container["width_mm"]),
@@ -846,7 +866,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 fine_pitch=pitch,
                 budget=COARSE_BUDGET,
                 seed=seed,
+                menu=_coarse_menu,
+                skip_fine_angle=wall_aware_pitch,
             )
+            if wall_aware_pitch:
+                _instr["fine_angle_reason"] = "skipped: thin_shell/H-15p"
             tune_result = _c2f_result.tune_result
         else:
             # Tuner yolu: voxel_parts GERÇEKTEN gerekli → SADECE burada voxelize et.
@@ -923,6 +947,25 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         # (heightmap/tuner yolunda solver'a giren pitch = uygulanan pitch; orada line
         # 768'deki applied_pitch_mm oldugu gibi kalir.)
         _instr["applied_pitch_mm"] = round(_c2f_result.fine_pitch, 3)
+        # H-15 telemetri (rapor-only, her C2F kosusu): ince-aci rafinesi gercekten
+        # kullanildi mi + rafinede gecen sure. solve_nfv sonucunda bu alanlar
+        # olmayabilir -> getattr ile guvenli oku (mevcut alan adlarini bozma).
+        _instr["fine_angle_used"] = bool(getattr(_c2f_result, "fine_angle_used", False))
+        _fa_time = getattr(_c2f_result, "fine_angle_time_s", None)
+        if _fa_time is not None:
+            _instr["fine_angle_time_s"] = round(float(_fa_time), 3)
+        # H-15p v2 telemetri (rapor-only, her C2F kosusu): coarse arama suresi
+        # (asil maliyet, h15b_coarse_profil.py olcumu) + fine yerlesim suresi +
+        # kazanan konfig adi. getattr ile guvenli oku (mevcut alan adlarini bozma).
+        _c_time = getattr(_c2f_result, "coarse_time_s", None)
+        if _c_time is not None:
+            _instr["coarse_time_s"] = round(float(_c_time), 3)
+        _f_time = getattr(_c2f_result, "fine_time_s", None)
+        if _f_time is not None:
+            _instr["fine_time_s"] = round(float(_f_time), 3)
+        _wcfg = getattr(_c2f_result, "winning_config", None)
+        if _wcfg is not None:
+            _instr["winning_config"] = _wcfg
     else:
         winner_result = tune_result.result
         voxel_parts_3d = {p.id: p for p in voxel_parts}

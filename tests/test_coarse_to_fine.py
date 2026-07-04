@@ -406,6 +406,70 @@ def test_refine_deterministic():
 
 
 # ---------------------------------------------------------------------------
+# H-15p — ince-açı rafinesini ATLAYAN opt-in hız fix'i + telemetri
+# ---------------------------------------------------------------------------
+
+def test_skip_fine_angle_default_is_false():
+    """skip_fine_angle varsayilani False (mevcut davranis birebir)."""
+    import inspect
+    sig = inspect.signature(solve_coarse_to_fine)
+    assert "skip_fine_angle" in sig.parameters
+    assert sig.parameters["skip_fine_angle"].default is False
+
+
+def test_fine_angle_time_s_field_exists():
+    """CoarseToFineResult telemetri alani fine_angle_time_s (skaler, default 0.0)."""
+    from dataclasses import fields
+    names = {f.name for f in fields(CoarseToFineResult)}
+    assert "fine_angle_time_s" in names
+    # Rafine kosmayan (window=0) kosuda 0.0
+    r = _solve(fine_angle_window=0.0)
+    assert r.fine_angle_time_s == 0.0
+
+
+def test_skip_fine_angle_true_bypasses_refine(monkeypatch):
+    """skip_fine_angle=True → window>0 olsa bile rafine yolu HIC cagrilmaz."""
+    import src.nesting3d.coarse_to_fine as c2f
+    calls = []
+    orig = c2f._build_refined_fine_parts
+
+    def _spy(*a, **k):
+        calls.append(1)
+        return orig(*a, **k)
+
+    monkeypatch.setattr(c2f, "_build_refined_fine_parts", _spy)
+    r = _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z",
+               skip_fine_angle=True)
+    assert calls == [], "skip_fine_angle=True iken _build_refined_fine_parts cagrilmamali"
+    assert r.fine_angle_used is False
+    assert r.fine_angle_time_s == 0.0
+
+
+def test_skip_fine_angle_true_equals_baseline():
+    """skip_fine_angle=True (window>0 ile) → baz cozumle birebir ayni sonuc."""
+    r_skip = _solve(fine_angle_window=5.0, fine_angle_step=1.0,
+                    fine_angle_axes="z", skip_fine_angle=True)
+    r_base = _solve(fine_angle_window=0.0)
+    assert r_skip.height_mm == r_base.height_mm
+    assert r_skip.n_placed == r_base.n_placed
+
+
+def test_no_skip_default_runs_refine(monkeypatch):
+    """Varsayilan (skip=False) + window>0 → rafine yolu GERCEKTEN cagrilir."""
+    import src.nesting3d.coarse_to_fine as c2f
+    calls = []
+    orig = c2f._build_refined_fine_parts
+
+    def _spy(*a, **k):
+        calls.append(1)
+        return orig(*a, **k)
+
+    monkeypatch.setattr(c2f, "_build_refined_fine_parts", _spy)
+    _solve(fine_angle_window=5.0, fine_angle_step=1.0, fine_angle_axes="z")
+    assert calls, "skip=False + window>0 iken rafine yolu cagrilmali"
+
+
+# ---------------------------------------------------------------------------
 # Adaptif parametre seçimi (kutuluk özelliğinden veri-odaklı karar)
 # ---------------------------------------------------------------------------
 

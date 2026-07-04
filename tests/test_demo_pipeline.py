@@ -360,6 +360,98 @@ class TestF5AutoFamilyRouting:
             assert nr.get("wall_aware_pitch") is False
 
 
+class TestH15pFineAngleSkip:
+    """H-15p (v1+v2): kabuk-ailesi (F3 wall_aware) C2F yolunda hem ince-aci
+    rafinesi HEM coarse arama menusu KISITLANIR.
+
+    Sozlesme: wall_aware_pitch True + C2F yolu (qty>C2F_THRESHOLD=40) iken
+    solve_coarse_to_fine'e skip_fine_angle=True + menu={"dblf_only": ...} gecer
+    + _instr'e iz yazilir (fine_angle_reason, coarse_menu_reason). wall_aware
+    False iken skip=False + menu=None (davranis birebir).
+
+    M1 fix (reviewer): eski test yalniz sonuc alanlarini (fine_angle_used)
+    kontrol ediyordu — bu, gercek data'da rafinenin zaten kazanmamasindan
+    dolayi da False cikabilecegi icin false-green riski tasiyordu. Bu surum
+    solve_coarse_to_fine'e giden GERCEK kwargs'i spy ile yakalayip dogrudan
+    dogrular (kablo calisiyor mu, sonuctan bagimsiz).
+    """
+
+    def _rows(self, result):
+        return [nr for nr in result["nesting_results"].values()
+                if nr.get("n_parts", 0) > 0]
+
+    def _spy_c2f(self, monkeypatch):
+        """solve_coarse_to_fine'e giden kwargs'i yakalayan spy kur, kaydi dondur."""
+        import src.nesting3d.coarse_to_fine as c2f_mod
+        captured: dict = {}
+        orig = c2f_mod.solve_coarse_to_fine
+
+        def _spy(*args, **kwargs):
+            captured.update(kwargs)
+            return orig(*args, **kwargs)
+
+        monkeypatch.setattr(c2f_mod, "solve_coarse_to_fine", _spy)
+        return captured
+
+    def test_wall_aware_c2f_skips_fine_angle_and_traces(self, monkeypatch):
+        """Kabuk-ailesi + qty>40 -> C2F + wall_aware True -> skip izi + used False."""
+        captured = self._spy_c2f(monkeypatch)
+        sc = _shell_scenario(auto_family_routing=True)
+        sc["orders"][0]["parts"][0]["qty"] = 42  # >C2F_THRESHOLD -> C2F yolu
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        # Kablo dogrudan dogrulama (sonuctan bagimsiz, false-green riski yok):
+        assert captured.get("skip_fine_angle") is True, \
+            "wall_aware True iken solve_coarse_to_fine skip_fine_angle=True almali"
+        _menu = captured.get("menu")
+        assert _menu is not None, "wall_aware True iken kisitli menu gecmeli (None degil)"
+        assert set(_menu.keys()) == {"dblf_only"}, \
+            f"kisitli coarse menu yalniz dblf_only olmali: {list(_menu.keys())}"
+        for nr in rows:
+            assert nr.get("wall_aware_pitch") is True
+            assert nr.get("fine_angle_reason") == "skipped: thin_shell/H-15p"
+            assert nr.get("coarse_menu_reason") == (
+                "dblf_only: thin_shell/H-15p (coarse tune %90 pay, "
+                "SA/GA kazandirmiyor)"
+            )
+            assert nr.get("fine_angle_used") is False
+
+    def test_no_wall_aware_no_skip_trace(self, monkeypatch):
+        """wall_aware False (bayrak yok) + C2F yolu -> skip=False + menu=None + iz YOK."""
+        captured = self._spy_c2f(monkeypatch)
+        sc = _shell_scenario(auto_family_routing=False)
+        sc["orders"][0]["parts"][0]["qty"] = 42
+        sc["nesting_mode"] = "heightmap"  # auto degil -> family layer hic calismaz
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        assert captured.get("skip_fine_angle") is False, \
+            "wall_aware False iken solve_coarse_to_fine skip_fine_angle=False almali"
+        assert captured.get("menu") is None, \
+            "wall_aware False iken menu=None gecmeli (mevcut davranis birebir)"
+        for nr in rows:
+            assert nr.get("wall_aware_pitch") is False
+            assert nr.get("fine_angle_reason") is None
+            assert nr.get("coarse_menu_reason") is None
+
+    def test_c2f_telemetry_scalars_present(self):
+        """H-15p v2 telemetri: coarse_time_s/fine_time_s/winning_config her C2F
+        kosusunda _instr'e (rapor-only) eklenmis olmali (getattr guvenli)."""
+        sc = _shell_scenario(auto_family_routing=True)
+        sc["orders"][0]["parts"][0]["qty"] = 42
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        for nr in rows:
+            assert isinstance(nr.get("coarse_time_s"), float)
+            assert nr.get("coarse_time_s") >= 0.0
+            assert isinstance(nr.get("fine_time_s"), float)
+            assert nr.get("fine_time_s") >= 0.0
+            assert isinstance(nr.get("winning_config"), str)
+            assert len(nr["winning_config"]) > 0
+
+
 @pytest.mark.slow
 class TestRichScenario:
     """Zengin senaryo smoke testi — portföyün ayırt ettiği yoğun vaka.

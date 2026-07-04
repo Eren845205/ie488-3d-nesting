@@ -261,6 +261,10 @@ class CoarseToFineResult:
     fine_angle_used : İnce-açı refinement bu çözümde GERÇEKTEN kullanıldı mı
                       (güvenli mod: yalnız global yüksekliği iyileştirdiyse True;
                       aksi halde açısız baz çözüm seçilir → False).
+    fine_angle_time_s: İnce-açı rafine aşamasında geçen süre (saniye). Rafine
+                      hiç koşmadıysa (KAPALI/atlandı/window=0) 0.0. Telemetri
+                      (rapor-only): H-15 "asla zarar vermez ama hep ödetir"
+                      maliyetini görünür kılar.
     """
 
     placements: List[Placement3D]
@@ -277,6 +281,7 @@ class CoarseToFineResult:
     tune_result: Any = None
     fine_voxel_parts: Dict[str, Any] = field(default_factory=dict)
     fine_angle_used: bool = False
+    fine_angle_time_s: float = 0.0
     adaptive_reason: Optional[str] = None
 
 
@@ -301,6 +306,7 @@ def solve_coarse_to_fine(
     fine_angle_axes: str = "z",
     fine_angle_safe: bool = True,
     adaptive: bool = False,
+    skip_fine_angle: bool = False,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -354,6 +360,14 @@ def solve_coarse_to_fine(
                       veriye tuned sabit sayi yerine her instance'a uyarlanir.
                       Karar gerekcesi sonuc.adaptive_reason'a yazilir. Bu modda
                       fine_angle_window vb. argumanlari override edilir.
+    skip_fine_angle : True ise ince-aci rafine asamasi (adaylar/ikinci gecis)
+                      HIC kosmaz -> yalniz acisiz baz cozum kullanilir. OPT-IN
+                      hiz fix'i (H-15p): kabuk/donel-simetrik ailelerde rafine
+                      SONUCA hic girmiyor ama ~11x yerlesim + ek voxelize
+                      odetiyor. Varsayilan False = mevcut davranis BIREBIR
+                      (adaptive/recommend ciktisi dahil hicbir default degismez).
+                      fine_angle_window>0 (veya adaptive rafine acsa) bile bu
+                      bayrak True iken rafine atlanir.
 
     Returns
     -------
@@ -422,7 +436,12 @@ def solve_coarse_to_fine(
     # ------------------------------------------------------------------
     t1 = time.perf_counter()
 
-    refine_on = bool(fine_angle_window and fine_angle_window > 0)
+    # H-15p OPT-IN atlama: skip_fine_angle True iken rafine yolu HIC kosmaz
+    # (window>0 / adaptive rafine acsa bile). Baz cozum kullanilir -> kalite
+    # riski sifir olan ailelerde (kabuk/donel-simetrik) 11x yerlesim + ek
+    # voxelize odenmez. Default False -> mevcut davranis birebir.
+    refine_on = bool(fine_angle_window and fine_angle_window > 0) \
+        and not skip_fine_angle
 
     def _run_fine(parts_by_id, orient_fn):
         """order_ids sırasında verilen parçaları yerleştir → (placements, bin)."""
@@ -442,7 +461,10 @@ def solve_coarse_to_fine(
     base_pls, base_bin = _run_fine(base_by_id, _base_orient)
 
     fine_angle_used = False
+    fine_angle_time_s = 0.0
     if refine_on:
+        # Telemetri (H-15): rafine asamasinin GERCEK maliyetini olc (rapor-only).
+        _t_ref = time.perf_counter()
         # --- İnce-açılı çözüm: kazanan pozun ±window° çevresinde 1° adımlı
         # adaylar; _best_position en iyiyi (baz=indeks 0 öncelikli) seçer.
         axes = tuple(a for a in fine_angle_axes.lower()
@@ -467,6 +489,7 @@ def solve_coarse_to_fine(
             fine_angle_used = True
         else:
             fine_placements, fine_bin, fine_by_id = base_pls, base_bin, base_by_id
+        fine_angle_time_s = time.perf_counter() - _t_ref
     else:
         fine_placements, fine_bin, fine_by_id = base_pls, base_bin, base_by_id
 
@@ -493,5 +516,6 @@ def solve_coarse_to_fine(
         tune_result=tune_result,
         fine_voxel_parts=fine_by_id,
         fine_angle_used=fine_angle_used,
+        fine_angle_time_s=fine_angle_time_s,
         adaptive_reason=adaptive_reason,
     )

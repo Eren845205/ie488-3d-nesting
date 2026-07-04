@@ -160,6 +160,18 @@ def test_build_menu_configs_have_required_keys():
         assert "params" in cfg, f"'{name}' konfiginde 'params' yok"
 
 
+def test_build_menu_has_dblf_only_key():
+    """H-15p v2: demo_pipeline wall_aware kisitli-coarse yolu build_menu()'den
+    'dblf_only' anahtarini alt-kume olarak kullanir (scripts/demo_pipeline.py).
+    Anahtar adi degisirse bu test acikca kirilsin (sessiz KeyError yerine)."""
+    menu = build_menu()
+    assert "dblf_only" in menu, (
+        "'dblf_only' anahtari build_menu()'den kalkti/degisti — "
+        "demo_pipeline H-15p v2 kisitli-coarse kablosu buna bagimli"
+    )
+    assert "solver" in menu["dblf_only"]
+
+
 def test_tune_all_menu_configs_run():
     """tune() runs all menu configs and picks the best — check via all_results."""
     parts = _parts()
