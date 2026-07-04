@@ -247,6 +247,19 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **GÜNCELLEME 2026-07-04b (K-21):** Kabukta NFV-fine 262.5'e İNİYOR ama 554/588 KİLİTLİ = İLLEGAL;
 > LEGAL şampiyon K-19 282.0 (0 kilit). Çarpıcı: illegal 262.5 bile Magics'in LEGAL 250.24'üne
 > yetişemiyor → Magics avantajı salt kavite değil. Yeni yön: F2-v2 (sökülebilirlik-kısıtlı decode, §5).
+> **GÜNCELLEME 2026-07-04c (K-22):** Kuyruk yeniden-yerleşimi NO-GO ama İKİ ALTIN BULGU: (1) 9 ASY'siz
+> taban **250.5mm ≈ Magics 250.24** — açık TAMAMEN o 9 parçanın emilememesi. (2) Kuyruk cepleri
+> SIRA-bağımlı: post-hoc drop 282'yi bile tekrar üretemiyor (322'ye istifledi) → kaldıraç YERLEŞTİRME
+> SIRASI (K-23 adayı) veya hedefli legal-insert (F2-v2'nin ucuz hali).
+
+#### [K-22] Kuyruk-hedefli yeniden-yerleşim (9-ASY, post-hoc drop) — Deneme4
+- **Durum:** ❌ NO-GO (post-hoc drop olarak; İKİ altın bulgu doğurdu) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k22_kuyruk_yerlesim.py` (replay kapısı 282.0 birebir; 251s)
+- **Ne:** F4-A'nın işaret ettiği kuyruk (tepe > max−30mm = tam 9× ASY-0176446) K-19 v2 layout'undan söküldü; kalan 579 yerleşikken üretim `_best_position` kuralıyla (hacim-azalan) yeniden drop edildi; erişilebilirlik denetimli.
+- **Sonuç:** taban 579 = **250.5mm**; yeniden-drop 9 ASY'yi ceplerine SOKAMADI — tepeler 253-282 → 281.5-322mm'e İSTİFLENDİ (282.0 → 322.0, tavan kötüleşti; hüküm NO-GO, layout atıldı; 0 kilit korunuyordu).
+- **NEDEN olmadı:** Kuyruk parçalarının derin cepleri (F4-A: ort 61mm gömülme) SIRA-bağımlı — cep, ancak sahibi yerleştirme sırasının O anında düşerken var; sahibi çıkınca üstüne oturan komşu profilleri cebi "mühürlüyor" ve drop kuralı (profilin ÜSTÜNE oturur) geri giremiyor. Heightmap'te post-hoc yerel onarım yapısal olarak imkânsız.
+- **ALTIN BULGU 1:** 250.5 ≈ Magics 250.24 — kabukta Magics açığının %100'ü son 9 parçanın yutulamamasında; genel istif kalitemiz Magics parite.
+- **ALTIN BULGU 2 (yeni kaldıraç adayı K-23):** çare poz değil SIRA — pickle'daki placement listesi = orijinal yerleştirme sırası ELDE; 9 kuyruk ID'sini sırada öne/ev-sahibi ASY bloğuna taşıyıp `place_in_order`'ı yeniden koşmak ölçülebilir (bedel: değişen noktadan sonrası yeniden drop ≈ fine geçişin büyük kısmı ~1-2 saat/deneme). Alternatif ucuz yol: hedefli legal-insert (tam-3D çakışma + üst-kolon-boş şartı = F2-v2'nin 9-parçalık mini hali).
+- **Yan bulgu (kırılganlık):** deneme4 kabuklarında n=8'in 4..7 pozlarından biri @0.5 slice-voxelize'ı düşürüyor (`trimesh repair_invalid: unable to recover polygon`) — n=4 sağlam (F4-A+bu probe kanıtı). Kabukta poz genişletme işi öncesi bilinmeli.
 
 #### [K-21] Kabukta NFV @orta-ince pitch — "cavity-packing 282'nin altına LEGAL inebilir mi?"
 - **Durum:** ❌ İLLEGAL KAZANÇ (üretim yönünde NO-GO; F2-v2 gündem maddesi doğdu) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k21_nfv_fine_kabuk.py` (yerleşimler `data/mail_stl/k21_placements_p1_n8.pkl`, izlenmiyor)
@@ -413,7 +426,8 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~K-17p~~ | ~~K-17 üretime bağla~~ → **KAPANDI 2026-07-03** (commit `07f697b`: `fine_settle.py` + solve_nfv default-on + pitch_mm export hizası) | 6GB | — | +%0.4-1.6 ÜRETİMDE | |
 | ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
 | **K-19p/F3** | Cidar-duyarlı pitch'i üretime bağla (tetik: `family∈{thin_shell,tube}`; K-19 GO — Deneme4 377.3→**282.0**, Magics açığı %12.7) | 6GB | Orta | **YÜKSEK (kabuk ailesi)** | Ön-şart: zaman bütçesi aktif + cross-dataset ≤%1 + süre-patlaması guard'ı (131dk/koşu!). Aile-genelleştirme programı F3; F4-B fast-path ile birlikte değerlendir. |
-| **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | ORTA — kabukta legal tavan 282.0↔262.5 arası (≤%7, K-21 kanıtı) | K-21: NFV@1.0 262.5 ama 554/588 kilit. Kısıt decode'a girince kazancın ne kadarı hayatta kalır BİLİNMİYOR — ölç-önce. F4-A bulgusu (tavan=9 ASY) hedefli ucuz alternatif de olabilir: yalnız kuyruk parçalarına kısıtlı yeniden-yerleşim. |
+| **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | ORTA — kabukta legal tavan 282.0↔250.5 arası (K-21+K-22 kanıtı; Magics parite bandı) | K-21: NFV@1.0 262.5 ama 554/588 kilit. K-22: post-hoc drop NO-GO (cepler sıra-bağımlı) AMA 9-ASY'siz taban 250.5 ≈ Magics → hedefli mini-hal cazip: 9 parçaya tam-3D legal-insert (çakışma + üst-kolon-boş). |
+| **K-23** | Kuyruk-öne SIRA deneyi (`place_in_order`, pickle'daki orijinal sıra elde) | 6GB | Orta | ORTA-YÜKSEK — hedef 282→250.5 bandı (K-22 altın bulgu 1) | 9 kuyruk ID'sini sırada ev-sahibi ASY bloğuna/öne taşı, fine geçişi yeniden koş (~1-2 saat/deneme). Ceplere SIRA içinde girilebiliyor (K-22 mekanizma dersi); kaç denemede tutacağı belirsiz — ölç-önce. |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
