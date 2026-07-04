@@ -251,6 +251,18 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > taban **250.5mm ≈ Magics 250.24** — açık TAMAMEN o 9 parçanın emilememesi. (2) Kuyruk cepleri
 > SIRA-bağımlı: post-hoc drop 282'yi bile tekrar üretemiyor (322'ye istifledi) → kaldıraç YERLEŞTİRME
 > SIRASI (K-23 adayı) veya hedefli legal-insert (F2-v2'nin ucuz hali).
+> **GÜNCELLEME 2026-07-04d (K-22b + K-23 kapanışı):** Legal-insert DE (−0.5mm + 39 kilit) sıra-deneyi
+> DE (teşhisle, koşusuz) NO-GO. Çarpıcı teşhis: tavanı ASY bloğu TEK BAŞINA kuruyor (64-replay'de bin
+> zaten 282.0); boş çan içleri drop'a KAPALI → kule zorunluydu. **282.0 = drop/heightmap semantiğinde
+> YAPISAL kabuk tavanı (6GB).** Kalan ödül (denge tavanı ~152) ancak decode değişikliği (K-24 adayı,
+> spekülatif) veya A1 ile alınabilir; istif kalitemiz 9-çan kuyruğu dışında Magics PARİTE (250.5).
+
+#### [K-23] Kuyruk-öne SIRA deneyi — TEŞHİSLE KAPANDI (koşusuz NO-GO)
+- **Durum:** ❌ NO-GO (2 ucuz teşhisle; 1-2 saatlik fine koşuları HİÇ yapılmadan) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k23_on_analiz.py` + `scripts/k23_on_analiz2.py` (35s + 52s)
+- **Bulgu 1 (zincir yapısı):** 62 ASY → 10 kök; dağılım uçurum: 30-halkalı küme 282'ye tırmanmış, **6 çan tabanda TEK (87.5mm), içine hiç girilmemiş**; halka z-adımı ~10.7mm. Analitik denge tavanı **~152mm** (ceil(62/10)=7 halka/zincir) — ödül büyük GÖRÜNÜYORDU. Ayrıca sıra zaten tip-bitişik ve ASY bloğu en önde (2..63) → "kuyruğu öne al" fikri baştan boş; kuyruk 9'u = bloğun kendi son halkaları.
+- **Bulgu 2 (mekanizma, teşhis-2):** ASY-bloğu anının 64-replay'inde bin **ZATEN 282.0mm** — tavanı 62 çan tek başına kuruyor, kalan 524 parça tavana dokunmuyor. O anda fazladan bir ASY için global en-iyi z_top 272.0; boş çanların pencere-minleri **272-299.5mm** (iç açık olsaydı ~98 beklenirdi) = **içler drop'a KAPALI** (rim + komşu bloke). Kule tercih değil ZORUNLULUKTU.
+- **NEDEN NO-GO:** Özdeş parçada blok-içi sıra permütasyonu greedy'ye etkisiz; araya başka tip sokmak yalnız malzeme EKLER, çan içini AÇAMAZ. Drop/heightmap semantiğinde **282.0 = yapısal tavan**.
+- **Ders/yeni yön:** K-22→K-23 zinciri metodolojik kazanç: 2 saatlik deney yerine dakikalık teşhis hükmü verdi (meta-ders "ölç-önce"nin teşhis-önce hali). Denge tavanı ~152 ödülü duruyor ama ancak DECODE değişikliğiyle alınabilir: çanları giriş-ofsetiyle KASITLI tohumlayan zincir-ekimi planlayıcısı (**K-24 adayı**, spekülatif — K-20 hizalı-kulenin farkı: telescope ofsetini drop değil planlayıcı seçer, yanal karışım korunur) veya A1.
 
 #### [K-22] Kuyruk-hedefli yeniden-yerleşim (9-ASY, post-hoc drop) — Deneme4
 - **Durum:** ❌ NO-GO (post-hoc drop olarak; İKİ altın bulgu doğurdu) · **Tarih:** 2026-07-04 · **Kanıt:** `scripts/k22_kuyruk_yerlesim.py` (replay kapısı 282.0 birebir; 251s)
@@ -428,7 +440,8 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
 | **K-19p/F3** | Cidar-duyarlı pitch'i üretime bağla (tetik: `family∈{thin_shell,tube}`; K-19 GO — Deneme4 377.3→**282.0**, Magics açığı %12.7) | 6GB | Orta | **YÜKSEK (kabuk ailesi)** | Ön-şart: zaman bütçesi aktif + cross-dataset ≤%1 + süre-patlaması guard'ı (131dk/koşu!). Aile-genelleştirme programı F3; F4-B fast-path ile birlikte değerlendir. |
 | **F2-v2** | Sökülebilirlik-farkındalı NFV decode (+Z-erişilebilirlik kısıtı YERLEŞTİRME anında) | 6GB | Yüksek | DÜŞÜK-ORTA (K-22b sonrası düştü) | K-21: NFV@1.0 262.5 ama 554/588 kilit. Mini-hali (9-ASY hedefli legal-insert) K-22b ile ÖLÇÜLDÜ: −0.5mm + 39 kilit = NO-GO, geometri doymuş. Tam decode-içi kısıt hâlâ açık ama beklenti düştü; önce K-23. |
-| **K-23** | Kuyruk-öne SIRA deneyi (`place_in_order`, pickle'daki orijinal sıra elde) | 6GB | Orta | **YÜKSEK — kabukta KALAN TEK yol** (K-22 altın bulgu 1: hedef 282→250.5 bandı) | K-22 post-hoc drop + K-22b legal-insert İKİSİ DE NO-GO (geometri doymuş) → emilim ancak yerleşim baştan farklı kurulursa. 9 kuyruk ID'sini ev-sahibi ASY bloğuna/öne taşı, fine geçişi yeniden koş (~1-2 saat/deneme); kaç denemede tutacağı belirsiz — ölç-önce. |
+| ~~K-23~~ | ~~Kuyruk-öne SIRA deneyi~~ → **TEŞHİSLE KAPANDI 2026-07-04** (koşusuz NO-GO: özdeş parçada sıra etkisiz + çan içleri drop'a kapalı + tavanı ASY bloğu tek başına kuruyor — §3.1 K-23) | 6GB | — | — | 282.0 = drop semantiğinde YAPISAL kabuk tavanı. |
+| **K-24** | Bilinçli zincir-ekimi dekodu (özdeş kabuk çanlarını giriş-ofsetiyle KASITLI tohumla; denge tavanı ~152mm analitik ödül) | 6GB | Yüksek | DÜŞÜK-ORTA (spekülatif) | K-20 hizalı-kule farkı: telescope ofsetini planlayıcı seçer, yanal karışım korunur. K-23 teşhis verisi girdi (10 kök / 6 kapalı iç / adım 10.7mm). Ölç-önce: önce 62-çanlık izole mini-instance'ta prototip; genel decode'a dokunma. |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
