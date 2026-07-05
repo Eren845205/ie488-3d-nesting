@@ -265,6 +265,10 @@ class CoarseToFineResult:
                       hiç koşmadıysa (KAPALI/atlandı/window=0) 0.0. Telemetri
                       (rapor-only): H-15 "asla zarar vermez ama hep ödetir"
                       maliyetini görünür kılar.
+    drop_cache_stats: Fine yerlesim Bin3D'sinin drop_map onbellek istatistikleri
+                      (H-16). drop_cache=False iken (uretim default) None;
+                      acikken {hit_ratio, keys, peak_mb, fallbacks, ...}
+                      (Bin3D.drop_cache_stats). Rapor-only telemetri.
     """
 
     placements: List[Placement3D]
@@ -283,6 +287,7 @@ class CoarseToFineResult:
     fine_angle_used: bool = False
     fine_angle_time_s: float = 0.0
     adaptive_reason: Optional[str] = None
+    drop_cache_stats: Optional[Dict[str, object]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +312,8 @@ def solve_coarse_to_fine(
     fine_angle_safe: bool = True,
     adaptive: bool = False,
     skip_fine_angle: bool = False,
+    drop_cache: bool = False,
+    drop_cache_cap_mb: float = 300.0,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -368,6 +375,19 @@ def solve_coarse_to_fine(
                       (adaptive/recommend ciktisi dahil hicbir default degismez).
                       fine_angle_window>0 (veya adaptive rafine acsa) bile bu
                       bayrak True iken rafine atlanir.
+    drop_cache      : True ise FINE yerlesim Bin3D'si dirty-region drop_map
+                      onbellegini kullanir (H-16). OPT-IN hiz fix'i: kabuk/
+                      donel-simetrik ailelerde (wall_aware) fine dblf gecisi
+                      ~4x hizlanir, yukseklik ve yerlesim BIREBIR ayni kalir
+                      (cache dogruluk-notr, h16_on_analiz: sizinti 0/20 +
+                      bit-ozdes 20/20). Varsayilan False = mevcut davranis
+                      BIREBIR (onbelleksiz yol). THREAD-GUVENLIGI: bu Bin3D
+                      _run_fine icinde LOKAL kurulur, sirali place_in_order
+                      dongusunde kullanilir ve BASKA THREAD'e verilmez;
+                      paralel decode yolu ayri sinif (OccupancyBin3D) kullanir
+                      -> per-decode tek-thread garantisi yapisal, lock gereksiz.
+    drop_cache_cap_mb: drop_cache=True iken onbellek bellek tavani (MB, LRU
+                      eviction esigi). Varsayilan 300. Kapaliyken etkisiz.
 
     Returns
     -------
@@ -444,9 +464,16 @@ def solve_coarse_to_fine(
         and not skip_fine_angle
 
     def _run_fine(parts_by_id, orient_fn):
-        """order_ids sırasında verilen parçaları yerleştir → (placements, bin)."""
+        """order_ids sırasında verilen parçaları yerleştir → (placements, bin).
+
+        H-16: drop_cache True ise fine Bin3D dirty-region drop_map onbellegini
+        acar. Bu Bin3D burada LOKAL kurulur ve yalniz asagidaki sirali
+        place_in_order dongusunde okunur/yazilir -> baska thread'e sizmaz
+        (per-decode tek-thread; lock gereksiz — bkz. docstring THREAD-GUVENLIGI).
+        """
         ordered = [parts_by_id[pid] for pid in order_ids if pid in parts_by_id]
-        b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=1)
+        b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=1,
+                  drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
         pls = place_in_order(ordered, b, orient_fn)
         return pls, b
 
@@ -501,6 +528,11 @@ def solve_coarse_to_fine(
     height_mm = fine_bin.max_height_mm()
     density = fine_bin.packing_density()
 
+    # H-16 telemetri (rapor-only): kazanan fine Bin3D'nin onbellek istatistikleri.
+    # drop_cache=False iken enabled=False sozlugu doner; disariya None gecir ki
+    # kapali yolda telemetri de eski (alan yok) kalsin -> birebir dokunulmazlik.
+    _dc_stats = fine_bin.drop_cache_stats() if drop_cache else None
+
     return CoarseToFineResult(
         placements=fine_placements,
         bin3d=fine_bin,
@@ -518,4 +550,5 @@ def solve_coarse_to_fine(
         fine_angle_used=fine_angle_used,
         fine_angle_time_s=fine_angle_time_s,
         adaptive_reason=adaptive_reason,
+        drop_cache_stats=_dc_stats,
     )

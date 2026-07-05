@@ -266,7 +266,8 @@ class TestSuggestedVsAppliedPitch:
         RESULT_PITCH = 99.0  # suggested (12mm) ile ASLA cakismaz -> ayrim netlesir
 
         def _fake_c2f(instance, *, plate_w_mm, plate_d_mm, coarse_pitch,
-                      fine_pitch, budget, seed, menu=None, skip_fine_angle=False):
+                      fine_pitch, budget, seed, menu=None, skip_fine_angle=False,
+                      drop_cache=False, drop_cache_cap_mb=300.0):
             bin3d = Bin3D(plate_w_mm, plate_d_mm, RESULT_PITCH)
             tune_result = SimpleNamespace(
                 winning_config_name="fake", baseline_height_mm=100.0,

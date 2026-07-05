@@ -868,6 +868,12 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 seed=seed,
                 menu=_coarse_menu,
                 skip_fine_angle=wall_aware_pitch,
+                # H-16w: kabuk/donel-simetrik aile (wall_aware) FINE dblf gecisi
+                # ~4x hizlanir (dirty-region drop_map onbellegi). Cache dogruluk-
+                # notr (yukseklik/yerlesim BIREBIR); wall_aware False iken
+                # drop_cache=False -> mevcut davranis BIT-OZDES. Bin3D per-decode
+                # tek-thread (bkz. solve_coarse_to_fine THREAD-GUVENLIGI).
+                drop_cache=wall_aware_pitch,
             )
             if wall_aware_pitch:
                 _instr["fine_angle_reason"] = "skipped: thin_shell/H-15p"
@@ -966,6 +972,18 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         _wcfg = getattr(_c2f_result, "winning_config", None)
         if _wcfg is not None:
             _instr["winning_config"] = _wcfg
+        # H-16w telemetri (rapor-only): fine drop_map onbellek istatistikleri.
+        # drop_cache kapaliyken (wall_aware False / eski yol) None -> alan
+        # eklenmez (telemetri de birebir eski kalir). getattr guvenli.
+        _dc_stats = getattr(_c2f_result, "drop_cache_stats", None)
+        if _dc_stats is not None:
+            _instr["drop_cache_hit_ratio"] = round(
+                float(_dc_stats.get("hit_ratio", 0.0)), 4)
+            _instr["drop_cache_keys"] = int(_dc_stats.get("keys", 0))
+            _instr["drop_cache_peak_mb"] = round(
+                float(_dc_stats.get("peak_mb", 0.0)), 2)
+            _instr["drop_cache_fallbacks"] = int(_dc_stats.get("fallbacks", 0))
+            _instr["drop_cache_evictions"] = int(_dc_stats.get("evictions", 0))
     else:
         winner_result = tune_result.result
         voxel_parts_3d = {p.id: p for p in voxel_parts}

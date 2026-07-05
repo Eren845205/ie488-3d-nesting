@@ -525,3 +525,93 @@ def test_auto_select_returns_ladder_value():
     assert n in _ORIENTATION_LADDER
     assert parts is not None and len(parts) == 4
     assert len(trail) >= 1 and trail[0][0] == _ORIENTATION_LADDER[0]
+
+
+# ---------------------------------------------------------------------------
+# H-16w — dirty-region drop_map onbellegini FINE yolda ac (opt-in hiz)
+# ---------------------------------------------------------------------------
+
+def test_drop_cache_default_is_false():
+    """drop_cache varsayilani False (mevcut davranis birebir)."""
+    import inspect
+    sig = inspect.signature(solve_coarse_to_fine)
+    assert "drop_cache" in sig.parameters
+    assert sig.parameters["drop_cache"].default is False
+    assert "drop_cache_cap_mb" in sig.parameters
+
+
+def test_drop_cache_off_stats_none():
+    """drop_cache=False (default) -> drop_cache_stats None (telemetri eski)."""
+    r = _solve()
+    assert r.drop_cache_stats is None
+
+
+def test_drop_cache_on_equals_off_placements():
+    """drop_cache=True fine yerlesimi (height + yerlesim listesi) drop_cache=False
+    ile BIREBIR ayni (kalite garantisi: cache dogruluk-notr)."""
+    r_off = _solve()
+    r_on = _solve(drop_cache=True)
+    assert r_on.height_mm == r_off.height_mm
+    assert r_on.n_placed == r_off.n_placed
+    key_off = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+               for p in r_off.placements]
+    key_on = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+              for p in r_on.placements]
+    assert key_on == key_off, "cache'li fine yerlesim cache'siz ile birebir olmali"
+
+
+def test_drop_cache_on_stats_populated():
+    """drop_cache=True -> drop_cache_stats sozlugu doldurulur (enabled=True,
+    beklenen anahtarlar mevcut)."""
+    r = _solve(drop_cache=True)
+    st = r.drop_cache_stats
+    assert isinstance(st, dict)
+    assert st["enabled"] is True
+    for k in ("hit_ratio", "keys", "peak_mb", "fallbacks", "evictions",
+              "hits", "misses", "full_computes"):
+        assert k in st
+    assert 0.0 <= st["hit_ratio"] <= 1.0
+
+
+def test_drop_cache_reaches_bin3d(monkeypatch):
+    """drop_cache=True -> fine _run_fine Bin3D'si GERCEKTEN drop_cache acik kurulur
+    (kablonun Bin3D'ye ulastigini yakala; sonuctan bagimsiz)."""
+    import src.nesting3d.coarse_to_fine as c2f
+    seen = []
+    orig = c2f.Bin3D
+
+    def _spy(*a, **k):
+        seen.append(k.get("drop_cache", False))
+        return orig(*a, **k)
+
+    monkeypatch.setattr(c2f, "Bin3D", _spy)
+    _solve(drop_cache=True)
+    assert any(seen), "drop_cache=True iken en az bir Bin3D drop_cache=True kurulmali"
+
+
+def test_drop_cache_thread_isolation():
+    """THREAD-GUVENLIGI kaniti: ayni instance uzerinde drop_cache=True ile
+    PARALEL solve_coarse_to_fine cagrilari, seri cagrilarla BIREBIR ayni sonuc
+    verir. Her cagri kendi fine Bin3D'sini (dolayisiyla kendi _dc_cache'ini)
+    kurar; Orientation nesneleri salt-okunur -> cross-thread bozulma yok."""
+    import threading
+
+    serial = _solve(drop_cache=True)
+    serial_key = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+                  for p in serial.placements]
+
+    results = {}
+
+    def _worker(idx):
+        r = _solve(drop_cache=True)
+        results[idx] = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+                        for p in r.placements]
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    for idx, key in results.items():
+        assert key == serial_key, \
+            f"thread {idx} paralel sonucu seri sonuctan sapti (cross-thread bozulma)"

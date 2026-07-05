@@ -401,8 +401,10 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **F3/K-19p rollout'unun "süre patlaması" ön-şartı fiilen KARŞILANDI** (K-19 bedeli 131dk → ~9dk).
 > İlk iki atıf (K-20 "drop", ara "rafine") yanlıştı — süre atfı sentez-oranı ~1.0 ister.
 > **2026-07-05 (aynı gün): H-16 dirty-cache PROTOTİP GO — fine 493.8s → 119.4s (4.1×), 282.0 + yerleşim BİREBİR,
-> +0.03GB RAM; opt-in `Bin3D(drop_cache=True)`, üretime bağlama AYRI iş (thread-safety ön-şartı).**
-> Kabuk koşusu potansiyeli ~9.2dk → ~2.6dk. KALAN: H-16 wiring · pitch R6 (riskli) · bit-pack/BVH (marjinal).
+> +0.03GB RAM — ve H-16w ile AYNI GÜN ÜRETİME BAĞLANDI: wall_aware tetiğinde `drop_cache=True`, E2E zincir
+> 282.0 BİREBİR + 205s (~3.4dk) = H-15p'den 2.7×, K-19 orijinal 104.5dk'dan KÜMÜLATİF 31×; thread-safety
+> yapısal (cache'li Bin3D _run_fine-lokal), reviewer PASS 0 C/H/M.**
+> KALAN: pitch R6 (riskli) · bit-pack/BVH (marjinal) · argmin tabanı/coarse-Z warm-start (marjinal).
 
 ---
 
@@ -464,7 +466,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~K-23~~ | ~~Kuyruk-öne SIRA deneyi~~ → **TEŞHİSLE KAPANDI 2026-07-04** (koşusuz NO-GO: özdeş parçada sıra etkisiz + çan içleri drop'a kapalı + tavanı ASY bloğu tek başına kuruyor — §3.1 K-23) | 6GB | — | — | 282.0 = drop semantiğinde YAPISAL kabuk tavanı. |
 | **K-24** | Bilinçli zincir-ekimi dekodu (özdeş kabuk çanlarını giriş-ofsetiyle KASITLI tohumla; denge tavanı ~152mm analitik ödül) | 6GB | Yüksek | DÜŞÜK-ORTA (spekülatif) | K-20 hizalı-kule farkı: telescope ofsetini planlayıcı seçer, yanal karışım korunur. K-23 teşhis verisi girdi (10 kök / 6 kapalı iç / adım 10.7mm). Ölç-önce: önce 62-çanlık izole mini-instance'ta prototip; genel decode'a dokunma. |
 | ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
-| **H-16w** | ~~H-16 dirty-cache ölçüm+prototip~~ → **PROTOTİP GO 2026-07-05** (fine 4.1×: 493.8→119.4s, 282.0+yerleşim BİREBİR, +0.03GB; §3 H-16). KALAN = üretime BAĞLAMA (wall_aware yolunda `drop_cache=True` geçir) | 6GB | Düşük | YÜKSEK — kabuk koşusu ~9.2dk → ~2.6dk | Wiring ön-şartı: per-thread Bin3D garantisi VEYA cache lock (reviewer MEDIUM-2) + E2E zincir kapısı (282.0 birebir). |
+| ~~H-16w~~ | ~~H-16 dirty-cache üretime bağlama~~ → **KAPANDI 2026-07-05** (E2E 5/5: 282.0 BİREBİR + **205s** (H-15p 553s'den 2.7×, K-19 orijinali 6272s'den **31×**) + cache telemetri hit %90.3 + RAM 1.17GB; MEDIUM-2 thread-safety YAPISAL kapalı: cache'li Bin3D _run_fine-lokal, parallel_decode OccupancyBin3D; reviewer PASS 0 C/H/M) | 6GB | — | ÜRETİMDE (wall_aware tetiği, `drop_cache=wall_aware_pitch`) | Kabuk koşusu artık ~3.4dk. LOW notları: thread-isolation test docstring'i geniş; `drop_cache_cap_mb` operatör-ayarlanamaz (default 300, peak 43.6MB — zararsız). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek

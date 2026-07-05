@@ -452,6 +452,79 @@ class TestH15pFineAngleSkip:
             assert len(nr["winning_config"]) > 0
 
 
+class TestH16wDropCacheWiring:
+    """H-16w: dirty-region drop_map onbellegi (H-16) URETIME BAGLAMA.
+
+    Sozlesme: wall_aware_pitch True + C2F yolu (qty>C2F_THRESHOLD=40) iken
+    solve_coarse_to_fine'e drop_cache=True gecer + fine Bin3D onbellegi acilir
+    + _instr'e cache istatistikleri (hit_ratio/keys/peak_mb/...) yazilir.
+    wall_aware False iken drop_cache=False + telemetri alanlari EKLENMEZ
+    (davranis BIT-OZDES eski yol).
+    """
+
+    def _rows(self, result):
+        return [nr for nr in result["nesting_results"].values()
+                if nr.get("n_parts", 0) > 0]
+
+    def _spy_c2f(self, monkeypatch):
+        import src.nesting3d.coarse_to_fine as c2f_mod
+        captured: dict = {}
+        orig = c2f_mod.solve_coarse_to_fine
+
+        def _spy(*args, **kwargs):
+            captured.update(kwargs)
+            return orig(*args, **kwargs)
+
+        monkeypatch.setattr(c2f_mod, "solve_coarse_to_fine", _spy)
+        return captured
+
+    def test_wall_aware_passes_drop_cache_true(self, monkeypatch):
+        """Kabuk-ailesi + qty>40 -> solve_coarse_to_fine'e drop_cache=True gecer
+        (kablo dogrudan spy ile dogrulanir, sonuctan bagimsiz)."""
+        captured = self._spy_c2f(monkeypatch)
+        sc = _shell_scenario(auto_family_routing=True)
+        sc["orders"][0]["parts"][0]["qty"] = 42
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        assert captured.get("drop_cache") is True, \
+            "wall_aware True iken solve_coarse_to_fine drop_cache=True almali"
+
+    def test_no_wall_aware_drop_cache_false(self, monkeypatch):
+        """wall_aware False -> drop_cache=False + telemetri alanlari EKLENMEZ
+        (bit-ozdes eski yol)."""
+        captured = self._spy_c2f(monkeypatch)
+        sc = _shell_scenario(auto_family_routing=False)
+        sc["orders"][0]["parts"][0]["qty"] = 42
+        sc["nesting_mode"] = "heightmap"  # auto degil -> family layer calismaz
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        assert captured.get("drop_cache") is False, \
+            "wall_aware False iken drop_cache=False almali (default)"
+        for nr in rows:
+            # kapali yolda cache telemetrisi HIC eklenmez (birebir dokunulmazlik)
+            assert "drop_cache_hit_ratio" not in nr
+            assert "drop_cache_keys" not in nr
+            assert "drop_cache_peak_mb" not in nr
+
+    def test_cache_stats_in_telemetry(self):
+        """wall_aware -> _instr'e cache istatistikleri (rapor-only) eklenmis
+        olmali: hit_ratio [0,1], keys/fallbacks/evictions int, peak_mb float."""
+        sc = _shell_scenario(auto_family_routing=True)
+        sc["orders"][0]["parts"][0]["qty"] = 42
+        result = run_pipeline(sc)
+        rows = self._rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        for nr in rows:
+            hr = nr.get("drop_cache_hit_ratio")
+            assert isinstance(hr, float) and 0.0 <= hr <= 1.0
+            assert isinstance(nr.get("drop_cache_keys"), int)
+            assert isinstance(nr.get("drop_cache_peak_mb"), float)
+            assert isinstance(nr.get("drop_cache_fallbacks"), int)
+            assert isinstance(nr.get("drop_cache_evictions"), int)
+
+
 @pytest.mark.slow
 class TestRichScenario:
     """Zengin senaryo smoke testi — portföyün ayırt ettiği yoğun vaka.
