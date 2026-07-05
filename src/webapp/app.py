@@ -336,6 +336,10 @@ def _layer_costs_ekle(nesting_results: Dict[str, Any]) -> None:
 
 # Gecmis-detay GLB kalicilastirmasi icin kosu basina toplam tavan (disk emniyeti).
 _GECMIS_GLB_TAVAN_BYTES = 80 * 1024 * 1024
+# 3D ONIZLEME ucgen butcesi: WebGL'de ~1.5M ucgen akici; ustundeki sahneler
+# (orn. Deneme4 acilmis 5.8M ucgen) icin sadelesmis onizleme GLB'si uretilir.
+# STL indirme HER ZAMAN tam-detay GLB'den gider (geometri birebir).
+_GECMIS_ONIZLEME_UCGEN = 1_500_000
 
 
 _TURKCE_AYLAR = {
@@ -996,6 +1000,26 @@ def _register_routes(
                     _otonom_gecmis.glb_kaydet(kayit_id, _bid, _glb)
                     toplam_glb += len(_glb)
                     glb_haritasi[_bid] = True
+                    # ACILMIS ucgen sayisi butceyi asiyorsa viewer icin ayrica
+                    # SADELESMIS onizleme GLB'si yaz (STL/tam-dogruluk full'da).
+                    try:
+                        _acilmis = sum(
+                            len(_vp[p.part_id].mesh.faces) for p in _pl
+                        )
+                        if _acilmis > _GECMIS_ONIZLEME_UCGEN:
+                            _psc = build_result_scene(
+                                _pl, _vp, pitch=float(_pitch),
+                                merge_by_type=True,
+                                max_faces_total=_GECMIS_ONIZLEME_UCGEN)
+                            _otonom_gecmis.glb_kaydet(
+                                kayit_id, f"{_bid}__onizleme",
+                                scene_to_glb_bytes(_psc))
+                    except Exception:
+                        logger.warning(
+                            "Onizleme GLB uretilemedi (id=%s batch=%s) — "
+                            "viewer tam GLB'ye duser", kayit_id, _bid,
+                            exc_info=True,
+                        )
                 except Exception:
                     logger.warning(
                         "GLB kalicilastirma hatasi (id=%s batch=%s)",
@@ -1702,10 +1726,12 @@ def _register_routes(
             }), 503
 
         try:
-            # merge_by_type: tip basina tek geometri — buyuk sahnede viewer
-            # performansi (gecmis-detay GLB'siyle ayni gorunum/veri).
+            # merge_by_type + onizleme butcesi: tip basina tek geometri ve
+            # ~1.5M ucgen tavani — bu route YALNIZ tarayici onizlemesi icin
+            # (STL indirme gecmis kaydinin tam-detay GLB'sinden gider).
             scene = build_result_scene(
-                placements, voxel_parts, pitch=float(pitch), merge_by_type=True)
+                placements, voxel_parts, pitch=float(pitch), merge_by_type=True,
+                max_faces_total=_GECMIS_ONIZLEME_UCGEN)
             glb_bytes = scene_to_glb_bytes(scene)
         except Exception as exc:
             logger.warning("GLB export hatasi batch=%s: %s", batch_id, exc)
@@ -2809,7 +2835,11 @@ def _register_routes(
         if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
             return jsonify({"hata": "Gecersiz kayit id."}), 404
         try:
-            yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
+            # Viewer icin SADELESMIS onizleme varsa onu tercih et (akicilik);
+            # yoksa tam GLB. STL indirme her zaman tam GLB'den (/stl route'u).
+            yol = _otonom_gecmis.glb_path(kayit_id, f"{batch_id}__onizleme")
+            if yol is None:
+                yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
         except ValueError:
             yol = None
         if yol is None:
@@ -2820,6 +2850,45 @@ def _register_routes(
         return send_file(
             yol, mimetype="model/gltf-binary",
             download_name=f"{kayit_id}_{batch_id}.glb",
+        )
+
+    @app.route("/gecmis/<kayit_id>/stl/<batch_id>", methods=["GET"])
+    def gecmis_stl(kayit_id: str, batch_id: str):
+        """Nesting sonucunu tek STL dosyasi olarak INDIR (kullanici istegi).
+
+        Kaynak: kalici GLB (koşu aninda yazilan) — trimesh ile yuklenir,
+        dugum-matrisleri acilarak tek mesh'e birlestirilir, binary STL
+        olarak dondurulur. Hoca dosyayi indirip Magics/istedigi STL
+        goruntuleyicide acar; geometri GLB/3D onizleme ile birebirdir.
+        (Ek disk maliyeti yok — STL istek aninda uretilir.)
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        try:
+            yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D dosyasi yok — STL uretilemez.",
+            }), 404
+        try:
+            import io
+            import trimesh
+            sahne = trimesh.load(str(yol), file_type="glb")
+            if hasattr(sahne, "to_geometry"):
+                mesh = sahne.to_geometry()
+            else:  # eski trimesh geriye uyum
+                mesh = sahne.dump(concatenate=True)
+            stl_bytes = mesh.export(file_type="stl")
+            if isinstance(stl_bytes, str):
+                stl_bytes = stl_bytes.encode("utf-8")
+        except Exception as exc:
+            logger.warning("STL uretimi hatasi (%s/%s): %s", kayit_id, batch_id, exc)
+            return jsonify({"hata": "STL uretilemedi."}), 500
+        return send_file(
+            io.BytesIO(stl_bytes), mimetype="model/stl", as_attachment=True,
+            download_name=f"nesting_{kayit_id}_{batch_id}.stl",
         )
 
     @app.route("/gecmis/<kayit_id>/teklif", methods=["POST"])

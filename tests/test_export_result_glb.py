@@ -179,6 +179,34 @@ def test_merge_by_type_glb_gecerli():
     assert glb[:4] == b"glTF"
 
 
+def test_max_faces_total_onizleme_sadelesir():
+    """Ucgen butcesi asilirsa kanonik mesh'ler sadelesir (acilmis toplam
+    ~butceye iner); butce verilmezse tam detay korunur."""
+    parts = []
+    for tip in ("kureA", "kureB"):
+        for kopya in (1, 2, 3):
+            mesh = trimesh.creation.icosphere(subdivisions=3, radius=5.0)  # 1280 yuz
+            mesh.apply_translation(-mesh.bounds[0])
+            vp = voxelize_part(tip, mesh, PITCH, n_orientations=1)
+            vp.id = f"{tip}_{kopya}"
+            parts.append(vp)
+    placements, _ = dblf(parts, lambda: Bin3D(PLATE, PLATE, PITCH))
+    assert len(placements) == 6  # acilmis toplam = 6 x 1280 = 7680 ucgen
+
+    tam = build_result_scene(placements, {p.id: p for p in parts},
+                             pitch=PITCH, merge_by_type=True)
+    onizleme = build_result_scene(placements, {p.id: p for p in parts},
+                                  pitch=PITCH, merge_by_type=True,
+                                  max_faces_total=2000)
+    tam_yuz = {n: len(g.faces) for n, g in tam.geometry.items()}
+    on_yuz = {n: len(g.faces) for n, g in onizleme.geometry.items()}
+    # Sadelesme gerceklesti; tam detay korunmus durumda
+    assert sum(on_yuz.values()) < sum(tam_yuz.values())
+    for n in tam_yuz:
+        assert on_yuz[n] < tam_yuz[n]
+        assert on_yuz[n] >= 200  # asiri sadelesme freni
+
+
 def test_merge_by_type_default_kapali_davranis_birebir():
     """Parametresiz cagri eski davranis: placement basina geometri."""
     parts_by_id, placements = _make_typed_nesting()

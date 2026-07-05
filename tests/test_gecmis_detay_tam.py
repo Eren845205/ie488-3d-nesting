@@ -277,6 +277,29 @@ class TestGecmisGeometri:
         resp = client_llm.get("/gecmis/..%2F..%2Fetc/geometri/B001")
         assert resp.status_code == 404
 
+    def test_stl_indirme(self, client_llm, app_with_llm):
+        """Kalici GLB'den tek-STL indirme: 200 + attachment + gecerli mesh."""
+        import io
+        import trimesh
+        client_llm.post("/otonom", json={})
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        kayit = store.liste()[0]
+        detay = store.detay_get(kayit["id"])
+        glb_olan = [b for b, v in (detay.get("glb") or {}).items() if v]
+        if not glb_olan:
+            pytest.skip("bu kosuda GLB uretilmedi")
+        resp = client_llm.get(f"/gecmis/{kayit['id']}/stl/{glb_olan[0]}")
+        assert resp.status_code == 200
+        assert "attachment" in resp.headers.get("Content-Disposition", "")
+        mesh = trimesh.load(io.BytesIO(resp.data), file_type="stl")
+        assert len(mesh.faces) > 0
+
+    def test_stl_olmayan_kayit_404(self, client_llm, app_with_llm):
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        kayit = store.kaydet({"musteri": "X"})
+        resp = client_llm.get(f"/gecmis/{kayit['id']}/stl/B001")
+        assert resp.status_code == 404
+
     def test_restart_sonrasi_glb_hala_erisilir(self, client_llm, app_with_llm):
         """Kalicilik kaniti: ayni store koku ile YENI app kur -> GLB durur."""
         client_llm.post("/otonom", json={})

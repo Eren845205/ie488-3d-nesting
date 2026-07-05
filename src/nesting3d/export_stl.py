@@ -69,6 +69,7 @@ def build_result_scene(
     *,
     pitch: float,
     merge_by_type: bool = False,
+    max_faces_total: int | None = None,
 ) -> trimesh.Scene:
     """Build a trimesh.Scene of the nesting result using REAL part geometry.
 
@@ -106,7 +107,8 @@ def build_result_scene(
         return scene
 
     if merge_by_type:
-        return _build_instanced_scene(placements, parts_by_id, pitch)
+        return _build_instanced_scene(placements, parts_by_id, pitch,
+                                      max_faces_total=max_faces_total)
 
     # Assign one colour index per unique part name (model type).
     name_colour_idx: Dict[str, int] = {}
@@ -148,6 +150,7 @@ def _build_instanced_scene(
     placements: List[Placement3D],
     parts_by_id: Dict[str, VoxelPart],
     pitch: float,
+    max_faces_total: int | None = None,
 ) -> trimesh.Scene:
     """Tip basina TEK geometri + yerlesim basina dugum-matrisi (instancing).
 
@@ -155,11 +158,46 @@ def _build_instanced_scene(
     once R, sonra min-kose otelenmesi, sonra hucre-merkezi):
         M = T(cell_centre - voxel_origin) @ T(-rotated_bounds_min) @ R
     rotated_bounds_min tip+oryantasyon basina BIR kez hesaplanir (cache).
+
+    max_faces_total: verilirse ONIZLEME modu — sahnenin ACILMIS toplam ucgen
+    sayisi (tip ucgeni x kopya adedi) bu butceyi asarsa her tipin kanonik
+    mesh'i oransal olarak sadelestirilir (quadric decimation). WebGL'de 5M+
+    ucgen kasar; onizleme ~budget ucgenle akici olur. STL indirme/tam-dogruluk
+    yolu bu parametreyi VERMEZ (geometri birebir kalir).
     """
     scene = trimesh.Scene()
     name_colour_idx: Dict[str, int] = {}
     canon_added: Dict[str, str] = {}       # part name -> geom adi
     bmin_cache: Dict[tuple, np.ndarray] = {}  # (name, orient_idx) -> bounds[0]
+
+    # -- Onizleme butcesi: tip basina sadelestirme orani hesapla -----------
+    decim_keep: Dict[str, float] = {}
+    if max_faces_total:
+        sayim: Dict[str, int] = {}
+        for pl in placements:
+            sayim[parts_by_id[pl.part_id].name] = sayim.get(
+                parts_by_id[pl.part_id].name, 0) + 1
+        toplam = 0
+        for name, adet in sayim.items():
+            ornek = next(p for p in parts_by_id.values() if p.name == name)
+            toplam += len(ornek.mesh.faces) * adet
+        if toplam > max_faces_total:
+            oran = max_faces_total / float(toplam)
+            for name in sayim:
+                decim_keep[name] = max(oran, 0.02)  # asiri sadelesme freni
+
+    def _kanonik_mesh(part) -> trimesh.Trimesh:
+        mesh = part.mesh.copy()
+        keep = decim_keep.get(part.name)
+        if keep is not None and keep < 1.0 and len(mesh.faces) > 500:
+            try:
+                hedef_kalan = max(int(len(mesh.faces) * keep), 200)
+                azalt = 1.0 - (hedef_kalan / float(len(mesh.faces)))
+                if azalt > 0.05:
+                    mesh = mesh.simplify_quadric_decimation(azalt)
+            except Exception:
+                pass  # sadelestirme yoksa/patlarsa tam mesh kullan (dogruluk-notr)
+        return mesh
 
     for i, pl in enumerate(placements):
         part = parts_by_id[pl.part_id]
@@ -180,7 +218,7 @@ def _build_instanced_scene(
         node_name = f"{pl.part_id}#{i:04d}"
 
         if part_name not in canon_added:
-            mesh = part.mesh.copy()
+            mesh = _kanonik_mesh(part)
             if part_name not in name_colour_idx:
                 name_colour_idx[part_name] = len(name_colour_idx) % len(_PART_COLOURS)
             colour = _PART_COLOURS[name_colour_idx[part_name]]

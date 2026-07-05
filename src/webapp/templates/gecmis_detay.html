@@ -160,10 +160,17 @@
         <canvas id="viewer-canvas-{{ bid }}" class="viewer-canvas" style="display:none;"></canvas>
         <div class="gd-viewer-bar">
             <span class="gd-viewer-tag">{{ nr.get('n_parts', 0) }} parça &middot; {{ nr.get('pitch_mm', '?') }} mm voxel</span>
-            <button type="button" class="gd-fs-btn" data-bid="{{ bid }}" title="Tam ekranda incele — çıkmak için ESC">
-                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-                Tam ekranda incele
-            </button>
+            <span style="display:flex; gap:8px; pointer-events:auto;">
+                <a class="gd-fs-btn" href="/gecmis/{{ k.id }}/stl/{{ bid }}" download
+                   title="Yerleşimin tamamını tek STL dosyası olarak indir — Magics veya herhangi bir STL görüntüleyicide açılır (geometri 3D önizleme ile birebir)">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    STL indir
+                </a>
+                <button type="button" class="gd-fs-btn" data-bid="{{ bid }}" title="Tam ekranda incele — çıkmak için ESC">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    Tam ekranda incele
+                </button>
+            </span>
         </div>
     </div>
     {% else %}
@@ -632,10 +639,14 @@ body.gd-fs-open { overflow: hidden; }
                 canvas.style.display = 'block';
                 const sz = sizeFor(container);
 
-                const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true});
+                // AGIR SAHNE modu: buyuk GLB (cok ucgenli plan parcalari) =
+                // GPU ucgen/fill yuku. AA kapat + piksel oranini 1'e indir —
+                // kasmanin kalan kaynagi bu (draw-call zaten instancing'le az).
+                const agirSahne = buffer.byteLength > 12 * 1024 * 1024;
+                const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: !agirSahne});
                 // Yuksek-DPI ekranda 1.5 ustu piksel orani buyuk sahnede
                 // fill-rate'i patlatir (kasma) — gorsel fark yokken sinirla.
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, agirSahne ? 1 : 1.5));
                 renderer.setSize(sz.w, sz.h);
                 renderer.setClearColor(0x0f172a);
 
@@ -672,6 +683,14 @@ body.gd-fs-open { overflow: hidden; }
                         let mat = child.material;
                         if (!mat || !mat.color) {
                             mat = new THREE.MeshLambertMaterial({color: 0x4ade80});
+                        }
+                        // GLB malzemeleri PBR (MeshStandardMaterial) gelir;
+                        // ortam haritasi olmadigindan metalik yuzey KOYU/golgeli
+                        // gorunur. Mat plastik gibi davransin: metal yok,
+                        // yuksek puruzluluk -> aydinlik, net yuzey okumasi.
+                        if (mat.isMeshStandardMaterial) {
+                            mat.metalness = 0.0;
+                            mat.roughness = 0.9;
                         }
                         // STL yuzeyleri duz-yuzlu: flat shading fasetleri
                         // keskin okutur (parca detayi "bulanik" gorunmez).
