@@ -163,12 +163,16 @@ def process_inbox_once(
     # "is alindi, yerlestirme kosuyor" sinyalini SIMDI ver, bitince sayac artar.
     if on_stage is not None:
         try:
-            _n_parca = sum(
-                int(p.get("qty", 0) or 0) for o in orders for p in o.get("parts", [])
-            )
+            # Siparis-bazli dokum (kullanici istegi 2026-07-05): operator
+            # HANGI siparislerin kacar parcayla alindigini tek bakista gorsun.
+            _etiketler = []
+            for o in orders:
+                _adet = sum(int(p.get("qty", 0) or 0) for p in o.get("parts", []))
+                _kim = o.get("order_id") or o.get("customer") or "siparis"
+                _etiketler.append(f"{_kim}: {_adet} parça")
             on_stage(
                 f"{len(orders)} sipariş işlenmeye alındı — nesting koşuyor"
-                f" ({_n_parca} parça)"
+                f" [{' | '.join(_etiketler)}]"
             )
         except Exception:
             pass  # gorunurluk akisi asla bozmaz

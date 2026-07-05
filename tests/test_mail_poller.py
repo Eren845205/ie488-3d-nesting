@@ -235,6 +235,8 @@ def test_process_inbox_once_on_stage_pipeline_oncesi(tmp_path):
     assert len(stages) == 1
     assert "işlenmeye alındı" in stages[0]
     assert "5 parça" in stages[0]  # braket 3 + kapak 2
+    # Siparis-bazli dokum: siparis kimligi (order_id/musteri) metinde gorunur
+    assert "ZIP-" in stages[0] or ":" in stages[0]
 
 
 def test_process_inbox_once_on_stage_hatasi_yutulur(tmp_path):
