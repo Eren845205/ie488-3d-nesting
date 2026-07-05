@@ -731,10 +731,12 @@ def _register_routes(
         app.config["LAST_RESULT"] = result
         # OTOMATIK islenen is de kalici gecmise dussun — operator sonradan
         # /gecmis'ten "sistem gece sunlari isledi" diye gorur (kaynak=otomatik).
-        # mod/nfv_quality _POLL_SCENARIO politikasiyla ayni (nfv + max).
+        # mod/nfv_quality _POLL_SCENARIO politikasiyla ayni (F5 asama-2:
+        # auto + max). Gercek secilen dal (heightmap/nfv) kayda ayrica
+        # secilen_mod=nesting_mode_used ile duser (rapor-only).
         # R1 #4: kayit yazilamadiysa RAISE — process_inbox_once mark'i atlar,
         # mail sonraki turda yeniden denenir ("gorunmez is" olusamaz).
-        if not _gecmis_kaydet(result, mod="nfv", nfv_quality="max", kaynak="otomatik"):
+        if not _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik"):
             raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
 
     try:
@@ -751,16 +753,27 @@ def _register_routes(
     _scan_lock = threading.Lock()
     app.config["OTONOM_SCAN_LOCK"] = _scan_lock
 
-    # OTOMATIK MOD POLITIKASI (kullanici karari 2026-07-03): gozcu HER ZAMAN
-    # NFV kalite modunda kosar (quality=max). Gerekce: auto->heightmap sezgiseli
-    # parca KUTU oranina bakiyor; ince cidarli KABUK parcalarda (Deneme4 dugme
-    # seti: bbox dolulugu ~%12) "cavity yok" diye yaniliyor — 377mm heightmap
-    # vs Magics 250mm. Musteri en iyi yerlestirmeyi bekler; sure ikincil.
-    # Heightmap YALNIZ manuel ekranda (operator bilincli secerse) kalir.
+    # OTOMATIK MOD POLITIKASI — F5 ASAMA-2 ROLLOUT (kullanici karari 2026-07-05):
+    # gozcu artik aile-farkindali OTOMATIK modda kosar (nesting_mode="auto" +
+    # auto_family_routing=True); nfv_quality=max KORUNUR (auto'nun NFV dali
+    # kalite modunu surdurur). Gerekce: aile-yonlendirme zinciri uretim kodunda
+    # hazir ve E2E-kanitli (opt-in zincir testi 3/3 PASS; K-19 legal 282.0mm
+    # birebir + sokulebilir; H-15p hizli coarse 9.2 dk). Akis: predict_nfv_benefit
+    # family_routing -> kabuk ailesi (thin_shell guven>=0.75) heightmap + cidar-
+    # pitch + H-15p; kabuk-disi -> mevcut NFV yolu (quality=max korur).
+    #
+    # TARIHCE (2026-07-03, artik gecersiz): gozcu SABIT "nfv" kosuyordu cunku
+    # auto->heightmap sezgiseli parca KUTU oranina bakip ince cidarli KABUK
+    # parcalarda (Deneme4 dugme seti: bbox dolulugu ~%12) "cavity yok" diye
+    # yaniliyordu (377mm heightmap vs Magics 250mm). Aile-yonlendirme bu bosugu
+    # kapatti; artik "nfv sabit" gerekmiyor.
+    #
+    # Heightmap YINE manuel ekranda (operator bilincli secerse) kalir.
     # quality=max kendi RAM on-kontrolunu yapar (<13GB -> n=8 taban) ve
     # fine-settle/GPU fallback'leri guard'lidir — zarif dusus korunur.
     _POLL_SCENARIO = {
-        **_POLL_BASE_SCENARIO, "nesting_mode": "nfv", "nfv_quality": "max",
+        **_POLL_BASE_SCENARIO, "nesting_mode": "auto",
+        "auto_family_routing": True, "nfv_quality": "max",
     }
 
     _poller = MailPoller(
@@ -905,7 +918,10 @@ def _register_routes(
         nesting_mode = _nm if _nm in ("auto", "nfv", "heightmap") else "auto"
         # NFV kalite seviyesi: "max" → donanım-tavanı oryantasyon (en kısa istif, en yavaş); default "fast" (n=8).
         nfv_quality = "max" if request.form.get("nfv_quality") == "max" else "fast"
-        scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality}
+        # F5 ASAMA-2 (2026-07-05): aile-farkindali yonlendirme YALNIZ "auto" modda
+        # acilir; nfv/heightmap bilincli secilirse False -> davranis birebir korunur.
+        scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality,
+                    "auto_family_routing": nesting_mode == "auto"}
 
         result = run_pipeline(scenario)
         result["used_demo"] = used_demo
@@ -1829,9 +1845,12 @@ def _register_routes(
             _container = next(
                 (o["container"] for o in parsed_orders if o.get("container")), None
             )
+        # F5 ASAMA-2 (2026-07-05): aile-farkindali yonlendirme YALNIZ "auto" modda
+        # acilir; nfv/heightmap bilincli secilirse False -> davranis birebir korunur.
         scenario = {**scenario, "container": _container,  # None -> pipeline otomatik
                     "nesting_mode": otonom_nesting_mode,
-                    "nfv_quality": otonom_nfv_quality}
+                    "nfv_quality": otonom_nfv_quality,
+                    "auto_family_routing": otonom_nesting_mode == "auto"}
 
         try:
             pipeline_result = run_pipeline(scenario)
@@ -2658,6 +2677,8 @@ def _register_routes(
             "parse_source": "operator_adet_girisi",
         }
         scenario = {**RICH_SCENARIO, "orders": [order]}
+        # adet-giris yolu da aile-yonlendirmeli (F5 asama-2 rollout 2026-07-05)
+        scenario["auto_family_routing"] = True
         if _pw and _pd:
             scenario["container"] = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
         else:

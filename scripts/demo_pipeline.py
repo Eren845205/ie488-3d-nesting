@@ -1390,7 +1390,8 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # predict_nfv_benefit'e family_routing=False geter -> aile katmani HIC calismaz.
             # True VE nesting_mode=="auto" iken: kabuk-ailesi mod-flip + wall_aware_pitch
             # otomatik acilir (yukarida _process_batch icinde).
-            # webapp/gozcu kablosu bilinctli olarak YOK — rollout ayri karar (F5 asama 2).
+            # webapp/gozcu kablosu F5 asama-2 rollout 2026-07-05'te baglandi
+            # (poller/manuel/otonom/adet-gir hepsi auto_family_routing=True gecer).
             "auto_family_routing": bool(scenario.get("auto_family_routing", False)),
         })
 

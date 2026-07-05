@@ -52,22 +52,29 @@ class TestOtomatikGecmis:
 
 
 class TestOtomatikModPolitikasi:
-    """Kullanici karari 2026-07-03: gozcu HER ZAMAN NFV kalite modunda kosar.
+    """F5 ASAMA-2 ROLLOUT (kullanici karari 2026-07-05): gozcu artik
+    aile-farkindali OTOMATIK modda kosar (nesting_mode="auto" +
+    auto_family_routing=True), nfv_quality=max KORUNUR.
 
-    Gerekce: auto->heightmap sezgiseli kutu-oranina bakip ince cidarli KABUK
-    parcalarda yaniliyordu (Deneme4: 377mm heightmap vs Magics 250mm hedef).
-    Heightmap yalniz manuel ekranda bilincli secenek olarak kalir."""
+    Gerekce: aile-yonlendirme zinciri uretim kodunda hazir ve E2E-kanitli
+    (zincir testi 3/3 PASS; K-19 legal 282.0mm; H-15p 9.2 dk). Kabuk ailesi
+    (thin_shell guven>=0.75) -> heightmap + cidar-pitch + H-15p hizli coarse;
+    kabuk-disi -> mevcut NFV yolu (quality=max korur). Eski "nfv sabit"
+    politikasi (2026-07-03) tarihce olarak kaldi: o zaman auto->heightmap
+    sezgiseli kabuk parcalarda yaniliyordu; aile-yonlendirme bu bosugu kapatti.
+    Heightmap yine manuel ekranda bilincli secenek olarak kalir."""
 
-    def test_poller_senaryosu_nfv_quality_max(self, app_with_llm):
+    def test_poller_senaryosu_auto_aile_yonlendirmeli_quality_max(self, app_with_llm):
         poller = app_with_llm.config["MAIL_POLLER"]
-        assert poller._base_scenario.get("nesting_mode") == "nfv"
+        assert poller._base_scenario.get("nesting_mode") == "auto"
+        assert poller._base_scenario.get("auto_family_routing") is True
         assert poller._base_scenario.get("nfv_quality") == "max"
 
-    def test_otomatik_gecmis_kaydi_nfv_etiketli(self, app_with_llm):
+    def test_otomatik_gecmis_kaydi_auto_etiketli(self, app_with_llm):
         poller = app_with_llm.config["MAIL_POLLER"]
         poller.poll_once()
         kayit = app_with_llm.config["OTONOM_GECMIS"].liste()[0]
-        assert kayit["mod"] == "nfv"
+        assert kayit["mod"] == "auto"
         assert kayit["nfv_quality"] == "max"
 
 

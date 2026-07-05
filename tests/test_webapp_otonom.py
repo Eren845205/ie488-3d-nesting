@@ -192,6 +192,7 @@ class TestOtonomNestingMode:
         def fake(scenario):
             captured["mode"] = scenario.get("nesting_mode")
             captured["quality"] = scenario.get("nfv_quality")
+            captured["family_routing"] = scenario.get("auto_family_routing")
             # nesting_mode yakalandı; gerçek pipeline'ı hızlı heightmap'te koş (NFV decode'u yavaşlatma)
             return real({**scenario, "nesting_mode": "heightmap"})
 
@@ -227,6 +228,26 @@ class TestOtonomNestingMode:
         resp = client_llm.post("/otonom", json={"nesting_mode": "nfv", "nfv_quality": "max"})
         assert resp.status_code == 200
         assert captured.get("quality") == "max"
+
+    def test_otonom_auto_sets_family_routing_true(self, client_llm, monkeypatch):
+        # F5 ASAMA-2 (2026-07-05): otonom auto modda aile-yonlendirme bayragi True.
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={"nesting_mode": "auto"})
+        assert resp.status_code == 200
+        assert captured.get("family_routing") is True
+
+    def test_otonom_default_auto_sets_family_routing_true(self, client_llm, monkeypatch):
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={})  # default auto
+        assert resp.status_code == 200
+        assert captured.get("family_routing") is True
+
+    def test_otonom_nfv_keeps_family_routing_false(self, client_llm, monkeypatch):
+        # nfv bilinçli seçilirse bayrak False -> davranış birebir korunur.
+        captured = self._capture(monkeypatch)
+        resp = client_llm.post("/otonom", json={"nesting_mode": "nfv"})
+        assert resp.status_code == 200
+        assert captured.get("family_routing") is False
 
 
 # ---------------------------------------------------------------------------

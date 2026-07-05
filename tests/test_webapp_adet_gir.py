@@ -184,6 +184,29 @@ def test_adet_gir_path_traversal_disari_yazamaz(client, app, tmp_path=None):
             shutil.rmtree(evil_dir, ignore_errors=True)
 
 
+def test_adet_gir_auto_family_routing_bayragi_true(client, app, monkeypatch):
+    """F5 asama-2 rollout (2026-07-05): adet-gir yolu da auto_family_routing
+    True gecirmeli (poller/manuel/otonom ile tutarli — fiilen hep auto)."""
+    import scripts.demo_pipeline as dp
+
+    seen = {}
+
+    def _capture(scenario):
+        seen["scenario"] = scenario
+        return {"nesting_results": {"B001": {"height_mm": 42.0}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _capture)
+    _seen = _seed(app, order_id="ZIP-TESTAFR")
+    resp = client.post(
+        "/adet-gir/ZIP-TESTAFR",
+        data={"qty_braket": "2", "qty_kapak": "3"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert seen["scenario"].get("auto_family_routing") is True
+
+
 def test_adet_gir_path_traversal_mail_stl_icinde_kalir(client, app):
     """Zararsiz/normal order_id icin dizin gercekten data/mail_stl altinda
     olusturulmaya devam eder (regresyon: fix normal akisi kirmasin)."""

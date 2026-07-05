@@ -275,6 +275,31 @@ def test_poller_inflight_gorunurlugu(tmp_path):
     assert "inflight" in snap and "inflight_detail" in snap
 
 
+def test_process_inbox_once_auto_family_routing_korunur(tmp_path, monkeypatch):
+    """F5 asama-2 rollout (2026-07-05): base_scenario'da auto_family_routing
+    True ise process_inbox_once merge'inden (scenario = {**base_scenario,
+    "orders": orders}) run_pipeline'a ulasan senaryoda bayrak True kalmali
+    (poller merge-hattinda mekanik sessizce dusmemeli)."""
+    import scripts.demo_pipeline as dp
+
+    seen = {}
+
+    def _capture(scenario):
+        seen["scenario"] = scenario
+        return {"nesting_results": {"B001": {"height_mm": 42.0}},
+                "ranked_orders": [], "batches": [1], "pricing_results": {}}
+
+    monkeypatch.setattr(dp, "run_pipeline", _capture)
+    base_scenario = {**RICH_SCENARIO, "nesting_mode": "auto",
+                      "auto_family_routing": True, "nfv_quality": "max"}
+    res = process_inbox_once(
+        _OnceSource([_zip_mail(mid="<F5-MERGE@x>")]), parser_role=None,
+        base_scenario=base_scenario, persist_root=str(tmp_path),
+    )
+    assert res is not None
+    assert seen["scenario"].get("auto_family_routing") is True
+
+
 def test_poller_hata_yutulur_durum_yazilir(tmp_path):
     def _boom():
         raise RuntimeError("kaynak patladi")

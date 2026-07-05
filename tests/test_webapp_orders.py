@@ -587,6 +587,43 @@ class TestNestingModeOptIn:
         assert captured["scenario"]["nfv_quality"] == "fast"
 
 
+class TestManuelAileYonlendirme:
+    """F5 ASAMA-2 ROLLOUT (2026-07-05): manuel /run route'u YALNIZ nesting_mode=auto
+    seçildiğinde auto_family_routing=True kablosunu scenario'ya geçirir. nfv/heightmap
+    bilinçli seçilirse bayrak False -> davranış birebir korunur (opt-in daralması yok)."""
+
+    @staticmethod
+    def _capture(monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        return captured
+
+    def test_run_auto_sets_family_routing_true(self, client_orders, monkeypatch):
+        captured = self._capture(monkeypatch)
+        client_orders.post("/run", data={"nesting_mode": "auto"})
+        assert captured["scenario"]["auto_family_routing"] is True
+
+    def test_run_default_auto_sets_family_routing_true(self, client_orders, monkeypatch):
+        captured = self._capture(monkeypatch)
+        client_orders.post("/run", data={})  # mod belirtilmemiş -> default auto
+        assert captured["scenario"]["auto_family_routing"] is True
+
+    def test_run_nfv_keeps_family_routing_false(self, client_orders, monkeypatch):
+        captured = self._capture(monkeypatch)
+        client_orders.post("/run", data={"nesting_mode": "nfv"})
+        assert captured["scenario"]["auto_family_routing"] is False
+
+    def test_run_heightmap_keeps_family_routing_false(self, client_orders, monkeypatch):
+        captured = self._capture(monkeypatch)
+        client_orders.post("/run", data={"nesting_mode": "heightmap"})
+        assert captured["scenario"]["auto_family_routing"] is False
+
+
 class TestPipelineFromPool:
 
     def test_run_with_pool_does_not_crash(self, client_orders_dolu):
