@@ -29,6 +29,34 @@ açık öneri niteliğindedir.
 
 ---
 
+## VİZYON — niçin ayrı bir "strateji klasörü" (kuzey yıldızı)
+
+**Eren'in hedefi (2026-07-06):** ML/eval kısmı olgunlaştığında **ayrı bir klasör**
+olsun — bundan sonra algoritmayı geliştirirken/eğitirken **oradaki sabit
+stratejileri kullanalım**. Böylece her seferinde **stabil, tekrarlanabilir** bir
+şekilde geliştiririz.
+
+**Bu vizyonun keskin hâli (asıl değer buradadır):** Klasör, algoritma
+geliştirmeyi **o anki yapay zekânın (model/oturum) anlık tercihlerinden bağımsız**
+kılar. Bugün en kritik ders buydu — clearance bulgusu gösterdi ki "bu sonuç daha
+iyi" hissi, ölçüm çerçevesi eksikken **yanıltıcı** olabiliyor (282mm bir config
+artefaktıydı). Ayrı strateji klasörü şunu değiştirir:
+
+- **Önce (bugünkü hâl):** değişiklik önerilir → "güven bana daha iyi" → o oturumun
+  modelinin yargısına bağımlı, tekrarlanamaz, overfitting'e açık.
+- **Sonra (hedef):** değişiklik önerilir → **sabit, repoda-checkli değerlendirme
+  kapısından geçer** (tüm setler + held-out + clearance-dürüst metrik). Kabul
+  kriteri objektif ve deterministik. Hangi model/oturum olduğu **fark etmez.**
+
+Yani deterministik/stabil olan şey **kabul kriteri ve değerlendirme** — yaratıcı
+"ne deneyelim" adımı hâlâ yargı ister, ama artık hiçbir iddia gate'i geçmeden
+"kazanç" sayılmaz. Bu, geliştirmeyi **güvenilir ve tekrarlanabilir** yapar; tam da
+Eren'in istediği "her seferinde güvenebileceğimiz sabit harita/yöntem/strateji."
+(fable B1 "tek doğruluk kaynağı" + B6 "repoda-yaşayan durum, bellek değil" ile
+birebir örtüşür.)
+
+---
+
 ## 0. Neden bu doküman
 
 Bugün clearance (parça-arası boşluk) bulgusu, projenin kronik endişesini
