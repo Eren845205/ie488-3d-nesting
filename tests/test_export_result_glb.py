@@ -128,6 +128,64 @@ def test_glb_length_matches_header():
     )
 
 
+# ---------------------------------------------------------------------------
+# merge_by_type: tip basina TEK geometri (viewer performansi)
+# ---------------------------------------------------------------------------
+
+
+def _make_typed_nesting():
+    """2 tip x 2 kopya = 4 placement (uretimdeki expand_quantities benzeri:
+    ayni tipin kopyalari ayni .name'i paylasir, id'ler ayrik)."""
+    parts = []
+    for tip in ("typeA", "typeB"):
+        for kopya in (1, 2):
+            mesh = trimesh.creation.box(extents=(10.0, 10.0, 10.0))
+            mesh.apply_translation(-mesh.bounds[0])
+            vp = voxelize_part(tip, mesh, PITCH, n_orientations=1)
+            vp.id = f"{tip}_{kopya}"
+            parts.append(vp)
+    placements, _ = dblf(parts, lambda: Bin3D(PLATE, PLATE, PITCH))
+    return {p.id: p for p in parts}, placements
+
+
+def test_merge_by_type_tip_basina_tek_geometri():
+    parts_by_id, placements = _make_typed_nesting()
+    assert len(placements) == 4
+    scene = build_result_scene(placements, parts_by_id, pitch=PITCH,
+                               merge_by_type=True)
+    assert set(scene.geometry.keys()) == {"typeA", "typeB"}
+
+
+def test_merge_by_type_gorunum_birebir():
+    """Instancing gorunumu degistirmez: dugum-matrisleriyle acilmis sahne
+    (dump) placement-basina sahneyle AYNI toplam ucgen sayisini ve AYNI
+    dunya bbox'ini verir (matris zinciri placed_meshes ile esdeger)."""
+    import numpy as np
+    parts_by_id, placements = _make_typed_nesting()
+    ayrik = build_result_scene(placements, parts_by_id, pitch=PITCH)
+    birlesik = build_result_scene(placements, parts_by_id, pitch=PITCH,
+                                  merge_by_type=True)
+    d_ayrik = ayrik.dump(concatenate=True)
+    d_birlesik = birlesik.dump(concatenate=True)
+    assert len(d_ayrik.faces) == len(d_birlesik.faces)
+    assert np.allclose(d_ayrik.bounds, d_birlesik.bounds, atol=1e-6)
+
+
+def test_merge_by_type_glb_gecerli():
+    parts_by_id, placements = _make_typed_nesting()
+    scene = build_result_scene(placements, parts_by_id, pitch=PITCH,
+                               merge_by_type=True)
+    glb = scene_to_glb_bytes(scene)
+    assert glb[:4] == b"glTF"
+
+
+def test_merge_by_type_default_kapali_davranis_birebir():
+    """Parametresiz cagri eski davranis: placement basina geometri."""
+    parts_by_id, placements = _make_typed_nesting()
+    scene = build_result_scene(placements, parts_by_id, pitch=PITCH)
+    assert len(scene.geometry) == 4
+
+
 def test_build_result_scene_single_part():
     """Works correctly with a single-part nesting result."""
     parts_by_id, placements = _make_nesting(1)

@@ -630,6 +630,9 @@ body.gd-fs-open { overflow: hidden; }
                 const sz = sizeFor(container);
 
                 const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true});
+                // Yuksek-DPI ekranda 1.5 ustu piksel orani buyuk sahnede
+                // fill-rate'i patlatir (kasma) — gorsel fark yokken sinirla.
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
                 renderer.setSize(sz.w, sz.h);
                 renderer.setClearColor(0x0f172a);
 
@@ -637,23 +640,79 @@ body.gd-fs-open { overflow: hidden; }
                 const camera = new THREE.PerspectiveCamera(45, sz.w / sz.h, 1, 10000);
                 camera.position.set(300, 300, 400);
 
-                scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-                const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-                dir.position.set(200, 400, 300);
-                scene.add(dir);
+                // Isik duzenegi: gokyuzu/zemin (hemisphere) + anahtar + dolgu
+                // isigi — tek zayif directional'in "golgeli/karanlik" gorunumu
+                // yerine STL goruntuleyici benzeri net yuzey okumasi.
+                scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4252, 0.9));
+                const key = new THREE.DirectionalLight(0xffffff, 1.1);
+                key.position.set(300, 500, 400);
+                scene.add(key);
+                const fill = new THREE.DirectionalLight(0xdde6ff, 0.45);
+                fill.position.set(-350, 200, -300);
+                scene.add(fill);
 
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
+                controls.screenSpacePanning = true;  // sag-tik/iki-parmak: modeli kaydir
 
                 const loader = new GLTFLoader();
                 loader.parse(buffer, '', gltf => {
-                    const model = gltf.scene;
-                    model.traverse(child => {
-                        if (child.isMesh && !child.material.color) {
-                            child.material = new THREE.MeshLambertMaterial({color: 0x4ade80});
+                    const raw = gltf.scene;
+                    raw.updateMatrixWorld(true);
+
+                    // --- INSTANCING: GLB'de ayni geometriye referans veren
+                    // yuzlerce dugumu tip basina TEK InstancedMesh'e cevir.
+                    // 588 draw-call -> ~13 draw-call = kasmanin ana ilaci.
+                    const gruplar = new Map();  // geometry.uuid -> grup
+                    raw.traverse(child => {
+                        if (!child.isMesh) return;
+                        let mat = child.material;
+                        if (!mat || !mat.color) {
+                            mat = new THREE.MeshLambertMaterial({color: 0x4ade80});
                         }
+                        // STL yuzeyleri duz-yuzlu: flat shading fasetleri
+                        // keskin okutur (parca detayi "bulanik" gorunmez).
+                        mat.flatShading = true;
+                        mat.needsUpdate = true;
+                        if (child.geometry && !child.geometry.attributes.normal) {
+                            child.geometry.computeVertexNormals();
+                        }
+                        let g = gruplar.get(child.geometry.uuid);
+                        if (!g) {
+                            g = {geometry: child.geometry, material: mat, matrisler: []};
+                            gruplar.set(child.geometry.uuid, g);
+                        }
+                        g.matrisler.push(child.matrixWorld.clone());
                     });
-                    const box = new THREE.Box3().setFromObject(model);
+
+                    const model = new THREE.Group();
+                    const box = new THREE.Box3();
+                    const kose = new THREE.Vector3();
+                    gruplar.forEach(g => {
+                        g.geometry.computeBoundingBox();
+                        const gb = g.geometry.boundingBox;
+                        let nesne;
+                        if (g.matrisler.length === 1) {
+                            nesne = new THREE.Mesh(g.geometry, g.material);
+                            nesne.applyMatrix4(g.matrisler[0]);
+                        } else {
+                            nesne = new THREE.InstancedMesh(g.geometry, g.material, g.matrisler.length);
+                            g.matrisler.forEach((m, i) => nesne.setMatrixAt(i, m));
+                            nesne.instanceMatrix.needsUpdate = true;
+                        }
+                        model.add(nesne);
+                        // bbox: her instance icin geometrinin 8 kosesini donustur
+                        g.matrisler.forEach(m => {
+                            for (let ci = 0; ci < 8; ci++) {
+                                kose.set(
+                                    (ci & 1) ? gb.max.x : gb.min.x,
+                                    (ci & 2) ? gb.max.y : gb.min.y,
+                                    (ci & 4) ? gb.max.z : gb.min.z,
+                                ).applyMatrix4(m);
+                                box.expandByPoint(kose);
+                            }
+                        });
+                    });
                     const center = box.getCenter(new THREE.Vector3());
                     model.position.sub(center);
                     scene.add(model);
@@ -661,9 +720,10 @@ body.gd-fs-open { overflow: hidden; }
                     const size = box.getSize(new THREE.Vector3()).length();
                     camera.position.set(size, size * 0.8, size * 1.2);
                     camera.lookAt(0, 0, 0);
+                    controls.target.set(0, 0, 0);
                     controls.update();
 
-                    viewers[batchId] = {renderer, camera, container, canvas};
+                    viewers[batchId] = {renderer, camera, container, canvas, controls, size};
 
                     function animate() {
                         requestAnimationFrame(animate);
@@ -689,13 +749,22 @@ body.gd-fs-open { overflow: hidden; }
     // --- Tam ekran modu: container fixed-overlay olur, renderer resize edilir ---
     let fsBatchId = null;
 
-    function resizeViewer(batchId) {
+    function resizeViewer(batchId, refit) {
         const v = viewers[batchId];
         if (!v) return;
         const sz = sizeFor(v.container);
         v.renderer.setSize(sz.w, sz.h);
         v.camera.aspect = sz.w / sz.h;
         v.camera.updateProjectionMatrix();
+        if (refit && v.controls && v.size) {
+            // Tam ekran giris/cikisinda kamerayi modele YENIDEN oturt —
+            // aksi halde model ekranin yarisinda kalip "asagi cekilemez"
+            // gorunuyordu (eski orbit hedefi/pozisyon yeni orana uymuyor).
+            v.controls.target.set(0, 0, 0);
+            v.camera.position.set(v.size, v.size * 0.8, v.size * 1.2);
+            v.camera.lookAt(0, 0, 0);
+            v.controls.update();
+        }
     }
 
     function enterFs(batchId) {
@@ -717,7 +786,8 @@ body.gd-fs-open { overflow: hidden; }
             container.appendChild(exitBtn);
         }
         exitBtn.style.display = 'inline-flex';
-        requestAnimationFrame(() => resizeViewer(batchId));
+        // Iki RAF: fixed-overlay layout'u otursun, SONRA resize+refit yap.
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(batchId, true)));
     }
 
     function exitFs() {
@@ -731,7 +801,7 @@ body.gd-fs-open { overflow: hidden; }
         document.body.classList.remove('gd-fs-open');
         const bid = fsBatchId;
         fsBatchId = null;
-        requestAnimationFrame(() => resizeViewer(bid));
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(bid, true)));
     }
 
     document.addEventListener('keydown', (e) => {

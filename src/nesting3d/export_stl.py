@@ -68,6 +68,7 @@ def build_result_scene(
     parts_by_id: Dict[str, VoxelPart],
     *,
     pitch: float,
+    merge_by_type: bool = False,
 ) -> trimesh.Scene:
     """Build a trimesh.Scene of the nesting result using REAL part geometry.
 
@@ -88,11 +89,24 @@ def build_result_scene(
     sequential suffix (_01, _02 …) so every key is unique.  A distinct
     colour is applied per unique part name for visual differentiation.
 
+    merge_by_type=True: her parca TIPININ mesh'i sahneye BIR kez konur;
+    yerlesimler ayni geometriye referans veren DUGUMLER olur (tam donusum
+    matrisi dugumde tasinir).  GLB'de geometri buffer'i tip basina tek kez
+    yazilir -> dosya 588-kopyali sahnede ~30x kuculur; three.js tarafi
+    paylasilan BufferGeometry'yi gorup InstancedMesh'e cevirebilir (draw
+    call sayisi tip sayisina iner).  Gorunum birebir: dugum matrisi
+    placed_meshes'in uyguladigi zincirin (R -> min-kose -> hucre) aynisidir.
+    Default False, tarihsel placement-basina-geometri yerlesimini korur
+    (testler + STL araclari).
+
     Returns an empty Scene for an empty placements list.
     """
     scene = trimesh.Scene()
     if not placements:
         return scene
+
+    if merge_by_type:
+        return _build_instanced_scene(placements, parts_by_id, pitch)
 
     # Assign one colour index per unique part name (model type).
     name_colour_idx: Dict[str, int] = {}
@@ -126,6 +140,69 @@ def build_result_scene(
             geo_key = f"{geo_key}_{name_counter[geo_key]:02d}"
 
         scene.add_geometry(mesh, geom_name=geo_key)
+
+    return scene
+
+
+def _build_instanced_scene(
+    placements: List[Placement3D],
+    parts_by_id: Dict[str, VoxelPart],
+    pitch: float,
+) -> trimesh.Scene:
+    """Tip basina TEK geometri + yerlesim basina dugum-matrisi (instancing).
+
+    Dugum matrisi placed_meshes zincirinin kompozisyonu (saga carpim sirasi:
+    once R, sonra min-kose otelenmesi, sonra hucre-merkezi):
+        M = T(cell_centre - voxel_origin) @ T(-rotated_bounds_min) @ R
+    rotated_bounds_min tip+oryantasyon basina BIR kez hesaplanir (cache).
+    """
+    scene = trimesh.Scene()
+    name_colour_idx: Dict[str, int] = {}
+    canon_added: Dict[str, str] = {}       # part name -> geom adi
+    bmin_cache: Dict[tuple, np.ndarray] = {}  # (name, orient_idx) -> bounds[0]
+
+    for i, pl in enumerate(placements):
+        part = parts_by_id[pl.part_id]
+        part_name = part.name
+        orient = part.orientations[pl.orientation_idx]
+
+        key = (part_name, pl.orientation_idx)
+        if key not in bmin_cache:
+            rotated = part.mesh.copy()
+            rotated.apply_transform(orient.rot_matrix)
+            bmin_cache[key] = rotated.bounds[0].copy()
+        bmin = bmin_cache[key]
+
+        cell_centre = (np.array([pl.x, pl.y, pl.z], dtype=float) + 0.5) * pitch
+        t_top = np.eye(4)
+        t_top[:3, 3] = (cell_centre - orient.voxel_origin) - bmin
+        matrix = t_top @ np.asarray(orient.rot_matrix, dtype=float)
+        node_name = f"{pl.part_id}#{i:04d}"
+
+        if part_name not in canon_added:
+            mesh = part.mesh.copy()
+            if part_name not in name_colour_idx:
+                name_colour_idx[part_name] = len(name_colour_idx) % len(_PART_COLOURS)
+            colour = _PART_COLOURS[name_colour_idx[part_name]]
+            mesh.visual = trimesh.visual.ColorVisuals(
+                mesh=mesh,
+                face_colors=np.tile(
+                    np.array([int(c * 255) for c in colour], dtype=np.uint8),
+                    (len(mesh.faces), 1),
+                ),
+            )
+            # Ilk yerlesim dugumu geometriyle birlikte eklenir (orijinde
+            # fazladan kimlik-donusumlu kopya OLUSMAZ).
+            scene.add_geometry(
+                mesh, geom_name=part_name, node_name=node_name, transform=matrix,
+            )
+            canon_added[part_name] = part_name
+        else:
+            scene.graph.update(
+                frame_to=node_name,
+                matrix=matrix,
+                geometry=canon_added[part_name],
+            )
 
     return scene
 

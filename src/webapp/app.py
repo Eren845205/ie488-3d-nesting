@@ -834,7 +834,11 @@ def _register_routes(
                     glb_atlandi.append(_bid)
                     continue
                 try:
-                    _scene = build_result_scene(_pl, _vp, pitch=float(_pitch))
+                    # merge_by_type: 588 ayri mesh -> tip basina TEK geometri;
+                    # gorunum birebir, tarayici draw-call sayisi ~40x duser
+                    # (buyuk sahnede viewer kasmasinin ana sebebi).
+                    _scene = build_result_scene(
+                        _pl, _vp, pitch=float(_pitch), merge_by_type=True)
                     _glb = scene_to_glb_bytes(_scene)
                     if toplam_glb + len(_glb) > _GECMIS_GLB_TAVAN_BYTES:
                         glb_haritasi[_bid] = False
@@ -1540,7 +1544,10 @@ def _register_routes(
             }), 503
 
         try:
-            scene = build_result_scene(placements, voxel_parts, pitch=float(pitch))
+            # merge_by_type: tip basina tek geometri — buyuk sahnede viewer
+            # performansi (gecmis-detay GLB'siyle ayni gorunum/veri).
+            scene = build_result_scene(
+                placements, voxel_parts, pitch=float(pitch), merge_by_type=True)
             glb_bytes = scene_to_glb_bytes(scene)
         except Exception as exc:
             logger.warning("GLB export hatasi batch=%s: %s", batch_id, exc)
