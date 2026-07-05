@@ -75,11 +75,13 @@
                             <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2); margin-left:3px;">maks</span>
                         {% endif %}
                     </td>
-                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.siparis_sayisi if k.siparis_sayisi is not none else '-' }}</td>
-                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.parti_sayisi if k.parti_sayisi is not none else '-' }}</td>
+                    {# k.get(...) — eski şema kayıtlarında alan hiç olmayabilir; k.X Jinja
+                       Undefined döndürüp "is not none" kontrolünü GEÇER ve format patlar. #}
+                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.get('siparis_sayisi') if k.get('siparis_sayisi') is not none else '-' }}</td>
+                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.get('parti_sayisi') if k.get('parti_sayisi') is not none else '-' }}</td>
                     <td style="text-align:right; font-family:var(--font-mono);">
-                        {% if k.min_yukseklik_mm is not none %}
-                            <span style="color:var(--info);">{{ '%.1f'|format(k.min_yukseklik_mm) }}</span> mm
+                        {% if k.get('min_yukseklik_mm') is not none %}
+                            <span style="color:var(--info);">{{ '%.1f'|format(k.get('min_yukseklik_mm')) }}</span> mm
                         {% else %}&mdash;{% endif %}
                     </td>
                     <td style="text-align:right; font-family:var(--font-mono);">

@@ -67,37 +67,39 @@
 {# Metrikler — ozet grid (her kayitta var) #}
 <div class="card">
     <div class="card-title">Sonuç Metrikleri</div>
+    {# k.get(...) — eski şema kayıtlarında alan hiç olmayabilir; k.X Jinja
+       Undefined döndürüp "is not none" kontrolünü GEÇER ve format patlar. #}
     <div class="info-grid">
         <div class="info-item">
             <div class="info-label">Sipariş</div>
-            <div class="info-value">{{ k.siparis_sayisi if k.siparis_sayisi is not none else '-' }}</div>
+            <div class="info-value">{{ k.get('siparis_sayisi') if k.get('siparis_sayisi') is not none else '-' }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Parti</div>
-            <div class="info-value">{{ k.parti_sayisi if k.parti_sayisi is not none else '-' }}</div>
+            <div class="info-value">{{ k.get('parti_sayisi') if k.get('parti_sayisi') is not none else '-' }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Min. İstif Yüksekliği</div>
-            <div class="info-value">{% if k.min_yukseklik_mm is not none %}{{ '%.1f'|format(k.min_yukseklik_mm) }} mm{% else %}&mdash;{% endif %}</div>
+            <div class="info-value">{% if k.get('min_yukseklik_mm') is not none %}{{ '%.1f'|format(k.get('min_yukseklik_mm')) }} mm{% else %}&mdash;{% endif %}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Doluluk (voxel)</div>
-            <div class="info-value">{% if k.doluluk is not none %}{{ '%.1f'|format(k.doluluk * 100) }}%{% else %}&mdash;{% endif %}</div>
+            <div class="info-value">{% if k.get('doluluk') is not none %}{{ '%.1f'|format(k.get('doluluk') * 100) }}%{% else %}&mdash;{% endif %}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Hacim-Doluluk (gercek)</div>
             <div class="info-value">
-                {% if k.hacim_doluluk_pct is not none %}{{ '%.1f'|format(k.hacim_doluluk_pct) }}%{% else %}&mdash;{% endif %}
-                {% if k.hacim_eksik_parca %}<span style="font-size:11px; color:#b45309;">(eksik: {{ k.hacim_eksik_parca }})</span>{% endif %}
+                {% if k.get('hacim_doluluk_pct') is not none %}{{ '%.1f'|format(k.get('hacim_doluluk_pct')) }}%{% else %}&mdash;{% endif %}
+                {% if k.get('hacim_eksik_parca') %}<span style="font-size:11px; color:#b45309;">(eksik: {{ k.get('hacim_eksik_parca') }})</span>{% endif %}
             </div>
         </div>
         <div class="info-item">
             <div class="info-label">Kullanilan Plaka</div>
             <div class="info-value">
-                {% if k.plate_w_mm and k.plate_d_mm %}{{ '%.0f'|format(k.plate_w_mm) }} x {{ '%.0f'|format(k.plate_d_mm) }} mm{% if k.plate_auto %} <span class="badge" style="font-size:11px; background:#fff8e6; color:#92400e; border-color:#e0c268;">oto-turetildi</span>{% endif %}{% else %}&mdash;{% endif %}
+                {% if k.get('plate_w_mm') and k.get('plate_d_mm') %}{{ '%.0f'|format(k.get('plate_w_mm')) }} x {{ '%.0f'|format(k.get('plate_d_mm')) }} mm{% if k.get('plate_auto') %} <span class="badge" style="font-size:11px; background:#fff8e6; color:#92400e; border-color:#e0c268;">oto-turetildi</span>{% endif %}{% else %}&mdash;{% endif %}
             </div>
         </div>
-        {% if k.budget_exceeded %}
+        {% if k.get('budget_exceeded') %}
         <div class="info-item">
             <div class="info-label">Zaman Butcesi</div>
             <div class="info-value"><span class="badge" style="font-size:11px; background:#fff0f0; color:#b45309; border-color:#e08585;">asildi</span></div>

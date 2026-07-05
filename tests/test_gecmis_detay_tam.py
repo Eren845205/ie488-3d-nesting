@@ -222,18 +222,12 @@ class TestDetaySayfasi:
         assert "Musteri Yanit Taslagi" in html         # teklif karti
 
     def test_eski_kayit_geriye_uyum(self, client_llm, app_with_llm):
-        # detay JSON'suz kayit (ozellik-oncesi gercek kayit semasiyla) KIRMAZ
+        # detay JSON'suz + EKSIK-ALANLI kayit (cok eski sema — orn.
+        # hacim_doluluk_pct alanindan onceki kayitlar) sayfayi KIRMAZ.
+        # Gercek 500 vakasi: k.X Jinja Undefined donduruyor, "is not none"
+        # kontrolu geciyor ve format() patliyordu — template k.get(...) kullanir.
         store = app_with_llm.config["OTONOM_GECMIS"]
-        kayit = store.kaydet({
-            "musteri": "ESKI", "durum": "bitti", "kaynak": "manuel",
-            "mod": "auto", "secilen_mod": None, "auto_mode_reason": None,
-            "nfv_quality": "fast", "siparis_sayisi": 1, "parti_sayisi": 1,
-            "min_yukseklik_mm": 42.0, "doluluk": 0.5, "plate_w_mm": None,
-            "plate_d_mm": None, "plate_auto": None, "hacim_doluluk_pct": None,
-            "hacim_eksik_parca": None, "budget_exceeded": False,
-            "toplam_fiyat": 100.0, "sure_sn": 3.0, "asamalar": [],
-            "order_ids": [],
-        })
+        kayit = store.kaydet({"musteri": "ESKI", "durum": "bitti", "kaynak": "manuel"})
         resp = client_llm.get(f"/gecmis/{kayit['id']}")
         assert resp.status_code == 200
         html = resp.data.decode("utf-8")
