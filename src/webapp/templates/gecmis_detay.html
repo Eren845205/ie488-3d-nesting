@@ -43,6 +43,9 @@
         {% if detay %}
             <span class="badge" style="background:var(--surface-2); color:var(--ink-soft); border-color:var(--line-2);" title="Bu kayıt koşu anında kalıcılaştırıldı — tüm detaylar sunucu yeniden başlasa da erişilebilir.">&#128190; Tam kayıt</span>
         {% endif %}
+        {% if k.get('kosu_siparis_sayisi') %}
+            <span class="badge" style="background:var(--surface-2); color:var(--ink-soft); border-color:var(--line-2);" title="Bu sipariş, aynı gözcü taramasında yakalanan {{ k.get('kosu_siparis_sayisi') }} siparişlik tek koşuda işlendi (koşu {{ k.get('kosu_id') }}). Süre alanı koşunun toplamıdır; diğer siparişler geçmişte ayrı satırlardır.">&#128279; Aynı koşuda {{ k.get('kosu_siparis_sayisi') }} siparişten biri</span>
+        {% endif %}
     </div>
     <p style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-top:8px;">
         {{ (k.zaman or '') | replace('T', ' &nbsp; ') | safe }}
@@ -121,7 +124,7 @@
             <div class="info-value" style="color:var(--ok);">{{ '%.2f'|format(k.toplam_fiyat or 0) }} USD</div>
         </div>
         <div class="info-item">
-            <div class="info-label">İşlem Süresi</div>
+            <div class="info-label">İşlem Süresi{% if k.get('kosu_siparis_sayisi') %} (koşu toplamı){% endif %}</div>
             <div class="info-value">
                 {% set s = (k.sure_sn or 0) | float %}
                 {% if s >= 60 %}{{ (s // 60) | int }}:{{ '%02d'|format((s % 60) | int) }} dk{% else %}{{ '%.0f'|format(s) }} sn{% endif %}

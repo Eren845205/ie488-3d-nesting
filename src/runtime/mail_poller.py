@@ -196,9 +196,20 @@ def process_inbox_once(
     _idem_key_for = getattr(mail_source, "idem_key_for", None)
     if _idem_key_for is not None:
         try:
-            _idem_keys = [k for k in (_idem_key_for(m) for m in order_mails) if k]
+            _idem_keys = []
+            _idem_map = {}  # order_id -> mail anahtari (siparis-bazli gecmis kaydi)
+            for _o, _m in zip(orders, order_mails):
+                _k = _idem_key_for(_m)
+                if not _k:
+                    continue
+                _idem_keys.append(_k)
+                _oid = _o.get("order_id")
+                if _oid:
+                    _idem_map[str(_oid)] = _k
             if _idem_keys:
                 result["_idem_keys"] = _idem_keys
+                if _idem_map:
+                    result["_idem_key_map"] = _idem_map
         except Exception as exc:
             logger.warning("mail_poller: idem_key_for basarisiz -- %s", exc)
 

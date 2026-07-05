@@ -61,10 +61,15 @@ class TestGecmisEntegrasyon:
         assert "İşlenen İşler" in html
 
     def test_otonom_iki_kez_iki_kayit(self, client_llm, app_with_llm):
+        # SIPARIS-BAZLI kayit (2026-07-05): demo mailbox her kosuda 2 ayri
+        # siparis uretir (Ford + BOSCH, ayri partiler) -> kosu basina 2 kayit.
         client_llm.post("/otonom", json={})
+        onceki = len(app_with_llm.config["OTONOM_GECMIS"].liste())
         client_llm.post("/otonom", json={})
         store = app_with_llm.config["OTONOM_GECMIS"]
-        assert len(store.liste()) == 2
+        # Ikinci kosu ayni sayida YENI kayit ekler (kosu basina sabit)
+        assert len(store.liste()) == onceki * 2
+        assert onceki >= 1
 
     def test_gecmis_kaydinda_asama_ozeti_var(self, client_llm, app_with_llm):
         client_llm.post("/otonom", json={})
@@ -198,11 +203,12 @@ class TestGecmisSil:
         assert resp.status_code == 302
 
     def test_sil_liste_sayfasindan_kayit_kaybolur(self, client_llm, app_with_llm):
+        # Siparis-bazli kayit: kosu birden cok kayit uretebilir — HEPSI
+        # silinince liste bosalir (silme kayit-bazli calismaya devam eder).
         client_llm.post("/otonom", json={})
         store = app_with_llm.config["OTONOM_GECMIS"]
-        kayit_id = store.liste()[0]["id"]
-
-        client_llm.post(f"/gecmis/{kayit_id}/sil")
+        for k in list(store.liste()):
+            client_llm.post(f"/gecmis/{k['id']}/sil")
         html = client_llm.get("/gecmis").data.decode("utf-8")
         assert "Henüz işlenmiş" in html or "Boş" in html
 

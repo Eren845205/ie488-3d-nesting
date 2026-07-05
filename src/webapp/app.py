@@ -631,12 +631,160 @@ def _register_routes(
         _shared_idem_store = _SqliteIdemStore(db_path=_idem_db_path)
     app.config["SHARED_IDEM_STORE"] = _shared_idem_store
 
+    def _siparis_gruplari(ranked, batches):
+        """Siparisleri parti-paylasimina gore gruplara ayir (union-find).
+
+        Siparis-bazli gecmis (kullanici karari 2026-07-05): ayni taramada
+        islenen her siparis AYRI kayit olur — operator siparisle dusunur,
+        kosuyla degil; silme/yeniden-isleme de siparis-bazli ayrisir.
+        AYRISTIRILAMAZ kural: ayni partide yer alan siparisler (batching
+        birlestirdiyse) tek grupta kalir — partinin nesting'i bolunmez.
+        Partisiz siparis kendi basina grup; ranked bos -> tek grup (eski
+        davranis, hata kayitlari tek satir).
+        """
+        def _oid(o):
+            v = getattr(o, "order_id", None)
+            if v is None and isinstance(o, dict):
+                v = o.get("order_id")
+            return str(v) if v else None
+
+        if not ranked:
+            return [{"orders": [], "batches": list(batches)}]
+
+        parent = {}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        oids = []
+        for _i, o in enumerate(ranked):
+            i = _oid(o) or f"_anon{_i}"
+            parent.setdefault(i, i)
+            oids.append(i)
+
+        batch_temsilci = {}
+        for bi, b in enumerate(batches):
+            b_orders = getattr(b, "orders", None)
+            if b_orders is None and isinstance(b, dict):
+                b_orders = b.get("orders")
+            uyeler = [x for x in (_oid(o) for o in (b_orders or [])) if x in parent]
+            if uyeler:
+                for x in uyeler[1:]:
+                    union(uyeler[0], x)
+                batch_temsilci[bi] = uyeler[0]
+
+        gruplar = {}
+        for o, i in zip(ranked, oids):
+            gruplar.setdefault(find(i), {"orders": [], "batches": []})["orders"].append(o)
+        for bi, b in enumerate(batches):
+            temsil = batch_temsilci.get(bi)
+            if temsil is not None:
+                gruplar[find(temsil)]["batches"].append(b)
+            else:
+                # Sahipsiz parti (order eslesmedi): ilk gruba — kaybolmasin.
+                next(iter(gruplar.values()))["batches"].append(b)
+        return list(gruplar.values())
+
     def _gecmis_kaydet(pipeline_result, *, mod, nfv_quality="fast",
                        asamalar=None, kaynak="manuel"):
-        """Bir pipeline sonucunu is gecmisine ozet olarak yaz (DRY: manuel+otomatik).
+        """Bir pipeline sonucunu gecmise SIPARIS-BAZLI kayitlarla yaz.
 
-        kaynak: "manuel" (operator /otonom butonu) | "otomatik" (poller).
-        asamalar: ham asama listesi (manuel'de var, poller'da None). Ozetlenir.
+        kaynak: "manuel" (operator) | "otomatik" (poller). Ayni kosuda islenen
+        her siparis(-grubu) icin AYRI kayit + AYRI detay/GLB yazilir; ortak
+        kosu kimligi kosu_id/kosu_siparis_sayisi alanlarinda tasinir.
+        Donus: yazilan kayit dict'lerinin listesi (truthy) | False (hicbiri
+        yazilamadi — poller mail'i islendi saymaz).
+        """
+        ranked = pipeline_result.get("ranked_orders", []) or []
+        batches = pipeline_result.get("batches", []) or []
+        try:
+            gruplar = _siparis_gruplari(ranked, batches)
+        except Exception:
+            logger.error("gecmis_kaydet: gruplama basarisiz — tek kayit yolu",
+                         exc_info=True)
+            gruplar = [{"orders": list(ranked), "batches": list(batches)}]
+
+        idem_map = pipeline_result.get("_idem_key_map") or {}
+        flat_keys = pipeline_result.get("_idem_keys") or []
+        nesting_results = pipeline_result.get("nesting_results", {}) or {}
+        pricing_results = pipeline_result.get("pricing_results", {}) or {}
+        warnings_all = pipeline_result.get("warnings", []) or []
+
+        ekstra = {}
+        if len(gruplar) > 1:
+            ekstra = {"kosu_id": secrets.token_hex(4),
+                      "kosu_siparis_sayisi": len(ranked)}
+
+        kayitlar = []
+        if len(gruplar) == 1:
+            # TEK grup = bolme yok -> alt-kumeleme YAPMA, tam sonucu gecir.
+            # (Eski davranis birebir; ayrica stub/hata sonuclarinda batch
+            # kimligi cozulemese bile nesting notlari kaybolmaz.)
+            grup_keys = list(flat_keys)
+            sub = {
+                **{k: v for k, v in pipeline_result.items()
+                   if not str(k).startswith("_")},
+                **({"_idem_keys": grup_keys} if grup_keys else {}),
+            }
+            kayit = _tek_kayit_yaz(sub, mod=mod, nfv_quality=nfv_quality,
+                                   asamalar=asamalar, kaynak=kaynak, ekstra=ekstra)
+            return [kayit] if kayit else False
+
+        for grup in gruplar:
+            bids = set()
+            for b in grup["batches"]:
+                bid = getattr(b, "batch_id", None)
+                if bid is None and isinstance(b, dict):
+                    bid = b.get("batch_id")
+                if bid:
+                    bids.add(bid)
+            oids = []
+            for o in grup["orders"]:
+                _oid = getattr(o, "order_id", None)
+                if _oid is None and isinstance(o, dict):
+                    _oid = o.get("order_id")
+                if _oid:
+                    oids.append(str(_oid))
+            if idem_map:
+                grup_keys = [idem_map[i] for i in oids if i in idem_map]
+            elif len(gruplar) == 1:
+                grup_keys = list(flat_keys)  # eski akis (map'siz) geriye uyum
+            else:
+                grup_keys = []
+
+            def _w_ait(w):
+                wb = w.get("batch_id") if isinstance(w, dict) else getattr(w, "batch_id", None)
+                return (wb is None) or (wb in bids)
+
+            sub = {
+                "ranked_orders": grup["orders"],
+                "batches": grup["batches"],
+                "nesting_results": {k: v for k, v in nesting_results.items() if k in bids},
+                "pricing_results": {k: v for k, v in pricing_results.items() if k in bids},
+                "warnings": [w for w in warnings_all if _w_ait(w)],
+                "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+                **({"_idem_keys": grup_keys} if grup_keys else {}),
+            }
+            kayit = _tek_kayit_yaz(sub, mod=mod, nfv_quality=nfv_quality,
+                                   asamalar=asamalar, kaynak=kaynak, ekstra=ekstra)
+            if kayit:
+                kayitlar.append(kayit)
+        return kayitlar if kayitlar else False
+
+    def _tek_kayit_yaz(pipeline_result, *, mod, nfv_quality="fast",
+                       asamalar=None, kaynak="manuel", ekstra=None):
+        """TEK siparis-grubunun ozet kaydini + detayini/GLB'lerini yaz.
+
+        pipeline_result: tam kosu SONUCUNUN grup-alt-kumesi (ranked/batches/
+        nesting/pricing yalniz bu gruba ait). Eski tek-kayit govdesi.
         """
         try:
             ranked = pipeline_result.get("ranked_orders", [])
@@ -766,6 +914,7 @@ def _register_routes(
                     "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
                     "asamalar": _asama_ozet,
                     "order_ids": _order_ids,
+                    **(ekstra or {}),
                     **({"_idem_keys": _idem_keys} if kaynak == "otomatik" and _idem_keys else {}),
                 },
                 dedup_key=_dedup_key,
@@ -931,12 +1080,14 @@ def _register_routes(
         # secilen_mod=nesting_mode_used ile duser (rapor-only).
         # R1 #4: kayit yazilamadiysa RAISE — process_inbox_once mark'i atlar,
         # mail sonraki turda yeniden denenir ("gorunmez is" olusamaz).
-        kayit = _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik")
-        if not kayit:
+        kayitlar = _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik")
+        if not kayitlar:
             raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
         # Gozcu panosu "Detaylari gor" linki icin son kayit id'si (rapor-only).
-        if isinstance(kayit, dict) and kayit.get("id"):
-            app.config["SON_GECMIS_ID"] = kayit["id"]
+        # Coklu siparis kosusunda EN SON yazilan kaydin id'si kullanilir;
+        # operator digerlerini /gecmis listesinde ayri satirlar olarak gorur.
+        if isinstance(kayitlar, list) and kayitlar and kayitlar[-1].get("id"):
+            app.config["SON_GECMIS_ID"] = kayitlar[-1]["id"]
 
     try:
         _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
