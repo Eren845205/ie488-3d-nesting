@@ -1118,6 +1118,11 @@ def _register_routes(
         result = run_pipeline(scenario)
         result["used_demo"] = used_demo
         app.config["LAST_RESULT"] = result
+        # Manuel /run kosusu da KALICI gecmise duser (tam detay + GLB) —
+        # operatorun "calistir" dedigi is sonradan /gecmis'ten her detayiyla
+        # (3D dahil) incelenebilir. Kayit hatasi kosuyu BLOKLAMAZ (loglanir).
+        _gecmis_kaydet(result, mod=nesting_mode, nfv_quality=nfv_quality,
+                       kaynak="manuel")
         # Sohbet gecmisi: session'a sifirla (per-kullanici izolasyonu, Bulgu 5)
         session["conversation_turns"] = []
         app.config["CONVERSATION_TURNS"] = []  # geriye-donuk uyumluluk

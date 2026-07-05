@@ -211,6 +211,24 @@ class TestGecmisKaydetDetay:
 # Route'lar
 # ---------------------------------------------------------------------------
 
+class TestRunGecmiseYazar:
+    def test_run_kosusu_gecmise_tam_detayla_duser(self, client_llm, app_with_llm):
+        """Ana ekrandaki manuel 'calistir' (/run) da kalici gecmise yazmali."""
+        r = client_llm.post("/run", data={"scenario_type": "rich"})
+        assert r.status_code == 302  # /sonuc'a redirect
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        kayitlar = store.liste()
+        assert len(kayitlar) >= 1
+        kayit = kayitlar[0]
+        assert kayit.get("kaynak") == "manuel"
+        detay = store.detay_get(kayit["id"])
+        assert detay is not None
+        assert detay.get("nesting_results")
+        # Detay sayfasi zengin bolumlerle acilir
+        html = client_llm.get(f"/gecmis/{kayit['id']}").data.decode("utf-8")
+        assert "Toplam Fiyat Onerisi" in html
+
+
 class TestDetaySayfasi:
     def test_zengin_detay_bolumleri_render(self, client_llm, app_with_llm):
         client_llm.post("/otonom", json={})
