@@ -482,6 +482,25 @@ class TestPollDurumDetayLinki:
     def test_last_gecmis_id_alani_var(self, client_llm):
         data = client_llm.get("/poll/durum").get_json()
         assert "last_gecmis_id" in data
+        assert "last_gecmis_kayitlar" in data
+
+    def test_coklu_siparis_her_kayit_icin_link_verisi(self, app_with_llm):
+        """Coklu siparis kosusunda /poll/durum HER kaydin id+etiketini tasir
+        (gozcu panosu siparis basina ayri 'detaylari gor' linki basar)."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        yardimci = TestSiparisBazliKayit()
+        kayitlar = fn(yardimci._iki_plan_result(), mod="auto", kaynak="otomatik")
+        # _poll_on_result'un yaptigi atama:
+        app_with_llm.config["SON_GECMIS_ID"] = kayitlar[-1]["id"]
+        app_with_llm.config["SON_GECMIS_KAYITLAR"] = [
+            {"id": k["id"], "musteri": k.get("musteri"),
+             "order_ids": k.get("order_ids") or []}
+            for k in kayitlar
+        ]
+        data = app_with_llm.test_client().get("/poll/durum").get_json()
+        assert len(data["last_gecmis_kayitlar"]) == 2
+        oidler = {tuple(k["order_ids"]) for k in data["last_gecmis_kayitlar"]}
+        assert oidler == {("PLAN-1",), ("PLAN-3",)}
 
     def test_poll_on_result_son_id_yazar(self, app_with_llm):
         # _poll_on_result semantigi: basarili kayit -> SON_GECMIS_ID guncellenir.

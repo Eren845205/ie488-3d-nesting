@@ -735,12 +735,31 @@
             if (durum.last_error) {
                 html += '<span style="color:var(--err); font-size:12px;">hata: ' + escapeHtml(durum.last_error) + '</span>';
             }
-            if (durum.last_gecmis_id) {
-                // Son otomatik isin kalici detay sayfasi — nesting/fiyat/3D/teklif
-                html += '<a href="/gecmis/' + encodeURIComponent(durum.last_gecmis_id) + '" ' +
-                        'style="margin-left:auto; font-size:12px; font-weight:700; color:var(--accent-ink); ' +
+            var kayitlar = durum.last_gecmis_kayitlar || [];
+            if (!kayitlar.length && durum.last_gecmis_id) {
+                kayitlar = [{id: durum.last_gecmis_id, musteri: null, order_ids: []}];
+            }
+            if (kayitlar.length) {
+                // Son kosunun kalici detay sayfalari — coklu sipariste her
+                // kayit ayri link (nesting/fiyat/3D/teklif siparis-bazli).
+                var linkStil = 'font-size:12px; font-weight:700; color:var(--accent-ink); ' +
                         'text-decoration:none; border:1px solid var(--accent); background:var(--accent-soft); ' +
-                        'border-radius:6px; padding:4px 10px; white-space:nowrap;">Son işin detaylarını gör &rarr;</a>';
+                        'border-radius:6px; padding:4px 10px; white-space:nowrap;';
+                html += '<span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">';
+                kayitlar.forEach(function (kk, ki) {
+                    var etiket;
+                    if (kayitlar.length === 1) {
+                        etiket = 'Son işin detaylarını gör';
+                    } else {
+                        etiket = (kk.order_ids && kk.order_ids.length)
+                            ? kk.order_ids.join(', ')
+                            : (kk.musteri || ('İş ' + (ki + 1)));
+                        etiket += ' detayları';
+                    }
+                    html += '<a href="/gecmis/' + encodeURIComponent(kk.id) + '" style="' + linkStil + '">' +
+                            escapeHtml(etiket) + ' &rarr;</a>';
+                });
+                html += '</span>';
             }
             html += '</div>';
             pano.innerHTML = html;

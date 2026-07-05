@@ -1083,11 +1083,16 @@ def _register_routes(
         kayitlar = _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik")
         if not kayitlar:
             raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
-        # Gozcu panosu "Detaylari gor" linki icin son kayit id'si (rapor-only).
-        # Coklu siparis kosusunda EN SON yazilan kaydin id'si kullanilir;
-        # operator digerlerini /gecmis listesinde ayri satirlar olarak gorur.
-        if isinstance(kayitlar, list) and kayitlar and kayitlar[-1].get("id"):
-            app.config["SON_GECMIS_ID"] = kayitlar[-1]["id"]
+        # Gozcu panosu "Detaylari gor" linkleri icin son kosunun kayitlari
+        # (rapor-only). Coklu siparis kosusunda HER kayit ayri link olur.
+        if isinstance(kayitlar, list) and kayitlar:
+            app.config["SON_GECMIS_ID"] = kayitlar[-1].get("id")
+            app.config["SON_GECMIS_KAYITLAR"] = [
+                {"id": k.get("id"),
+                 "musteri": k.get("musteri"),
+                 "order_ids": k.get("order_ids") or []}
+                for k in kayitlar if k.get("id")
+            ]
 
     try:
         _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
@@ -1149,6 +1154,8 @@ def _register_routes(
         snap = _poller.state.snapshot()
         # Son otomatik isin gecmis-detay linki (UI "Detaylari gor" butonu).
         snap["last_gecmis_id"] = app.config.get("SON_GECMIS_ID")
+        # Coklu siparis kosusu: her kayit icin ayri link (id + etiket).
+        snap["last_gecmis_kayitlar"] = app.config.get("SON_GECMIS_KAYITLAR") or []
         return jsonify(snap)
 
     @app.route("/poll/baslat", methods=["POST"])
