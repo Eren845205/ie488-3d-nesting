@@ -189,6 +189,19 @@ def process_inbox_once(
         )
         return None  # kesin degil -> mark_processed ETME
 
+    # "Gecmisten sil -> yeniden islenebilir": order ureten maillerin idempotency
+    # anahtarlarini sonuca ekle (varsa) -> on_result/_gecmis_kaydet bunlari
+    # gecmis kaydina yazar; kayit silinince route bu anahtarlari da acar.
+    # mail_source.idem_key_for yoksa (FakeMailbox/eski kaynak) sessizce atlanir.
+    _idem_key_for = getattr(mail_source, "idem_key_for", None)
+    if _idem_key_for is not None:
+        try:
+            _idem_keys = [k for k in (_idem_key_for(m) for m in order_mails) if k]
+            if _idem_keys:
+                result["_idem_keys"] = _idem_keys
+        except Exception as exc:
+            logger.warning("mail_poller: idem_key_for basarisiz -- %s", exc)
+
     # SIRALAMA (R1 #4): gecmis/gozlemci kaydi mark'tan ONCE. Ters sira
     # "gorunmez is" uretir: mail kalici isaretlenir ama gecmis yazimi (disk
     # dolu vb.) sessizce duserse operator isin yapildigini asla goremez ve

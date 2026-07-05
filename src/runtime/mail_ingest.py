@@ -431,6 +431,18 @@ class ImapMailbox(MailSource):
         """
         return _idempotency_key("imap", self.user, uid)
 
+    def idem_key_for(self, mail: "RawMail") -> Optional[str]:
+        """Bir RawMail icin idempotency anahtarini dondurur (register ETMEZ).
+
+        "Gecmisten sil -> yeniden islenebilir" ozelligi icin: gecmis kaydina
+        islenen mail(ler)in anahtarlari yazilir; kayit silinince bu anahtarlar
+        idempotency store'dan da dusurulur (mail.uid None ise None doner —
+        FakeMailbox/geriye uyum, sessizce atlanir).
+        """
+        if not mail.uid:
+            return None
+        return self._idem_key(mail.uid)
+
     def _fetch_uids(self, conn: imaplib.IMAP4) -> List[str]:
         """Islenecek UID'leri dondurur.
 

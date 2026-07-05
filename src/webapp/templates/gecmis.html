@@ -11,6 +11,12 @@
         Mail çekme, parti planlama, yerleşim ve fiyatlandırma sonuçları burada saklanır;
         uygulama yeniden başlasa da kalır.
     </p>
+    {% if idem_uyari %}
+    <div class="pool-summary-bar" style="background:var(--warn-soft, #fff3cd); border-color:var(--warn, #b8860b); color:var(--warn, #b8860b);">
+        <span class="badge badge-yellow">Uyarı</span>
+        Kayıt silindi ancak idempotency anahtarı kaldırılamadı — ilgili mail otomatik olarak yeniden işlenmeyebilir.
+    </div>
+    {% endif %}
     <div class="pool-summary-bar">
         {% if kayitlar %}
             <span class="badge badge-green">{{ kayitlar | length }} iş</span>
@@ -39,6 +45,7 @@
                     <th style="text-align:right;">Fiyat</th>
                     <th style="text-align:right;">Süre</th>
                     <th>Durum</th>
+                    <th></th>
                     <th></th>
                 </tr>
             </thead>
@@ -98,6 +105,13 @@
                         {% endif %}
                     </td>
                     <td style="text-align:right; color:var(--accent); font-weight:700; font-size:16px;">&rsaquo;</td>
+                    <td onclick="event.stopPropagation();">
+                        <form method="POST" action="/gecmis/{{ k.id }}/sil"
+                              onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} (Otomatik işlenen mail, hâlâ gelen kutusu penceresindeyse yeniden işlenebilir olur.){% elif k.kaynak == 'otomatik' %} (Bu eski kayıt idempotency anahtarı taşımıyor — yeniden işleme garantisi yok.){% endif %}')">
+                            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Sil</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

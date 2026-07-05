@@ -663,6 +663,12 @@ def _register_routes(
                 if _oid:
                     _order_ids.append(_oid)
             _order_ids = sorted(set(_order_ids))
+            # _idem_keys: poller (process_inbox_once) order ureten maillerin
+            # idempotency anahtarlarini pipeline_result['_idem_keys']'e yazar
+            # (bkz. mail_poller.py). Gecmis kaydina `_`-onekli ic alan olarak
+            # yazilir (liste()/get() bunlari zaten ayiklar) -- "gecmisten sil
+            # -> yeniden islenebilir" ozelligi bu alani okur (route asagida).
+            _idem_keys = pipeline_result.get("_idem_keys") or []
             # dedup_key: yalniz kaynak=="otomatik" ve order_ids doluysa.
             # JSON array string -> ayirici-collision yok (order_id formati
             # degisse bile ikircilsiz; "|".join collision-safe degildi).
@@ -705,6 +711,7 @@ def _register_routes(
                     "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
                     "asamalar": _asama_ozet,
                     "order_ids": _order_ids,
+                    **({"_idem_keys": _idem_keys} if kaynak == "otomatik" and _idem_keys else {}),
                 },
                 dedup_key=_dedup_key,
             )
@@ -2406,7 +2413,11 @@ def _register_routes(
     def gecmis():
         """Daha once islenen otonom nesting isleri (en yeni ustte)."""
         kayitlar = _otonom_gecmis.liste(limit=100)
-        return render_template("gecmis.html", kayitlar=kayitlar)
+        return render_template(
+            "gecmis.html",
+            kayitlar=kayitlar,
+            idem_uyari=(request.args.get("idem_uyari") == "1"),
+        )
 
     @app.route("/gecmis/<kayit_id>", methods=["GET"])
     def gecmis_detay(kayit_id: str):
@@ -2419,6 +2430,35 @@ def _register_routes(
         if kayit is None:
             return redirect(url_for("gecmis"))
         return render_template("gecmis_detay.html", k=kayit)
+
+    @app.route("/gecmis/<kayit_id>/sil", methods=["POST"])
+    def gecmis_sil(kayit_id: str):
+        """Bir gecmis kaydini kalici sil.
+
+        "Gecmisten sil -> yeniden islenebilir": kayit otomatik (poller) kaynakli
+        ve mail(ler)in idempotency anahtarlarini tasiyorsa (_idem_keys), bu
+        anahtarlar paylasimli idempotency store'dan da dusurulur -> mail(ler)
+        gozcunun sonraki taramasinda HALA pencerede ise (son ~20 mail) yeni
+        mail gibi yeniden islenir. Eski kayitlarda _idem_keys yoksa (gecmis
+        veri) yalniz kayit silinir -- yeniden-isleme garantisi verilmez.
+        """
+        kayit = _otonom_gecmis.sil(kayit_id)
+        _idem_uyari = False
+        if kayit is not None:
+            for _key in (kayit.get("_idem_keys") or []):
+                try:
+                    _shared_idem_store.unregister(_key)
+                except Exception as exc:
+                    logger.warning(
+                        "gecmis_sil: idempotency anahtari silinemedi (%s): %s",
+                        kayit_id, exc,
+                    )
+                    _idem_uyari = True
+        if _idem_uyari:
+            # Kayit silindi ama idempotency anahtari kaldirilamadi -> mail
+            # yeniden islenmeyebilir; kullaniciya /gecmis listesinde goster.
+            return redirect(url_for("gecmis") + "?idem_uyari=1")
+        return redirect(url_for("gecmis"))
 
     # -----------------------------------------------------------------------
     # Mail Ayarlari rotasi (UI'dan gercek gelen-kutusu baglama)

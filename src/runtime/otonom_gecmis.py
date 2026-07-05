@@ -11,6 +11,7 @@ seyrek oldugundan (operator-tetikli) bu yeterli.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -94,6 +95,45 @@ class OtonomGecmisStore:
                 return self._strip_internal(k)
         return None
 
+    def sil(self, kayit_id: str) -> Optional[Dict[str, Any]]:
+        """Bir kaydi kalici olarak siler; dosyayi (kayit disinda) yeniden yazar.
+
+        Bulunamazsa None dondurur (dosya degismez). Bulunursa TAM kaydi
+        (ic `_`-onekli alanlar DAHIL — orn. `_dedup_key`, `_idem_keys`)
+        dondurur ki cagiran (route) idempotency anahtarlarini da
+        acabilsin (yeniden-islenebilirlik). Kaydin silinmesi kendiliginden
+        dedup_key'i acar: kaydet() dedup kontrolu mevcut satirlari taradigi
+        icin silinen kayit artik eslesmez -> ayni dedup_key ile yeni kayit
+        yazilabilir. Atomik: tek self._lock icinde oku+yaz; dosya yazimi
+        gecici dosyaya yapilip os.replace() ile degistirilir — crash orta
+        yerde olsa bile ya eski (butun) icerik ya da yeni (butun) icerik
+        gorulur, kismi/kesik dosya (ve ilgisiz kayit kaybi) olmaz.
+        """
+        with self._lock:
+            kayitlar = self._oku_kilitsiz()
+            bulunan: Optional[Dict[str, Any]] = None
+            kalanlar: List[Dict[str, Any]] = []
+            for k in kayitlar:
+                if bulunan is None and k.get("id") == kayit_id:
+                    bulunan = k
+                    continue
+                kalanlar.append(k)
+            if bulunan is None:
+                return None
+            lines = [
+                json.dumps(k, ensure_ascii=False, default=str) for k in kalanlar
+            ]
+            content = "\n".join(lines)
+            if content:
+                content += "\n"
+            tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
+            with tmp_path.open("w", encoding="utf-8") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, self._path)
+            return bulunan
+
     # -- ic --------------------------------------------------------------
 
     @staticmethod
@@ -102,8 +142,15 @@ class OtonomGecmisStore:
 
         Dedup kontrolu kaydet() icinde _oku_kilitsiz uzerinden yapilir;
         bu ayiklama YALNIZ disa acik liste()/get() icindir -> dedup bozulmaz.
+
+        Ayiklamadan SONRA turetilmis `yeniden_islenebilir` bayragi eklenir:
+        kayit idempotency anahtarlari (_idem_keys) tasiyorsa True. Eski/edge
+        kayitlarda bu alan olmayabilir -> False (yanlis "yeniden islenebilir"
+        vaadi verilmez).
         """
-        return {k: v for k, v in kayit.items() if not k.startswith("_")}
+        temiz = {k: v for k, v in kayit.items() if not k.startswith("_")}
+        temiz["yeniden_islenebilir"] = bool(kayit.get("_idem_keys"))
+        return temiz
 
     def _oku_kilitsiz(self) -> List[Dict[str, Any]]:
         """Dosyadan lock almadan oku — yalnizca self._lock icinde cagrilmali."""
