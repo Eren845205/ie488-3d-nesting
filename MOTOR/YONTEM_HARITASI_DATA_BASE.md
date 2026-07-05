@@ -384,6 +384,14 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 - **H-15p fix (rev-2) — BAĞLANDI ve E2E-KANITLI:** (1) **Kabuk yolunda kısıtlı coarse arama** — wall_aware tetiğinde `menu={dblf_only}`: coarse 5626s → **38.6s ölçüldü**; zincir testi v2: **6272s → 553s (11.3×), 282.0 BİREBİR, kriter A+C PASS, RAM 1.11GB**. wall_aware False = birebir (menu=None). (2) `skip_fine_angle` + telemetri (`coarse_time_s/fine_time_s/winning_config/fine_angle_*` her C2F koşusunda rapor-only) bağlı; skip şimdilik defansif. (3) KALAN: dirty-region drop önbelleği — yeni darboğaz fine geçişi 514s (%93); tahmini 553s → ~100-150s bandı. (4) GPU drop — marjinal.
 - **Ders:** (1) Meta-ders #11 İKİ KEZ üst üste: K-20 "drop" dedi (ölçümsüz), ben "rafine" dedim (yarı-ölçümlü) — süre atfı ancak SENTEZ ORANI ~1.0 verince kapanır; "kalan pay = şüpheli X" çıkarımı atıf DEĞİLDİR. (2) Tuner portföyü özdeş-parça-bloklu kabuk verisinde değer üretmiyor — arama uzayı (sıra permütasyonu) tip-simetrisi yüzünden çökük; portföy bütçesi aile-farkındalı olmalı. (3) Reviewer'ın "efficacy" incelemesi (kablo gerçekten çalışıyor mu) en az korelasyon incelemesi kadar değerli — H1 olmasa sahte-güvenli 8× iddiası handoff'a girecekti.
 
+#### [H-16] Dirty-region drop_map önbelleği — kabuk fine geçişi 4.1×
+- **Durum:** ✅ GO (prototip; OPT-IN, default KAPALI, üretime BAĞLI DEĞİL) · **Tarih:** 2026-07-05 · **Kanıt:** `scripts/h16_on_analiz.py`+log (ön-analiz) + `scripts/h16_kapi.py`+log (kapı) + `tests/test_bin3d_dropcache.py` (donmuş-referans)
+- **Ne:** Bir yerleştirme drop_map'i yalnız yerel değiştirir hipotezi ÖNCE ölçüldü: sızıntı 0/20 (fark tam (changed-bbox+(fw-1,fh-1)) penceresi içinde), bit-özdeşlik 20/20 (tamsayı max tek-redüksiyon → yerel yeniden-hesap = full), etkilenen aday oranı ort %2.7 / p90 %7.3. Sonra `Bin3D(drop_cache=True, drop_cache_cap_mb=300)`: footprint-anahtarlı Z_prev cache (anahtar `id(orient)` + güçlü-referans pinning + `is` guard — GC/id-reuse yapısal kapalı) + place-başına DISJOINT dirty-pencere yeniden-hesabı (birleşik-bbox denendi: uzak-köşe yerleşimlerde tüm grid'e şişiyordu, 201s→119s) + LRU eviction (doğruluk-nötr: atılan anahtar tam-hesaba düşer).
+- **Sonuç (Deneme4 @0.5 wall_aware fine, 588 parça):** fine **493.8s → 119.4s = 4.1×**, 282.0 BİREBİR + yerleşim listesi BİREBİR, tepe RAM +0.03GB (cache 43.6MB, 0 eviction), hit %90.3. Toplam kabuk koşusu tahmini ~9.2dk → **~2.6dk**. Atıf sentezi: ölçülen cache-siz fine 493.8s / atıf 514s = 0.96 ✓.
+- **Ön-analiz tahmini İYİMSERDİ (14-38s vs ölçülen 119s):** 40 zorunlu ilk-hesap (~34s) + 17 fallback (~14s) + hit-başına birikmiş kirlilik + `_best_position` full-Z argmin sabit tabanı (~71s). Kalan optimizasyon açığı: coarse-Z warm-start + artımlı argmin (marjinal, şimdilik gerek yok).
+- **ÜRETİME BAĞLAMA ÖN-ŞARTLARI (reviewer PASS, 0 CRITICAL/HIGH; wiring ayrı review turu ister):** (1) MEDIUM-2 thread-safety — cache kilitsiz; şu an güvenli (drop_map yalnız tek-thread yollardan; parallel_decode OccupancyBin3D kullanıyor) ama wiring anında per-thread Bin3D garantisi VEYA lock ŞART. (2) drop_map dönen dizi cache açıkken SALT-OKUR (docstring'de invaryant; mevcut çağıranlar doğrulandı). (3) cap_mb yalnız Z bütçesi (orient pinning + log hariç). Test boşlukları (fallback dalı + z_clearance>0 incremental) fixer'la KAPANDI.
+- **Ders:** Ölç-önce üç ön-koşulu (sızıntı/bit-özdeşlik/kirlilik) ucuza doğruladı ve prototip riskini sıfırladı; ama süre TAHMİNİ yine iyimserdi — maliyet modeli sabit ek yükleri (zorunlu miss'ler, argmin tabanı) saymalı. Kazanç yönü ve kalite-nötrlük yine de doğru çıktı: ön-analiz GO/NO-GO için güvenilir, süre bandı için değil.
+
 > **HIZ ÖZET:** Birebir/kaliteyi-bozmayan KOLAY-ORTA NFV hız kaldıraçları TÜKENDİ (NFV zaten 3-5.5×). **2026-06-26
 > ÜRETİM gerçek-veri yolu:** Plan2 default heightmap ÇÖKÜYORDU → **OOM-chunk (H-12) çökme giderildi (birebir)** +
 > **çift-voxelize (H-13) ~2× (birebir)**. **2026-07-02: C1 voxelize hızı (H-14) 3.1× birebir KAPANDI** —
@@ -391,8 +399,10 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **2026-07-05: H-15/H-15p KAPANDI — kabuk fine-yolunda sürenin %90'ı COARSE-TUNE'du (sentez 0.99);
 > fix menu=dblf_only (opt-in, wall_aware tetiği) E2E'de kanıtlandı: 104.5dk → 9.2dk (11.3×), 282.0 BİREBİR.**
 > **F3/K-19p rollout'unun "süre patlaması" ön-şartı fiilen KARŞILANDI** (K-19 bedeli 131dk → ~9dk).
-> İlk iki atıf (K-20 "drop", ara "rafine") yanlıştı — süre atfı sentez-oranı ~1.0 ister. KALAN: dirty-cache
-> drop (yeni darboğaz fine 514s) · pitch R6 (riskli) · bit-pack popcount / BVH (marjinal).
+> İlk iki atıf (K-20 "drop", ara "rafine") yanlıştı — süre atfı sentez-oranı ~1.0 ister.
+> **2026-07-05 (aynı gün): H-16 dirty-cache PROTOTİP GO — fine 493.8s → 119.4s (4.1×), 282.0 + yerleşim BİREBİR,
+> +0.03GB RAM; opt-in `Bin3D(drop_cache=True)`, üretime bağlama AYRI iş (thread-safety ön-şartı).**
+> Kabuk koşusu potansiyeli ~9.2dk → ~2.6dk. KALAN: H-16 wiring · pitch R6 (riskli) · bit-pack/BVH (marjinal).
 
 ---
 
@@ -454,7 +464,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~K-23~~ | ~~Kuyruk-öne SIRA deneyi~~ → **TEŞHİSLE KAPANDI 2026-07-04** (koşusuz NO-GO: özdeş parçada sıra etkisiz + çan içleri drop'a kapalı + tavanı ASY bloğu tek başına kuruyor — §3.1 K-23) | 6GB | — | — | 282.0 = drop semantiğinde YAPISAL kabuk tavanı. |
 | **K-24** | Bilinçli zincir-ekimi dekodu (özdeş kabuk çanlarını giriş-ofsetiyle KASITLI tohumla; denge tavanı ~152mm analitik ödül) | 6GB | Yüksek | DÜŞÜK-ORTA (spekülatif) | K-20 hizalı-kule farkı: telescope ofsetini planlayıcı seçer, yanal karışım korunur. K-23 teşhis verisi girdi (10 kök / 6 kapalı iç / adım 10.7mm). Ölç-önce: önce 62-çanlık izole mini-instance'ta prototip; genel decode'a dokunma. |
 | ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
-| **H-16** | Dirty-region drop_map önbelleği (tip-bitişik bloklar; kapsam %98) | 6GB | Orta | ORTA — yeni darboğaz fine geçişi 514s/553s (%93); hedef ~100-150s bandı (kabuk koşusu ~9dk → ~3-4dk) | Bit-özdeş korunabilir (int aritmetik, yerel güncelleme); H-01 drop_map üstüne. Ölç-önce: güncelleme penceresi maliyet modeli. |
+| **H-16w** | ~~H-16 dirty-cache ölçüm+prototip~~ → **PROTOTİP GO 2026-07-05** (fine 4.1×: 493.8→119.4s, 282.0+yerleşim BİREBİR, +0.03GB; §3 H-16). KALAN = üretime BAĞLAMA (wall_aware yolunda `drop_cache=True` geçir) | 6GB | Düşük | YÜKSEK — kabuk koşusu ~9.2dk → ~2.6dk | Wiring ön-şartı: per-thread Bin3D garantisi VEYA cache lock (reviewer MEDIUM-2) + E2E zincir kapısı (282.0 birebir). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek

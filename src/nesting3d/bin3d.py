@@ -8,13 +8,18 @@ Known, accepted limitation (PLAN_3D.md §2.4): a heightmap cannot slide parts
 into cavities under overhangs.  Honest trade-off for fast SA decodes.
 """
 
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
 from src.nesting3d.voxelize import Orientation, VoxelPart
+
+# Dirty aday-penceresi bu orandan buyukse yerel yeniden-hesap tam-hesaptan ucuz
+# DEGIL (kopya ek-yuku) -> tam yola dus (tip-gecisi / plaka-parca sicramalari).
+_DC_FALLBACK_FRAC = 0.75
 
 
 
@@ -34,7 +39,8 @@ class Bin3D:
     """Heightmap bin. All placement math is in voxel units; mm at the edges."""
 
     def __init__(self, plate_w_mm: float = 220.0, plate_d_mm: float = 220.0,
-                 pitch: float = 220.0 / 64, z_clearance: int = 0):
+                 pitch: float = 220.0 / 64, z_clearance: int = 0,
+                 drop_cache: bool = False, drop_cache_cap_mb: float = 300.0):
         self.plate_w_mm = float(plate_w_mm)
         self.plate_d_mm = float(plate_d_mm)
         self.pitch = float(pitch)
@@ -50,6 +56,37 @@ class Bin3D:
         self.placements: List[Placement3D] = []
         self.placed_voxels: int = 0
 
+        # -- H-16 dirty-region drop_map onbellegi (OPT-IN, default KAPALI) ----
+        # Bu bos OrderedDict/deque/sayac alanlari HER ZAMAN kurulur (asagida) —
+        # bu, sabit ve ihmal edilebilir bir allocation'dir. Kapaliyken
+        # drop_map/place kod yolu davranissal olarak BIREBIR eski: `_dc_enabled`
+        # False oldugu icin sicak yolda TEK bir bool okunur ve dallar hep
+        # onbelleksiz yola gider (kurulu-ama-bos yapilar hic dokunulmaz kalir,
+        # ekstra hesap/kopya yok). Acikken footprint-anahtarli (id(orient)) Z
+        # onbellegi tutulur; ayni-model ozdes parca ORNEKLERI ayni Orientation
+        # nesnesini PAYLASIR (voxelize.expand_quantities:
+        # orientations=template.orientations) -> id(orient) ozdes footprint'leri
+        # gruplar, cache HIT'i oradan gelir.
+        self._dc_enabled: bool = bool(drop_cache)
+        self._dc_cap_bytes: int = int(drop_cache_cap_mb * 2 ** 20)
+        self._dc_fallback_frac: float = _DC_FALLBACK_FRAC
+        # aradaki place sayisi bunu asarsa disjoint-pencere ek-yuku tam-hesabi
+        # gecer -> tam yola dus (dagilmis-cok-yerlesim koruma).
+        self._dc_max_windows: int = 96
+        # key=id(orient) -> [orient_ref, Z, seq]; OrderedDict = LRU siralamasi
+        self._dc_cache: "OrderedDict[int, list]" = OrderedDict()
+        # her place()'in degistirdigi H bbox'i: (seq, (r0, r1, c0, c1))
+        self._dc_log: "Deque[Tuple[int, Tuple[int, int, int, int]]]" = deque()
+        self._dc_seq: int = 0            # monoton place() sayaci
+        self._dc_bytes: int = 0          # onbellekteki toplam Z byte
+        # istatistik (KAPI olcumu icin)
+        self._dc_hits: int = 0           # artimli + degismedi (yerel/kopyasiz)
+        self._dc_miss: int = 0           # girisi yok -> tam hesap
+        self._dc_fallback: int = 0       # giris var ama pencere buyuk -> tam
+        self._dc_evictions: int = 0
+        self._dc_peak_bytes: int = 0
+        self._dc_peak_keys: int = 0
+
     # -- placement ----------------------------------------------------------
 
     def drop_map(self, orient: Orientation) -> Optional[np.ndarray]:
@@ -59,7 +96,19 @@ class Bin3D:
         does not fit the base at all.  Z[x, y] = the rest height of the part's
         grid origin if dropped at (x, y):
             max over filled columns (i, j) of H[x+i, y+j] - bottom[i, j]
+
+        Invariant (drop_cache=True olunca): donen dizi cache-ICI paylasilan bir
+        buffer OLABILIR (bir sonraki cagride yerinde guncellenir) — caller SALT-
+        OKUR kullanmali, dondurulen array UZERINDE MUTASYON YAPMAMALI (mevcut
+        caginlar — _best_position/tower_order/place_in_order — dogrulandi,
+        yalniz okuyor). Kapaliyken (drop_cache=False, uretim default) her
+        cagri taze bir dizi doner, bu kisitlama gecerli degildir.
         """
+        # H-16 OPT-IN: dirty-region onbellegi. KAPALI iken (uretim default) tek
+        # bool okunur, kalan kod yolu BIREBIR eski (davranis/allocation ozdes).
+        if self._dc_enabled:
+            return self._drop_map_cached(orient)
+
         fw, fh = orient.filled.shape
         npx, npy = self.nx - fw + 1, self.ny - fh + 1
         if npx <= 0 or npy <= 0:
@@ -73,6 +122,193 @@ class Bin3D:
             return fast
 
         return self._drop_map_general(orient, npx, npy)
+
+    def _drop_map_full(self, orient: Orientation, npx: int, npy: int
+                       ) -> np.ndarray:
+        """Tam (onbelleksiz) drop_map — hizli yol, yoksa genel yol. Kapali-yol
+        ile BIREBIR ayni sonuc; cache MISS/fallback bunu cagirir."""
+        fast = self._drop_map_fast(orient, npx, npy)
+        if fast is not None:
+            return fast
+        return self._drop_map_general(orient, npx, npy)
+
+    # -- H-16 dirty-region onbellegi (yalniz drop_cache=True iken calisir) ----
+
+    def _drop_map_cached(self, orient: Orientation) -> Optional[np.ndarray]:
+        """Onbellekli drop_map. Ayni footprint-anahtari (id(orient)) icin son
+        tam Z saklanir; sonraki cagrida yalniz aradaki place()'lerin KIRLETTIGI
+        aday-penceresi yeniden hesaplanir, gerisi Z_prev'den kopyalanir.
+
+        Dogruluk: yerel yeniden-hesap tam-hesapla tamsayi max-reduksiyonu
+        AYNIDIR (h16_on_analiz: sizinti 0/20, bit-ozdes 20/20) -> yukseklik ve
+        yerlesim BIREBIR degismez. Pencere buyukse veya giris yoksa tam yola
+        dusulur (kalite her kosulda korunur)."""
+        fw, fh = orient.filled.shape
+        npx, npy = self.nx - fw + 1, self.ny - fh + 1
+        if npx <= 0 or npy <= 0:
+            return None
+
+        key = id(orient)
+        entry = self._dc_cache.get(key)
+        if entry is not None and entry[0] is orient:
+            if entry[2] == self._dc_seq:
+                # Hicbir place() olmadi -> Z aynen gecerli (kopya bile gerekmez;
+                # cagiran Z'yi salt-okur kullanir: _best_position/tower_order).
+                self._dc_cache.move_to_end(key)
+                self._dc_hits += 1
+                return entry[1]
+            wins = self._dc_windows_since(entry[2], fw, fh, npx, npy)
+            if wins is not None:
+                # DISJOINT kirli pencereler (place BASINA ayri) -> her biri
+                # kucuk kalir; birlesik-bbox uzak-kose sismesinden kacinir.
+                Z = entry[1].copy()
+                filled = orient.filled
+                bf = orient.bottom[filled].astype(np.int32, copy=False)
+                for (wx0, wx1, wy0, wy1) in wins:
+                    self._drop_region_into(
+                        Z, filled, bf, fw, fh, wx0, wx1, wy0, wy1)
+                entry[1] = Z
+                entry[2] = self._dc_seq
+                self._dc_cache.move_to_end(key)
+                self._dc_hits += 1
+                return Z
+            # wins is None -> kirli alan cok buyuk/dagilmis, tam hesap ucuz
+            self._dc_fallback += 1
+        else:
+            self._dc_miss += 1
+
+        Z = self._drop_map_full(orient, npx, npy)
+        self._dc_put(key, orient, Z)
+        return Z
+
+    def _drop_region_into(self, Z: np.ndarray, filled: np.ndarray,
+                          bf: np.ndarray, fw: int, fh: int, x0: int, x1: int,
+                          y0: int, y1: int) -> None:
+        """Z'nin [x0:x1, y0:y1] aday penceresini YERINDE yeniden hesapla —
+        `_drop_map_general` ile AYNI vektorize tamsayi max-reduksiyonu, yalniz
+        bu pencere (sliding_window_view H alt-blogu uzerinde). bf = dolu
+        kolonlarin tabani (cagri basi bir kez). max birlesmeli + tamsayi ->
+        full drop_map ile BIRE BIR ayni."""
+        if bf.size == 0:            # bos footprint (gercek parcada olmaz)
+            Z[x0:x1, y0:y1] = 0
+            return
+        wy = y1 - y0
+        K = int(bf.shape[0])
+        # Bu pencere icin gerekli H alt-blogu: aday (x0..x1) footprint (fw,fh)
+        subH = self.height[x0:x1 + fw - 1, y0:y1 + fh - 1]
+        W = sliding_window_view(subH, (fw, fh))     # (wx, wy, fw, fh) view
+        # Bellek tavani: (blok, wy, K) int32 pencere kopyasi (general ile ayni)
+        CAP = 16_000_000
+        per_row = wy * K
+        rows = max(1, CAP // per_row) if per_row else (x1 - x0)
+        for bx0 in range(0, x1 - x0, rows):
+            bx1 = min(bx0 + rows, x1 - x0)
+            Wf = W[bx0:bx1, :, filled]              # (blok, wy, K) kopya
+            Wf -= bf
+            acc = Wf.max(axis=2)                    # (blok, wy)
+            np.maximum(acc, 0, out=acc)
+            if self.z_clearance:
+                acc[acc > 0] += self.z_clearance
+            Z[x0 + bx0:x0 + bx1, y0:y1] = acc
+
+    def _drop_region(self, orient: Orientation, x0: int, x1: int,
+                     y0: int, y1: int) -> np.ndarray:
+        """Aday alt-dikdortgen [x0:x1, y0:y1] icin YEREL drop hesabi (bagimsiz
+        (x1-x0, y1-y0) dizi dondurur — testler kullanir). Hot yol
+        `_drop_region_into` ile ayni tamsayi max-reduksiyonu."""
+        ci, cj = np.nonzero(orient.filled)
+        bvals = orient.bottom[ci, cj].astype(np.int32, copy=False)
+        H = self.height
+        acc = np.zeros((x1 - x0, y1 - y0), dtype=np.int32)
+        for i, j, b in zip(ci.tolist(), cj.tolist(), bvals.tolist()):
+            np.maximum(acc, H[x0 + i:x1 + i, y0 + j:y1 + j] - b, out=acc)
+        np.maximum(acc, 0, out=acc)
+        if self.z_clearance:
+            acc[acc > 0] += self.z_clearance
+        return acc
+
+    def _dc_windows_since(self, entry_seq: int, fw: int, fh: int,
+                          npx: int, npy: int):
+        """entry_seq'ten SONRAKI HER place()'i AYRI bir aday-penceresine cevir
+        (bbox birlesimi DEGIL — uzak yerlesimler tek dev pencereye sismesin).
+
+        Her place H bbox'i sorgu footprint'ine (fw,fh) gore genisletilir + kirpilir.
+        Doner:
+          [(wx0,wx1,wy0,wy1), ...] — yeniden-hesaplanacak disjoint pencereler
+          None — toplam alan / pencere sayisi cok buyuk -> tam hesap daha ucuz
+        (Cagiran zaten entry_seq==_dc_seq durumunu (degismedi) elemistir.)
+        """
+        wins = []
+        area = 0
+        cap = self._dc_fallback_frac * npx * npy
+        for seq, bb in self._dc_log:
+            if seq <= entry_seq:
+                continue
+            r0, r1, c0, c1 = bb
+            wx0 = r0 - fw + 1
+            if wx0 < 0:
+                wx0 = 0
+            wx1 = r1 if r1 < npx else npx
+            wy0 = c0 - fh + 1
+            if wy0 < 0:
+                wy0 = 0
+            wy1 = c1 if c1 < npy else npy
+            if wx0 >= wx1 or wy0 >= wy1:
+                continue
+            wins.append((wx0, wx1, wy0, wy1))
+            area += (wx1 - wx0) * (wy1 - wy0)
+            if area >= cap or len(wins) > self._dc_max_windows:
+                return None
+        return wins
+
+    def _dc_put(self, key: int, orient: Orientation, Z: np.ndarray) -> None:
+        """Cache'e Z yaz (LRU); bellek tavani asilirsa en eski anahtari at
+        (atma = sonraki cagri tam-hesap; DOGRULUK hic bozulmaz)."""
+        cache = self._dc_cache
+        old = cache.get(key)
+        if old is not None:
+            self._dc_bytes -= old[1].nbytes
+        cache[key] = [orient, Z, self._dc_seq]
+        cache.move_to_end(key)
+        self._dc_bytes += Z.nbytes
+        while self._dc_bytes > self._dc_cap_bytes and len(cache) > 1:
+            _k, ev = cache.popitem(last=False)
+            self._dc_bytes -= ev[1].nbytes
+            self._dc_evictions += 1
+        if self._dc_bytes > self._dc_peak_bytes:
+            self._dc_peak_bytes = self._dc_bytes
+        if len(cache) > self._dc_peak_keys:
+            self._dc_peak_keys = len(cache)
+
+    def _dc_prune_log(self) -> None:
+        """place-log'un artik hicbir cache girisinin ihtiyac duymadigi eski
+        bbox'larini at (log basi seq'ler ARTAN sirada -> onden kirp)."""
+        cache = self._dc_cache
+        if not cache:
+            self._dc_log.clear()
+            return
+        oldest = min(e[2] for e in cache.values())
+        log = self._dc_log
+        while log and log[0][0] <= oldest:
+            log.popleft()
+
+    def drop_cache_stats(self) -> Dict[str, object]:
+        """H-16 onbellek istatistikleri (KAPI olcumu). Kapaliyken sifirlar."""
+        total = self._dc_hits + self._dc_miss + self._dc_fallback
+        return {
+            "enabled": self._dc_enabled,
+            "hits": self._dc_hits,
+            "misses": self._dc_miss,
+            "fallbacks": self._dc_fallback,
+            "full_computes": self._dc_miss + self._dc_fallback,
+            "hit_ratio": (self._dc_hits / total) if total else 0.0,
+            "keys": len(self._dc_cache),
+            "peak_keys": self._dc_peak_keys,
+            "peak_bytes": self._dc_peak_bytes,
+            "peak_mb": self._dc_peak_bytes / 2 ** 20,
+            "evictions": self._dc_evictions,
+            "cap_mb": self._dc_cap_bytes / 2 ** 20,
+        }
 
     def _drop_map_general(self, orient: Orientation, npx: int, npy: int
                           ) -> np.ndarray:
@@ -189,6 +425,14 @@ class Bin3D:
         fw, fh = f.shape
         sub = self.height[x:x + fw, y:y + fh]
         np.copyto(sub, np.maximum(sub, z + orient.top), where=f)
+
+        # H-16: dirty-region logu (yalniz cache acikken). Degisen H hucreleri
+        # yerlestirmenin footprint bbox'inin ICINDE (place yalniz orada yukseltir)
+        # -> footprint bbox GUVENLI ust-kume (dirty pencere superset -> birebir).
+        if self._dc_enabled:
+            self._dc_seq += 1
+            self._dc_log.append((self._dc_seq, (x, x + fw, y, y + fh)))
+            self._dc_prune_log()
 
         p = Placement3D(part.id, part.name, x, y, z, orientation_idx)
         self.placements.append(p)
