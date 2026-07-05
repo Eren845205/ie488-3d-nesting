@@ -12,9 +12,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+
+# GLB dosya adinda batch_id icin izinli karakterler; gerisi "_"e cevrilir
+# (path traversal / ayirici enjeksiyonu imkansizlasir).
+_SAFE_BATCH_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
 def _default_id() -> str:
@@ -40,6 +45,8 @@ class OtonomGecmisStore:
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
         self._path = self._root / "gecmis.jsonl"
+        self._detay_dir = self._root / "detay"
+        self._glb_dir = self._root / "glb"
         self._id_factory = id_factory
         self._now_iso = now_iso
         self._lock = threading.Lock()
@@ -132,7 +139,82 @@ class OtonomGecmisStore:
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp_path, self._path)
+            self._artifact_temizle(kayit_id)
             return bulunan
+
+    # -- detay / GLB kalicilastirma ---------------------------------------
+
+    def detay_kaydet(self, kayit_id: str, detay: Dict[str, Any]) -> Path:
+        """Bir kaydin TAM detayini (JSON-guvenli dict) diske yaz.
+
+        Ozet kaydindan AYRI dosyada tutulur (detay/<id>.json) ki
+        gecmis.jsonl kucuk kalsin (liste() her cagride tum dosyayi okur).
+        Atomik yazim: tmp + os.replace — yarim dosya kalmaz.
+        """
+        self._detay_dir.mkdir(parents=True, exist_ok=True)
+        hedef = self._detay_dir / f"{kayit_id}.json"
+        tmp = hedef.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            json.dump(detay, fh, ensure_ascii=False, default=str)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, hedef)
+        return hedef
+
+    def detay_get(self, kayit_id: str) -> Optional[Dict[str, Any]]:
+        """Kaydin tam detayi; yoksa/bozuksa None (eski kayitlar kirilmaz)."""
+        hedef = self._detay_dir / f"{kayit_id}.json"
+        if not hedef.exists():
+            return None
+        try:
+            obj = json.loads(hedef.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return None
+        return obj if isinstance(obj, dict) else None
+
+    def glb_kaydet(self, kayit_id: str, batch_id: str, glb_bytes: bytes) -> Path:
+        """Bir partinin GLB onizlemesini kalici dosyaya yaz (atomik)."""
+        self._glb_dir.mkdir(parents=True, exist_ok=True)
+        hedef = self._glb_yol(kayit_id, batch_id)
+        tmp = hedef.with_suffix(".glb.tmp")
+        tmp.write_bytes(glb_bytes)
+        os.replace(tmp, hedef)
+        return hedef
+
+    def glb_path(self, kayit_id: str, batch_id: str) -> Optional[Path]:
+        """Kalici GLB dosya yolu; yoksa None. Containment garantili."""
+        hedef = self._glb_yol(kayit_id, batch_id)
+        return hedef if hedef.exists() else None
+
+    def _glb_yol(self, kayit_id: str, batch_id: str) -> Path:
+        safe_batch = _SAFE_BATCH_RE.sub("_", str(batch_id))[:64] or "batch"
+        hedef = (self._glb_dir / f"{kayit_id}_{safe_batch}.glb").resolve()
+        kok = self._glb_dir.resolve()
+        if not str(hedef).startswith(str(kok) + os.sep):
+            raise ValueError("GLB yolu store koku disina cikamaz")
+        return hedef
+
+    def _artifact_temizle(self, kayit_id: str) -> None:
+        """Silinen kaydin detay JSON + GLB dosyalarini kaldir.
+
+        Hatalar yutulur — artifact temizligi kayit silmeyi asla bloklamaz
+        (en kotu durumda yetim dosya kalir, kayit tutarliligi bozulmaz).
+        """
+        try:
+            hedef = self._detay_dir / f"{kayit_id}.json"
+            if hedef.exists():
+                hedef.unlink()
+        except OSError:
+            pass
+        try:
+            if self._glb_dir.exists():
+                for p in self._glb_dir.glob(f"{kayit_id}_*.glb"):
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
     # -- ic --------------------------------------------------------------
 

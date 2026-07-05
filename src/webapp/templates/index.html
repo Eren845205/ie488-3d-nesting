@@ -735,6 +735,13 @@
             if (durum.last_error) {
                 html += '<span style="color:var(--err); font-size:12px;">hata: ' + escapeHtml(durum.last_error) + '</span>';
             }
+            if (durum.last_gecmis_id) {
+                // Son otomatik isin kalici detay sayfasi — nesting/fiyat/3D/teklif
+                html += '<a href="/gecmis/' + encodeURIComponent(durum.last_gecmis_id) + '" ' +
+                        'style="margin-left:auto; font-size:12px; font-weight:700; color:var(--accent-ink); ' +
+                        'text-decoration:none; border:1px solid var(--accent); background:var(--accent-soft); ' +
+                        'border-radius:6px; padding:4px 10px; white-space:nowrap;">Son işin detaylarını gör &rarr;</a>';
+            }
             html += '</div>';
             pano.innerHTML = html;
             pano.style.display = 'block';

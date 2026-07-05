@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import (
     Flask, Response, jsonify, redirect, render_template,
-    request, session, url_for,
+    request, send_file, session, url_for,
 )
 
 # Rate limiting — optional dep; no-op if flask-limiter not installed
@@ -287,6 +287,55 @@ def _build_grounded_context(pipeline_result: Dict[str, Any]) -> Any:
         is_id="demo-pipeline",
         kaynaklar=kaynaklar,
     )
+
+
+def _json_guvenli(obj: Any) -> Any:
+    """Bir degeri ozyinelemeli olarak JSON-serilestirilebilir hale getir.
+
+    numpy skalerleri -> python int/float; dict/list/tuple ozyinelemeli;
+    bilinmeyen nesneler str()'e duser (detay kaydi rapor-only oldugundan
+    kayip kabul edilebilir, crash edilmez).
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _json_guvenli(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_guvenli(v) for v in obj]
+    # numpy skaleri (np.float64/np.int32 vb.) — item() python tipine cevirir
+    item = getattr(obj, "item", None)
+    if callable(item):
+        try:
+            return _json_guvenli(item())
+        except Exception:
+            pass
+    return str(obj)
+
+
+def _layer_costs_ekle(nesting_results: Dict[str, Any]) -> None:
+    """Her partiye katman-bazli maliyet (+tuner varsa tasarruf) alanlarini ekle.
+
+    /sonuc sayfasi ile gecmis-detay kalicilastirmasi AYNI hesabi kullanir
+    (tek kaynak) — gecmis kaydindaki deger kosu anina sabitlenir.
+    """
+    from src.pricing.layer_cost import (
+        LayerCostParams, compute_cost, compute_savings,
+    )
+    _lc_params = LayerCostParams()  # default 0.12mm / 20sn / 10EUR
+    for _nr in nesting_results.values():
+        _h = _nr.get("height_mm", 0.0)
+        if not _h:
+            continue
+        _nr["layer_cost"] = compute_cost(_h, _lc_params).to_dict()
+        _impr = (_nr.get("tuner") or {}).get("improvement_mm", 0.0) or 0.0
+        if _impr > 0:
+            _nr["layer_savings"] = compute_savings(
+                _h + _impr, _h, _lc_params
+            ).to_dict()
+
+
+# Gecmis-detay GLB kalicilastirmasi icin kosu basina toplam tavan (disk emniyeti).
+_GECMIS_GLB_TAVAN_BYTES = 80 * 1024 * 1024
 
 
 _TURKCE_AYLAR = {
@@ -687,7 +736,7 @@ def _register_routes(
                     "gecmis_kaydet: otomatik kayit icin order_ids bos -- dedup atlanacak (ranked=%d)",
                     len(ranked),
                 )
-            _otonom_gecmis.kaydet(
+            kayit = _otonom_gecmis.kaydet(
                 {
                     "durum": _durum,
                     "hata_ozeti": _hata_ozeti,
@@ -715,12 +764,141 @@ def _register_routes(
                 },
                 dedup_key=_dedup_key,
             )
-            return True
         except Exception:
             # R1 #4: sessiz debug DEGIL gorunur hata — cagiran (poller yolu)
             # False'a gore mail'i islendi saymamayi secebilir.
             logger.error("Is gecmisine YAZILAMADI (kaynak=%s)", kaynak, exc_info=True)
             return False
+
+        # -- TAM DETAY kalicilastirmasi (rapor-only; ozet kaydini asla bozmaz) --
+        # Amac: /gecmis/<id> sayfasi manuel /sonuc esdegeri detay gosterebilsin
+        # (nesting metrikleri, algoritma karari, fiyat kirilimi, 3D onizleme,
+        # teklif taslagi). Hata olursa loglanir, ozet kayit YASAR (geriye uyum:
+        # detay yoksa sayfa eski ozet gorunumune duser).
+        try:
+            _detay_kalicilastir(pipeline_result, kayit)
+        except Exception:
+            logger.error(
+                "Gecmis DETAYI kalicilastirilamadi (id=%s) — ozet kayit duruyor",
+                kayit.get("id"), exc_info=True,
+            )
+        return kayit
+
+    def _detay_kalicilastir(pipeline_result, kayit):
+        """Kosu detayini (JSON) + parti GLB'lerini kalici depoya yaz.
+
+        Dedup isabetinde (ayni kayit id'sinin detayi zaten varsa) EZILMEZ —
+        ilk kosunun detayi korunur (retry'lar ayni maili yeniden islerken
+        var olan kaniti degistirmesin).
+        """
+        kayit_id = kayit.get("id")
+        if not kayit_id:
+            return
+        if _otonom_gecmis.detay_get(kayit_id) is not None:
+            return  # dedup isabeti — mevcut detay korunur
+
+        nesting_results = pipeline_result.get("nesting_results", {})
+
+        # Katman-maliyet alanlarini kosu anina sabitle (/sonuc ile ayni hesap).
+        try:
+            _layer_costs_ekle(nesting_results)
+        except Exception:
+            logger.warning("layer_cost hesabi atlandi (id=%s)", kayit_id, exc_info=True)
+
+        # -- GLB'ler: her parti icin BIR kez uret, diske yaz (80MB toplam tavan) --
+        glb_haritasi = {}
+        glb_atlandi = []
+        toplam_glb = 0
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene, scene_to_glb_bytes,
+            )
+        except ImportError:
+            build_result_scene = None
+        if build_result_scene is not None:
+            for _bid, _nr in nesting_results.items():
+                _pl = _nr.get("placements")
+                _vp = _nr.get("voxel_parts")
+                _pitch = _nr.get("pitch_mm") or _nr.get("pitch")
+                if not _pl or not _vp or not _pitch:
+                    glb_haritasi[_bid] = False
+                    continue
+                if toplam_glb >= _GECMIS_GLB_TAVAN_BYTES:
+                    glb_haritasi[_bid] = False
+                    glb_atlandi.append(_bid)
+                    continue
+                try:
+                    _scene = build_result_scene(_pl, _vp, pitch=float(_pitch))
+                    _glb = scene_to_glb_bytes(_scene)
+                    if toplam_glb + len(_glb) > _GECMIS_GLB_TAVAN_BYTES:
+                        glb_haritasi[_bid] = False
+                        glb_atlandi.append(_bid)
+                        continue
+                    _otonom_gecmis.glb_kaydet(kayit_id, _bid, _glb)
+                    toplam_glb += len(_glb)
+                    glb_haritasi[_bid] = True
+                except Exception:
+                    logger.warning(
+                        "GLB kalicilastirma hatasi (id=%s batch=%s)",
+                        kayit_id, _bid, exc_info=True,
+                    )
+                    glb_haritasi[_bid] = False
+
+        # -- Detay JSON: pipeline_result seklini taklit eder (teklif/grounding
+        #    kodu SIFIR degisiklikle calisir); agir alanlar HARIC tutulur. --
+        _AGIR = {"placements", "voxel_parts"}
+        detay_nesting = {
+            str(bid): _json_guvenli({k: v for k, v in nr.items() if k not in _AGIR})
+            for bid, nr in nesting_results.items()
+        }
+        detay_ranked = []
+        for _o in pipeline_result.get("ranked_orders", []):
+            if isinstance(_o, dict):
+                detay_ranked.append(_json_guvenli(_o))
+            else:
+                detay_ranked.append({
+                    "order_id": getattr(_o, "order_id", None),
+                    "customer": getattr(_o, "customer", None),
+                    "deadline": str(getattr(_o, "deadline", "") or ""),
+                    "priority_class": getattr(_o, "priority_class", None),
+                    "total_volume_cm3": _json_guvenli(
+                        getattr(_o, "total_volume_cm3", None)
+                    ),
+                })
+        detay_batches = []
+        for _b in pipeline_result.get("batches", []):
+            if isinstance(_b, dict):
+                detay_batches.append(_json_guvenli(_b))
+            else:
+                detay_batches.append({
+                    "batch_id": getattr(_b, "batch_id", None),
+                    "customer": getattr(_b, "customer", None),
+                    "total_volume_cm3": _json_guvenli(
+                        getattr(_b, "total_volume_cm3", None)
+                    ),
+                    "oversized": bool(getattr(_b, "oversized", False)),
+                    "orders": [
+                        {
+                            "order_id": getattr(_bo, "order_id", None),
+                            "customer": getattr(_bo, "customer", None),
+                            "deadline": str(getattr(_bo, "deadline", "") or ""),
+                        }
+                        for _bo in (getattr(_b, "orders", None) or [])
+                    ],
+                })
+        detay = {
+            "nesting_results": detay_nesting,
+            "pricing_results": _json_guvenli(
+                pipeline_result.get("pricing_results", {})
+            ),
+            "ranked_orders": detay_ranked,
+            "batches": detay_batches,
+            "warnings": _json_guvenli(pipeline_result.get("warnings", [])),
+            "elapsed_sec": _json_guvenli(pipeline_result.get("elapsed_sec", 0.0)),
+            "glb": glb_haritasi,
+            **({"glb_atlandi": glb_atlandi} if glb_atlandi else {}),
+        }
+        _otonom_gecmis.detay_kaydet(kayit_id, detay)
 
     # Testlerde dogrudan erisim icin config'e eklenir; uretimde de set edilir
     # ama hicbir route geri okumaz -> zararsiz serbest referans (test izolasyonu).
@@ -743,8 +921,12 @@ def _register_routes(
         # secilen_mod=nesting_mode_used ile duser (rapor-only).
         # R1 #4: kayit yazilamadiysa RAISE — process_inbox_once mark'i atlar,
         # mail sonraki turda yeniden denenir ("gorunmez is" olusamaz).
-        if not _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik"):
+        kayit = _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik")
+        if not kayit:
             raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
+        # Gozcu panosu "Detaylari gor" linki icin son kayit id'si (rapor-only).
+        if isinstance(kayit, dict) and kayit.get("id"):
+            app.config["SON_GECMIS_ID"] = kayit["id"]
 
     try:
         _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
@@ -803,7 +985,10 @@ def _register_routes(
 
     @app.route("/poll/durum", methods=["GET"])
     def poll_durum():
-        return jsonify(_poller.state.snapshot())
+        snap = _poller.state.snapshot()
+        # Son otomatik isin gecmis-detay linki (UI "Detaylari gor" butonu).
+        snap["last_gecmis_id"] = app.config.get("SON_GECMIS_ID")
+        return jsonify(snap)
 
     @app.route("/poll/baslat", methods=["POST"])
     def poll_baslat():
@@ -963,21 +1148,9 @@ def _register_routes(
 
         # Katman-bazli maliyet + tasarruf (AM makine-zamani): her batch icin
         # height_mm -> katman sayisi -> EUR/saat. Tuner varsa baseline'a gore
-        # tasarruf da hesaplanir (nesting Z-height dususu -> dogrudan euro).
-        from src.pricing.layer_cost import (
-            LayerCostParams, compute_cost, compute_savings,
-        )
-        _lc_params = LayerCostParams()  # default 0.12mm / 20sn / 10EUR
-        for _nr in nesting_results.values():
-            _h = _nr.get("height_mm", 0.0)
-            if not _h:
-                continue
-            _nr["layer_cost"] = compute_cost(_h, _lc_params).to_dict()
-            _impr = (_nr.get("tuner") or {}).get("improvement_mm", 0.0) or 0.0
-            if _impr > 0:
-                _nr["layer_savings"] = compute_savings(
-                    _h + _impr, _h, _lc_params
-                ).to_dict()
+        # tasarruf da hesaplanir. Ortak helper — gecmis-detay kalicilastirmasi
+        # ile AYNI hesap (tek kaynak).
+        _layer_costs_ekle(nesting_results)
 
         # Sohbet gecmisi: session'dan oku (per-kullanici)
         _sohbet = session.get("conversation_turns", [])
@@ -1378,23 +1551,14 @@ def _register_routes(
     # Teklif taslagi rotasi (VİTRİN B)
     # -----------------------------------------------------------------------
 
-    @app.route("/teklif", methods=["POST"])
-    @_limit("10 per minute")
-    def teklif():
-        """LLM ile musteri-yanit mail taslagi uret (TeklifRole — UYARI modu).
+    def _teklif_uret(result):
+        """Bir pipeline-sonucu(-benzeri) dict'ten teklif taslagi uret.
 
-        Yanit JSON: {taslak, baslik, kaynaklar, topraklama_uyarisi, ungrounded, hata}
-        LLM aktif degil -> 503.
-        Pipeline kosulmamis -> 400.
-        DEAD-END YOK: number_flag=True olsa bile taslak dolu, 200 doner.
+        ORTAK govde: /teklif (LAST_RESULT) ve /gecmis/<id>/teklif (kalici
+        detay JSON'u) ayni yolu kullanir — detay JSON pipeline_result seklini
+        taklit ettigi icin _build_grounded_context SIFIR degisiklikle calisir.
+        Donus: (json_response, status_code).
         """
-        if not llm_active or llm_components is None:
-            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
-
-        result = app.config.get("LAST_RESULT")
-        if result is None:
-            return jsonify({"hata": "Once pipeline calistirin.", "taslak": None}), 400
-
         teklif_role = llm_components.get("teklif_role") if llm_components else None
         if teklif_role is None:
             return jsonify({"hata": "Teklif bileşeni yuklenemedi.", "taslak": None}), 503
@@ -1486,6 +1650,25 @@ def _register_routes(
         except Exception as exc:
             logger.exception("Teklif taslagi hatasi: %s", exc)
             return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "taslak": None}), 500
+
+    @app.route("/teklif", methods=["POST"])
+    @_limit("10 per minute")
+    def teklif():
+        """LLM ile musteri-yanit mail taslagi uret (TeklifRole — UYARI modu).
+
+        Yanit JSON: {taslak, baslik, kaynaklar, topraklama_uyarisi, ungrounded, hata}
+        LLM aktif degil -> 503.
+        Pipeline kosulmamis -> 400.
+        DEAD-END YOK: number_flag=True olsa bile taslak dolu, 200 doner.
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
+
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin.", "taslak": None}), 400
+
+        return _teklif_uret(result)
 
     # -----------------------------------------------------------------------
     # Mail parser rotasi
@@ -2429,7 +2612,59 @@ def _register_routes(
         kayit = _otonom_gecmis.get(kayit_id)
         if kayit is None:
             return redirect(url_for("gecmis"))
-        return render_template("gecmis_detay.html", k=kayit)
+        # TAM detay (varsa): nesting metrikleri + algoritma karari + fiyat
+        # kirilimi + GLB haritasi. Eski kayitlarda None -> template ozet
+        # gorunumune duser (geriye uyum).
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        return render_template(
+            "gecmis_detay.html", k=kayit, detay=detay,
+            llm_active=llm_active,
+        )
+
+    @app.route("/gecmis/<kayit_id>/geometri/<batch_id>", methods=["GET"])
+    def gecmis_geometri(kayit_id: str, batch_id: str):
+        """Gecmis kaydinin KALICI GLB onizlemesini servis et.
+
+        /geometri/<batch_id>'den farki: LAST_RESULT'a degil, kosu aninda
+        diske yazilmis dosyaya baglidir — restart/yeni kosu ezmez.
+        kayit_id token_hex formati dogrulanir; batch_id store katmaninda
+        sanitize + containment'lidir (path traversal imkansiz).
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        try:
+            yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D onizleme dosyasi yok.",
+                "preview": "hazir_degil",
+            }), 404
+        return send_file(
+            yol, mimetype="model/gltf-binary",
+            download_name=f"{kayit_id}_{batch_id}.glb",
+        )
+
+    @app.route("/gecmis/<kayit_id>/teklif", methods=["POST"])
+    @_limit("10 per minute")
+    def gecmis_teklif(kayit_id: str):
+        """Gecmis kaydinin KALICI detayindan musteri-yanit taslagi uret.
+
+        /teklif ile ayni govde (_teklif_uret) — fark: LAST_RESULT yerine
+        kalici detay JSON'u kullanilir, yani operator haftalar sonra da
+        ayni kosu icin taslak uretebilir. CSRF global before_request
+        kapsaminda (POST, exempt degil).
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        if detay is None:
+            return jsonify({
+                "hata": "Bu kayit icin detay verisi yok (eski kayit).",
+                "taslak": None,
+            }), 404
+        return _teklif_uret(detay)
 
     @app.route("/gecmis/<kayit_id>/sil", methods=["POST"])
     def gecmis_sil(kayit_id: str):
