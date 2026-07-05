@@ -9,9 +9,20 @@
     <a href="/gecmis" class="nav-link" style="font-size:14px;">
         &larr; İş Geçmişine Dön
     </a>
-    <form method="POST" action="/gecmis/{{ k.id }}/sil"
-          onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} (Otomatik işlenen mail, hâlâ gelen kutusu penceresindeyse yeniden işlenebilir olur.){% elif k.kaynak == 'otomatik' %} (Bu eski kayıt idempotency anahtarı taşımıyor — yeniden işleme garantisi yok.){% endif %}')">
+    <form method="POST" action="/gecmis/{{ k.id }}/sil" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;"
+          onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} Mail seçimine göre yeniden işlenecek ya da işlenmiş sayılmaya devam edecek.{% elif k.kaynak == 'otomatik' %} (Eski kayıt: mail bağlantısı saklanmadığından yeniden işleme buradan tetiklenemez — mail gelen kutusuna yeniden iletilirse işlenir.){% endif %}')">
         <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        {% if k.yeniden_islenebilir %}
+        {# Kullanici karari 2026-07-05: silme VARSAYILAN olarak maili yeniden
+           islenebilir yapar; istenirse isaret kaldirilir (idem_birak=1). #}
+        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); cursor:pointer;"
+               title="İşaretliyken: silinen işin maili, gözcünün sonraki taramasında (hâlâ gelen kutusu penceresindeyse) yeni mail gibi baştan işlenir. İşareti kaldırırsan: kayıt silinir ama mail işlenmiş sayılmaya devam eder.">
+            <input type="checkbox" id="yeniden-isle-cb" checked
+                   onchange="document.getElementById('idem-birak-alani').value = this.checked ? '' : '1';">
+            Mail yeniden işlenebilir olsun
+        </label>
+        <input type="hidden" name="idem_birak" id="idem-birak-alani" value="">
+        {% endif %}
         <button type="submit" class="btn btn-danger btn-sm">Kaydı Sil</button>
     </form>
 </div>

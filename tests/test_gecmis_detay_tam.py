@@ -320,6 +320,69 @@ class TestGecmisTeklif:
         assert r.status_code == 403
 
 
+class TestSilSecenekleri:
+    """Silme secenekleri (kullanici karari 2026-07-05): varsayilan = mail
+    yeniden islenebilir; idem_birak=1 = kayit silinir ama mail islenmis
+    sayilmaya devam eder."""
+
+    def _otomatik_kayit(self, app_with_llm, idem_key, order_id):
+        from datetime import date
+        from src.scheduling.models import Order
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        idem_store = app_with_llm.config["SHARED_IDEM_STORE"]
+        idem_store.register(idem_key)
+        orders = [Order(order_id=order_id, customer="M", parts_ref="t",
+                        total_quantity=1, total_volume_cm3=0.0,
+                        deadline=str(date.today()), priority_class=1)]
+        result = {"ranked_orders": orders, "batches": [], "nesting_results": {},
+                  "pricing_results": {}, "elapsed_sec": 0.0,
+                  "_idem_keys": [idem_key]}
+        return fn(result, mod="auto", kaynak="otomatik")
+
+    def test_varsayilan_sil_yeniden_islenebilir(self, client_llm, app_with_llm):
+        kayit = self._otomatik_kayit(app_with_llm, "hash-sil-1", "ZIP-SIL0001")
+        idem_store = app_with_llm.config["SHARED_IDEM_STORE"]
+        r = client_llm.post(f"/gecmis/{kayit['id']}/sil", data={})
+        assert r.status_code == 302
+        assert idem_store.is_registered("hash-sil-1") is False  # yeniden islenir
+
+    def test_idem_birak_ile_sil_islenmis_kalir(self, client_llm, app_with_llm):
+        kayit = self._otomatik_kayit(app_with_llm, "hash-sil-2", "ZIP-SIL0002")
+        idem_store = app_with_llm.config["SHARED_IDEM_STORE"]
+        r = client_llm.post(f"/gecmis/{kayit['id']}/sil", data={"idem_birak": "1"})
+        assert r.status_code == 302
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        assert store.get(kayit["id"]) is None                    # kayit silindi
+        assert idem_store.is_registered("hash-sil-2") is True    # mail islenmis kalir
+
+
+class TestMailFarkindaliDedup:
+    """Ayni paket FARKLI mail ile yeniden gelirse yeni kayit yazilmali;
+    ayni mailin retry'i (ayni idem key) dedup'lanmali."""
+
+    def _result(self, order_id, idem_keys):
+        from datetime import date
+        from src.scheduling.models import Order
+        orders = [Order(order_id=order_id, customer="M", parts_ref="t",
+                        total_quantity=1, total_volume_cm3=0.0,
+                        deadline=str(date.today()), priority_class=1)]
+        return {"ranked_orders": orders, "batches": [], "nesting_results": {},
+                "pricing_results": {}, "elapsed_sec": 0.0,
+                "_idem_keys": idem_keys}
+
+    def test_farkli_mail_ayni_paket_yeni_kayit(self, app_with_llm):
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        k1 = fn(self._result("ORD-AYNI", ["mail-hash-A"]), mod="auto", kaynak="otomatik")
+        k2 = fn(self._result("ORD-AYNI", ["mail-hash-B"]), mod="auto", kaynak="otomatik")
+        assert k1["id"] != k2["id"]  # farkli mail -> yeniden islendi, yeni kayit
+
+    def test_ayni_mail_retry_dedup(self, app_with_llm):
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        k1 = fn(self._result("ORD-RETRY", ["mail-hash-C"]), mod="auto", kaynak="otomatik")
+        k2 = fn(self._result("ORD-RETRY", ["mail-hash-C"]), mod="auto", kaynak="otomatik")
+        assert k1["id"] == k2["id"]  # ayni mail retry -> tek kayit
+
+
 class TestPollDurumDetayLinki:
     def test_last_gecmis_id_alani_var(self, client_llm):
         data = client_llm.get("/poll/durum").get_json()

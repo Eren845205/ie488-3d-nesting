@@ -108,8 +108,10 @@
                     </td>
                     <td style="text-align:right; color:var(--accent); font-weight:700; font-size:16px;">&rsaquo;</td>
                     <td onclick="event.stopPropagation();">
+                        {# Liste satirinda hizli sil = VARSAYILAN davranis (mail yeniden
+                           islenebilir olur). "Islenmis sayilsin" secenegi detay sayfasinda. #}
                         <form method="POST" action="/gecmis/{{ k.id }}/sil"
-                              onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} (Otomatik işlenen mail, hâlâ gelen kutusu penceresindeyse yeniden işlenebilir olur.){% elif k.kaynak == 'otomatik' %} (Bu eski kayıt idempotency anahtarı taşımıyor — yeniden işleme garantisi yok.){% endif %}')">
+                              onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} Mail, gözcünün sonraki taramasında yeniden işlenebilir olur. (Silmeden yeniden-işleme seçeneğini değiştirmek için kayda tıklayıp detay sayfasını kullanın.){% elif k.kaynak == 'otomatik' %} (Eski kayıt: mail bağlantısı saklanmadığından yeniden işleme buradan tetiklenemez — mail gelen kutusuna yeniden iletilirse işlenir.){% endif %}')">
                             <input type="hidden" name="_csrf" value="{{ csrf_token }}">
                             <button type="submit" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Sil</button>
                         </form>

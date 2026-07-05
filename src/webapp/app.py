@@ -719,11 +719,17 @@ def _register_routes(
             # -> yeniden islenebilir" ozelligi bu alani okur (route asagida).
             _idem_keys = pipeline_result.get("_idem_keys") or []
             # dedup_key: yalniz kaynak=="otomatik" ve order_ids doluysa.
-            # JSON array string -> ayirici-collision yok (order_id formati
-            # degisse bile ikircilsiz; "|".join collision-safe degildi).
+            # JSON string -> ayirici-collision yok. MAIL-FARKINDALI (kullanici
+            # istegi 2026-07-05): anahtara idempotency anahtarlari da katilir —
+            # AYNI paket FARKLI bir mail ile yeniden gonderilirse (farkli
+            # message-id -> farkli idem key) yeni kayit yazilir; yalniz AYNI
+            # mailin retry'i (crash sonrasi ayni message-id) dedup'lanir.
             _dedup_key = None
             if kaynak == "otomatik" and _order_ids:
-                _dedup_key = json.dumps(_order_ids)
+                _dedup_key = json.dumps(
+                    {"orders": _order_ids, "mails": sorted(_idem_keys)},
+                    sort_keys=True,
+                )
                 if _durum != "bitti":
                     # Hata/kismi kaydi kendi anahtarinda dedup'lanir (her
                     # retry'da cogalmasin) ama basari anahtarini TUKETMEZ.
@@ -2679,12 +2685,17 @@ def _register_routes(
         ve mail(ler)in idempotency anahtarlarini tasiyorsa (_idem_keys), bu
         anahtarlar paylasimli idempotency store'dan da dusurulur -> mail(ler)
         gozcunun sonraki taramasinda HALA pencerede ise (son ~20 mail) yeni
-        mail gibi yeniden islenir. Eski kayitlarda _idem_keys yoksa (gecmis
-        veri) yalniz kayit silinir -- yeniden-isleme garantisi verilmez.
+        mail gibi yeniden islenir. VARSAYILAN bu ("ben silmissem tekrar
+        islensin" — kullanici karari 2026-07-05); form alani `idem_birak=1`
+        gonderilirse anahtarlara DOKUNULMAZ -> kayit silinir ama mail islendi
+        sayilmaya devam eder (yeniden islenmez). Eski kayitlarda _idem_keys
+        yoksa (ozellik-oncesi veri) mail baglantisi saklanmadigindan yeniden
+        isleme tetiklenemez -- yalniz kayit silinir.
         """
+        _idem_birak = request.form.get("idem_birak") == "1"
         kayit = _otonom_gecmis.sil(kayit_id)
         _idem_uyari = False
-        if kayit is not None:
+        if kayit is not None and not _idem_birak:
             for _key in (kayit.get("_idem_keys") or []):
                 try:
                     _shared_idem_store.unregister(_key)
