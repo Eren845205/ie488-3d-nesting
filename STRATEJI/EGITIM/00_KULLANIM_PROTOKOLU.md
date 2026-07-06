@@ -38,6 +38,12 @@
   (Windows cp1254: `≤ Δ → ≥` script'i ÇÖKERTIR; Türkçe harf serbest).
 - **Y-9** `data/telemetry/runs.jsonl` veya `data/selection_archive/` içeriğini
   silme/yeniden yazma (append-only; arşiv dokunulmaz).
+- **Y-10 HALÜSİNASYON YASAĞI:** Ölçülmemiş bir durum hakkında "yapıldı /
+  yapılmadı / sağlanıyor / sorun yok" BEYAN ETME. Doğru cevap: "ölçülmedi —
+  ölçmek için şu komut: ...". Emsal (2026-07-06): "Plan1/3'te clearance hatası
+  yapılmadı" denildi, ölçüm 0.083mm + 81 kilit çıkardı. Her somut iddiaya
+  kanıt yolu (script çıktısı / log / dosya:satır) eşlik eder; edemiyorsa
+  iddia "bilinmiyor" olarak yazılır.
 
 ## §2 ZORUNLU AÇILIŞ SIRASI (her eğitim oturumunda, ~5 dk)
 

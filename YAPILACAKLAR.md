@@ -45,6 +45,14 @@ Motor hazır (seed-güdümlü); ürün davranışı eksik.
 - [ ] Alternatif değerlendir: 3MF (modern, isim+metadata doğal) — hocaya sor.
 - [ ] Boyut dikkat: ASCII STL ~5× büyük — büyük koşularda ZIP'le.
 
+### 4.5 PLAN3 AÇIĞI (hoca referansı GELDİ: **593mm**, Eren 2026-07-07 gece)
+- Durum: legal en iyi 718 (+%21); eski şüpheli NFV 755.5 bile 593'ü geçememişti
+  → Magics avantajı kavite DEĞİL, muhtemelen SERBEST ROTASYON (çubuklar çapraz).
+- [ ] `fine_angle` probu (z-ekseni açı taraması, motor'da opt-in MEVCUT ama
+      planlarda hiç ölçülmedi): 718'i ne kadar indiriyor? (ölç-önce)
+- [ ] Prob sonucuna göre: fine_angle üretim tarifesi (kapıdan) / F2-v2 / A1.
+- [ ] Hocaya: 593 hangi plakada? (S8 ile birlikte)
+
 ## 🟠 KISA VADE (1-2 hafta)
 
 ### 5. Üretimde NFV sonuçlarına A2 kapısı
@@ -59,6 +67,17 @@ Motor hazır (seed-güdümlü); ürün davranışı eksik.
       ~1.3 hedef) → dürüst NFV yüksekliği düşer.
 - [ ] F2-v2: yerleştirme anında sökülebilirlik kısıtı (asıl iş).
 - [ ] Sonra plan2'de dürüst NFV ölçümü → kapıdan geçerse challenger.
+
+### 6.5 TARİHÎ SAYI TEMİZLİĞİ (Eren talebi 2026-07-07: "yanlışın izlerini temizle")
+Eski NFV sayıları (plan1 115.5-120.7 / plan2 512-522 / plan3 755-844, "%20-28
+iyileşme", "Magics açığı %4.2") dikey-boşluksuz + kilit-ölçümsüz metrikle
+alındı → İDDİA OLARAK GEÇERSİZ (EVAL-1). Yapılacak:
+- [ ] YONTEM_HARITASI'na tepe-şerhi: K-04/K-05/K-17/K-18 sonuç sayıları
+      "pre-clearance NFV — legal yeniden-ölçüm bekliyor" damgalı.
+- [ ] Plan1/2/3 NFV'yi clearance'lı fix'le YENİDEN ölç (kilit sayısıyla) →
+      dürüst tarih tabanı; kapı tablosuna işle.
+- [ ] Hoca-yüzlü geçmiş iddialar (rapor/sunum) tekrar kullanılmadan önce
+      yeni sayılarla revize (eski sayı alıntılamak YASAK — A2/A10).
 
 ## 🟡 ORTA VADE
 
