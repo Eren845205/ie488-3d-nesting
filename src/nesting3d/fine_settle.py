@@ -72,6 +72,7 @@ def fine_settle_raw(
     pitch: float,
     margin: int,
     h_coarse_mm: float,
+    z_dilate: int = 0,
     scale: int = DEFAULT_SCALE,
     mem_budget_bytes: int = MEM_BUDGET_BYTES,
 ) -> Optional[SettleResult]:
@@ -80,12 +81,15 @@ def fine_settle_raw(
     raw: best_decode çıktısı [(pid, oi, x, y, z)] — used_pitch hücreleri.
     margin: coarse voxelize'ın xy-dilation hücre sayısı (mm-eşdeğerlik için
     fine'da margin*scale kullanılır → yanal boşluk garantisi birebir korunur).
+    z_dilate: coarse tek-taraflı z-dilation hücre sayısı (EVAL-1 NFV clearance);
+    fine'da z_dilate*scale kullanılır → dikey boşluk garantisi mm-uzayda korunur.
+    0 (default) -> z-dilation yok (mevcut settle davranışı BİT-ÖZDEŞ).
     """
     if not raw:
         return None
     try:
         return _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch,
-                       margin, h_coarse_mm, scale, mem_budget_bytes)
+                       margin, h_coarse_mm, scale, mem_budget_bytes, z_dilate)
     except MemoryError:
         return None   # bellek sıkışması → coarse sonucu korunur
     except Exception:
@@ -93,7 +97,7 @@ def fine_settle_raw(
 
 
 def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
-            h_coarse_mm, scale, mem_budget_bytes):
+            h_coarse_mm, scale, mem_budget_bytes, z_dilate=0):
     # --- bellek pre-flight: occ grid boyutu bütçeyi aşarsa scale'i kıs/vazgeç
     while scale >= 2:
         fine = pitch / scale
@@ -117,7 +121,8 @@ def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
             continue
         vp = voxelize_part(part.name, part.mesh, fine,
                            rot_matrices=[part.orientations[oi].rot_matrix],
-                           margin=margin * scale, method="slice")
+                           margin=margin * scale, z_dilate=z_dilate * scale,
+                           method="slice")
         fine_orients[key] = vp.orientations[0]
 
     occ = np.zeros((nxf, nyf, nzf), dtype=bool)

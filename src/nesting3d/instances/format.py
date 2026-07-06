@@ -223,6 +223,7 @@ def to_voxel_parts(
     *,
     n_orientations: int = 4,
     margin: int = 0,
+    z_dilate: int = 0,
     method: str = "slice",
     allowed_orientations: Optional[tuple] = None,
 ) -> list:
@@ -239,6 +240,11 @@ def to_voxel_parts(
     allowed_orientations: 28-pozluk master sete indeks tuple'ı — TÜM modellere
     aynı poz kısıtı (K-18p: quality=max AX24 eksen-hizalı seti). Verilirse
     n_orientations yok sayılır (voxelize_part önceliği).
+
+    z_dilate: TEK-TARAFLI (+z / üst) dilation voxel sayısı (EVAL-1 NFV dikey-
+    clearance fix). 0 (default) -> hiç z-dilation (mevcut çağıranlar BİT-ÖZDEŞ).
+    >0 iken her parça grid'i yalnız yukarı büyür → iki parça arası dikey boşluk
+    >= z_dilate voxel garanti (taban etkilenmez → plakaya oturur).
 
     Returns:
         List[VoxelPart] — solver pipeline'ına doğrudan verilecek liste.
@@ -265,6 +271,7 @@ def to_voxel_parts(
         pitch,
         n_orientations=n_orientations,
         margin=margin,
+        z_dilate=z_dilate,
         method=method,
         orientation_overrides=overrides,
     )

@@ -918,6 +918,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 quality=nfv_quality,
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
+                # Hoca >= 1mm boşluk (EVAL-1 fix 2026-07-06): NFV yolu Bin3D
+                # z_clearance'tan geçmez; dikey boşluk yalnız tek-taraflı
+                # z-dilation ile gelir. clearance_to_voxels(pitch) -> xy margin
+                # + z-dilation. 0.0 olsaydı davranış eski (dikeyde 0mm) olurdu.
+                clearance_mm=WEB_MIN_CLEARANCE_MM,
             )
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD:

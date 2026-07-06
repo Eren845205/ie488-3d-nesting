@@ -51,6 +51,10 @@ def test_zip_stl_temel_eslestirme(tmp_path):
 def test_zip_stl_otomatik_plaka_pipeline_cozer(tmp_path, monkeypatch):
     # env'de PLATE_* yok -> mail order'a 'container' KOYMAZ; plaka kararini
     # run_pipeline parti-bazli verir (tek karar noktasi pipeline).
+    # IZOLASYON: resolve_plate cwd/configs/plate.local.json okur; gelistirici
+    # makinesinde GERCEK config (gitignored, 325x325) varsa teste sizar ->
+    # tmp_path'e chdir ile notralize (2026-07-06'da tam suite'i boyle dusurdu).
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("PLATE_W_MM", raising=False)
     monkeypatch.delenv("PLATE_D_MM", raising=False)
     zb = _zip_bytes([("a", (10, 10, 10))])
@@ -60,6 +64,7 @@ def test_zip_stl_otomatik_plaka_pipeline_cozer(tmp_path, monkeypatch):
 
 def test_zip_stl_gercek_plaka_env(tmp_path, monkeypatch):
     """PLATE_W_MM/PLATE_D_MM env tanimliysa o GERCEK plaka pipeline'a iletilir."""
+    monkeypatch.chdir(tmp_path)  # izolasyon: cwd'deki plate.local.json env'i ezmesin
     monkeypatch.setenv("PLATE_W_MM", "250")
     monkeypatch.setenv("PLATE_D_MM", "200")
     zb = _zip_bytes([("a", (10, 10, 10))])

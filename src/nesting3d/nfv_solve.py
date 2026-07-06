@@ -14,7 +14,7 @@ import time
 from types import SimpleNamespace
 
 from src.nesting3d.bin3d import Bin3D
-from src.nesting3d.coarse_to_fine import CoarseToFineResult
+from src.nesting3d.coarse_to_fine import CoarseToFineResult, clearance_to_voxels
 from src.nesting3d.tuner import TuneResult
 from src.nesting3d.instances.format import to_voxel_parts
 from src.nesting3d.instances.pitch import suggest_nfv_pitch
@@ -87,21 +87,43 @@ def _grid_cells_estimate(instance, pitch):
     return best or None
 
 
+def _nfv_clearance_voxels(clearance_mm, pitch, margin):
+    """NFV yolu için (eff_margin, z_dilate) türet.
+
+    clearance_mm <= 0.0 (default) -> (margin, 0): mevcut NFV davranışı BİT-ÖZDEŞ
+      (xy dilation = geçilen margin param, z-dilation YOK).
+    clearance_mm > 0 -> clearance_to_voxels(clearance, pitch) = (n, n): xy margin
+      ve z_dilate ikisi de formülden (margin==z_c=max(1,ceil(clearance/pitch)))
+      → yatay dilation + tek-taraflı dikey dilation birlikte >= clearance boşluğu
+      GERÇEK kullanılan pitch'ten türer (pitch küçülürse voxel sayısı artar,
+      mm-boşluk sabit kalır)."""
+    if clearance_mm and clearance_mm > 0.0:
+        return clearance_to_voxels(clearance_mm, pitch)
+    return margin, 0
+
+
 def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
-                  allowed_orientations=None):
+                  allowed_orientations=None, clearance_mm=0.0):
     """coarse_to_fine._voxelize_with_fallback mantığı + margin (o fonksiyon margin geçmiyor).
     İnce-duvar parça pitch'te kaybolursa (ValueError) pitch'i kıs, floor'a kadar dene. (parts, used).
-    allowed_orientations verilirse (K-18p AX24) n_orientations yok sayılır."""
+    allowed_orientations verilirse (K-18p AX24) n_orientations yok sayılır.
+
+    clearance_mm > 0 iken xy margin + tek-taraflı z-dilation GERÇEK kullanılan
+    pitch'ten türetilir (EVAL-1 NFV dikey-clearance fix); default 0.0 -> davranış
+    BİT-ÖZDEŞ (margin param aynen, z-dilation yok)."""
     cur = pitch
     while True:
+        eff_margin, z_dilate = _nfv_clearance_voxels(clearance_mm, cur, margin)
         try:
-            return to_voxel_parts(instance, cur, n_orientations=n_orientations, margin=margin,
+            return to_voxel_parts(instance, cur, n_orientations=n_orientations,
+                                  margin=eff_margin, z_dilate=z_dilate,
                                   allowed_orientations=allowed_orientations), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
+                fm, fz = _nfv_clearance_voxels(clearance_mm, floor_pitch, margin)
                 return (to_voxel_parts(instance, floor_pitch, n_orientations=n_orientations,
-                                       margin=margin,
+                                       margin=fm, z_dilate=fz,
                                        allowed_orientations=allowed_orientations), floor_pitch)
             cur = nxt
 
@@ -109,8 +131,16 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
 def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               n_orientations=None, quality="fast", margin=1, seed=42, force=None,
               fine_settle=True, orient_ram_brake=False,
-              time_budget_sec=None) -> CoarseToFineResult:
+              time_budget_sec=None, clearance_mm=0.0) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
+
+    clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
+    param, dikey clearance mekanizması yok — tarihsel NFV). >0 iken (EVAL-1 fix):
+    HER voxelize (coarse + fine-settle) xy margin + TEK-TARAFLI z-dilation'ı
+    GERÇEK kullanılan pitch'ten türetir (clearance_to_voxels: margin==z_c=
+    max(1,ceil(clearance/pitch))) → parça-arası her yönde >= clearance_mm boşluk.
+    NFV yolu Bin3D z_clearance'tan geçmediğinden dikey boşluk yalnız bu z-dilation
+    ile gelir; taban etkilenmez (parçalar plakaya oturur).
 
     fine_settle=True (default): K-17 pozisyon-koruyan fine z-kompaksiyon post-pass'i —
     kazanan layout used_pitch/4'te yeniden oturtulur, kuantizasyon vergisi geri alınır
@@ -156,7 +186,11 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             n_orientations = NFV_DEFAULT_ORIENTATIONS
             n_reason = f"n={n_orientations} (default, 4subset8 garanti)"
     parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin,
-                                      allowed_orientations=allowed_orients)
+                                      allowed_orientations=allowed_orients,
+                                      clearance_mm=clearance_mm)
+    # fine-settle aynı clearance kuralına uyar (aksi hâlde settle kazanılan boşluğu
+    # geri yer). used_pitch'ten türetilen (xy margin, z-dilation) settle'a geçilir.
+    settle_margin, settle_zc = _nfv_clearance_voxels(clearance_mm, used_pitch, margin)
     nx, ny = int(plate_w_mm // used_pitch), int(plate_d_mm // used_pitch)
 
     # ÇİFT-SAAT FIX: decode kendi t0'ini sifirdan baslattigi icin TAM butceyi alirdi (voxelize'da
@@ -194,7 +228,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         from src.nesting3d.fine_settle import fine_settle_raw
         s = fine_settle_raw(raw, parts_by_id,
                             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
-                            pitch=used_pitch, margin=margin,
+                            pitch=used_pitch, margin=settle_margin,
+                            z_dilate=settle_zc,
                             h_coarse_mm=bin3d.max_height_mm())
         if s is not None:
             fine_bin = Bin3D(plate_w_mm, plate_d_mm, s.fine_pitch)

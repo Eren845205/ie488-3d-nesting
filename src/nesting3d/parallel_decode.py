@@ -60,13 +60,21 @@ def _worth_threading(ob, n_eligible) -> bool:
 # --------------------------------------------------------------------------
 
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
-           return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None):
+           return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
+           skip_status=None):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
     time_budget_sec=None (default) → DAVRANIS AYNEN (butce kontrolu YOK, sifir ek yuk). Verilirse:
     her parca dis-donguden ONCE gecen sure kontrol edilir; asilirsa o ana kadarki KISMI en iyi layout
-    ile temiz dusus (istisna YOK) + budget_status (dict verilirse) 'budget_exceeded'=True isaretlenir."""
+    ile temiz dusus (istisna YOK) + budget_status (dict verilirse) 'budget_exceeded'=True isaretlenir.
+
+    skip_status (dict verilirse): _drop_fallback bile None donerse (parca hicbir
+    oryantasyonda plakaya SIGMIYOR — ornegin clearance-dilation'li grid plakadan
+    buyuk) o parca ATLA-VE-SAY edilir; id'si skip_status['dropped']'a yazilir
+    (SESSIZ yutma YOK, n_placed duser). None (default) -> parca yine atlanir ama
+    kayit tutulmaz (dogrudan cagiranlar icin; uretim yolu best_decode dict gecirir).
+    Eski davranis: None unpack -> TypeError cokme; artik graceful."""
     if feasible_mask is None:
         feasible_mask, _ = get_backend()
     cpu = probe_capabilities().cpu_count
@@ -110,7 +118,15 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
                            for oi, orient in elig]
             best = _reduce_best(results, cur_max)
             if best is None:
-                (x, y, z), oi = _drop_fallback(ob, part); best = (oi, x, y, z)
+                fb = _drop_fallback(ob, part)
+                if fb is None:
+                    # dilated parca hicbir oryantasyonda plakaya SIGMADI ->
+                    # atla-ve-say (SESSIZ yutma YOK: skip_status'a id yaz).
+                    if skip_status is not None:
+                        skip_status.setdefault("dropped", []).append(part.id)
+                    continue
+                (x, y, z), oi = fb
+                best = (oi, x, y, z)
             oi, x, y, z = best
             ob.place(part.orientations[oi], x, y, z)
             if return_placements:
@@ -285,6 +301,14 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
 
     fm, _ = get_backend("scipy")  # CPU yolunda scipy (naive GPU ölçekte kaybediyor)
     parallel = strat == "cpu-kolA"
+    skip: dict = {}
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
-                    return_placements=True, time_budget_sec=time_budget_sec, budget_status=status)
-    return h, raw, _mark_budget(("cpu-kolA" if parallel else "serial"), status)
+                    return_placements=True, time_budget_sec=time_budget_sec,
+                    budget_status=status, skip_status=skip)
+    strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
+    dropped = skip.get("dropped")
+    if dropped:
+        # SESSIZ yutma YOK: atlanan parcalar strateji izine (-> adaptive_reason) yazilir.
+        ids = ",".join(dropped[:5]) + ("..." if len(dropped) > 5 else "")
+        strat_str += f" dropped={len(dropped)} (plaka-asimi: {ids})"
+    return h, raw, strat_str

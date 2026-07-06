@@ -183,6 +183,29 @@ def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     return g
 
 
+def _dilate_z_up(grid: np.ndarray, times: int) -> np.ndarray:
+    """TEK-TARAFLI (yalnız +z / ÜST) binary dilation, `times` voxel.
+
+    NFV dikey-clearance mekanizması (EVAL-1 fix, 2026-07-06): NFV yolu Bin3D
+    z_clearance'tan geçmediğinden (FFT fizibilitesi saf sıfır-çakışma + replay
+    tam (x,y,z)) dikey boşluk mekanizması yoktu; z-bitişik voxel'lerde yüzeyler
+    ~0mm'e iniyordu (plan1 0.083mm ölçüldü). Bu fonksiyon her dolu voxel'i
+    YALNIZ yukarı doğru `times` voxel büyütür → iki parça üst üste konunca
+    aralarında ≥ `times` voxel dikey boşluk garanti olur, AMA parçanın ALT
+    yüzeyi (taban / index-0 profili) DEĞİŞMEZ → parça hâlâ plakanın tabanına
+    (z=0) oturabilir.
+
+    Grid'in tepesi `times` katman pad'lenir (dilation kırpılmasın); voxel_origin
+    DEĞİŞMEZ (yalnız +z büyür, index-0 sabit kalır). Xy-dilation'ın (_dilate)
+    dikey eşi.
+    """
+    g = np.pad(grid, ((0, 0), (0, 0), (0, times)))
+    out = g.copy()
+    for d in range(1, times + 1):
+        out[:, :, d:] |= g[:, :, :-d]
+    return out
+
+
 def _slice_voxelize(
     mesh: trimesh.Trimesh, pitch: float, *, allow_empty: bool = False
 ) -> np.ndarray:
@@ -348,6 +371,7 @@ def voxelize_part(
     *,
     n_orientations: int = 4,
     margin: int = 0,
+    z_dilate: int = 0,
     method: str = "subdivide",
     display_mesh: Optional[trimesh.Trimesh] = None,
     allowed_orientations: Optional[Tuple[int, ...]] = None,
@@ -414,6 +438,11 @@ def voxelize_part(
             grid = _dilate(grid, margin)
             origin = origin - np.array([margin * pitch, margin * pitch, 0.0])
 
+        # TEK-TARAFLI z-dilation (yalnız +z / üst): iki parça arası dikey boşluk
+        # garantisi (EVAL-1 NFV fix). Taban (index-0) sabit → origin z DEĞİŞMEZ.
+        if z_dilate > 0:
+            grid = _dilate_z_up(grid, z_dilate)
+
         filled, bottom, top = _column_profiles(grid)
         orientations.append(
             Orientation(
@@ -465,6 +494,7 @@ def expand_quantities(
     *,
     n_orientations: int = 4,
     margin: int = 0,
+    z_dilate: int = 0,
     method: str = "subdivide",
     orientation_overrides: Optional[dict] = None,
 ) -> List[VoxelPart]:
@@ -501,6 +531,7 @@ def expand_quantities(
             name, mesh, pitch,
             n_orientations=n_orientations,
             margin=margin,
+            z_dilate=z_dilate,
             method=method,
             display_mesh=display,
             allowed_orientations=overrides.get(name),
