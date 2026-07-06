@@ -35,6 +35,7 @@ sayılmaz.
 | `03_SECIM_MODELI.md` | ML mevcut durum + karar-yüzeyi kayması + yol haritası | Seçim modeli / öğrenme işlerinde |
 | `04_MOTOR_TUNING.md` | Bayesian optimization ile config-tuning tasarımı | Knob-ayarı işine girilince |
 | `05_TRANSFER_PLAYBOOK.md` | Başka projelere taşınabilir meta-metodoloji | Yeni proje/iş başlarken |
+| `EGITIM/EGITIM_EL_KITABI.md` | **Yürütülebilir eğitim rehberi**: birebir komutlar, algoritma spesifikasyonları (kNN/logistic/kalibrasyon pseudocode), regret hesabı, runbook'lar, gelecek-AI sözleşmesi | **Eğitim/retrain işi yapılacağı her an** — tek başına yeterli olacak şekilde yazıldı |
 
 **İlişki — MOTOR/YONTEM_HARITASI_DATA_BASE.md ile:** YONTEM_HARITASI "ne
 denendi, ne oldu" **karar veritabanıdır** (deney günlüğü); STRATEJI/ "nasıl
