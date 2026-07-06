@@ -26,6 +26,7 @@ from src.nesting3d.coarse_to_fine import (
     CoarseToFineResult,
     solve_coarse_to_fine,
     suggest_coarse_pitch,
+    clearance_to_voxels,
     _min_feature_mm,
     _refined_rot_matrices,
 )
@@ -615,3 +616,141 @@ def test_drop_cache_thread_isolation():
     for idx, key in results.items():
         assert key == serial_key, \
             f"thread {idx} paralel sonucu seri sonuctan sapti (cross-thread bozulma)"
+
+
+# ---------------------------------------------------------------------------
+# Clearance garantisi (hoca sarti 2026-06-11: parca-arasi >= 1mm) — web
+# NFV-DISI yollari icin clearance_mm parametresi (fix 2026-07-06)
+# ---------------------------------------------------------------------------
+
+def test_clearance_to_voxels_zero_is_legacy():
+    """clearance_mm=0.0 -> (margin=0, z_clearance=1) = MEVCUT davranis BIT-OZDES."""
+    assert clearance_to_voxels(0.0, 5.0) == (0, 1)
+    assert clearance_to_voxels(0.0, 0.5) == (0, 1)
+    assert clearance_to_voxels(0.0, 2.0) == (0, 1)
+
+
+def test_clearance_to_voxels_formula_fine_pitch():
+    """Ince pitch (0.5mm): 1mm clearance -> margin=z_clearance=2 (olcum-kalibreli:
+    margin=1 @0.5 sadece ~0.8mm verir=ihlal; margin=2 = 1.05mm OK). Deneme4."""
+    assert clearance_to_voxels(1.0, 0.5) == (2, 2)
+
+
+def test_clearance_to_voxels_formula_coarse_pitch():
+    """Kaba pitch (5mm): 1mm clearance -> her ikisi de en az 1 voxel (max(1,..))."""
+    assert clearance_to_voxels(1.0, 5.0) == (1, 1)
+    # pitch 2.0 -> ceil(1/2)=1 (NFV/benchmark margin=1 konvansiyonuyla tutarli)
+    assert clearance_to_voxels(1.0, 2.0) == (1, 1)
+
+
+def test_clearance_to_voxels_margin_equals_zclearance():
+    """Olcum-kalibreli formul: margin == z_clearance == ceil(clearance/pitch)."""
+    for cl, p in [(1.0, 0.5), (1.0, 0.3), (2.0, 0.5), (1.0, 5.0), (1.5, 0.5)]:
+        m, z = clearance_to_voxels(cl, p)
+        assert m == z, f"margin({m}) != z_clearance({z}) @ clearance={cl} pitch={p}"
+
+
+def test_clearance_to_voxels_scales_with_clearance():
+    """2mm clearance @ 0.5 pitch -> margin=z=4 (clearance ile olcekler)."""
+    assert clearance_to_voxels(2.0, 0.5) == (4, 4)
+    # 1mm @ 0.3 pitch: ceil(1/0.3)=4
+    assert clearance_to_voxels(1.0, 0.3) == (4, 4)
+
+
+def test_clearance_mm_default_is_zero():
+    """clearance_mm parametresi var, varsayilan 0.0 (bit-ozdes eski yol)."""
+    import inspect
+    sig = inspect.signature(solve_coarse_to_fine)
+    assert "clearance_mm" in sig.parameters
+    assert sig.parameters["clearance_mm"].default == 0.0
+
+
+def test_clearance_zero_equals_default_bit_identical():
+    """clearance_mm=0.0 acikca gecince, hic gecmemekle BIREBIR ayni yerlesim
+    (yukseklik + tum placement anahtarlari)."""
+    r_default = _solve()
+    r_zero = _solve(clearance_mm=0.0)
+    assert r_zero.height_mm == r_default.height_mm
+    assert r_zero.n_placed == r_default.n_placed
+    key_d = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+             for p in r_default.placements]
+    key_z = [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+             for p in r_zero.placements]
+    assert key_z == key_d, "clearance_mm=0.0 eski yolla birebir olmali"
+
+
+def test_clearance_positive_guarantees_min_gap():
+    """clearance_mm=1.0 -> yerlesmis GERCEK mesh'ler arasi olculen min bosluk
+    >= 1mm (hoca sarti). Garanti zinciri: yatay margin dilation + dikey
+    z_clearance; placed_meshes orijinal mesh'i (voxel_origin margin-kaydirmasi
+    dahil) yerine koyar -> olculen deger gercek bosluktur."""
+    from src.nesting3d.export_stl import placed_meshes
+    from src.nesting3d.clearance import min_clearance
+    r = _solve(clearance_mm=1.0)
+    assert r.n_placed == 4
+    meshes = placed_meshes(r.placements, r.fine_voxel_parts, r.fine_pitch)
+    rep = min_clearance(meshes, samples_per_mesh=3000, seed=1)
+    assert rep.ok(1.0), (
+        f"clearance_mm=1.0 gercek >=1mm boslugu saglamadi: {rep.min_mm:.3f}mm")
+
+
+def test_clearance_submm_pitch_guarantees_gap():
+    """REGRESYON KİLİDİ (2026-07-06): ince pitch (0.5mm) rejiminde clearance_mm=1.0
+    -> olculen min bosluk >= 1mm. Eski margin=max(1,ceil(1/(2*pitch)))=1 formulu
+    bu rejimde SADECE ~0.8mm veriyordu (ihlal); duzeltilmis margin=ceil(1/pitch)=2
+    gecmeli. Kaba-pitch testi (pitch=5) bu bug'i YAKALAYAMIYORDU."""
+    from src.nesting3d.export_stl import placed_meshes
+    from src.nesting3d.clearance import min_clearance
+    # 4 kucuk kutu @ pitch 0.5 (hizli); clearance 1.0 -> margin=z_clearance=2
+    inst = NestingInstance(
+        container=ContainerSpec(width_mm=40.0, depth_mm=40.0),
+        parts=[
+            PartSpec(id="c_a", name="c_a", qty=2, source="box",
+                     width_mm=6.0, depth_mm=6.0, height_mm=6.0),
+            PartSpec(id="c_b", name="c_b", qty=2, source="box",
+                     width_mm=8.0, depth_mm=5.0, height_mm=4.0),
+        ],
+    )
+    r = solve_coarse_to_fine(
+        inst, plate_w_mm=40.0, plate_d_mm=40.0,
+        coarse_pitch=2.0, fine_pitch=0.5, budget=BUDGET, seed=42,
+        menu=_fast_menu(), clearance_mm=1.0,
+    )
+    assert r.n_placed == 4
+    meshes = placed_meshes(r.placements, r.fine_voxel_parts, r.fine_pitch)
+    rep = min_clearance(meshes, samples_per_mesh=3000, seed=1)
+    assert rep.ok(1.0), (
+        f"sub-mm pitch clearance saglanmadi: {rep.min_mm:.3f}mm "
+        f"(margin=ceil(1/0.5)=2 gerekli)")
+
+
+def test_clearance_positive_deterministic():
+    """clearance_mm>0 yolu deterministik (ayni argüman -> ayni yukseklik)."""
+    r1 = _solve(clearance_mm=1.0)
+    r2 = _solve(clearance_mm=1.0)
+    assert r1.height_mm == r2.height_mm
+    assert r1.n_placed == r2.n_placed
+
+
+def test_clearance_reaches_fine_bin3d(monkeypatch):
+    """clearance_mm=1.0 -> fine _run_fine Bin3D'si z_clearance>=1 ile kurulur
+    (kablonun Bin3D'ye ulastigini yakala; sonuctan bagimsiz)."""
+    import src.nesting3d.coarse_to_fine as c2f
+    seen_zc = []
+    orig = c2f.Bin3D
+
+    def _spy(*a, **k):
+        seen_zc.append(k.get("z_clearance"))
+        return orig(*a, **k)
+
+    monkeypatch.setattr(c2f, "Bin3D", _spy)
+    # Ince fine pitch (0.5) + clearance 1.0 -> fine z_clearance = max(1, ceil(1/0.5)) = 2
+    # (Deneme4 senaryosunun net kaniti). _solve fine_pitch'i sabitledigi icin
+    # dogrudan solve_coarse_to_fine cagrilir.
+    solve_coarse_to_fine(
+        _make_instance(),
+        plate_w_mm=PLATE_W, plate_d_mm=PLATE_D,
+        coarse_pitch=2.0, fine_pitch=0.5, budget=BUDGET, seed=42,
+        menu=_fast_menu(), clearance_mm=1.0,
+    )
+    assert 2 in seen_zc, f"fine Bin3D z_clearance=2 kurulmali, gorulen: {seen_zc}"

@@ -58,6 +58,21 @@ TUNER_BUDGET = 70
 C2F_THRESHOLD = 40            # voxel-parça (kopya açılmış) eşiği
 COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
 
+# Web nesting NFV-DIŞI yollarında (heightmap/coarse_to_fine + tuner + dblf-fallback)
+# GARANTİ edilen parça-arası min boşluk (mm). Hoca şartı (2026-06-11): her yönde
+# >= 1 mm. Bu değer clearance_to_voxels ile pitch'e göre (margin, z_clearance)
+# voxel sayısına çevrilir. NFV yolu (solve_nfv) zaten margin=1 kullanır -> DOKUNULMAZ.
+# Fix 2026-07-06: eski web yolu margin=0 + z_clearance=1 -> ince pitch'te (Deneme4
+# @0.5mm) gerçek boşluk 0.083mm'ye iniyordu (ihlal); artık pitch'ten türetilir.
+WEB_MIN_CLEARANCE_MM = 1.0
+
+# HIGH-2 runtime clearance kapisi (2026-07-06): her web nest'ten SONRA uretilen
+# yerlesimin gercek min boslugu ORNEKLEM ile dogrulanir. min_clearance UST-sinir
+# oldugundan olculen deger < esik ise KESIN ihlal. Bu ornek/mesh sayisi hiz-
+# duyarlilik dengesidir (588 parca ~10s). Voxel-katmani margin ASIL garanti;
+# bu bagimsiz post-nest dogrulama/uyari (reviewer HIGH-2).
+CLEARANCE_GATE_SAMPLES = 3000
+
 # Parti-seviyesi PARALEL nesting: birden çok bağımsız parti (örn. 5 farklı
 # müşteriden 5 ayrı sipariş) ayrı SÜREÇLERDE aynı anda koşar → toplam süre =
 # en yavaş tek partininki, partilerin TOPLAMI değil. Partiler tam bağımsız
@@ -528,18 +543,63 @@ def _build_nesting_instance(
     return NestingInstance(container=container_spec, parts=parts)
 
 
-def _bin_factory(container: Dict[str, Any], pitch: float):
-    """Bin3D fabrika fonksiyonu döndürür."""
+def _bin_factory(container: Dict[str, Any], pitch: float,
+                 clearance_mm: float = 0.0):
+    """Bin3D fabrika fonksiyonu döndürür.
+
+    clearance_mm > 0 ise dikey z_clearance pitch'ten türetilir (hoca >= 1mm
+    şartı; tuner + dblf-fallback yolları). clearance_mm == 0.0 -> z_clearance=1
+    (mevcut davranış bit-özdeş).
+    """
     from src.nesting3d.bin3d import Bin3D
+    from src.nesting3d.coarse_to_fine import clearance_to_voxels
+
+    _margin, _zc = clearance_to_voxels(clearance_mm, pitch)
 
     def factory() -> Bin3D:
         return Bin3D(
             plate_w_mm=float(container["width_mm"]),
             plate_d_mm=float(container["depth_mm"]),
             pitch=pitch,
-            z_clearance=1,
+            z_clearance=_zc,
         )
     return factory
+
+
+def _clearance_gate(placements, voxel_parts_dict, pitch: float,
+                    instr: Dict[str, Any]) -> str:
+    """Post-nest clearance DOGRULAMA (HIGH-2; hoca >=1mm sarti 2026-06-11,
+    2026-07-06 mailde 335 plaka + 1-2mm ile teyit edildi).
+
+    Uretilen yerlesimi BAGIMSIZ olc: placed_meshes ORIJINAL mesh'leri (voxel
+    margin-kaydirmasi dahil) yerine koyar; min_clearance ornek-tabanli min
+    boslugu raporlar. Ornekleme UST-sinir verir -> olculen deger < esik ise
+    KESIN ihlal (uretilemez). Voxel-katmani margin asil garanti; bu ek uyari
+    katmani (sessiz <1mm yerlesimi gorunur kilar; NFV fine-pitch HIGH-3 dahil).
+
+    GATE HATASI ASLA nest'i bozmaz (fail-open): istisnada telemetriye hata
+    yazar, '' doner. Doner: ihlal uyari notu ('' = OK / atlandi / hata).
+    """
+    if WEB_MIN_CLEARANCE_MM <= 0 or len(placements) < 2:
+        return ""
+    import time as _t
+    try:
+        from src.nesting3d.export_stl import placed_meshes
+        from src.nesting3d.clearance import min_clearance
+        _t0 = _t.perf_counter()
+        meshes = placed_meshes(placements, voxel_parts_dict, pitch)
+        rep = min_clearance(meshes, samples_per_mesh=CLEARANCE_GATE_SAMPLES, seed=0)
+        instr["min_clearance_mm"] = round(rep.min_mm, 3)
+        instr["clearance_check_s"] = round(_t.perf_counter() - _t0, 2)
+        if rep.min_mm < WEB_MIN_CLEARANCE_MM:
+            return (
+                f"UYARI: olculen parca-arasi min bosluk {rep.min_mm:.3f}mm < "
+                f"{WEB_MIN_CLEARANCE_MM:.1f}mm (hoca sarti) -> bu yerlesim "
+                f"URETILEMEZ olabilir; clearance ayari/pitch gozden gecirilmeli."
+            )
+    except Exception as _exc:  # noqa: BLE001 — gate dogrulama, nest'i bozamaz
+        instr["clearance_check_error"] = str(_exc)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -817,7 +877,32 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     estimated_n_parts = sum(_name_to_qty.values())
 
     t_nest_start = _time.perf_counter()
-    factory = _bin_factory(container, pitch)
+    # Web NFV-DIŞI yolları (tuner + dblf-fallback) için z_clearance pitch'ten
+    # türetilir (hoca >= 1mm). NFV yolu bu factory'yi kullanmaz (kendi margin=1).
+    factory = _bin_factory(container, pitch, clearance_mm=WEB_MIN_CLEARANCE_MM)
+    # Tuner + dblf-fallback voxelize'ında yatay margin (parça-arası >= 1mm boşluk)
+    # aynı pitch'ten türetilir. coarse_to_fine kendi içinde türetir; NFV margin=1.
+    from src.nesting3d.coarse_to_fine import clearance_to_voxels as _clear_vox
+    _web_margin, _ = _clear_vox(WEB_MIN_CLEARANCE_MM, pitch)
+    # GRACEFUL clearance-cap (2026-07-06): kaba pitch'te margin=1 = pitch mm
+    # dilation, fiziksel clearance_mm'nin USTUNDE over-provision eder (M3);
+    # auto-plaka bunu hesaba katmadigindan dilated parca plakayi asip nest
+    # 0-cikti HATASI verir (kucuk-parca demo: braket 40mm @ pitch 6 -> 52mm >
+    # plaka 50). Cozum: en buyuk parca + 2*margin*pitch plakaya sigmazsa margin'i
+    # sigacak degere KIS (0'a kadar) + telemetri. SABIT-plaka gercek siparislerde
+    # (parca << plaka) TETIKLENMEZ -> tam clearance korunur; yalniz siniraşan
+    # kenar-durumu (dolayisiyla eski margin=0 davranisi) geri gelir. Tuner/DBLF
+    # yolu (bu _web_margin'i kullanan) icin; c2f fine-pitch kendi kucuk dilation'i.
+    if _web_margin > 0 and pitch > 0:
+        _plate_min = min(float(container["width_mm"]), float(container["depth_mm"]))
+        _max_part = max(
+            (float(_v) for _p in all_parts
+             for _v in (_p.get("width_mm"), _p.get("depth_mm"), _p.get("height_mm"))
+             if _v), default=0.0)
+        _fit_margin = int((_plate_min - _max_part) / (2.0 * pitch))
+        if _fit_margin < _web_margin:
+            _web_margin = max(0, _fit_margin)
+            _instr["clearance_capped_margin"] = _web_margin  # <esik: plaka/pitch dar
     _c2f_result = None
     voxel_parts = None  # yalnız tuner/DBLF yolunda üretilir (None = henüz voxelize edilmedi)
     try:
@@ -874,6 +959,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 # drop_cache=False -> mevcut davranis BIT-OZDES. Bin3D per-decode
                 # tek-thread (bkz. solve_coarse_to_fine THREAD-GUVENLIGI).
                 drop_cache=wall_aware_pitch,
+                # Hoca >= 1mm boşluk şartı (2026-06-11, fix 2026-07-06): coarse+
+                # fine voxelize ve Bin3D'ler pitch'ten türetilen (margin,
+                # z_clearance) ile kurulur. NFV yolu ayrı (zaten margin=1); bu
+                # yalnız NFV-DIŞI coarse_to_fine (web heightmap) yolunu etkiler.
+                clearance_mm=WEB_MIN_CLEARANCE_MM,
             )
             if wall_aware_pitch:
                 _instr["fine_angle_reason"] = "skipped: thin_shell/H-15p"
@@ -883,7 +973,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             # Voxelize hatası (OOM/boş-grid) mevcut davranışı korur: "Voxelization hatasi" note + _ret.
             try:
                 voxel_parts = to_voxel_parts(
-                    instance, pitch, n_orientations=n_orient, margin=0
+                    instance, pitch, n_orientations=n_orient, margin=_web_margin
                 )
             except Exception as _vox_exc:
                 return _ret(
@@ -902,17 +992,21 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             if voxel_parts is None:
                 # NFV/coarse yolunda hata → voxel_parts henüz üretilmedi; fallback için tek kez voxelize et.
                 voxel_parts = to_voxel_parts(
-                    instance, pitch, n_orientations=n_orient, margin=0
+                    instance, pitch, n_orientations=n_orient, margin=_web_margin
                 )
             _placements, bin3d = _dblf(voxel_parts, factory)
             t_nest_elapsed = _time.perf_counter() - t_nest_start
             _set_volume_fill(bin3d.max_height_mm())  # #17/#19
+            # HIGH-2: fallback yolu da clearance dogrular (sessiz <1mm olmasin).
+            _fb_cl_note = _clearance_gate(
+                _placements, {p.id: p for p in voxel_parts}, pitch, _instr)
             nesting = {
                 "height_mm": bin3d.max_height_mm(),
                 "density": bin3d.packing_density(),
                 "n_parts": len(_placements),
                 "elapsed_sec": round(t_nest_elapsed, 3),
-                "note": f"Tuner hatasi (DBLF fallback): {exc}",
+                "note": (f"Tuner hatasi (DBLF fallback): {exc}"
+                         + (f" | {_fb_cl_note}" if _fb_cl_note else "")),
                 "portfolio": None, "tuner": None, "selection": selection_pred,
             }
         except Exception as exc2:
@@ -1032,12 +1126,19 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         "rows": tuner_rows,
     }
 
+    # HIGH-2 runtime clearance kapisi: uretilen yerlesim hoca >=1mm sartini
+    # gercekten sagliyor mu? _cl_pitch = SONUCUN pitch'i (c2f/nfv fine_pitch veya
+    # tuner input pitch). Ihlal -> note'a uyari (nest bozulmaz).
+    _cl_pitch = _c2f_result.fine_pitch if _c2f_result is not None else pitch
+    _clearance_note = _clearance_gate(
+        winner_result.placements, voxel_parts_3d, _cl_pitch, _instr)
+
     nesting = {
         "height_mm": height_mm,
         "density": density,
         "n_parts": n_placed,
         "elapsed_sec": round(t_nest_elapsed, 3),
-        "note": "",
+        "note": _clearance_note,
         "auto_mode_reason": auto_reason,  # "auto" seçimi gerekçesi (None=auto kullanılmadı)
         "nesting_mode_used": nesting_mode,  # auto çözüldükten sonra fiilen kullanılan mod
         # GLB/STL export placements'ı bu pitch'le mm'e çevirir → SONUCUN pitch'i şart:

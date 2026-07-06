@@ -549,12 +549,19 @@ class TestRichScenario:
                 assert isinstance(port["winner"], str)
 
     def test_coarse_path_unchanged_after_double_voxelize_removal(self):
-        """Çift-voxelize kaldırma (2026-06-26) coarse_to_fine yolu SONUCUNU değiştirmemeli.
+        """coarse_to_fine yolu deterministik + clearance-zorunlu referansı korur.
 
-        45 box parça (>C2F_THRESHOLD=40) → coarse_to_fine yolu. Refactor: voxel_parts artık bu
-        yolda üretilmiyor (solve_coarse_to_fine kendi voxelize'ını yapar) → gereksiz çift-voxelize
-        kalktı, ama height/density BİREBİR korunmalı. Referans (git stash ile öncesi=sonrası
-        doğrulandı 2026-06-26): height=36.0mm. Bu test refactor mantığını kalıcı korur.
+        45 box parça (>C2F_THRESHOLD=40) → coarse_to_fine yolu (solve_coarse_to_fine
+        kendi voxelize'ını yapar; çift-voxelize refactor'u 2026-06-26 kalıcı).
+
+        REFERANS GÜNCELLEMESİ (clearance fix 2026-07-06): eski referans 36.0mm,
+        margin=0 + z_clearance=1 ile üretilmişti = parçalar TEMAS ediyordu (hoca
+        >= 1mm şartı 2026-06-11 İHLAL, üretilemez). Web NFV-DIŞI yollar artık
+        clearance_mm=WEB_MIN_CLEARANCE_MM (1mm) ile koşuyor: coarse+fine voxelize
+        yatay margin dilation + Bin3D z_clearance pitch'ten türetilir. Bu, HER
+        parça-çifti arasına >= 1 voxel boşluk koyar (bu instance'ın kaba pitch'inde
+        1 voxel > 1mm; dürüst clearance maliyeti) -> yeni dürüst referans 86.4mm.
+        36.0 sayısı ARTIK GEÇERSİZ (0-boşluk, üretilemez).
         """
         parts = [{"id": f"b{i}", "name": f"box{i}", "qty": 1, "source": "box",
                   "width_mm": 30.0 + (i % 12), "depth_mm": 25.0 + (i % 7),
@@ -569,9 +576,10 @@ class TestRichScenario:
         assert nr, "nesting_results bos"
         nest = next(iter(nr.values()))
         assert nest["n_parts"] == 45, f"45 parca beklendi: {nest['n_parts']}"
-        # BİREBİRLİK kapısı: refactor öncesi=sonrası (git stash karşılaştırması) 36.0mm
-        assert abs(nest["height_mm"] - 36.0) < 1e-6, \
-            f"coarse yolu height degisti (cift-voxelize regresyon!): {nest['height_mm']}"
+        # DÜRÜST (clearance >= 1mm zorunlu) referans: 86.4mm (eski 36.0 = 0-boşluk,
+        # üretilemez). Determinizm + clearance-yolu kapısı.
+        assert abs(nest["height_mm"] - 86.4) < 1e-6, \
+            f"coarse yolu height degisti: {nest['height_mm']} (beklenen 86.4, clearance-zorunlu)"
 
 
 # ---------------------------------------------------------------------------
@@ -905,3 +913,58 @@ class TestConfigurableHardCap:
         monkeypatch.setattr(dp, "_available_ram_gb", lambda: 12.0)  # az RAM
         # RAM: floor(12*0.8/1.5)=6 → tavan 1000 ve CPU 62'ye rağmen 6
         assert dp._resolve_max_workers(50) == 6
+
+
+class TestClearanceGate:
+    """HIGH-2 runtime clearance kapisi (_clearance_gate, 2026-07-06).
+
+    Gate KARARINI (uyari uret / gec / atla / fail-open) izole test eder;
+    placed_meshes + min_clearance mock'lanir (agir geometri gerekmez). Hoca
+    >= 1mm sarti (WEB_MIN_CLEARANCE_MM=1.0).
+    """
+
+    def test_flags_violation(self, monkeypatch):
+        from types import SimpleNamespace
+        from scripts import demo_pipeline as dp
+        import src.nesting3d.export_stl as es
+        import src.nesting3d.clearance as cl
+        monkeypatch.setattr(es, "placed_meshes", lambda *a, **k: ["m1", "m2"])
+        monkeypatch.setattr(cl, "min_clearance",
+                            lambda *a, **k: SimpleNamespace(min_mm=0.5))
+        instr = {}
+        note = dp._clearance_gate(["p1", "p2"], {}, 0.5, instr)
+        assert note and "URETILEMEZ" in note, f"ihlal uyarisi bekleniyordu: {note!r}"
+        assert instr["min_clearance_mm"] == 0.5
+        assert "clearance_check_s" in instr
+
+    def test_ok_no_warning(self, monkeypatch):
+        from types import SimpleNamespace
+        from scripts import demo_pipeline as dp
+        import src.nesting3d.export_stl as es
+        import src.nesting3d.clearance as cl
+        monkeypatch.setattr(es, "placed_meshes", lambda *a, **k: ["m1", "m2"])
+        monkeypatch.setattr(cl, "min_clearance",
+                            lambda *a, **k: SimpleNamespace(min_mm=1.5))
+        instr = {}
+        note = dp._clearance_gate(["p1", "p2"], {}, 0.5, instr)
+        assert note == "", f"esik ustu -> uyari OLMAMALI: {note!r}"
+        assert instr["min_clearance_mm"] == 1.5
+
+    def test_skips_single_part(self):
+        from scripts import demo_pipeline as dp
+        instr = {}
+        assert dp._clearance_gate(["p1"], {}, 0.5, instr) == ""
+        assert "min_clearance_mm" not in instr  # <2 parca -> hic olcum yok
+
+    def test_fail_open_on_error(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        import src.nesting3d.export_stl as es
+
+        def _boom(*a, **k):
+            raise RuntimeError("devox patladi")
+
+        monkeypatch.setattr(es, "placed_meshes", _boom)
+        instr = {}
+        note = dp._clearance_gate(["p1", "p2"], {}, 0.5, instr)
+        assert note == ""  # gate hatasi nest'i BOZMAZ (fail-open)
+        assert "devox patladi" in instr.get("clearance_check_error", "")

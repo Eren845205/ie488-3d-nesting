@@ -37,6 +37,39 @@ _REFINE_AXIS_VEC = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 
 _VOXEL_SAFE_RATIO = 0.6
 
 
+def clearance_to_voxels(clearance_mm: float, pitch: float):
+    """Parça-arası min boşluk (mm) -> (margin, z_clearance) voxel sayıları.
+
+    Hoca şartı (2026-06-11): parçalar arasında her yönde min 1 mm boşluk. Bu
+    voxel katmanında iki bağımsız mekanizmayla verilir:
+      - margin      = YATAY dilation (voxelize._dilate, yalnız x/y).
+      - z_clearance = DİKEY boşluk (Bin3D, istif arayüzü başına tek taraflı).
+
+    clearance_mm == 0.0 (varsayılan): (0, 1) = MEVCUT davranış BİT-ÖZDEŞ
+      (yatay dilation YOK; dikey z_clearance tarihsel tek-hücre değeri).
+    clearance_mm > 0:
+      margin = z_clearance = max(1, ceil(clearance_mm / pitch))
+
+    ÖLÇÜM-KALİBRELİ FORMÜL (2026-07-06): Naif "2*margin*pitch alt-sınır" YANLIŞ
+    çıktı. Deneme4 @0.5mm bağımsız ölçüm (plain DBLF + wall_aware üretim yolu):
+      margin=1, zc=2  -> min_boşluk 0.79-0.90 mm  (HÂLÂ < 1mm İHLAL)
+      margin=2, zc=2  -> min_boşluk 1.05 mm       (OK >= 1mm)
+    Konservatif slice-voxelizasyon (merkez-içi + yüzey hücreleri) ve DBLF'in
+    dilated-grid bitişikliği, gerçek boşluğu voxel başına ~pitch DEĞİL ~pitch/2
+    kadar açıyor; bu yüzden garanti için margin da z_clearance kadar (ceil(
+    clearance/pitch)) olmalı. pitch 0.5 -> 2 (ölçümle OK), pitch 2.0 -> 1
+    (NFV/benchmark margin=1 konvansiyonuyla tutarlı), pitch 5.0 -> 1.
+
+    NOT: NFV yolu (nfv_solve) zaten margin=1 kullanır; bu yardımcı yalnız
+    NFV-DIŞI (coarse_to_fine / heightmap / tuner / dblf-fallback) yolları içindir.
+    Ölçüm HAKEM: gerçek min boşluk clearance.min_clearance ile doğrulanır.
+    """
+    if clearance_mm <= 0.0:
+        return 0, 1
+    n = max(1, math.ceil(clearance_mm / pitch))
+    return n, n
+
+
 def _min_feature_mm(instance: NestingInstance) -> float:
     """Instance'taki EN İNCE parçanın en küçük boyutu (mm).
 
@@ -54,25 +87,32 @@ def _min_feature_mm(instance: NestingInstance) -> float:
 
 def _voxelize_with_fallback(
     instance: NestingInstance, pitch: float, floor_pitch: float,
-    *, n_orientations: int = 4
+    *, n_orientations: int = 4, clearance_mm: float = 0.0
 ):
     """Voxelize; boş-grid hatasında pitch'i otomatik KIS (ince-duvar güvenliği).
 
     bbox boyutu güvenli görünse bile bir parça ince-duvarlı (içi boş) olabilir
     ve kaba pitch'te kaybolur (ValueError). Bu durumda pitch ×1/1.5 ile küçülür,
     floor_pitch'e (fine) kadar denenir. Döner: (voxel_parts, kullanılan_pitch).
+
+    clearance_mm > 0 ise yatay margin GERÇEKTEN kullanılan pitch'ten türetilir
+    (pitch küçülürse margin voxel sayısı artar -> mm-boşluk sabit kalır).
+    clearance_mm == 0.0 -> margin=0 (mevcut davranış bit-özdeş).
     """
     cur = pitch
     while True:
         try:
-            return to_voxel_parts(instance, cur,
-                                  n_orientations=n_orientations), cur
+            margin, _zc = clearance_to_voxels(clearance_mm, cur)
+            return to_voxel_parts(instance, cur, n_orientations=n_orientations,
+                                  margin=margin), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
                 # floor'a indik: son çare floor ile dene (patlarsa propagate)
+                margin, _zc = clearance_to_voxels(clearance_mm, floor_pitch)
                 return to_voxel_parts(instance, floor_pitch,
-                                      n_orientations=n_orientations), floor_pitch
+                                      n_orientations=n_orientations,
+                                      margin=margin), floor_pitch
             cur = nxt
 
 
@@ -145,6 +185,7 @@ def _build_refined_fine_parts(
     window_deg: float,
     step_deg: float,
     axes,
+    margin: int = 0,
 ):
     """Fine voxel parçalarını, her parçanın KAZANAN ayrık pozu çevresinde
     ince-açı aday oryantasyonlarıyla kur.
@@ -161,7 +202,8 @@ def _build_refined_fine_parts(
 
     master = rotation_matrices(N_MASTER_POSES)
     # Doğru id/mesh için ucuz tek-poz voxelizasyon; orientations sonra değişir.
-    base_parts = to_voxel_parts(instance, fine_pitch, n_orientations=1)
+    base_parts = to_voxel_parts(instance, fine_pitch, n_orientations=1,
+                                margin=margin)
     cache: Dict[tuple, List[Any]] = {}
     for part in base_parts:
         didx = orient_map.get(part.id, 0)
@@ -171,7 +213,7 @@ def _build_refined_fine_parts(
         if key not in cache:
             rmats = _refined_rot_matrices(master[didx], window_deg, step_deg, axes)
             vp = voxelize_part(part.name, part.mesh, fine_pitch,
-                               rot_matrices=rmats, method="slice")
+                               rot_matrices=rmats, method="slice", margin=margin)
             cache[key] = vp.orientations
         part.orientations = cache[key]
     return base_parts
@@ -199,6 +241,7 @@ def _auto_select_n_orientations(
     instance: NestingInstance, plate_w_mm: float, plate_d_mm: float,
     coarse_pitch: float, fine_pitch: float,
     ladder=_ORIENTATION_LADDER, min_gain: float = _ESCALATION_MIN_GAIN,
+    *, clearance_mm: float = 0.0,
 ):
     """Poz sayısını VERİ-ODAKLI seç — sabit n YOK, her instance kendi n'ini bulur.
 
@@ -219,10 +262,12 @@ def _auto_select_n_orientations(
     trail = []
     for n in ladder:
         parts, used = _voxelize_with_fallback(
-            instance, coarse_pitch, fine_pitch, n_orientations=n)
+            instance, coarse_pitch, fine_pitch, n_orientations=n,
+            clearance_mm=clearance_mm)
+        _margin, _zc = clearance_to_voxels(clearance_mm, used)
 
-        def factory(_p=used):
-            return Bin3D(plate_w_mm, plate_d_mm, _p, z_clearance=1)
+        def factory(_p=used, _z=_zc):
+            return Bin3D(plate_w_mm, plate_d_mm, _p, z_clearance=_z)
 
         _, b = dblf(parts, factory)
         h = b.max_height_voxels()
@@ -314,6 +359,7 @@ def solve_coarse_to_fine(
     skip_fine_angle: bool = False,
     drop_cache: bool = False,
     drop_cache_cap_mb: float = 300.0,
+    clearance_mm: float = 0.0,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -388,6 +434,15 @@ def solve_coarse_to_fine(
                       -> per-decode tek-thread garantisi yapisal, lock gereksiz.
     drop_cache_cap_mb: drop_cache=True iken onbellek bellek tavani (MB, LRU
                       eviction esigi). Varsayilan 300. Kapaliyken etkisiz.
+    clearance_mm    : Parca-arasi GARANTI edilen min bosluk (mm; hoca sarti
+                      2026-06-11). 0.0 (varsayilan) -> MEVCUT davranis BIT-OZDES
+                      (yatay margin=0, dikey z_clearance=1). >0 iken HER
+                      voxelize (coarse + fine) ve HER Bin3D (coarse + fine)
+                      kendi pitch'inden turetilen (margin, z_clearance) ile
+                      kurulur (clearance_to_voxels) -> yatay dilation + dikey
+                      bosluk birlikte >= clearance_mm gercek boslugu saglar.
+                      NFV yolu ayri (zaten margin=1); bu param yalniz bu
+                      NFV-DISI coarse_to_fine yolunu etkiler.
 
     Returns
     -------
@@ -410,15 +465,21 @@ def solve_coarse_to_fine(
     if adaptive:
         n_orientations, coarse_parts, coarse_pitch, n_orient_trail = \
             _auto_select_n_orientations(
-                instance, plate_w_mm, plate_d_mm, coarse_pitch, fine_pitch)
+                instance, plate_w_mm, plate_d_mm, coarse_pitch, fine_pitch,
+                clearance_mm=clearance_mm)
     else:
         # İnce-duvarlı parça kaba pitch'te kaybolursa pitch otomatik kısılır.
         coarse_parts, coarse_pitch = _voxelize_with_fallback(
-            instance, coarse_pitch, fine_pitch, n_orientations=n_orientations
+            instance, coarse_pitch, fine_pitch, n_orientations=n_orientations,
+            clearance_mm=clearance_mm,
         )
 
+    # Coarse Bin3D dikey boşluğu coarse pitch'ten türetilir (clearance_mm=0 ->
+    # z_clearance=1, mevcut davranış bit-özdeş).
+    _coarse_margin, _coarse_zc = clearance_to_voxels(clearance_mm, coarse_pitch)
+
     def coarse_factory() -> Bin3D:
-        return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=1)
+        return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc)
 
     tune_result = tune(
         coarse_parts,
@@ -456,6 +517,10 @@ def solve_coarse_to_fine(
     # ------------------------------------------------------------------
     t1 = time.perf_counter()
 
+    # Fine (margin, z_clearance) fine pitch'ten türetilir. clearance_mm=0 ->
+    # (0, 1) = mevcut davranış bit-özdeş (margin yok, tarihsel z_clearance=1).
+    _fine_margin, _fine_zc = clearance_to_voxels(clearance_mm, fine_pitch)
+
     # H-15p OPT-IN atlama: skip_fine_angle True iken rafine yolu HIC kosmaz
     # (window>0 / adaptive rafine acsa bile). Baz cozum kullanilir -> kalite
     # riski sifir olan ailelerde (kabuk/donel-simetrik) 11x yerlesim + ek
@@ -472,14 +537,15 @@ def solve_coarse_to_fine(
         (per-decode tek-thread; lock gereksiz — bkz. docstring THREAD-GUVENLIGI).
         """
         ordered = [parts_by_id[pid] for pid in order_ids if pid in parts_by_id]
-        b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=1,
+        b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=_fine_zc,
                   drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
         pls = place_in_order(ordered, b, orient_fn)
         return pls, b
 
     # --- Baz çözüm (ince açı YOK) — daima üretilir (güvenli karşılaştırma tabanı)
     base_parts = to_voxel_parts(instance, fine_pitch,
-                                n_orientations=n_orientations)
+                                n_orientations=n_orientations,
+                                margin=_fine_margin)
     base_by_id: Dict[str, Any] = {p.id: p for p in base_parts}
 
     def _base_orient(idx: int, part: Any) -> tuple:
@@ -499,6 +565,7 @@ def solve_coarse_to_fine(
         ref_parts = _build_refined_fine_parts(
             instance, fine_pitch, orient_map,
             window_deg=fine_angle_window, step_deg=fine_angle_step, axes=axes,
+            margin=_fine_margin,
         )
         ref_by_id: Dict[str, Any] = {p.id: p for p in ref_parts}
 
