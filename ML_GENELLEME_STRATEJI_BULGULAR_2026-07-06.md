@@ -1,5 +1,12 @@
 # ML / Genelleme Stratejisi — BULGULAR + FİKİRLER (2026-07-06)
 
+> ## ⛔ YERİNİ ALDI → **`STRATEJI/`** (2026-07-06, Fable 5)
+> Bu taslak koda-karşı doğrulandı, düzeltildi ve **`STRATEJI/` klasörüne**
+> (README + 00_ANAYASA + 01_VERI + 02_EVAL_KAPISI + 03_SECIM_MODELI +
+> 04_MOTOR_TUNING + 05_TRANSFER_PLAYBOOK) yükseltildi. Çelişkide STRATEJI/
+> kazanır; bu dosya tarihsel referanstır. Neyin doğrulandığı/bayatladığı/yeni
+> eklendiği: `STRATEJI/README.md` "Opus taslağına göre ne değişti".
+
 > **Bu doküman PLAN DEĞİL.** Bugünkü (2026-07-06, Opus 4.8 oturumu) bulguları ve
 > fikirleri toplar. Tasarım/plan yarın **Fable 5** ile bundan yapılacak.
 > Kaynak: clearance bulgusundan doğan overfitting/genelleme tartışması.
