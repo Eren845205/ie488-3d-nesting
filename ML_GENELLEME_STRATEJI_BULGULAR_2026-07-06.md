@@ -29,6 +29,44 @@ açık öneri niteliğindedir.
 
 ---
 
+## CLEARANCE FIX — DURUM + KARAR NOKTASI (2026-07-06 gece, güncel)
+
+**Ölçüldü, üretim yolu (wall_aware/H-16w, builder+reviewer):**
+| config | Deneme4 yükseklik | min boşluk | durum |
+|---|---|---|---|
+| margin=0 (MEVCUT üretim) | 282.0mm | 0.084mm | ❌ 1mm ihlal (üretilemez) |
+| margin=1, zc=2 | 296mm | 0.79-0.90mm | ❌ hâlâ <1mm |
+| **margin=2, zc=2 (`clearance_mm=1.0`)** | **329mm** | 1.029mm | ✅ ≥1mm |
+
+**Dürüst maliyet: 282 → 329mm (+%16.7)** — ama bu KABA yöntem (her parçayı 2 voxel şişir).
+Formül (ölçüm-kalibreli): `margin = z_clearance = max(1, ceil(clearance_mm/pitch))`;
+pitch≥1 → (1,1) = NFV/benchmark konvansiyonu; pitch 0.5 → (2,2).
+
+**KOD DURUMU:** clearance_mm mekanizması (coarse_to_fine + demo_pipeline) YAZILDI ama
+**COMMIT EDİLMEDİ** — reviewer BLOCK verdi, karar bekliyor. Bayat-mock (HIGH-1)
+düzeltildi (aynı `_fake_c2f` tuzağı). Değişiklikler working tree'de.
+
+**Reviewer bulguları (opus):**
+- HIGH-1 ✅ düzeltildi: `test_reporting_wave_f0` bayat mock `clearance_mm` kabul etmiyordu → broad-except sessiz DBLF-fallback'e yutuyordu. Mock imzası + `assert clearance_mm==1.0` kablo kilidi eklendi.
+- HIGH-2 ⏳ AÇIK: 1.029mm eşiğe YAKIN + `min_clearance` örneklem ÜST-sınır (gerçek min <1.0 olabilir) + üretimde runtime clearance kapısı YOK. Hard üretim kısıtı → post-nest doğrulama/uyarı gerekir.
+- HIGH-3 ⏳ TAKİP: NFV yolu da (margin=1) fine pitch 0.5'te <1mm (0.79-0.90mm) → Plan1/3 gibi fine-pitch NFV sonuçları da sub-1mm. Sistem-geneli clearance NFV'ye de uygulanmalı.
+- M1 broad-except programlama hatalarını maskeliyor · M3 kaba-pitch'te over-provisioning (sentetik 36→86.4 +%140 bunun) · L1 bit-identity testi zayıf.
+
+**KARAR NOKTASI (Eren + Fable 5):** İki yol —
+- **(a) Kaba dilation'ı bitir:** HIGH-2 runtime uyarı kapısı ekle + commit → gözcü dürüst 329 üretir (üretilebilir ama kaba/yüksek).
+- **(b) Clearance-FARKINDA yerleştirme:** dilation yerine 1mm'yi optimizasyon KISITI olarak tut (Magics böyle yapar) → 329'un ALTINA, gerçek üretilebilir + tıkiz. Asıl kalite kaldıracı. Daha çok iş.
+- **Öneri:** mekanizma dürüst ÖLÇÜM için değerli (eval çerçevesinin temeli) — ama 329'u canlı-default yapmadan önce (b)'yi araştır; en azından benchmark'ı clearance-dürüst tut. Eren'in kararı (329 kalite sayısı onu rahatsız ediyor).
+
+**MORAL — dürüst çerçeve (Eren 329'a "useless" dedi):** 329 çöküş DEĞİL:
+- plan2 **Magics'in %4.2 yakınında, DOĞRU clearance ile** (pitch 2.0 margin=1 = ≥1mm) — algoritma gerçek veride gerçekten rakip. Bu tek başına "useless" iddiasını çürütür.
+- Hız 31× (104.5dk→3.4dk) clearance'tan bağımsız, gerçek.
+- plan1/2/3 iyileşmeleri (~%20/17.5/28) margin=1 = dürüst clearance = geçerli.
+- Yalnız Deneme4 fine-pitch sayısı (282→329) düzeldi. Bir sayı ≠ tüm iş.
+- 329 KABA dilation'ın tabanı; clearance-aware placement (b) + süper bilgisayar (A1) denenmemiş gerçek kaldıraçlar.
+- **AÇIK SORU (hocaya):** Magics 250 kendi 1mm clearance'ıyla mı ölçüldü? Değilse 329-vs-250 hâlâ elma-armut.
+
+---
+
 ## VİZYON — niçin ayrı bir "strateji klasörü" (kuzey yıldızı)
 
 **Eren'in hedefi (2026-07-06):** ML/eval kısmı olgunlaştığında **ayrı bir klasör**
