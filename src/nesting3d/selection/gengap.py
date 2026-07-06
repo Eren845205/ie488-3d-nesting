@@ -155,6 +155,7 @@ def _accuracy(
 
 def _loo_cv_accuracy(
     table: List[TrainingRow],
+    model_factory=AlgorithmSelector,
 ) -> float:
     """Leave-one-out cross-validation dogrulugu (1-NN icin dogru genelleme metrigi).
 
@@ -172,7 +173,7 @@ def _loo_cv_accuracy(
     n_correct = 0
     for i in range(n):
         train_slice = table[:i] + table[i + 1:]
-        model = AlgorithmSelector()
+        model = model_factory()
         model.fit(train_slice)
         predicted, _conf = model.predict(table[i].feature_vector)
         if predicted == table[i].winner:
@@ -180,8 +181,62 @@ def _loo_cv_accuracy(
     return n_correct / n
 
 
+def loo_regret(
+    table: List[TrainingRow],
+    model_factory=AlgorithmSelector,
+) -> dict:
+    """LOO-REGRET (mm) — secim modelinin ASIL basari metrigi (STRATEJI 02 §1).
+
+    Her satir icin: satir disarida birakilarak egitilen modelin sectigi
+    cozucunun GERCEK yuksekligi ile o satirin en-iyi yuksekligi arasindaki fark.
+    Accuracy yaniltir (modlar arasi fark bazen 0.5mm bazen 100mm); regret
+    mm-cinsinden gercek bedeli olcer.
+
+    Tahmin edilen cozucu o satirda hic olculmemisse (per_solver_heights'ta yok)
+    KOTUMSER ceza: (max - min) — olculmemis cozucuyu onermek cezalandirilir
+    (sessiz iyimserlik yasagi). per_solver_heights bos satirlar atlanir.
+
+    Doner: {"mean_mm", "max_mm", "n", "n_missing_pred", "per_aile": {aile: mean}}
+    Determinizm: sira sabit, rastgelelik yok. n<2 -> bos rapor.
+    """
+    n = len(table)
+    if n < 2:
+        return {"mean_mm": 0.0, "max_mm": 0.0, "n": 0,
+                "n_missing_pred": 0, "per_aile": {}}
+    regrets: List[float] = []
+    ailes: dict = {}
+    n_missing = 0
+    for i in range(n):
+        row = table[i]
+        heights = row.per_solver_heights
+        if not heights:
+            continue
+        model = model_factory()
+        model.fit(table[:i] + table[i + 1:])
+        pred, _conf = model.predict(row.feature_vector)
+        best = min(heights.values())
+        if pred in heights:
+            reg = heights[pred] - best
+        else:
+            reg = max(heights.values()) - best  # kotumser ceza
+            n_missing += 1
+        regrets.append(reg)
+        ailes.setdefault(row.aile or "?", []).append(reg)
+    if not regrets:
+        return {"mean_mm": 0.0, "max_mm": 0.0, "n": 0,
+                "n_missing_pred": 0, "per_aile": {}}
+    return {
+        "mean_mm": sum(regrets) / len(regrets),
+        "max_mm": max(regrets),
+        "n": len(regrets),
+        "n_missing_pred": n_missing,
+        "per_aile": {a: sum(v) / len(v) for a, v in sorted(ailes.items())},
+    }
+
+
 def _prequential_accuracy(
     table: List[TrainingRow],
+    model_factory=AlgorithmSelector,
 ) -> float:
     """Compute prequential (rolling test-then-train) accuracy.
 
@@ -204,7 +259,7 @@ def _prequential_accuracy(
 
     for i in range(MIN_INSTANCES, len(table)):
         train_slice = table[:i]   # rows 0..i-1 (does NOT include row i)
-        model = AlgorithmSelector()
+        model = model_factory()
         model.fit(train_slice)
         predicted, _conf = model.predict(table[i].feature_vector)
         if predicted == table[i].winner:
@@ -222,6 +277,7 @@ def _prequential_accuracy(
 
 def compute_generalization_gap(
     table: List[TrainingRow],
+    model_factory=AlgorithmSelector,
 ) -> GenGapReport:
     """Compute generalization gap report for a training table.
 
@@ -273,7 +329,7 @@ def compute_generalization_gap(
     # ------------------------------------------------------------------
     # Fit model on train
     # ------------------------------------------------------------------
-    model = AlgorithmSelector()
+    model = model_factory()
     model.fit(train)
 
     # ------------------------------------------------------------------
@@ -288,13 +344,13 @@ def compute_generalization_gap(
     # LOO-CV (cv_acc) -- split-bagimsiz, in-sample ezberi ICERMEYEN genelleme.
     # overfit_flag'in BIRINCIL belirleyicisi (1-NN icin dogru metrik).
     # ------------------------------------------------------------------
-    cv_acc = _loo_cv_accuracy(table)
+    cv_acc = _loo_cv_accuracy(table, model_factory)
     cv_gap = cv_acc - holdout_acc
 
     # ------------------------------------------------------------------
     # Prequential accuracy (uses full table sequence) -- veri-sizintisi senteneli
     # ------------------------------------------------------------------
-    prequential_acc = _prequential_accuracy(table)
+    prequential_acc = _prequential_accuracy(table, model_factory)
     prequential_gap = train_acc - prequential_acc
 
     # ------------------------------------------------------------------

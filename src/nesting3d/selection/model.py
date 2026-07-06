@@ -574,3 +574,242 @@ class DecisionTreeSelector:
         result: List[int] = []
         _leaf_sample_counts(self._root, result)
         return result
+
+
+# ===========================================================================
+# KNNSelector — k-NN (mesafe-agirlikli oy) [STRATEJI Faz-3; EGITIM el kitabi §3.3]
+# ===========================================================================
+
+class KNNSelector:
+    """k-en-yakin-komsu secici (mesafe-agirlikli oy). 1-NN'in varyans-dusuk hali.
+
+    AlgorithmSelector ile AYNI dis arayuz (fit/predict/explain). sklearn YOK.
+    Oy: her komsu 1/(1+d) agirlikla kendi winner'ina oy verir; en yuksek toplam
+    oy kazanir. Determinizm: mesafe esitliginde winner alfabetik kucuk once
+    siralanir; oy esitliginde alfabetik kucuk winner secilir.
+    Guven = oy[winner] / toplam_oy — KALIBRE DEGILDIR (kalibrasyon icin
+    calibrate_temperature/LogisticSelector; el kitabi §3.4).
+    k secimi cagiranin isi (LOO-regret ile; gengap.loo_regret + functools.partial).
+    """
+
+    MIN_DATA_THRESHOLD: int = 4
+    CONFIDENCE_THRESHOLD: float = 0.6
+    LOW_CONF_CEILING: float = 0.49
+
+    def __init__(self, k: int = 3) -> None:
+        if k < 1:
+            raise ValueError("k >= 1 olmali")
+        self.k = int(k)
+        self._fitted = False
+        self._training: List[TrainingRow] = []
+        self.n_train = 0
+        self._solver_counts: Dict[str, int] = {}
+
+    def fit(self, rows: List[TrainingRow]) -> None:
+        self._fitted = True
+        self._training = list(rows)
+        self.n_train = len(rows)
+        self._solver_counts = {}
+        for r in rows:
+            self._solver_counts[r.winner] = self._solver_counts.get(r.winner, 0) + 1
+
+    def predict(self, features: List[float]) -> Tuple[str, float]:
+        if not self._fitted:
+            raise RuntimeError("KNNSelector.predict(): once fit() cagirilmali.")
+        if not self._training:
+            return ("dblf", 0.0)
+        if self.n_train < self.MIN_DATA_THRESHOLD:
+            best = max(self._solver_counts,
+                       key=lambda s: (self._solver_counts[s], s))
+            return (best, self.LOW_CONF_CEILING)
+        # (mesafe, winner) sirala — esit mesafede alfabetik winner (determinizm)
+        dists = sorted(
+            ((_euclidean(features, r.feature_vector), r.winner)
+             for r in self._training),
+            key=lambda t: (t[0], t[1]))
+        komsu = dists[: min(self.k, len(dists))]
+        oy: Dict[str, float] = {}
+        for d, w in komsu:
+            oy[w] = oy.get(w, 0.0) + 1.0 / (1.0 + d)
+        toplam = sum(oy.values())
+        # oy esitliginde alfabetik kucuk winner (determinizm)
+        winner = max(sorted(oy), key=lambda w: oy[w])
+        return (winner, oy[winner] / toplam if toplam > 0 else 0.0)
+
+    def explain(self) -> str:
+        if not self._fitted:
+            return "Henuz egitilmedi."
+        return (f"Yontem: {self.k}-NN (mesafe-agirlikli oy, 1/(1+d)). "
+                f"Egitim: {self.n_train} instance. "
+                f"Dagilim: " + ", ".join(
+                    f"{s}:{c}" for s, c in sorted(
+                        self._solver_counts.items(), key=lambda x: (-x[1], x[0]))))
+
+
+# ===========================================================================
+# LogisticSelector — regularize multinominal lojistik + sicaklik kalibrasyonu
+# [STRATEJI Faz-3; EGITIM el kitabi §3.4]  sklearn YOK — saf stdlib GD.
+# ===========================================================================
+
+class LogisticSelector:
+    """Multinominal lojistik regresyon (L2, tam-batch GD, standardize girdiler).
+
+    Degeri: KALIBRE EDILEBILIR olasilik — guven-kapili dagitim (esik 0.6) ancak
+    olasilik anlamliysa calisir; 1-NN'in 1/(1+d) guveni kalibre degildir.
+    p(c|x) = softmax((W_c . x_norm + b_c) / T);  T = sicaklik (default 1.0;
+    calibrate_temperature ile LOO uzerinde secilir).
+    Determinizm: siniflar alfabetik, agirliklar 0-baslangicli, GD deterministik.
+    """
+
+    MIN_DATA_THRESHOLD: int = 4
+    CONFIDENCE_THRESHOLD: float = 0.6
+    LOW_CONF_CEILING: float = 0.49
+
+    def __init__(self, l2: float = 0.1, lr: float = 0.1, iters: int = 500,
+                 temperature: float = 1.0) -> None:
+        self.l2 = float(l2)
+        self.lr = float(lr)
+        self.iters = int(iters)
+        self.temperature = float(temperature)
+        self._fitted = False
+        self.n_train = 0
+        self._classes: List[str] = []
+        self._W: List[List[float]] = []   # [sinif][ozellik]
+        self._b: List[float] = []
+        self._mu: List[float] = []
+        self._sigma: List[float] = []
+        self._solver_counts: Dict[str, int] = {}
+
+    # -- ic yardimcilar ----------------------------------------------------
+    def _norm(self, x: List[float]) -> List[float]:
+        n = len(self._mu)
+        out = []
+        for i in range(n):
+            xi = x[i] if i < len(x) else 0.0
+            out.append((xi - self._mu[i]) / self._sigma[i])
+        return out
+
+    def _scores(self, xn: List[float]) -> List[float]:
+        return [sum(w * v for w, v in zip(self._W[c], xn)) + self._b[c]
+                for c in range(len(self._classes))]
+
+    @staticmethod
+    def _softmax(z: List[float]) -> List[float]:
+        m = max(z)
+        e = [math.exp(v - m) for v in z]
+        s = sum(e)
+        return [v / s for v in e]
+
+    # -- API -----------------------------------------------------------------
+    def fit(self, rows: List[TrainingRow]) -> None:
+        self._fitted = True
+        self.n_train = len(rows)
+        self._solver_counts = {}
+        for r in rows:
+            self._solver_counts[r.winner] = self._solver_counts.get(r.winner, 0) + 1
+        if not rows or self.n_train < self.MIN_DATA_THRESHOLD:
+            self._classes = sorted(self._solver_counts) or ["dblf"]
+            d = len(rows[0].feature_vector) if rows else 0
+            self._mu = [0.0] * d
+            self._sigma = [1.0] * d
+            self._W = [[0.0] * d for _ in self._classes]
+            self._b = [0.0] * len(self._classes)
+            return
+        d = len(rows[0].feature_vector)
+        n = self.n_train
+        # standardizasyon parametreleri (artefakta yazilmasi gereken mu/sigma)
+        self._mu = [sum(r.feature_vector[i] for r in rows) / n for i in range(d)]
+        var = [sum((r.feature_vector[i] - self._mu[i]) ** 2 for r in rows) / n
+               for i in range(d)]
+        self._sigma = [math.sqrt(v) if v > 1e-12 else 1.0 for v in var]
+        self._classes = sorted({r.winner for r in rows})
+        k = len(self._classes)
+        idx = {c: i for i, c in enumerate(self._classes)}
+        X = [self._norm(r.feature_vector) for r in rows]
+        Y = [idx[r.winner] for r in rows]
+        self._W = [[0.0] * d for _ in range(k)]
+        self._b = [0.0] * k
+        for _ in range(self.iters):
+            gW = [[0.0] * d for _ in range(k)]
+            gb = [0.0] * k
+            for xi, yi in zip(X, Y):
+                p = self._softmax(self._scores(xi))
+                for c in range(k):
+                    err = p[c] - (1.0 if c == yi else 0.0)
+                    gb[c] += err
+                    row_w = gW[c]
+                    for j in range(d):
+                        row_w[j] += err * xi[j]
+            for c in range(k):
+                for j in range(d):
+                    self._W[c][j] -= self.lr * (gW[c][j] / n
+                                                + self.l2 * self._W[c][j])
+                self._b[c] -= self.lr * gb[c] / n
+
+    def predict_proba(self, features: List[float]) -> Dict[str, float]:
+        if not self._fitted:
+            raise RuntimeError("LogisticSelector.predict_proba(): once fit().")
+        xn = self._norm(features)
+        z = [v / max(self.temperature, 1e-6) for v in self._scores(xn)]
+        p = self._softmax(z)
+        return dict(zip(self._classes, p))
+
+    def predict(self, features: List[float]) -> Tuple[str, float]:
+        if not self._fitted:
+            raise RuntimeError("LogisticSelector.predict(): once fit() cagirilmali.")
+        if self.n_train == 0:
+            return ("dblf", 0.0)
+        if self.n_train < self.MIN_DATA_THRESHOLD:
+            best = max(self._solver_counts,
+                       key=lambda s: (self._solver_counts[s], s))
+            return (best, self.LOW_CONF_CEILING)
+        proba = self.predict_proba(features)
+        winner = max(sorted(proba), key=lambda c: proba[c])
+        return (winner, proba[winner])
+
+    def explain(self) -> str:
+        if not self._fitted:
+            return "Henuz egitilmedi."
+        return (f"Yontem: multinominal lojistik (L2={self.l2}, lr={self.lr}, "
+                f"iters={self.iters}, T={self.temperature:.2f}). "
+                f"Egitim: {self.n_train}. Siniflar: {', '.join(self._classes)}.")
+
+
+def calibrate_temperature(
+    table: List[TrainingRow],
+    factory,
+    temps=(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0),
+) -> float:
+    """Platt-tarzi tek-parametre sicaklik kalibrasyonu (LOO NLL minimizasyonu).
+
+    factory: LogisticSelector ureten callable (l2/lr/iters sabitlenmis).
+    Her satir LOO ile disarida birakilir, model egitilir, satirin winner'ina
+    verilen olasiligin -log'u toplanir; toplam NLL'i minimize eden T doner.
+    Deterministik (grid, rastgelelik yok). n<4 -> 1.0.
+    """
+    n = len(table)
+    if n < 4:
+        return 1.0
+    # LOO skorlarini T'den BAGIMSIZ bir kez topla (T yalniz softmax'i olcekler):
+    loo = []  # (scores_dict_temelsiz: sinif->z, gercek_winner)
+    for i in range(n):
+        m = factory()
+        m.fit(table[:i] + table[i + 1:])
+        if m.n_train < m.MIN_DATA_THRESHOLD or not m._classes:
+            continue
+        xn = m._norm(table[i].feature_vector)
+        loo.append((dict(zip(m._classes, m._scores(xn))), table[i].winner))
+    if not loo:
+        return 1.0
+    best_t, best_nll = 1.0, math.inf
+    for t in temps:
+        nll = 0.0
+        for scores, w in loo:
+            zs = [v / t for v in scores.values()]
+            names = list(scores.keys())
+            p = LogisticSelector._softmax(zs)
+            pw = p[names.index(w)] if w in names else 1e-9
+            nll -= math.log(max(pw, 1e-9))
+        if nll < best_nll - 1e-12:
+            best_nll, best_t = nll, t
+    return best_t

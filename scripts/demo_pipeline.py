@@ -56,6 +56,10 @@ TUNER_BUDGET = 70
 # (gerçek-dünya ölçeği) kaba-optimize → ince-final kullanılır. Küçük demo
 # senaryoları doğrudan tek-çözünürlük tune ile koşar (zaten hızlı).
 C2F_THRESHOLD = 40            # voxel-parça (kopya açılmış) eşiği
+
+
+class _SkipTelemetryV2(Exception):
+    """Telemetri v2 yazimini bilerek atla (test/disable) — kontrol-akisi istisnasi."""
 COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
 
 # Web nesting NFV-DIŞI yollarında (heightmap/coarse_to_fine + tuner + dblf-fallback)
@@ -1137,6 +1141,55 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     _cl_pitch = _c2f_result.fine_pitch if _c2f_result is not None else pitch
     _clearance_note = _clearance_gate(
         winner_result.placements, voxel_parts_3d, _cl_pitch, _instr)
+
+    # TELEMETRI v2 (STRATEJI Faz-2, 2026-07-07): MOD-duzeyi karar + DURUST
+    # metrik satiri (data/telemetry/runs_v2.jsonl; v1 dosyasina DOKUNMAZ).
+    # Kilit sayisi burada olculur (accessibility ~1sn/588 parca — ucuz);
+    # min_clearance HIGH-2 gate'ten (_instr) gelir. Telemetri yazimi uretimi
+    # ASLA bozamaz: her hata logger.warning ile yutulur (bilerek genis except —
+    # M1-maskeleme degil: yan-kanal kayit, ana akis degil).
+    try:
+        import os as _os
+        # Test kosusunda GERCEK telemetri dosyasi kirletilmez (pytest otomatik
+        # PYTEST_CURRENT_TEST set eder); TELEMETRY_V2_DISABLE=1 ile de kapatilir.
+        if ("PYTEST_CURRENT_TEST" in _os.environ
+                or _os.environ.get("TELEMETRY_V2_DISABLE") == "1"):
+            raise _SkipTelemetryV2()
+        from src.nesting3d.telemetry import append_run_v2, V2_DEFAULT_PATH
+        from src.nesting3d.accessibility import check_placements as _acc_check
+        from src.nesting3d.instances.family import classify_family as _clf_fam
+        _n_locked = int(_acc_check(
+            winner_result.placements, voxel_parts_3d).n_locked)
+        _instr["n_locked"] = _n_locked  # rapor izinde de gorunur
+        try:
+            _fam, _fam_conf = _clf_fam(instance)
+        except Exception:
+            _fam, _fam_conf = None, None
+        _v2_mode = (
+            "nfv" if nesting_mode == "nfv"
+            else ("heightmap+wall_aware" if wall_aware_pitch else "heightmap"))
+        append_run_v2(
+            _ROOT / V2_DEFAULT_PATH,
+            kaynak="pipeline",
+            instance_id=str(batch_id),
+            mode=_v2_mode,
+            height_mm=float(height_mm),
+            n_placed=int(n_placed),
+            n_total=int(estimated_n_parts),
+            min_clearance_mm=_instr.get("min_clearance_mm"),
+            n_locked=_n_locked,
+            family_f1=_fam, family_conf=_fam_conf,
+            source=str(payload.get("kaynak", "pipeline")),
+            pitch_fine=float(_cl_pitch),
+            seed=int(seed),
+            duration_s=round(t_nest_elapsed, 3),
+            clearance_req_mm=WEB_MIN_CLEARANCE_MM,
+            winning_config=str(winner_config),
+        )
+    except _SkipTelemetryV2:
+        pass
+    except Exception as _tv2_exc:
+        logger.warning("telemetri v2 yazilamadi (uretim etkilenmez): %s", _tv2_exc)
 
     nesting = {
         "height_mm": height_mm,

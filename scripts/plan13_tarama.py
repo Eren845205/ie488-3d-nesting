@@ -43,16 +43,32 @@ from scripts.eval_gate import legal_of  # noqa: E402
 
 LOG = Path(__file__).parent / "plan13_tarama.log"
 OUT_DIR = _ROOT / "results"
-PLATE = (325.0, 325.0)   # hoca 335x335x600, kenar 5mm
+# PLAKA = OTOMATIK (parcalardan). 325x325 DENENDI ve IMKANSIZ cikti:
+# baseplate_v2 = 330.2x302.0mm ham boyut -> hoca'nin deneme4 makinesine
+# (335-2x5=325 kullanilabilir) fiziksel sigmiyor; plan2'nin bilinen plakasi da
+# 328.74x328.19 idi -> planlar farkli/buyuk plaka dunyasinda. Kiyas ve gonderim
+# icin otomatik plaka (orijinal kosularla tutarli); gereken plaka raporlanir.
+PLATE = None
 CLEARANCE = 1.0
 
 BASE_CONFIGS = [
-    ("ref_b25_n4_s42", dict(budget=25, n_orientations=4, seed=42)),
-    ("A_b70_n4_s42", dict(budget=70, n_orientations=4, seed=42)),
     ("B_b70_n8_s42", dict(budget=70, n_orientations=8, seed=42)),
     ("C_b150_n8_s42", dict(budget=150, n_orientations=8, seed=42)),
 ]
 EXTRA_SEEDS = (13, 7)
+
+# 2026-07-07 gece kesintisi kurtarmasi: ilk iki konfig OLCULDU (log kaniti),
+# yeniden kosulmasin — sonuclari dogrudan tabloya girer (kill oncesi degerler):
+PRE_MEASURED = [
+    {"name": "ref_b25_n4_s42", "budget": 25, "n_orientations": 4, "seed": 42,
+     "height_mm": 826.0, "legal_height_mm": 826.0, "invalid_reason": None,
+     "min_clearance_mm": 1.015, "n_locked": 0, "n_placed": 221,
+     "pitch": 1.0, "duration_min": 15.4},
+    {"name": "A_b70_n4_s42", "budget": 70, "n_orientations": 4, "seed": 42,
+     "height_mm": 826.0, "legal_height_mm": 826.0, "invalid_reason": None,
+     "min_clearance_mm": 1.015, "n_locked": 0, "n_placed": 221,
+     "pitch": 1.0, "duration_min": 19.5},
+]
 
 
 def log(msg=""):
@@ -73,18 +89,20 @@ def _combined_instance():
             if k in qty:
                 raise RuntimeError(f"isim cakismasi: {k}")
             qty[k] = v
-    res = build_instance_from_order(
-        stl_map, qty,
-        persist_dir=_ROOT / "data" / "mail_stl" / "gen_plan13",
-        container_w_mm=PLATE[0], container_d_mm=PLATE[1])
+    kwargs = {"persist_dir": _ROOT / "data" / "mail_stl" / "gen_plan13"}
+    if PLATE is not None:
+        kwargs["container_w_mm"], kwargs["container_d_mm"] = PLATE
+    res = build_instance_from_order(stl_map, qty, **kwargs)
     return res.instance
 
 
 def _run(inst, name, budget, n_orientations, seed, n_total):
     t = time.perf_counter()
+    pw = float(inst.container.width_mm)
+    pd = float(inst.container.depth_mm)
     pitch = suggest_pitch(inst, wall_aware=False)
     r = solve_coarse_to_fine(
-        inst, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        inst, plate_w_mm=pw, plate_d_mm=pd,
         coarse_pitch=None, fine_pitch=pitch, budget=budget, seed=seed,
         n_orientations=n_orientations, clearance_mm=CLEARANCE)
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
@@ -112,15 +130,23 @@ def main():
     t_all = time.perf_counter()
     log("=" * 78)
     log("PLAN1+PLAN3 BIRLESIK — legal yol konfig taramasi (duzeltilmis STL)")
-    log(f"plaka {PLATE[0]:.0f}x{PLATE[1]:.0f}  clearance>={CLEARANCE}mm  "
-        f"basladi {datetime.now().isoformat(timespec='seconds')}")
+    log(f"clearance>={CLEARANCE}mm  basladi "
+        f"{datetime.now().isoformat(timespec='seconds')}")
     log("=" * 78)
     inst = _combined_instance()
     n_total = sum(int(p.qty) for p in inst.parts)
-    log(f"birlesik siparis: {len(inst.parts)} tip, {n_total} parca")
+    log(f"birlesik siparis: {len(inst.parts)} tip, {n_total} parca | "
+        f"plaka(otomatik)={float(inst.container.width_mm):.1f}x"
+        f"{float(inst.container.depth_mm):.1f}mm")
 
-    rows = []
+    rows = list(PRE_MEASURED)
+    for r_ in PRE_MEASURED:
+        log(f"  [{r_['name']}] ONCEDEN OLCULDU: h={r_['height_mm']:.1f} legal "
+            f"clear={r_['min_clearance_mm']} kilit=0 ({r_['duration_min']} dk)")
     best = None  # (legal_height, row, result, meshes)
+    # NOT: PRE_MEASURED best-secimine layout olarak giremez (mesh yok);
+    # yeni konfiglerden hicbiri 826.0'i gecemezse ref config SONDA yeniden
+    # kosulur (deterministik — ayni sonucu verir) ve STL ondan yazilir.
     for name, kw in BASE_CONFIGS:
         try:
             row, r, meshes = _run(inst, name, n_total=n_total, **kw)
@@ -146,6 +172,21 @@ def main():
             rows.append(row)
             if row["legal_height_mm"] is not None and row["legal_height_mm"] < best[0]:
                 best = (row["legal_height_mm"], row, r, meshes)
+
+    # PRE_MEASURED fallback: yeni konfigler 826.0'i gecemediyse STL'yi uretmek
+    # icin en ucuz on-olculmus konfigi (ref) yeniden kos (deterministik).
+    pre_best = min((r for r in PRE_MEASURED if r.get("legal_height_mm")),
+                   key=lambda r: r["legal_height_mm"], default=None)
+    if pre_best is not None and (best is None or pre_best["legal_height_mm"] < best[0]):
+        log("")
+        log(f"  yeni konfigler {pre_best['legal_height_mm']:.1f}'i gecemedi -> "
+            f"STL icin {pre_best['name']} yeniden kosuluyor (deterministik)")
+        row, r, meshes = _run(inst, pre_best["name"] + "_replay", n_total=n_total,
+                              budget=pre_best["budget"],
+                              n_orientations=pre_best["n_orientations"],
+                              seed=pre_best["seed"])
+        if row["legal_height_mm"] is not None:
+            best = (row["legal_height_mm"], row, r, meshes)
 
     log("")
     log("-" * 78)

@@ -24,6 +24,12 @@ Hoca: bazı müşteriler adedi mailde HİÇ yazmıyor; STL'nin içine/adına yaz
       (parser'ın mevcut onay akışına bağla). Sessiz varsayım YOK.
 - [ ] Testler: her kaynak + çelişki senaryoları + idempotency (aynı mail re-process).
 - [ ] Telemetri: adet hangi kaynaktan geldi (`qty_source`) logla.
+- [ ] Hocadan ÖRNEK dosya iste: "adedin STL içinde yazılı olduğu gerçek bir
+      müşteri STL'si" → parser gerçek konvansiyona karşı yazılır + test fikstürü.
+- **Fizibilite KANITLANDI (2026-07-06 gece probe):** Deneme4 STL'leri binary/
+  tek-gövde, adet dosya ADINDA (→ desen parse); gömülü-N-kopya `trimesh.split`
+  ile sayılabiliyor (ölçüldü); ASCII solid adı + binary header okunabilir.
+  Tahmini efor: ~1 gün (parser + loader + onay kablosu + testler).
 
 ### 3. ALTERNATİF DİZİLİM ÜRETİMİ (hoca: "her seferinde farklı dizmeli")
 Motor hazır (seed-güdümlü); ürün davranışı eksik.
@@ -57,10 +63,13 @@ Motor hazır (seed-güdümlü); ürün davranışı eksik.
 ## 🟡 ORTA VADE
 
 ### 7. STRATEJI fazları (STRATEJI/02 §5)
-- [x] Faz-0 eval_gate CLI (2026-07-06, commit 3986397) — baseline kilitleme gece koşusunda
-- [ ] Faz-1 registry.json + held-out reddi kablosu
-- [ ] Faz-2 telemetri v2 (mod-düzeyi etiket + legal_height + F1)
-- [ ] Faz-3 BO tuning (04_MOTOR_TUNING) + seçim modeli yükseltmeleri (kNN/logistic, EGITIM el kitabı §3)
+- [x] Faz-0 eval_gate CLI (2026-07-06, commit 3986397)
+- [x] Faz-1 registry.json + held-out reddi + otomatik bakış-log (2026-07-07)
+- [x] Faz-2 telemetri v2: `append_run_v2` + pipeline kablosu, test-korumalı (2026-07-07)
+- [x] Faz-3 KOD katmanı: KNNSelector + LogisticSelector + sıcaklık kalibrasyonu +
+      loo_regret + gengap model-parametrik + held-out eğitim filtresi + tune_bo.py (2026-07-07)
+- [ ] Faz-3 KOŞULAR: baseline kilidi → BO denemeleri → model adayları LOO-regret
+      kıyası → kapı + insan kararıyla yürürlük (A1/A6 gereği otomatik DEĞİL)
 
 ### 8. Diğer
 - [ ] Hoca S1 cevabı gelince Magics clearance-paritesi kıyas güncellemesi

@@ -125,6 +125,88 @@ def append_run(
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+# ---------------------------------------------------------------------------
+# TELEMETRI v2 (STRATEJI Faz-2, 2026-07-07) — MOD-duzeyi karar + DURUST metrik
+# ---------------------------------------------------------------------------
+# v1 dosyasina DOKUNMAZ (eski secim-modeli beslemesi bozulmaz); v2 AYRI dosyaya
+# yazar. Amac (STRATEJI/01_VERI §5 + 03_SECIM_MODELI §2 karar-yuzeyi kaymasi):
+# uretim kosularinin GERCEK kararlarini (heightmap/nfv/wall_aware) ve legal
+# metrigi (clearance+kilit) biriktirmek -> gelecekteki mod-secim ogrenmesi ve
+# regret analizi bu satirlardan beslenir.
+
+V2_DEFAULT_PATH = "data/telemetry/runs_v2.jsonl"
+
+
+def append_run_v2(
+    path: Union[str, Path],
+    *,
+    kaynak: str,                    # "pipeline" | "benchmark" | "eval_gate"
+    instance_id: str,
+    mode: str,                      # "heightmap" | "heightmap+wall_aware" | "nfv"
+    height_mm: float,
+    n_placed: int,
+    n_total: int,
+    min_clearance_mm: Optional[float],   # None = olculemedi
+    n_locked: Optional[int],             # None = olculemedi
+    family_f1: Optional[str] = None,
+    family_conf: Optional[float] = None,
+    source: Optional[str] = None,        # "mail" | "manuel" | jenerator adi
+    pitch_fine: Optional[float] = None,
+    n_orientations: Optional[int] = None,
+    seed: Optional[int] = None,
+    duration_s: Optional[float] = None,
+    clearance_req_mm: float = 1.0,
+    **extra: Any,
+) -> dict:
+    """Uretim/olcum kosusunun v2 satirini yaz; yazilan satiri dondur.
+
+    legal_height_mm bu fonksiyonda TUREY: uc sart (tam yerlesim + clearance +
+    0 kilit) saglaniyorsa height, aksi None + invalid_reason (ANAYASA A2).
+    Olculemeyen bileşen (None) = INVALID ('kanitsizlik gecer not degildir').
+    """
+    reasons = []
+    if n_placed != n_total:
+        reasons.append(f"eksik yerlesim {n_placed}/{n_total}")
+    if min_clearance_mm is None:
+        reasons.append("clearance olculemedi")
+    elif min_clearance_mm < clearance_req_mm:
+        reasons.append(f"clearance {min_clearance_mm:.3f}<{clearance_req_mm}")
+    if n_locked is None:
+        reasons.append("erisilebilirlik olculemedi")
+    elif n_locked > 0:
+        reasons.append(f"{n_locked} kilit")
+
+    row: dict = {
+        "schema": 2,
+        "ts": time.time(),
+        "kaynak": kaynak,
+        "instance_id": instance_id,
+        "mode": mode,
+        "height_mm": float(height_mm),
+        "legal_height_mm": (float(height_mm) if not reasons else None),
+        "invalid_reason": ("; ".join(reasons) if reasons else None),
+        "n_placed": int(n_placed),
+        "n_total": int(n_total),
+        "min_clearance_mm": (float(min_clearance_mm)
+                             if min_clearance_mm is not None else None),
+        "n_locked": (int(n_locked) if n_locked is not None else None),
+        "clearance_req_mm": float(clearance_req_mm),
+        "family_f1": family_f1,
+        "family_conf": family_conf,
+        "source": source,
+        "pitch_fine": (float(pitch_fine) if pitch_fine is not None else None),
+        "n_orientations": n_orientations,
+        "seed": seed,
+        "duration_s": (float(duration_s) if duration_s is not None else None),
+    }
+    row.update(extra)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return row
+
+
 def load_telemetry(
     path: Union[str, Path],
 ) -> List[dict]:

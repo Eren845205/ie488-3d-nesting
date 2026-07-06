@@ -62,9 +62,43 @@ CLEARANCE_REQ_MM = 1.0
 FAIL_PCT = 2.0    # B2: bir sette bundan fazla kotulesme -> FAIL
 NOISE_PCT = 0.5   # B2: voxel-kuantizasyon gurultu bandi
 
-# 01_VERI.md §2.1 registry rollerinin kod yansimasi (degisiklik ORADAN gecer)
-DEV_SETS = ["plan1", "plan2", "plan3", "deneme4"]
-HELDOUT_SETS = ["boxy"]  # numune v1'de tanimsiz (config yok); registry'de held-out
+# Faz-1: roller data/registry.json'dan (tek dogruluk kaynagi; 01_VERI §2).
+# Registry yoksa/bozuksa guvenli fallback sabitler.
+REGISTRY = _ROOT / "data" / "registry.json"
+_KOSULABILIR = {"plan1", "plan2", "plan3", "deneme4", "boxy"}  # config'i olanlar
+
+
+def _load_roles():
+    try:
+        reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        sets = reg.get("sets", {})
+        dev = [s for s, v in sets.items()
+               if v.get("rol") == "dev" and s in _KOSULABILIR]
+        held = [s for s, v in sets.items()
+                if v.get("rol") == "held-out" and s in _KOSULABILIR]
+        if dev:
+            return dev, held
+    except Exception:
+        pass
+    return (["plan1", "plan2", "plan3", "deneme4"], ["boxy"])
+
+
+def _log_heldout_bakis(set_names, reason):
+    """A3: held-out'a her bakis registry'ye tarihle islenir (yapisal, unutulmaz)."""
+    try:
+        reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        reg.setdefault("bakislar", []).append({
+            "setler": list(set_names),
+            "tarih": datetime.now().isoformat(timespec="seconds"),
+            "sebep": reason or "belirtilmedi",
+        })
+        REGISTRY.write_text(json.dumps(reg, indent=2, ensure_ascii=False),
+                            encoding="utf-8")
+    except Exception as exc:  # bakis loglanamiyorsa kosu da OLMAZ (A3 sert)
+        raise RuntimeError(f"held-out bakisi registry'ye yazilamadi: {exc}")
+
+
+DEV_SETS, HELDOUT_SETS = _load_roles()
 # Hoca cevabi 2026-07-06: deneme4 gercek plaka 335-2x5 kenar = 325x325
 DENEME4_PLATE = (325.0, 325.0)
 
@@ -91,7 +125,7 @@ def _load_instance(name):
     return res.instance
 
 
-def _run_champion(name, inst, seed):
+def _run_champion(name, inst, seed, budget=None, n_orientations=None):
     """Set'in URETIM DEFAULT yolunu kosar -> result (placements/fine_voxel_parts/height).
 
     Uretim paritesi demo_pipeline zinciriyle BIREBIR (elle config YOK):
@@ -112,9 +146,12 @@ def _run_champion(name, inst, seed):
     dec = predict_nfv_benefit(inst, family_routing=True)
     wall = bool(getattr(dec, "wall_aware", False))
     pitch = suggest_pitch(inst, wall_aware=wall)
-    kw = dict(coarse_pitch=None, fine_pitch=pitch, budget=COARSE_BUDGET,
+    kw = dict(coarse_pitch=None, fine_pitch=pitch,
+              budget=(budget if budget is not None else COARSE_BUDGET),
               seed=seed, drop_cache=wall, skip_fine_angle=wall,
               clearance_mm=WEB_MIN_CLEARANCE_MM)
+    if n_orientations is not None:
+        kw["n_orientations"] = n_orientations  # tune_bo override (04 §1)
     if wall:
         kw["menu"] = {"dblf_only": build_menu()["dblf_only"]}
     print(f"    [{name}] routing: wall_aware={wall}  pitch={pitch}", flush=True)
@@ -192,11 +229,13 @@ def compare_verdict(cur, base, fail_pct=FAIL_PCT, noise_pct=NOISE_PCT):
 # Ana akis
 # ---------------------------------------------------------------------------
 
-def evaluate_set(name, seed, skip_clearance=False):
+def evaluate_set(name, seed, skip_clearance=False, budget=None,
+                 n_orientations=None):
     t0 = time.perf_counter()
     inst = _load_instance(name)
     n_total = sum(int(p.qty) for p in inst.parts)
-    r = _run_champion(name, inst, seed)
+    r = _run_champion(name, inst, seed, budget=budget,
+                      n_orientations=n_orientations)
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
     height = float(r.height_mm)
 
@@ -228,7 +267,9 @@ def main():
     ap.add_argument("--save-baseline", action="store_true",
                     help="bu kosuyu baseline olarak YAZ (bilincli karar!)")
     ap.add_argument("--heldout-final", action="store_true",
-                    help="held-out setleri kosmaya izin (bakisi registry'ye yaz!)")
+                    help="held-out setleri kosmaya izin (bakis registry'ye OTOMATIK yazilir)")
+    ap.add_argument("--reason", default=None,
+                    help="held-out bakis sebebi (registry bakislar kaydina gider)")
     ap.add_argument("--skip-clearance", action="store_true",
                     help="clearance olcumunu atla (SONUC INVALID kalir; hizli debug)")
     ap.add_argument("--seed", type=int, default=42)
@@ -243,9 +284,12 @@ def main():
     heldout_istenen = [s for s in sets if s in HELDOUT_SETS]
     if heldout_istenen and not args.heldout_final:
         print(f"RED (ANAYASA A3): {heldout_istenen} HELD-OUT. Final dogrulama "
-              f"icin --heldout-final ekle ve bakisi STRATEJI/01_VERI.md §2.1 "
-              f"registry'ye tarihle isle. Held-out ile TUNING YASAK.")
+              f"icin --heldout-final (+--reason) ekle. Held-out ile TUNING YASAK.")
         sys.exit(3)
+    if heldout_istenen:
+        _log_heldout_bakis(heldout_istenen, args.reason)
+        print(f"[registry] held-out bakisi loglandi: {heldout_istenen} "
+              f"(sebep: {args.reason or 'belirtilmedi'})")
 
     print("=" * 78)
     print(f"EVAL KAPISI (Faz-0) — setler: {sets}  seed={args.seed}  "

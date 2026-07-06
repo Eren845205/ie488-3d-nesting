@@ -1,0 +1,13 @@
+{
+  "_doc": "Instance registry — STRATEJI/01_VERI.md §2'nin kod karsiligi (Faz-1). Roller: dev = tuning serbest; held-out = DOKUNULMAZ (yalniz --heldout-final ile final dogrulama, her bakis 'bakislar'a loglanir). Rol degisikligi = insan karari + tarih.",
+  "sets": {
+    "plan1":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "K-12+ NFV gelistirmesinde kullanildi; legal default 125.0mm (2026-07-07)"},
+    "plan2":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cavity-zengin capa; plaka 328.74x328.19 BILINEN gercek"},
+    "plan3":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cubuk-agir; solo auto-plaka 1046mm (2026-07-07); gercek plaka SORULACAK (S8)"},
+    "deneme4": {"rol": "dev",      "aile_f1": "thin_shell", "kaynak": "hoca-2026-07-03", "not": "kabuk ailesi; plaka 325x325 (hoca 335-2x5); anchor 264.0mm"},
+    "numune":  {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-05", "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"},
+    "boxy":    {"rol": "held-out", "aile_f1": "solid_bulk", "kaynak": "sentetik",     "not": "kutu stres seti"}
+  },
+  "bakislar": [],
+  "kural": "Yeni gercek siparis DOGUSTAN held-out (01_VERI §3); ayni aileden >=2 birikince en eskisi ACIK KARARLA dev'e terfi edebilir."
+}

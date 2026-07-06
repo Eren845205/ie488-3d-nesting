@@ -78,6 +78,14 @@ ortalama + maksimum regret (mm), aile kırılımlı. Accuracy yalnız yardımcı
 
 ## 5. Fazlar (B4 kademeli yatırım)
 
+> **DURUM (2026-07-07):** Faz-0 ✅ (`eval_gate.py`, deneme4 264.0 + plan1 125.0
+> doğrulandı) · Faz-1 ✅ (`data/registry.json` + rol/red/bakış-log kablosu) ·
+> Faz-2 ✅ (`telemetry.append_run_v2` + demo_pipeline kablosu, test-korumalı) ·
+> Faz-3 kod-katmanı ✅ (KNNSelector, LogisticSelector+kalibrasyon, loo_regret,
+> gengap model-parametrik, held-out eğitim filtresi, `tune_bo.py` koşucusu) —
+> Faz-3'ün KOŞULARI (BO denemeleri, model adaylarının gerçek-veri değerlendirmesi,
+> yürürlüğe alma) baseline kilidi + insan kararı bekler (A1/A6).
+
 - **Faz-0 — Konsolidasyon (ilk iş):** `scripts/eval_gate.py` tek CLI:
   mevcut parçaları çağırır (`c3_generality` DATASETS + `clearance.
   min_clearance` + `accessibility.check_result`), §2 tablosunu üretir,

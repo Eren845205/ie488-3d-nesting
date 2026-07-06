@@ -53,10 +53,28 @@ class TrainingRow:
 # build_training_table
 # ---------------------------------------------------------------------------
 
+def heldout_instance_ids(registry_path) -> set:
+    """data/registry.json'dan rol=held-out instance adlarini dondur (Faz-1/3).
+
+    Egitim tablosu kurulurken exclude_instance_ids'e verilir -> held-out
+    satirlari YAPISAL olarak egitime giremez (ANAYASA A3). Dosya yok/bozuk ->
+    bos kume (mevcut davranis; tamami-sentetik telemetride etkisiz).
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    try:
+        reg = _json.loads(_Path(registry_path).read_text(encoding="utf-8"))
+        return {name for name, v in reg.get("sets", {}).items()
+                if v.get("rol") == "held-out"}
+    except Exception:
+        return set()
+
+
 def build_training_table(
     rows: List[dict],
     *,
     epsilon_mm: float = 0.5,
+    exclude_instance_ids: Optional[set] = None,
 ) -> List[TrainingRow]:
     """Telemetri satirlarindan instance-basi egitim tablosu olustur.
 
@@ -76,9 +94,12 @@ def build_training_table(
 
     groups: Dict[str, dict] = {}  # instance_id -> grup_meta
 
+    excl = exclude_instance_ids or set()
     for row in rows:
         iid = row.get("instance_id", "")
         if not iid:
+            continue
+        if iid in excl:  # held-out satiri egitime GIREMEZ (A3, yapisal)
             continue
 
         if iid not in groups:
