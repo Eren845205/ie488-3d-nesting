@@ -1,10 +1,14 @@
 # EĞİTİM EL KİTABI — Gelen Veriyle Algoritmayı Eğitme + Test Etme (Yürütülebilir Rehber)
 
-> **Sürüm:** v1.0 (2026-07-06, Fable 5) · **Hedef okur:** BU DOSYAYI TEK BAŞINA
+> **Sürüm:** v1.1 (2026-07-06, Fable 5) · **Hedef okur:** BU DOSYAYI TEK BAŞINA
 > OKUYAN gelecekteki bir AI oturumu (model fark etmez) veya Eren. Amaç: başka
 > hiçbir bağlam olmadan, buradaki komut ve spesifikasyonlarla eğitim/test
 > döngüsünü DOĞRU ve GÜVENLİ yürütebilmek.
-> Üst çerçeve: `STRATEJI/00_ANAYASA.md` (ilkeler) — önce onu oku, 2 dakika.
+>
+> ⚠️ **GİRİŞ NOKTASI BURASI DEĞİL:** önce `00_KULLANIM_PROTOKOLU.md` oku
+> (bağlayıcı direktifler + görev senaryoları + eskalasyon kuralları). Bu dosya
+> onun REFERANS eki: komutlar, algoritma spesifikasyonları, formüller.
+> Üst çerçeve: `STRATEJI/00_ANAYASA.md` (ilkeler).
 
 ---
 
