@@ -384,6 +384,7 @@ def solve_coarse_to_fine(
     drop_cache: bool = False,
     drop_cache_cap_mb: float = 300.0,
     clearance_mm: float = 0.0,
+    no_go_bounds=None,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -502,8 +503,17 @@ def solve_coarse_to_fine(
     # z_clearance=1, mevcut davranış bit-özdeş).
     _coarse_margin, _coarse_zc = clearance_to_voxels(clearance_mm, coarse_pitch)
 
+    # NO-GO area (2026-07-07): yasak-bolge mm-bbox'u verildiyse her pitch'te
+    # maske kurulup Bin3D'ye gecilir (default None = BIT-OZDES eski davranis).
+    def _ng_mask(_pitch):
+        if no_go_bounds is None:
+            return None
+        return Bin3D.no_go_mask_from_bounds(
+            no_go_bounds, plate_w_mm, plate_d_mm, _pitch)
+
     def coarse_factory() -> Bin3D:
-        return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc)
+        return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc,
+                     no_go_mask=_ng_mask(coarse_pitch))
 
     tune_result = tune(
         coarse_parts,
@@ -562,7 +572,8 @@ def solve_coarse_to_fine(
         """
         ordered = [parts_by_id[pid] for pid in order_ids if pid in parts_by_id]
         b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=_fine_zc,
-                  drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
+                  drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb,
+                  no_go_mask=_ng_mask(fine_pitch))
         pls = place_in_order(ordered, b, orient_fn)
         return pls, b
 

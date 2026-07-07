@@ -38,9 +38,14 @@ class Placement3D:
 class Bin3D:
     """Heightmap bin. All placement math is in voxel units; mm at the edges."""
 
+    # NO-GO muhur sentineli (voxel): drop bu kolonlara ASLA oturamaz (argmin
+    # dogal olarak kacinir). int32 guvenli; z_clearance toplami tasma yapmaz.
+    NO_GO_SEAL: int = 500_000
+
     def __init__(self, plate_w_mm: float = 220.0, plate_d_mm: float = 220.0,
                  pitch: float = 220.0 / 64, z_clearance: int = 0,
-                 drop_cache: bool = False, drop_cache_cap_mb: float = 300.0):
+                 drop_cache: bool = False, drop_cache_cap_mb: float = 300.0,
+                 no_go_mask=None):
         self.plate_w_mm = float(plate_w_mm)
         self.plate_d_mm = float(plate_d_mm)
         self.pitch = float(pitch)
@@ -53,6 +58,19 @@ class Bin3D:
         self.nx = int(plate_w_mm // pitch)
         self.ny = int(plate_d_mm // pitch)
         self.height = np.zeros((self.nx, self.ny), dtype=np.int32)
+        # NO-GO area (2026-07-07, hoca gercek-makine kisiti): yasak bolge
+        # kolonlari NO_GO_SEAL ile muhurlenir -> drop/argmin oraya yerlesim
+        # koyamaz. default None = BIT-OZDES eski davranis. Metrikler
+        # (max/mean/rms/density) muhurlu kolonlari YOK SAYAR.
+        self._no_go = None
+        if no_go_mask is not None:
+            m = np.asarray(no_go_mask, dtype=bool)
+            if m.shape != (self.nx, self.ny):
+                raise ValueError(
+                    f"no_go_mask sekli {m.shape} != grid ({self.nx},{self.ny})")
+            if m.any():
+                self._no_go = m
+                self.height[m] = self.NO_GO_SEAL
         self.placements: List[Placement3D] = []
         self.placed_voxels: int = 0
 
@@ -442,14 +460,42 @@ class Bin3D:
     # -- metrics (PLAN_3D.md §2.6) -------------------------------------------
 
     def max_height_voxels(self) -> int:
+        if self._no_go is not None:
+            h = self.height[~self._no_go]
+            return int(h.max()) if h.size else 0
         return int(self.height.max())
 
     def max_height_mm(self) -> float:
         return self.max_height_voxels() * self.pitch
 
+    @staticmethod
+    def no_go_mask_from_bounds(bounds, plate_w_mm: float, plate_d_mm: float,
+                               pitch: float) -> np.ndarray:
+        """Yasak bolge mm-bbox'undan grid maskesi (KONSERVATIF: bbox tabani).
+
+        bounds: ((x0,y0),(x1,y1)) mm veya trimesh.bounds (3D — z yok sayilir).
+        Kubbe/yuvarlak uclu no-go sekillerinde bbox bir miktar FAZLA yasaklar
+        (guvenli yon; hoca kisiti asla ihlal edilmez). Hucre, bbox ile KESISIYORSA
+        yasak (yarim hucre tasmasi da muhurlenir).
+        """
+        b = np.asarray(bounds, dtype=float)
+        x0, y0 = float(b[0][0]), float(b[0][1])
+        x1, y1 = float(b[1][0]), float(b[1][1])
+        nx = int(plate_w_mm // pitch)
+        ny = int(plate_d_mm // pitch)
+        mask = np.zeros((nx, ny), dtype=bool)
+        i0 = max(0, int(np.floor(x0 / pitch)))
+        j0 = max(0, int(np.floor(y0 / pitch)))
+        i1 = min(nx, int(np.ceil(x1 / pitch)))
+        j1 = min(ny, int(np.ceil(y1 / pitch)))
+        if i1 > i0 and j1 > j0:
+            mask[i0:i1, j0:j1] = True
+        return mask
+
     def mean_height_mm(self) -> float:
-        """Average column height."""
-        return float(self.height.mean()) * self.pitch
+        """Average column height (no-go muhurlu kolonlar haric)."""
+        h = self.height[~self._no_go] if self._no_go is not None else self.height
+        return (float(h.mean()) if h.size else 0.0) * self.pitch
 
     def rms_height_mm(self) -> float:
         """Root-mean-square column height — the SA tie-breaker (compactness).
@@ -459,8 +505,9 @@ class Bin3D:
         gradient between them), but RMS strictly prefers the flat, spread-out
         pose.  That gradient is what lets SA walk off the max-height plateau.
         """
-        h = self.height.astype(np.float64)
-        return float(np.sqrt((h * h).mean())) * self.pitch
+        hh = self.height[~self._no_go] if self._no_go is not None else self.height
+        h = hh.astype(np.float64)
+        return (float(np.sqrt((h * h).mean())) if h.size else 0.0) * self.pitch
 
     def packing_density(self) -> float:
         """Placed part volume / used envelope (base area x max height)."""
