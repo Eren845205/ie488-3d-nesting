@@ -212,9 +212,33 @@ def _build_refined_fine_parts(
         key = (part.name, didx)
         if key not in cache:
             rmats = _refined_rot_matrices(master[didx], window_deg, step_deg, axes)
-            vp = voxelize_part(part.name, part.mesh, fine_pitch,
-                               rot_matrices=rmats, method="slice", margin=margin)
-            cache[key] = vp.orientations
+            try:
+                vp = voxelize_part(part.name, part.mesh, fine_pitch,
+                                   rot_matrices=rmats, method="slice",
+                                   margin=margin)
+                cache[key] = vp.orientations
+            except Exception:
+                # Dejenere aci dayanikliligi (2026-07-07, plan3 probu):
+                # bazi acilarla slice-voxelize poligon kurtaramiyor (shapely
+                # None.exterior — K-22 yan bulgusunun aci karsiligi). TEK bozuk
+                # aci TUM cozumu OLDURMESIN: acilar TEK TEK denenir, bozulanlar
+                # ATLANIR; hicbiri tutmazsa baz poza dusulur (fine_angle_safe
+                # zaten yalniz iyilestirirse kullanir -> dusus kayipsiz).
+                orients: List[Any] = []
+                for rm in rmats:
+                    try:
+                        vp1 = voxelize_part(part.name, part.mesh, fine_pitch,
+                                            rot_matrices=[rm], method="slice",
+                                            margin=margin)
+                        orients.extend(vp1.orientations)
+                    except Exception:
+                        continue
+                if not orients:
+                    vp0 = voxelize_part(part.name, part.mesh, fine_pitch,
+                                        rot_matrices=[master[didx]],
+                                        method="slice", margin=margin)
+                    orients = list(vp0.orientations)
+                cache[key] = orients
         part.orientations = cache[key]
     return base_parts
 
