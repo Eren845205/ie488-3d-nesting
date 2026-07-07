@@ -26,6 +26,11 @@ Hoca: bazı müşteriler adedi mailde HİÇ yazmıyor; STL'nin içine/adına yaz
 - [ ] Telemetri: adet hangi kaynaktan geldi (`qty_source`) logla.
 - [ ] Hocadan ÖRNEK dosya iste: "adedin STL içinde yazılı olduğu gerçek bir
       müşteri STL'si" → parser gerçek konvansiyona karşı yazılır + test fikstürü.
+- **GERÇEK ÖRNEK GELDİ (hoca eki, 2026-07-07):** `YP2425-Arm-2mm-2Adet.STL` —
+  binary; dosya adı `-2Adet` AMA binary header solid-adı `-4Adet` (ÇELİŞKİLİ!).
+  → Spec kesinleşti: desen `-NAdet` (case-insensitive, `pcs` varyantıyla);
+  kaynaklar: dosya-adı + binary-header-solid-adı + ASCII-solid-adları;
+  çelişki = operatör onayı; mail gövdesi hepsini ezer. Test fikstürü: bu dosya.
 - **Fizibilite KANITLANDI (2026-07-06 gece probe):** Deneme4 STL'leri binary/
   tek-gövde, adet dosya ADINDA (→ desen parse); gömülü-N-kopya `trimesh.split`
   ile sayılabiliyor (ölçüldü); ASCII solid adı + binary header okunabilir.

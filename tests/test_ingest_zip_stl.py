@@ -312,3 +312,52 @@ def test_llm_fallback_deterministik_yeterliyse_cagrilmaz(tmp_path):
     order = ingest_order(mail, parser_role=role, persist_root=str(tmp_path))
     assert not role.called
     assert order["parts"][0]["qty"] == 4
+
+
+# ---------------------------------------------------------------------------
+# STL-ICI ADET (hoca 2026-07-07; YAPILACAKLAR #2) — "-NAdet" dosya-adi/header
+# ---------------------------------------------------------------------------
+
+def _zip_raw(entries):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for nm, data in entries:
+            z.writestr(nm, data)
+    return buf.getvalue()
+
+
+def _box_stl_bytes():
+    return trimesh.creation.box(extents=(10, 10, 10)).export(file_type="stl")
+
+
+def test_stl_ici_adet_dosya_adindan(tmp_path):
+    # mail govdesinde adet YOK; dosya adi '-2Adet' -> qty=2 otomatik
+    zb = _zip_raw([("kol-2Adet.stl", _box_stl_bytes())])
+    order = ingest_order(_mail("Merhaba, siparis ekte.", zb),
+                         parser_role=None, persist_root=str(tmp_path))
+    assert order is not None and not order.get("needs_review")
+    assert len(order["parts"]) == 1
+    assert order["parts"][0]["qty"] == 2
+    assert "stl_icinden" in order.get("quantity_source", "")
+
+
+def test_stl_ici_adet_celiski_operatore(tmp_path):
+    # dosya adi 2, binary header solid-adi 4 -> SESSIZ KABUL YOK -> operator yolu
+    raw = bytearray(_box_stl_bytes())
+    head = b"solid kol-4Adet"
+    raw[0:len(head)] = head
+    zb = _zip_raw([("kol-2Adet.stl", bytes(raw))])
+    order = ingest_order(_mail("Merhaba, siparis ekte.", zb),
+                         parser_role=None, persist_root=str(tmp_path))
+    assert order is not None
+    assert order.get("needs_review") is True
+    assert order.get("review_reason") == "missing_quantity"
+
+
+def test_stl_ici_adet_mail_govdesi_ezer(tmp_path):
+    # govdede 5 adet var; dosya adi -2Adet -> govde KAZANIR (qty=5)
+    zb = _zip_raw([("kol-2Adet.stl", _box_stl_bytes())])
+    order = ingest_order(_mail("kol-2Adet 5 adet", zb),
+                         parser_role=None, persist_root=str(tmp_path))
+    assert order is not None and not order.get("needs_review")
+    assert order["parts"][0]["qty"] == 5

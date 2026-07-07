@@ -714,6 +714,48 @@ def _find_attachment(mail: RawMail, extensions: Set[str]) -> Optional[Attachment
     return None
 
 
+_STL_ADET_RE = None  # lazy-compile (module import maliyeti sifir kalsin)
+
+
+def _qty_from_stl_name_and_bytes(name: str, data: bytes):
+    """STL-ici adet cikarimi -> (qty|None, kaynak|None, celiski|None).
+
+    Kaynaklar: (a) dosya adi soneki '-NAdet'/'-Npcs', (b) binary STL 80-bayt
+    header'daki solid-adi soneki, (c) ASCII STL ilk 'solid <ad>' satiri.
+    Bulunan TUM kaynaklar ayni degeri veriyorsa (deger, 'kaynak+kaynak', None);
+    celisiyorsa (None, None, {kaynak: deger}) — cagiran doldurmaz, operator
+    yolu calisir. Hic yoksa (None, None, None).
+    """
+    import re
+    global _STL_ADET_RE
+    if _STL_ADET_RE is None:
+        _STL_ADET_RE = re.compile(
+            r"[-_ ](\d{1,4})\s*(adet|ad|pcs|prc)\.?\s*$", re.IGNORECASE)
+    found = {}
+    m = _STL_ADET_RE.search(name.strip())
+    if m:
+        found["dosya_adi"] = int(m.group(1))
+    try:
+        is_ascii = data[:5] == b"solid" and b"facet" in data[:400]
+        if is_ascii:
+            first = data[:200].decode("latin-1", "replace").splitlines()[0]
+            m2 = _STL_ADET_RE.search(first.strip())
+            if m2:
+                found["solid_adi"] = int(m2.group(1))
+        else:
+            head = data[:80].decode("latin-1", "replace")
+            m3 = _STL_ADET_RE.search(head.rstrip("\x00 ").strip())
+            if m3:
+                found["header"] = int(m3.group(1))
+    except Exception:
+        pass  # bozuk baytlar adet-cikarimini engellemesin (STL loader ayri dogrular)
+    if not found:
+        return None, None, None
+    if len(set(found.values())) == 1:
+        return next(iter(found.values())), "+".join(sorted(found)), None
+    return None, None, found
+
+
 def _decode_text_bytes(data: bytes) -> str:
     """Duz-metin ek baytlarini metne cevir (TR mail gercekligi: UTF-8 ya da
     Windows cp1254; ikisi de degilse latin-1 replace ile asla firlatmaz)."""
@@ -897,6 +939,34 @@ def _ingest_zip_stl_order(
         }
 
     quantities = matched
+
+    # ------------------------------------------------------------------
+    # STL-ICI ADET (hoca 2026-07-07, YAPILACAKLAR #2): bazi musteriler adedi
+    # maile degil STL'ye yazar — dosya adi ve/veya binary-header/solid adi
+    # sonunda "-NAdet"/"-Npcs". KURALLAR: (1) mail govdesi HER ZAMAN ezer
+    # (yalniz govdede adedi OLMAYAN STL'lere bakilir); (2) kaynaklar celisirse
+    # SESSIZ KABUL YOK -> doldurulmaz, mevcut eksik-bilgi/operator yolu calisir
+    # (kanitli tuzaklar: '-25pcs'=26 [deneme4], ornek dosya adi 2 / header 4);
+    # (3) doldurulan her adet kaynak etiketiyle order'a yazilir (telemetri).
+    # ------------------------------------------------------------------
+    stl_qty_info: Dict[str, dict] = {}
+    _q_lower = {k.lower() for k in quantities}
+    for _nm in sorted(stl_map):
+        if _nm.lower() in _q_lower:
+            continue  # mail govdesi ezer
+        _q, _src, _conf = _qty_from_stl_name_and_bytes(_nm, stl_map[_nm])
+        if _conf:
+            stl_qty_info[_nm] = {"celiski": _conf}
+            logger.warning(
+                "ingest_order: STL-ici adet CELISKISI (%s): %s — operator "
+                "onayina birakildi (sessiz kabul yok).", _nm, _conf)
+        elif _q is not None:
+            quantities[_nm] = _q
+            stl_qty_info[_nm] = {"qty": _q, "kaynak": _src}
+            logger.info("ingest_order: STL-ici adet kullanildi: %s=%d (%s)",
+                        _nm, _q, _src)
+    if any("qty" in v for v in stl_qty_info.values()):
+        quantity_source = f"{quantity_source}+stl_icinden"
 
     # STL'leri mesaj-bazli kalici klasore yaz (nesting voxelize edene kadar yasamali)
     _det_hex = hashlib.sha256(mail.message_id.encode("utf-8")).hexdigest()[:8].upper()

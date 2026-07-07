@@ -25,11 +25,17 @@ LOG = Path(__file__).parent / "plan3_acili_prob.log"
 PLATE = (328.74, 328.19)
 REF = {"legal718": 718.0, "magics": 593.0}
 
-CONFIGS = [  # (ad, fine_angle_window, step) — kucukten buyuge, erken sinyal
-    ("w15_s5", 15.0, 5.0),
-    ("w45_s15", 45.0, 15.0),
-    ("w90_s15", 90.0, 15.0),
+# Tur-2 (2026-07-07): kazanan w90 uzerine ALGORITMIK arama derinlestirme —
+# gercek plakada yuksek butce + coklu seed + ince adim (hepsi legal-dogrulamali).
+CONFIGS = [  # (ad, window, step, budget, seed)
+    # w90_b150_s42 OLCULDU: 701.0 (b70 ile ayni — butce doymus)
+    # w90_b70_seed13 OLCULDU: 693.0 LEGAL (yeni sampiyon)
+    ("w90_b70_seed7", 90.0, 15.0, 70, 7),
+    ("w90_step5_b70", 90.0, 5.0, 70, 42),
+    # n=24 (AX24 tam poz seti) — bloklar icin poz cesitliligi son yerel kaldirac
+    ("w90_n24_b70", 90.0, 15.0, 70, 42),
 ]
+N_OR_OVERRIDE = {"w90_n24_b70": 24}
 
 
 def log(m=""):
@@ -44,13 +50,13 @@ def main():
     inst = _load_instance("plan3")
     n_total = sum(int(p.qty) for p in inst.parts)
     pitch = suggest_pitch(inst, wall_aware=False)
-    for ad, win, step in CONFIGS:
+    for ad, win, step, budget, seed in CONFIGS:
         t = time.perf_counter()
         try:
             r = solve_coarse_to_fine(
                 inst, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
-                coarse_pitch=None, fine_pitch=pitch, budget=70, seed=42,
-                n_orientations=8, clearance_mm=1.0,
+                coarse_pitch=None, fine_pitch=pitch, budget=budget, seed=seed,
+                n_orientations=N_OR_OVERRIDE.get(ad, 8), clearance_mm=1.0,
                 fine_angle_window=win, fine_angle_step=step,
                 fine_angle_axes="z")
         except Exception as e:
