@@ -81,9 +81,12 @@ def kos(name, n_or, pitch_force=None):
         f"{' (fit-guard)' if pitch != onerilen else ''}")
     # fit-guard aktifse coarse asamaya da uygula (plan1 baseplate dersi:
     # otomatik kaba pitch'te sigmayan parca coarse'da AssertionError'la olduruyor)
+    # drop_cache HER SETTE acik (2026-07-08 hizlanma karari): H-16 dirty-region
+    # onbellegi BIT-OZDES kanitli (K-19 282.0 birebir, %90.3 hit) — wall_aware
+    # kapisi bellek gerekcesiydi, 300MB cap zaten var. Kaliteye etki SIFIR.
     kw = dict(coarse_pitch=(pitch if pitch != onerilen else None),
               fine_pitch=pitch, budget=COARSE_BUDGET,
-              seed=42, n_orientations=n_or, drop_cache=wall,
+              seed=42, n_orientations=n_or, drop_cache=True,
               skip_fine_angle=wall, clearance_mm=WEB_MIN_CLEARANCE_MM,
               no_go_bounds=NOGO)
     if wall or pitch != onerilen:
@@ -134,24 +137,17 @@ def kos(name, n_or, pitch_force=None):
 
 
 def main():
+    # 2026-07-08 devam: deneme5_n24 (280.8) + plan1_n24 (260.0) ILK turda OLCULDU;
+    # PC kapaninca plan2_n8 yarim kaldi. BEKLE on-kosullari BITTI (loglar duruyor).
     LOG.write_text("", encoding="utf-8")
-    log("AX24 KUYRUK @335+NOGO — eksen-hizali tavan olcumu (n24 + plan2 baseline)")
-    tur = 0
-    while True:  # 0) mevcut kosular bitene kadar bekle (RAM)
-        kalan = [b.name for b in BEKLE
-                 if not (b.exists() and "BITTI" in b.read_text(encoding="utf-8", errors="ignore"))]
-        if not kalan:
-            break
-        if tur % 5 == 0:
-            log(f"bekleniyor: {kalan} ({time.strftime('%H:%M')})")
-        tur += 1
-        time.sleep(180)
-    log("on-kosullar BITTI — kuyruk basliyor")
-    kos("deneme5", 24)
-    kos("plan1", 24, pitch_force=1.0)
-    kos("plan2", 8)
+    # sira 2026-07-08: plan3_n24 ONE alindi (n24 kablolama teyidini en erken
+    # verir; plan2_n8 tam-portfoy@0.5 suresi belirsiz — en sona)
+    # plan3_n24 OLCULDU (719.0 legal, None.exterior fix'li kosu) — cikarildi.
+    # Yeniden baslatma nedeni (2026-07-08 16:5x): coarse drop_cache kablosu
+    # (py-spy kaniti) — plan2 bacaklari cache'li kodla kosacak.
+    log("AX24 KUYRUK @335+NOGO — plan2 turu (n24 -> n8), coarse drop_cache ACIK")
     kos("plan2", 24)
-    kos("plan3", 24)
+    kos("plan2", 8)
     log("BITTI")
 
 

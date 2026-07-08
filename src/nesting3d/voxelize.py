@@ -250,7 +250,21 @@ def _slice_voxelize(
     for k, sec in enumerate(sections):
         if sec is None:
             continue
-        for poly in sec.polygons_full:
+        # Dejenere kesit dayanikliligi (2026-07-08, plan3 n24 None.exterior):
+        # trimesh polygons_full bazi acili pozlarda None poligonda .exterior
+        # cagirip AttributeError firlatiyor. Fallback: polygons_closed'in
+        # None-olmayan uyeleri — delikler DOLU sayilir = KONSERVATIF
+        # (overapproximation; legality asla ihlal olmaz, o katmanda yuvalama
+        # kaybi olabilir). O da patlarsa katman atlanir (yuzey hucreleri
+        # _surface_cells birlesiminde yine isaretlenir).
+        try:
+            polys = list(sec.polygons_full)
+        except Exception:
+            try:
+                polys = [p for p in sec.polygons_closed if p is not None]
+            except Exception:
+                continue
+        for poly in polys:
             minx, miny, maxx, maxy = poly.bounds
             i0 = int(np.searchsorted(xs, minx, side="left"))
             i1 = int(np.searchsorted(xs, maxx, side="right"))
@@ -406,6 +420,7 @@ def voxelize_part(
     else:
         rots = rotation_matrices(n_orientations)
     orientations: List[Orientation] = []
+    son_hata: Optional[Exception] = None
     for rot in rots:
         m = mesh.copy()
         m.apply_transform(rot)
@@ -416,7 +431,17 @@ def voxelize_part(
             # bbox dolgun — Deneme4 'Dugme Kilidi' %12 doluluk) slice boş
             # dönebilir; yüzey hücreleri konservatif işaretleyince birleşim
             # dolar. Boş-grid kararı bu yüzden BİRLEŞİMDEN SONRA verilir.
-            grid = _slice_voxelize(m, pitch, allow_empty=True)
+            # Dejenere-poz dayanikliligi (2026-07-08, plan3 n24 None.exterior;
+            # 153c961 fine_angle deseninin genellemesi): TEK bozuk poz TUM
+            # cozumu oldurmesin — bozuk poz ATLANIR, hicbir poz kalmazsa hata
+            # yukselir (sessiz bos menu YOK).
+            try:
+                grid = _slice_voxelize(m, pitch, allow_empty=True)
+            except Exception as e:
+                son_hata = e
+                print(f"[voxelize] UYARI: '{name}' dejenere poz atlandi "
+                      f"({type(e).__name__}: {e})", flush=True)
+                continue
             grid |= _surface_cells(m, pitch, grid.shape)  # konservatif sarma
             if not grid.any():
                 ext_m = m.extents
@@ -456,6 +481,12 @@ def voxelize_part(
             )
         )
 
+    if not orientations:
+        # Hicbir poz kurtarilamadi — sessiz bos menu YASAK (bayat-mock dersi):
+        # gercek hatayi yukselt ki caller (fine_angle fallback / fit-guard /
+        # operator) aksiyon alabilsin.
+        raise son_hata if son_hata is not None else ValueError(
+            f"'{name}': hicbir oryantasyon voxelize edilemedi")
     return VoxelPart(
         id=name,
         name=name,

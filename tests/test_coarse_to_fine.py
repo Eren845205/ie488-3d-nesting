@@ -754,3 +754,31 @@ def test_clearance_reaches_fine_bin3d(monkeypatch):
         menu=_fast_menu(), clearance_mm=1.0,
     )
     assert 2 in seen_zc, f"fine Bin3D z_clearance=2 kurulmali, gorulen: {seen_zc}"
+
+
+# ---------------------------------------------------------------------------
+# drop_cache COARSE asamasinda da BIT-OZDES (2026-07-08 py-spy bulgusu:
+# plan2 tam-portfoy suresi coarse tune'daki kachesiz drop_map'te yasiyordu;
+# cache artik iki asamada da acilabiliyor — sonuc birebir degismemeli)
+# ---------------------------------------------------------------------------
+def test_drop_cache_bit_identical_both_stages():
+    kapali = _solve(drop_cache=False)
+    acik = _solve(drop_cache=True)
+    assert acik.height_mm == kapali.height_mm
+    assert [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+            for p in acik.placements] == \
+           [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+            for p in kapali.placements]
+
+
+def test_drop_cache_bit_identical_with_no_go():
+    # no-go muhur + cache birlesimi de birebir (seal init'te, cache place'te
+    # kirlenir — etkilesim yok kaniti)
+    ng = ((10.0, 10.0), (40.0, 40.0))
+    kapali = _solve(drop_cache=False, no_go_bounds=ng)
+    acik = _solve(drop_cache=True, no_go_bounds=ng)
+    assert acik.height_mm == kapali.height_mm
+    assert [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+            for p in acik.placements] == \
+           [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
+            for p in kapali.placements]

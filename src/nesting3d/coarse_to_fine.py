@@ -186,6 +186,7 @@ def _build_refined_fine_parts(
     step_deg: float,
     axes,
     margin: int = 0,
+    orient_rot: Optional[Dict[str, np.ndarray]] = None,
 ):
     """Fine voxel parçalarını, her parçanın KAZANAN ayrık pozu çevresinde
     ince-açı aday oryantasyonlarıyla kur.
@@ -209,9 +210,13 @@ def _build_refined_fine_parts(
         didx = orient_map.get(part.id, 0)
         if didx < 0 or didx >= len(master):
             didx = 0
-        key = (part.name, didx)
+        # Baz poz: kazananin GERCEK rot matrisi (poz-atlamaya dayanikli,
+        # 2026-07-08); yoksa eski master-indeks varsayimi (birebir eski yol).
+        rot0 = orient_rot.get(part.id) if orient_rot else None
+        base_rot = rot0 if rot0 is not None else master[didx]
+        key = (part.name, rot0.tobytes() if rot0 is not None else didx)
         if key not in cache:
-            rmats = _refined_rot_matrices(master[didx], window_deg, step_deg, axes)
+            rmats = _refined_rot_matrices(base_rot, window_deg, step_deg, axes)
             try:
                 vp = voxelize_part(part.name, part.mesh, fine_pitch,
                                    rot_matrices=rmats, method="slice",
@@ -235,7 +240,7 @@ def _build_refined_fine_parts(
                         continue
                 if not orients:
                     vp0 = voxelize_part(part.name, part.mesh, fine_pitch,
-                                        rot_matrices=[master[didx]],
+                                        rot_matrices=[base_rot],
                                         method="slice", margin=margin)
                     orients = list(vp0.orientations)
                 cache[key] = orients
@@ -512,8 +517,13 @@ def solve_coarse_to_fine(
             no_go_bounds, plate_w_mm, plate_d_mm, _pitch)
 
     def coarse_factory() -> Bin3D:
+        # drop_cache COARSE'ta da (2026-07-08, py-spy kaniti: plan2 tam-portfoy
+        # suresi coarse tune'daki kachesiz _drop_map_general'de yasiyor; H-15
+        # dersi "coarse-tune %90" + H-16 cache BIT-OZDES kanitli). Ayni bayrak
+        # iki asamayi da acar — default False = eski davranis birebir.
         return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc,
-                     no_go_mask=_ng_mask(coarse_pitch))
+                     no_go_mask=_ng_mask(coarse_pitch),
+                     drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
 
     tune_result = tune(
         coarse_parts,
@@ -531,6 +541,18 @@ def solve_coarse_to_fine(
     orient_map: Dict[str, int] = {
         p.part_id: p.orientation_idx for p in winner.placements
     }
+    # Poz-atlamaya dayanikli esleme (2026-07-08, None.exterior fix'inin
+    # tamamlayicisi): voxelize_part artik dejenere pozu ATLAYABILIR ->
+    # orientations listesi kisalir ve coarse indeksi fine listesinde BASKA
+    # (hatta tasan) poza denk gelebilir. Kazananin GERCEK rot matrisi tasinir;
+    # fine tarafinda indeks matris eslesmesiyle yeniden bulunur.
+    _coarse_by_id = {p.id: p for p in coarse_parts}
+    orient_rot: Dict[str, np.ndarray] = {}
+    for _pl in winner.placements:
+        _cp = _coarse_by_id.get(_pl.part_id)
+        if _cp is not None and 0 <= _pl.orientation_idx < len(_cp.orientations):
+            orient_rot[_pl.part_id] = np.asarray(
+                _cp.orientations[_pl.orientation_idx].rot_matrix, dtype=float)
 
     # ------------------------------------------------------------------
     # Adaptif: sabit ince-açı yerine coarse voxellerden "kutuluk" özelliğiyle
@@ -583,6 +605,21 @@ def solve_coarse_to_fine(
                                 margin=_fine_margin)
     base_by_id: Dict[str, Any] = {p.id: p for p in base_parts}
 
+    # orient_map'i FINE listesine yeniden hizala: once rot-matris eslesmesi,
+    # bulunamazsa eski indeks LEN-KELEPCELI (poz atlandiysa liste kisalmis
+    # olabilir — tasan indeks IndexError'la cozumu oldurmesin).
+    for _pid, _fp in base_by_id.items():
+        _rot = orient_rot.get(_pid)
+        _idx = None
+        if _rot is not None:
+            for _i, _o in enumerate(_fp.orientations):
+                if np.allclose(_o.rot_matrix, _rot, atol=1e-9):
+                    _idx = _i
+                    break
+        if _idx is None:
+            _idx = min(orient_map.get(_pid, 0), len(_fp.orientations) - 1)
+        orient_map[_pid] = _idx
+
     def _base_orient(idx: int, part: Any) -> tuple:
         return (orient_map.get(part.id, 0),)
 
@@ -600,7 +637,7 @@ def solve_coarse_to_fine(
         ref_parts = _build_refined_fine_parts(
             instance, fine_pitch, orient_map,
             window_deg=fine_angle_window, step_deg=fine_angle_step, axes=axes,
-            margin=_fine_margin,
+            margin=_fine_margin, orient_rot=orient_rot,
         )
         ref_by_id: Dict[str, Any] = {p.id: p for p in ref_parts}
 
