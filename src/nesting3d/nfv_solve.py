@@ -132,7 +132,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               n_orientations=None, quality="fast", margin=1, seed=42, force=None,
               fine_settle=True, orient_ram_brake=False,
               time_budget_sec=None, clearance_mm=0.0,
-              no_go_bounds=None) -> CoarseToFineResult:
+              no_go_bounds=None,
+              repair_separability=False) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -249,6 +250,31 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             settle_note = (f"settle {bin3d.max_height_mm():.1f}->"
                            f"{fine_bin.max_height_mm():.1f}mm @{s.fine_pitch}mm")
             bin3d, parts_by_id, result_pitch = fine_bin, s.fine_parts, s.fine_pitch
+
+    # R1 (2026-07-09, A2 5-yon metrigi): opsiyonel KILIT-TAHLIYE post-pass —
+    # 5-yonde kilitli parcalar tahliye edilip kurallara uygun yeniden
+    # yerlestirilir (dilate'li mevcut grid'ler -> clearance korunur).
+    # default False = BIT-OZDES eski davranis. Ilk saha kaniti: K-29 probu.
+    repair_note = None
+    if repair_separability:
+        from src.nesting3d.separability_repair import repair_separability as _onar
+        _ng = None
+        if no_go_bounds is not None:
+            _ng = Bin3D.no_go_mask_from_bounds(
+                no_go_bounds, plate_w_mm, plate_d_mm, result_pitch)
+        rr = _onar(bin3d.placements, parts_by_id,
+                   plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+                   pitch=result_pitch, no_go_mask=_ng)
+        if rr.repaired:
+            onarilan_bin = Bin3D(plate_w_mm, plate_d_mm, result_pitch,
+                                 no_go_mask=_ng)
+            for p in rr.placements:
+                onarilan_bin.place(parts_by_id[p.part_id], p.orientation_idx,
+                                   p.x, p.y, p.z)
+            bin3d = onarilan_bin
+            repair_note = (f"repair {rr.n_locked_before}->{rr.n_locked_after}"
+                           f" kilit / {rr.rounds_used} tur"
+                           + (f" ({rr.note})" if rr.note else ""))
     elapsed = time.perf_counter() - t0
 
     h = bin3d.max_height_mm()
@@ -267,5 +293,6 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         tune_result=tune_result, fine_voxel_parts=parts_by_id, fine_angle_used=False,
         adaptive_reason=f"nfv strategy={strategy}" + (f" | {nfv_reason}" if nfv_reason else "")
         + (f" | {n_reason}" if n_reason else "")
-        + (f" | {settle_note}" if settle_note else ""),
+        + (f" | {settle_note}" if settle_note else "")
+        + (f" | {repair_note}" if repair_note else ""),
     )
