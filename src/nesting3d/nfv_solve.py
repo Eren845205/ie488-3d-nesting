@@ -134,7 +134,7 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               time_budget_sec=None, clearance_mm=0.0,
               no_go_bounds=None,
               repair_separability=False,
-              exit_guard=False) -> CoarseToFineResult:
+              exit_guard=False, exit_guard_retries=2) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -217,7 +217,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
 
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
                                    time_budget_sec=decode_budget,
-                                   no_go_mask=_ng_mask, exit_guard=exit_guard)
+                                   no_go_mask=_ng_mask, exit_guard=exit_guard,
+                                   exit_guard_retries=exit_guard_retries)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
     # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un

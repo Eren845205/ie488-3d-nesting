@@ -180,6 +180,8 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
                         no_go_mask=no_go_mask)
     placements: List[RawPlacement] = []
     guard_scene = _GuardScene() if exit_guard else None
+    # K-33b telemetri (A4 olc-once): vergi nerede yasiyor?
+    guard_stats = {"ilk_gecti": 0, "retry_kurtardi": 0, "fallback": 0}
     sorted_parts = sorted(parts, key=lambda vp: -vp.volume_voxels)
 
     executor = None
@@ -208,6 +210,8 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
             # kapali (default) -> _reduce_best BIREBIR eski davranis.
             best = (_reduce_best_guarded(results, cur_max, guard_scene, part)
                     if exit_guard else _reduce_best(results, cur_max))
+            if exit_guard and best is not None:
+                guard_stats["ilk_gecti"] += 1
             if exit_guard and best is None and exit_guard_retries > 0:
                 # K-33 COKLU-ADAY: reddedilen pozisyonlar HAYALET isgalle
                 # kapatilip BLB o oryantasyon icin YENIDEN sorulur -> ikinci/
@@ -236,11 +240,14 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
                     best = _reduce_best_guarded(yeni_results, cur_max,
                                                 guard_scene, part)
                     if best is not None:
+                        guard_stats["retry_kurtardi"] += 1
                         break
                 for oi, kayitlar in hayaletler.items():   # hayaletleri geri al
                     for sl, eklenen in kayitlar:
                         ob.occupancy[sl] &= ~eklenen
             if best is None:
+                if exit_guard:
+                    guard_stats["fallback"] += 1
                 fb = _drop_fallback(ob, part)
                 if fb is None:
                     # dilated parca hicbir oryantasyonda plakaya SIGMADI ->
@@ -262,6 +269,8 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
         if executor is not None:
             executor.shutdown(wait=True)
 
+    if exit_guard and skip_status is not None:
+        skip_status["guard"] = dict(guard_stats)   # telemetri (K-33b)
     h = ob.height_mm()
     return (h, placements) if return_placements else h
 
@@ -411,7 +420,7 @@ def _mark_budget(strategy: str, status: dict) -> str:
 
 
 def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None,
-                no_go_mask=None, exit_guard=False):
+                no_go_mask=None, exit_guard=False, exit_guard_retries=2):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
     GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
 
@@ -442,8 +451,12 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
                     return_placements=True, time_budget_sec=time_budget_sec,
                     budget_status=status, skip_status=skip, no_go_mask=no_go_mask,
-                    exit_guard=exit_guard)
+                    exit_guard=exit_guard, exit_guard_retries=exit_guard_retries)
     strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
+    g = skip.get("guard")
+    if g:
+        strat_str += (f" guard[ilk={g['ilk_gecti']} retry={g['retry_kurtardi']}"
+                      f" fallback={g['fallback']}]")
     dropped = skip.get("dropped")
     if dropped:
         # SESSIZ yutma YOK: atlanan parcalar strateji izine (-> adaptive_reason) yazilir.
