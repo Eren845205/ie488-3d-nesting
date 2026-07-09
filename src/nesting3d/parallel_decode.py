@@ -50,6 +50,61 @@ def _reduce_best(results, cur_max):
     return best
 
 
+def _has_exit(occ, orient, x, y, z) -> bool:
+    """R2 cikis testi: (orient @ x,y,z) MEVCUT occupancy'ye karsi 5 duz
+    dogrultudan (+Z, +-X, +-Y) en az birinde engelsiz cikabilir mi?
+
+    KONSERVATIF (guvenli yon): yanal testler parcanin seyahat-golgesini
+    kullanir ve bbox baslangicindan itibaren tarar — arkada kalan engel
+    nadiren fazladan RED uretir, asla sahte GECER uretmez. Plaka kenari =
+    cikis (toz hacmi duvarsiz). occ parca HENUZ yerlesmeden test edilir.
+
+    DEGISMEZ (K-29 kaniti): her parca yerlestigi anda o ana kadarki sahneye
+    karsi cikisliysa, TERS yerlestirme sirasi gecerli sirali sokumdur ->
+    nihai sahnede 5-yon kilit = 0 GARANTI.
+    """
+    g = orient.grid
+    fw, fd, fh = g.shape
+    nx, ny, nz = occ.shape
+    z2 = min(z + fh, nz)
+    if z2 <= z:
+        return True                       # tamamen tahsis ustu -> gokyuzu acik
+    filled = orient.filled                # (fw, fd)
+    # +Z: dolu kolonlarin ustunde occupancy var mi
+    if not (occ[x:x + fw, y:y + fd, z2:].any(axis=2) & filled).any():
+        return True
+    zs = slice(z, z2)
+    kesit = slice(0, z2 - z)
+    golge_yz = g.any(axis=0)[:, kesit]    # (fd, z2-z)
+    if x + fw >= nx or not (occ[x + fw:, y:y + fd, zs].any(axis=0) & golge_yz).any():
+        return True                       # +X
+    if x <= 0 or not (occ[:x, y:y + fd, zs].any(axis=0) & golge_yz).any():
+        return True                       # -X
+    golge_xz = g.any(axis=1)[:, kesit]    # (fw, z2-z)
+    if y + fd >= ny or not (occ[x:x + fw, y + fd:, zs].any(axis=1) & golge_xz).any():
+        return True                       # +Y
+    if y <= 0 or not (occ[x:x + fw, :y, zs].any(axis=1) & golge_xz).any():
+        return True                       # -Y
+    return False
+
+
+def _reduce_best_guarded(results, cur_max, occ, part):
+    """_reduce_best'in R2 hali: AYNI anahtar siralamasi, cikissiz adaylar
+    ATLANIR (ilk cikisli aday kazanir). Hicbiri cikisli degilse None ->
+    caller drop-fallback'e duser (tepe yerlesimi +Z-cikisli by construction)."""
+    adaylar = []
+    for oi, o, fh in results:
+        if o is None:
+            continue
+        key = (max(o[2] + fh, cur_max), o[2] + fh, o[2], o[1], o[0], oi)
+        adaylar.append((key, oi, o))
+    adaylar.sort(key=lambda t: t[0])
+    for _key, oi, o in adaylar:
+        if _has_exit(occ, part.orientations[oi], o[0], o[1], o[2]):
+            return (oi, o[0], o[1], o[2])
+    return None
+
+
 def _worth_threading(ob, n_eligible) -> bool:
     """SADECE hız heuristiği (sonucu DEĞİŞTİRMEZ). Boş/erken bin'de FFT trivial → seri ucuz."""
     return n_eligible >= 2 and ob.max_height_voxels() > 0
@@ -61,7 +116,7 @@ def _worth_threading(ob, n_eligible) -> bool:
 
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
            return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
-           skip_status=None, no_go_mask=None):
+           skip_status=None, no_go_mask=None, exit_guard=False):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
@@ -119,7 +174,10 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
             else:
                 results = [(oi, _blb_w(ob.occupancy, orient.grid), orient.grid.shape[2])
                            for oi, orient in elig]
-            best = _reduce_best(results, cur_max)
+            # R2 exit_guard: cikissiz aday atlanir (ayni anahtar siralamasi);
+            # kapali (default) -> _reduce_best BIREBIR eski davranis.
+            best = (_reduce_best_guarded(results, cur_max, ob.occupancy, part)
+                    if exit_guard else _reduce_best(results, cur_max))
             if best is None:
                 fb = _drop_fallback(ob, part)
                 if fb is None:
@@ -287,7 +345,7 @@ def _mark_budget(strategy: str, status: dict) -> str:
 
 
 def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None,
-                no_go_mask=None):
+                no_go_mask=None, exit_guard=False):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
     GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
 
@@ -296,6 +354,10 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     caps = probe_capabilities()
     strat = force or choose_strategy(caps)
     status: dict = {}
+
+    if exit_guard and strat == "gpu-resident":
+        # R2 v1 yalniz CPU yolunda (GPU BLB'de aday-eleme yok) -> CPU'ya in.
+        strat = "cpu-kolA"
 
     if strat == "gpu-resident":
         try:
@@ -313,7 +375,8 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     skip: dict = {}
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
                     return_placements=True, time_budget_sec=time_budget_sec,
-                    budget_status=status, skip_status=skip, no_go_mask=no_go_mask)
+                    budget_status=status, skip_status=skip, no_go_mask=no_go_mask,
+                    exit_guard=exit_guard)
     strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
     dropped = skip.get("dropped")
     if dropped:

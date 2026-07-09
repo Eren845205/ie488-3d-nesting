@@ -133,7 +133,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               fine_settle=True, orient_ram_brake=False,
               time_budget_sec=None, clearance_mm=0.0,
               no_go_bounds=None,
-              repair_separability=False) -> CoarseToFineResult:
+              repair_separability=False,
+              exit_guard=False) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -216,7 +217,7 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
 
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
                                    time_budget_sec=decode_budget,
-                                   no_go_mask=_ng_mask)
+                                   no_go_mask=_ng_mask, exit_guard=exit_guard)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
     # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un
@@ -247,9 +248,21 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             fine_bin = Bin3D(plate_w_mm, plate_d_mm, s.fine_pitch)
             for (pid, oi, xf, yf, zf) in s.raw_fine:
                 fine_bin.place(s.fine_parts[pid], oi, xf, yf, zf)
-            settle_note = (f"settle {bin3d.max_height_mm():.1f}->"
-                           f"{fine_bin.max_height_mm():.1f}mm @{s.fine_pitch}mm")
-            bin3d, parts_by_id, result_pitch = fine_bin, s.fine_parts, s.fine_pitch
+            # R2: exit_guard aciksa settle'in z-alcaltmasi YENI kilit
+            # uretebilir (parca kaviteye derinlesir) -> kilitli settle
+            # REDDEDILIR, coarse (garanti-cikisli) sonuc korunur.
+            settle_kilit = 0
+            if exit_guard:
+                from src.nesting3d.accessibility import check_separability_5dir
+                settle_kilit = check_separability_5dir(
+                    fine_bin.placements, s.fine_parts).n_locked
+            if settle_kilit > 0:
+                settle_note = (f"settle REDDEDILDI (exit_guard: "
+                               f"{settle_kilit} kilit uretecekti)")
+            else:
+                settle_note = (f"settle {bin3d.max_height_mm():.1f}->"
+                               f"{fine_bin.max_height_mm():.1f}mm @{s.fine_pitch}mm")
+                bin3d, parts_by_id, result_pitch = fine_bin, s.fine_parts, s.fine_pitch
 
     # R1 (2026-07-09, A2 5-yon metrigi): opsiyonel KILIT-TAHLIYE post-pass —
     # 5-yonde kilitli parcalar tahliye edilip kurallara uygun yeniden
