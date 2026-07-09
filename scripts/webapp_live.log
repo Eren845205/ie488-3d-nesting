@@ -1,0 +1,31 @@
+INFO:httpx:HTTP Request: GET http://localhost:11434/v1/models "HTTP/1.1 200 OK"
+------------------------------------------------------------
+  LLM HAZIR ✓  Hazir: 'qwen2.5:3b' yuklu (http://localhost:11434).
+------------------------------------------------------------
+ * Serving Flask app 'app'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [06/Jul/2026 16:34:21] "[32mGET / HTTP/1.1[0m" 302 -
+------------------------------------------------------------
+INFO:httpx:HTTP Request: GET http://localhost:11434/v1/models "HTTP/1.1 200 OK"
+  LLM HAZIR ✓  Hazir: 'qwen2.5:3b' yuklu (http://localhost:11434).
+------------------------------------------------------------
+ * Serving Flask app 'app'
+ * Debug mode: off
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:28:59] "[32mGET / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:29:20] "[31m[1mPOST /poll/baslat HTTP/1.1[0m" 401 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:29:23] "[32mGET /poll/durum HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:02] "GET /giris HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:02] "[31m[1mPOST /giris HTTP/1.1[0m" 403 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:02] "[31m[1mPOST /poll/baslat HTTP/1.1[0m" 401 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:12] "GET /giris HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:26] "[32mPOST /giris HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [07/Jul/2026 15:30:27] "POST /poll/baslat HTTP/1.1" 200 -
+INFO:src.runtime.mail_ingest:ingest_order: siparis sinyali yok (adet/boyut deseni) — LLM atlandi: Quora Digest <english-quora-digest@quora.com>
+INFO:src.runtime.mail_ingest:ingest_order: siparis sinyali yok (adet/boyut deseni) — LLM atlandi: =?UTF-8?B?TWVydCBDT8WeS1VO?= <mcoskun@fsm.edu.tr>
+INFO:src.runtime.mail_ingest:ingest_order: siparis sinyali yok (adet/boyut deseni) — LLM atlandi: =?UTF-8?B?TWVydCBDT8WeS1VO?= <mcoskun@fsm.edu.tr>

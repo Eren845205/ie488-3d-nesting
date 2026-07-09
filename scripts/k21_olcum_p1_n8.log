@@ -1,0 +1,13 @@
+[15:50:48] K-21 BASLADI — solve_nfv fine_pitch=1.0 n_orientations=8 time_budget=10800s fine_settle=default(True)
+[15:50:48] plaka (auto) 301.6x301.6mm | RAM musait=8.4GB
+[17:25:53] SOLVE BITTI — 5705s (95.1 dk)
+[17:25:53]   height=262.5mm | uygulanan pitch=0.5 | density=0.243 | n_placed=588
+[17:25:53]   winning_config=nfv
+[17:25:53]   coarse_height_mm=262.5
+[17:25:53]   coarse_pitch=1.0
+[17:25:53]   adaptive_reason=nfv strategy=cpu-kolA | settle 264.0->262.5mm @0.5mm
+[17:25:54] ERISILEBILIRLIK (1.2s): kilitli=554/588 | grup=1
+[17:25:54] yerlesimler kaydedildi: k21_placements_p1_n8.pkl
+[17:25:54] KIYAS: K-19 hm@0.5=282.0 (0 kilit) | nfv-max@1.25=386.4 (506 kilit) | Magics=250.24
+[17:25:54] HUKUM: ILLEGAL KAZANC — 262.5 < 282.0 ama 554 kilit (F2 v2 gundemine).
+[17:25:54] TEPE RAM process=7.97GB

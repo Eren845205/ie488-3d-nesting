@@ -1,0 +1,52 @@
+[02:18:38] ZINCIR TESTI BASLADI — nesting_mode=auto + auto_family_routing=True (wall_aware bayragi BILEREK verilmedi; F5 acmali)
+[02:18:38] RAM musait=4.8GB | beklenen: heightmap@0.5 -> 282.0mm
+========================================================================
+DEMO PIPELINE OZETI
+========================================================================
+Siparis sayisi   : 1
+Parti sayisi     : 1
+Uyari sayisi     : 0
+
+--- Oncelik Sirasi (ilk 5) ---
+  1. ZIP-FADB1BA8         termin=2026-07-13  oncelik=2
+
+--- Parti Ozeti (Instance-Tuner) ---
+  B001: FSM          | yukseklik=282.0mm | doluluk=15.6% | kazanan-konfig=dblf_only | kazanc=0.00mm (6.0%) | secim-tahmin=ga(zor) | fiyat=200.00$
+
+Toplam ciro onerisi : 200.00 $
+Pipeline suresi     : 553.03 s
+Tuner budget        : 70 iter/konfig
+========================================================================
+[02:27:51] BITTI — 553s (9.2 dk)
+[02:27:51] [B001] --- nesting sonucu (skaler alanlar) ---
+[02:27:51] [B001]   applied_pitch_mm = 0.5
+[02:27:51] [B001]   auto_mode_reason = auto->heightmap: kabuk ailesi (thin_shell, guven=0.87 >= 0.75): cidar-pitch yolu; K-12 kabukta gecersiz (K-19)
+[02:27:51] [B001]   budget_exceeded = False
+[02:27:51] [B001]   coarse_menu_reason = dblf_only: thin_shell/H-15p (coarse tune %90 pay, SA/GA kazandirmiyor)
+[02:27:51] [B001]   coarse_time_s = 38.62
+[02:27:51] [B001]   density = 0.15609621039969981
+[02:27:51] [B001]   elapsed_sec = 552.646
+[02:27:51] [B001]   fine_angle_reason = skipped: thin_shell/H-15p
+[02:27:51] [B001]   fine_angle_time_s = 0.0
+[02:27:51] [B001]   fine_angle_used = False
+[02:27:51] [B001]   fine_time_s = 514.024
+[02:27:51] [B001]   height_mm = 282.0
+[02:27:51] [B001]   mesh_volume_cm3 = 3305.89
+[02:27:51] [B001]   n_parts = 588
+[02:27:51] [B001]   nesting_mode_used = heightmap
+[02:27:51] [B001]   note = 
+[02:27:51] [B001]   pitch_mm = 0.5
+[02:27:51] [B001]   plate_auto = True
+[02:27:51] [B001]   plate_d_mm = 301.6
+[02:27:51] [B001]   plate_w_mm = 301.6
+[02:27:51] [B001]   ram_guard_reason = RAM-guard (rapor-only): tahmini grid ~1164M hucre @pitch 0.50mm > bellek butcesi ~9M (bos RAM 4.6GB) -> bellek-riskli; pitch DEGISTIRILMEDI (davranis korundu), operator daha kaba pitch/plaka veya daha fazla RAM dusunmeli.
+[02:27:51] [B001]   suggested_pitch_mm = 0.5
+[02:27:51] [B001]   time_budget_sec = None
+[02:27:51] [B001]   volume_fill_pct = 12.9
+[02:27:51] [B001]   volume_missing_parts = 0
+[02:27:51] [B001]   wall_aware_pitch = True
+[02:27:51] [B001]   winning_config = dblf_only
+[02:27:53] [B001] KRITER A (282.0 birebir): PASS (height=282.0)
+[02:27:53] [B001] KRITER C (kabuk+wall_aware izi): PASS
+[02:27:53] KIYAS: K-19 v2=282.0 | eski hm@2.9=377.3 | Magics=250.24
+[02:27:53] TEPE RAM process=1.11GB

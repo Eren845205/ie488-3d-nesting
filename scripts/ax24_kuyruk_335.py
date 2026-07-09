@@ -35,7 +35,7 @@ from scripts.demo_pipeline import WEB_MIN_CLEARANCE_MM, COARSE_BUDGET
 
 LOG = Path(__file__).parent / "ax24_kuyruk_335.log"
 PLATE = (335.0, 335.0)
-NOGO = ((185.1, 0.2), (215.2, 45.3))
+NOGO = ((152.5, 0.2), (185.5, 45.0))
 BEKLE = [Path(__file__).parent / "plan1_uretim335.log",
          Path(__file__).parent / "plan3_replan_sq.log"]
 REF = {"deneme5": (329.4, 209.0), "plan1": (None, 110.41),

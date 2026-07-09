@@ -1,0 +1,28 @@
+==============================================================================
+H-15 ON-ANALIZ — fine drop profili (K-19 v2 replay, stride=15)
+==============================================================================
+voxelize @0.5 n=4 (28s)
+replay dogru (282.0) | olculen cagri: 41
+
+TIP-BAZLI PROFIL (fine dongusu parca basina TEK poz cagirir):
+  tip | adet | orneklem | fast% | ort-sure | K(dolu kolon) | tahmini pay
+  03_00-K179 Dugme Tek Fonksiyonlu          200   13  %  0    0.77s  K=   746  ~   154s
+  ASY-0176446                                62    4  %  0    2.06s  K=  5378  ~   127s
+  04_T00-K179 Dugme Fonksiyonsuz             56    4  %  0    1.35s  K=  2759  ~    75s
+  02_T00-K179 Dugme Cift Fonksiyonlu-25pcs   26    2  %  0    1.61s  K=  2770  ~    42s
+  ASY-0176446-1                             126    9  %  0    0.21s  K=   260  ~    26s
+  17_00-K179 SSB Dugme                       20    1  %  0    0.61s  K=  1176  ~    12s
+  10_T00-K179 Kilitli Dugme                  25    2  %  0    0.47s  K=   836  ~    12s
+  05_00-K179 WBT Dugme                       20    1  %  0    0.40s  K=   745  ~     8s
+  09_00-K179 Dugme Kilidi                    27    1  %  0    0.27s  K=   411  ~     7s
+  01_202201790014_00-K179 Dugme Aksesuari    12    1  %  0    0.55s  K=   989  ~     7s
+  02_202201790002_T00-K179 Dugme Cift Fonk   12    1  %  0    0.49s  K=   745  ~     6s
+  part239392_ROBT UST v27                     1    1  %  0    1.71s  K=107822  ~     2s
+  part239391_ROBT ALT v27                     1    1  %  0    0.56s  K=125482  ~     1s
+  EKSTRAPOLASYON TOPLAM: ~479s (gercek zincir-testi dongusu ~6270s; oran 0.08)
+
+KALDIRAC KAPSAMI:
+  [1] dirty-cache (ayni tip ardisik, ilk haric): ~468s = toplamin %98'i
+  [2] genel-yol payi (algoritmik/GPU hedefi): ~479s = toplamin %100'i
+
+TOPLAM SURE: 63s

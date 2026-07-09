@@ -1,0 +1,20 @@
+==============================================================================
+K-23 TESHIS-2 — bos can icleri drop'a acik mi? (ASY-blogu ani, 64 replay)
+==============================================================================
+voxelize @0.5 n=4 (34s)
+64-replay ani: bin tepe = 282.0mm
+
+fazladan ASY icin drop_map (4 poz):
+  GLOBAL en iyi z_top: 272.0mm (oi 0)
+
+  bos-tek can pencereleri (can tepesi 87.5; IC ACIK olsaydi ~98 beklenir):
+    ASY-0176446_02: pencere-min z_top = 272.0mm (oi 0) -> RIM/BLOKE (A)
+    ASY-0176446_05: pencere-min z_top = 283.5mm (oi 0) -> RIM/BLOKE (A)
+    ASY-0176446_06: pencere-min z_top = 272.0mm (oi 0) -> RIM/BLOKE (A)
+    ASY-0176446_07: pencere-min z_top = 283.5mm (oi 0) -> RIM/BLOKE (A)
+    ASY-0176446_08: pencere-min z_top = 272.0mm (oi 0) -> RIM/BLOKE (A)
+    ASY-0176446_09: pencere-min z_top = 299.5mm (oi 0) -> RIM/BLOKE (A)
+
+HUKUM: (A) — bos can icleri drop'a KAPALI; 282 kulesi ZORUNLUYDU.
+        K-23 sira-permutasyonu dusuk umutlu; kabuk tavani yapisal.
+TOPLAM SURE: 52s

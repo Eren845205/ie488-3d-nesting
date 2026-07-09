@@ -30,7 +30,7 @@ from scripts.plan3_nfv_probu import _bes_yon, log as _eski_log
 LOG = Path(__file__).parent / "plan3_nfv_nogo.log"
 BEKLE = Path(__file__).parent / "plan1_hedefli_tilt.log"
 PLATE = (335.0, 335.0)
-NOGO = ((185.1, 0.2), (215.2, 45.3))
+NOGO = ((152.5, 0.2), (185.5, 45.0))
 
 
 def log(m=""):

@@ -1,0 +1,13 @@
+PLAN3 ACILI-POZ PROBU — ref legal=718.0 / Magics=593.0 / sinir=600
+[w90_b70_seed13] h=693.0  legal=693.0  clear=1.196  kilit=0  aci_kullanildi=True  (48.9 dk)
+[w90_b70_seed13] h=693.0  legal=693.0  clear=1.196  kilit=0  aci_kullanildi=True  (55.3 dk)
+[w90_b70_seed13] h=693.0  legal=693.0  clear=1.196  kilit=0  aci_kullanildi=True  (55.1 dk)
+[w90_b70_seed7] h=701.0  legal=701.0  clear=1.015  kilit=0  aci_kullanildi=True  (83.3 dk)
+[w90_b70_seed7] h=701.0  legal=701.0  clear=1.015  kilit=0  aci_kullanildi=True  (99.3 dk)
+[w90_b70_seed7] h=701.0  legal=701.0  clear=1.015  kilit=0  aci_kullanildi=True  (99.8 dk)
+[w90_step5_b70] EXCEPTION: Unable to allocate 54.1 MiB for an array with shape (16964, 4, 209) and data type int32
+BITTI
+[w90_step5_b70] h=692.0  legal=692.0  clear=1.313  kilit=0  aci_kullanildi=True  (195.9 dk)
+BITTI
+[w90_step5_b70] h=692.0  legal=692.0  clear=1.313  kilit=0  aci_kullanildi=True  (195.1 dk)
+BITTI

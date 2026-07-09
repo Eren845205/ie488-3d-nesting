@@ -1,0 +1,30 @@
+[14:44:22] ==============================================================================
+[14:44:22] H-16 KAPI OLCUMU — dirty-region drop_map onbellegi (mode=both)
+[14:44:22] ==============================================================================
+[14:44:22] K-19 v2 fine plani: 588 parca, hedef height=282.0mm, pitch=0.5
+[14:44:51] voxelize @0.5 n=4 (29s) plaka=301.6x301.6mm
+[14:44:51] 
+[14:44:51] --- CACHE=OFF (referans, uretim default yolu) ---
+[14:53:05]   height=282.0mm  fine_time=493.8s (8.2dk)  tepe_RAM=0.60GB  n_placed=588
+[14:53:05]   282.0 DOGRULANDI: True
+[14:53:05] 
+[14:53:05] --- CACHE=ON (H-16 dirty-region) ---
+[14:55:04]   height=282.0mm  fine_time=119.4s (2.0dk)  tepe_RAM=0.63GB  n_placed=588
+[14:55:04]   cache: hit_orani=%90.3 hits=531 miss=40 fallback=17 full=57
+[14:55:04]   cache: anahtar=40 tepe_anahtar=40 tepe_cache=43.6MB (tavan=300MB) eviction=0
+[14:55:04]   282.0 DOGRULANDI: True
+[14:55:04] 
+[14:55:04] --- KIYAS ---
+[14:55:04]   (a) YERLESIM BIREBIR (cache==ref): True
+[14:55:04]   (b) FINE SURE: off=493.8s  on=119.4s  hizlanma=4.1x
+[14:55:04]   (c) TEPE RAM: off=0.60GB  on=0.63GB  delta=+0.03GB
+[14:55:04]   (d) CACHE: hit_orani=%90.3 tepe_cache=43.6MB anahtar=40
+[14:55:04] 
+[14:55:04] --- SENTEZ ORANI DEGERLENDIRMESI (H-15 dersi) ---
+[14:55:04]   [KANITLI-ATIF] uretim fine dblf = 514s
+[14:55:04]   olculen cache-siz fine = 493.8s -> atif-sentez orani = 0.96 (1.0 = atif tam ortusuyor)
+[14:55:04]       OK: olculen fine atifla uyumlu (~1.0).
+[14:55:04]   [ON-ANALIZ] cache-li fine tahmin bandi = 14..38s
+[14:55:04]   olculen cache-li fine = 119.4s -> bandin (38s) 3.1x USTUNDE. Sebep adaylari: per-cagri sabit ek-yuk (argmin full-Z + kopya), dusuk hit orani, fallback payi. RAPOR: hit=%90 fallback=17.
+[14:55:04] 
+[14:55:04] H-16 KAPI OLCUMU BITTI.

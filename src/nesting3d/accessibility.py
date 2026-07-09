@@ -314,3 +314,101 @@ def check_result(result: object) -> AccessibilityReport:
             "gerekli; bunlar yoksa check_placements(placements, parts) kullanin."
         )
     return check_placements(placements, parts)
+
+
+# ---------------------------------------------------------------------------
+# 5-YON SIRALI SOKUM (A2 guncellemesi 2026-07-09, Eren onayi)
+# ---------------------------------------------------------------------------
+# Hoca gercek kabul kriteri (b)+(c): "operator kenara cekip veya dondurerek
+# cikariyor". +Z-tek metrik gercekten SERTTI (K-21'de 554 'kilit' saydigimiz
+# yerlesimlerin bir kismi sahada sokulebilirdi). Yeni uretim metrigi: 5 duz
+# dogrultu (+Z, +X, -X, +Y, -Y) ile SIRALI sokum — her turda herhangi bir
+# yonden 0 canli-engelli parca cikar. Dondurme (c) modellenene dek bu
+# KONSERVATIF taraftir. Eski +Z metrigi (check_accessibility) telemetri
+# olarak yasar. Mekanigin ilk hali scripts/ayrilabilirlik_probu.py'de
+# olculdu (d4 413/588 vs plan3-NFV 14/109 — set-ayirici sinyal).
+
+_YON_5 = ("+Z", "+X", "-X", "+Y", "-Y")
+
+
+def _yonlu_sahne(part_id: str, grid: np.ndarray, x: int, y: int, z: int,
+                 yon: str) -> PlacedVoxels:
+    """Grid+pozisyonu 'yon' cekmesi +Z olacak sekilde donustur (eksen takasi).
+
+    -X/-Y icin flip + negatif offset: donusum sonrasi tum sahne ayni negatif
+    kaymayi paylastigindan GORELI geometri (kim kimi engelliyor) korunur —
+    _blocks yalniz goreli konum kullanir, mutlak koordinat isaretine bakmaz.
+    """
+    g = np.asarray(grid, dtype=bool)
+    gx, gy, _gz = g.shape
+    if yon == "+Z":
+        return _placed_from_grid(part_id, g, x, y, z)
+    if yon == "+X":
+        return _placed_from_grid(part_id, g.transpose(1, 2, 0), y, z, x)
+    if yon == "-X":
+        return _placed_from_grid(part_id, np.flip(g, 0).transpose(1, 2, 0),
+                                 y, z, -(x + gx))
+    if yon == "+Y":
+        return _placed_from_grid(part_id, g.transpose(0, 2, 1), x, z, y)
+    if yon == "-Y":
+        return _placed_from_grid(part_id, np.flip(g, 1).transpose(0, 2, 1),
+                                 x, z, -(y + gy))
+    raise ValueError(yon)
+
+
+def check_separability_5dir(placements: Sequence[object],
+                            parts: PartsSource) -> AccessibilityReport:
+    """5-yon sirali sokum denetimi (A2 uretim metrigi).
+
+    Her turda, 5 dogrultudan HERHANGI birinde 0 canli-engeli kalan parcalar
+    cikarilir; hicbir parca cikamazsa kalanlar kilitli sayilir. Doner:
+    AccessibilityReport (n_locked = 5-yonde de cikarilamayan parca sayisi;
+    removable_order = cikis sirasi; locked_groups +Z sahnesinden turetilir).
+    """
+    lookup = _parts_lookup(parts)
+    sahneler: Dict[str, List[PlacedVoxels]] = {yon: [] for yon in _YON_5}
+    for pl in placements:
+        grid = lookup[pl.part_id].orientations[pl.orientation_idx].grid
+        for yon in _YON_5:
+            sahneler[yon].append(
+                _yonlu_sahne(pl.part_id, grid, pl.x, pl.y, pl.z, yon))
+
+    n = len(sahneler["+Z"])
+    blocks: Dict[Tuple[str, int], List[int]] = {}
+    sayac = {yon: [0] * n for yon in _YON_5}
+    for yon in _YON_5:
+        sc = sahneler[yon]
+        for i in range(n):
+            for j in range(n):
+                if j != i and _blocks(sc[j], sc[i]):
+                    blocks.setdefault((yon, j), []).append(i)
+                    sayac[yon][i] += 1
+
+    alive = set(range(n))
+    removable_order: List[str] = []
+    while alive:
+        freed = []
+        for i in alive:
+            for yon in _YON_5:
+                if sayac[yon][i] == 0:
+                    freed.append((i, yon))
+                    break
+        if not freed:
+            break
+        for i, _yon in freed:
+            removable_order.append(sahneler["+Z"][i].part_id)
+            alive.discard(i)
+        for i, _yon in freed:
+            for yon in _YON_5:
+                for k in blocks.get((yon, i), []):
+                    if k in alive:
+                        sayac[yon][k] -= 1
+
+    kalan = sorted(alive)
+    groups = _locked_groups(sahneler["+Z"], kalan) if kalan else []
+    return AccessibilityReport(
+        removable_order=removable_order,
+        locked_groups=groups,
+        n_locked=len(kalan),
+        n_parts=n,
+    )

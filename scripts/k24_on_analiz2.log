@@ -1,0 +1,22 @@
+==============================================================================
+K-24 ADIM-1 v2 — DROP-semantikli kapasite (325 plaka, 264 layout)
+==============================================================================
+[A] ASY'siz yuzey: max=236.0mm  taban-bos=12.7%  (tavan=264.0)
+[B] ASY oryantasyonlari: [(0, 102, 267), (1, 267, 102), (2, 102, 179), (3, 179, 102)]  govde~109.5mm
+[C] drop haritalari (uretim formulu):
+    oi=0 fp=51x134mm  min-drop=223.5mm  drop=0 offset sayisi=0  (0s)
+    oi=1 fp=134x51mm  min-drop=223.5mm  drop=0 offset sayisi=0  (0s)
+    oi=2 fp=51x90mm  min-drop=205.0mm  drop=0 offset sayisi=0  (1s)
+    oi=3 fp=90x51mm  min-drop=213.0mm  drop=0 offset sayisi=0  (1s)
+
+[D] GREEDY ayrik kok-site secimi (kesisen offset gecersizleme = tam):
+    site sayisi (ilk-halka-tepe<=250.5): 0
+
+[E] DENGE — K site'a 62 halka su-doldurma (z-adim=11.2mm):
+      K  tavan(mm)  yorum
+
+KARAR GIRDISI (v2, drop-semantikli):
+  Site YOK -> K-24 NO-GO (v1 ile ayni hukum, artefaktsiz dogrulandi).
+
+IHTIYAT: 526 parca sabit varsayimi surer; zincir buyurken siteler arasi etkilesim (govde ustu yanal komsu) ihmal edildi; s=11.2 mevcut layout medyani. Kesin hukum Adim-2 prototip replay'inde.
+TOPLAM SURE: 0.1 dk

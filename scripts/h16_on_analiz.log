@@ -1,0 +1,57 @@
+==============================================================================
+H-16 ON-ANALIZ — dirty-region drop_map maliyet modeli (stride=25, N_bit=20)
+==============================================================================
+K-19 v2 replay: 588 yerlestirme, height=282.0mm, pitch=0.5
+voxelize @0.5 n=4 (28s)
+grid: nx=603 ny=603 (alan=363609 hucre, plaka 301.6x301.6mm @ 0.5mm)
+grid copy ek-yuk: 0.091 ms/cagri
+
+replay dogru (282.0) | olculen full drop_map cagri: 25
+
+(a) DROP_MAP CAGRI ENVANTERI  [KANITLI: olculen ornekler]
+  olculen cagri = 25 (stride=25); dblf toplam cagri = 588 parca x oryantasyon-sayisi [her parca TUM aci denenir]
+  cagri basi sure: ort=860.8 ms  median=568.8 ms  p90=1683.5 ms  max=1952.0 ms
+  fast-path payi: %0 (konkav/degisken-taban -> genel yol)
+  footprint (fw x fh): median=50x50  min=15x18  max=584x466
+  aday sayisi (npx*npy): median=316888  grid alani=363609
+
+(b) KIRLILIK DAGILIMI  [KANITLI: 588 yerlestirmenin tamami olculdu]
+  degisen-hucre bbox alani / grid alani:
+    median=%0.440  p90=%4.717  max=%74.845  ort=%1.355
+  degisen hucre sayisi: median=746  p90=5375  max=125482
+  ADAY dirty-pencere alani / grid alani (footprint (fw,fh) genisletmeli):
+    median=%1.53  p90=%7.31  max=%18.72  ort=%2.67
+    => bir yerlestirmenin ETKILEDIGI aday orani ~%2.7 (gerisi = onbellekten AYNEN korunur)
+
+(c) DIRTY-PENCERE SIZINTI KONTROLU  [KANITLI: 20 ornek]
+  pencere DISINDA degisen hucre toplami: 0  (sizintili vaka: 0/20)
+  SONUC: SIZINTI YOK -> full drop_map ile onceki-cikti farki TAM olarak
+         beklenen dirty-pencere icinde. HIPOTEZ (H-16) DOGRULANDI.
+
+(d) BIT-OZDESLIK KONTROLU  [KANITLI]
+  full drop_map(H_new) == (Z_prev + yerel yeniden-hesap): 20/20
+  SONUC: yerel yeniden-hesap full ile BIRE BIR ozdes (tamsayi max-
+         reduksiyon -> kalite garantisi korunur, yukseklik degismez).
+
+(e) MALIYET MODELI + TAVAN
+  [KANITLI-ATIF] fine dblf = 514s / toplam 553s (fine payi %93)
+  [KANITLI] etkilenen aday orani: ort=%2.7 p90=%7.3
+  [KANITLI] copy ek-yuk/cagri=0.091ms; tahmini cagri ~597 -> copy toplam ~0.1s [EKSTRAPOLE]
+  [EKSTRAPOLE] yeni fine bandi ~ dirty_oran x 514s + copy:
+    alt  ~14s (ort kirlilik)
+    ust  ~38s (p90 kirlilik)
+  [EKSTRAPOLE] Amdahl: fine-disi sabit =39s (coarse+settle+voxelize+sort)
+    toplam kosu tavani bandi: ~53s .. ~77s (uretim 553s'den 7.2x .. 10.5x)
+
+(f) GO / NO-GO ONERISI
+  ONERI: GO (kesif/prototip). Hipotez dogrulandi (sizinti yok + bit-ozdes), etkilenen aday orani dusuk -> teorik kazanc buyuk.
+  RISKLER:
+   - Z_prev'i oryantasyon BASINA saklamak gerekir (aday sayisi kadar
+     grid; RAM: aday-orient x nx*ny int32). Bellek tavani olculmeli.
+   - Sira bagimliligi: farkli parca yerlesince footprint (fw,fh) degisir
+     -> dirty-pencere aday-footprint'e GENISLER; ort orani bunu icerir.
+   - Ilk cagri (bos bin) tam hesap; kazanc ikinci cagridan itibaren.
+   - est_calls/copy ekstrapolasyonu KANITLI degil; gercek entegrasyon
+     olcumu GO sonrasi ilk adim olmali.
+
+TOPLAM PROB SURESI: 82s

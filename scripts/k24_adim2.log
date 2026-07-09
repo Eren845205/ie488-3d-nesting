@@ -1,0 +1,123 @@
+==============================================================================
+K-24 ADIM-2 — dengeli zincir-routing decode prototipi (325 plaka)
+==============================================================================
+uretim referans: 264.0mm (0 kilit, clearance 1.023) | hedef ~236 (dugme tavani) | Magics 250.24
+kok-site sayisi (mevcut): 13 | ASY tipi: ASY-0176446
+
+------------------------------------------------------------------------------
+KONFIG rr13_R12: round-robin 13 kok-site, pencere R=+/-12mm
+------------------------------------------------------------------------------
+  solve: tavan=925.0mm  yerlesen=588/588  ASY=62 ASY-max-tepe=925.0mm  (5.5 dk)
+   site         xy(mm)  adet  max-tepe(mm)
+      0      (213,254)     5         601.5
+      1       (268,98)     5         503.5
+      2       (299,67)     5         487.5
+      3        (26,45)     5         220.0
+      4       (87,224)     5         808.5
+      5      (140,100)     5         318.0
+      6      (214,232)     5         636.5
+      7       (86,246)     5         858.5
+      8       (85,268)     5         925.0
+      9      (212,276)     5         247.5
+     10      (252,105)     4         496.0
+     11       (84,289)     4         814.0
+     12      (211,297)     4         551.5
+
+------------------------------------------------------------------------------
+KONFIG rr13_R25: round-robin 13 kok-site, pencere R=+/-25mm
+------------------------------------------------------------------------------
+  solve: tavan=637.0mm  yerlesen=588/588  ASY=62 ASY-max-tepe=637.0mm  (5.2 dk)
+   site         xy(mm)  adet  max-tepe(mm)
+      0      (213,254)     5         590.5
+      1       (268,98)     5         404.0
+      2       (299,67)     5         432.5
+      3        (26,45)     5         343.5
+      4       (87,224)     5         482.5
+      5      (140,100)     5         303.5
+      6      (214,232)     5         592.0
+      7       (86,246)     5         561.5
+      8       (85,268)     5         637.0
+      9      (212,276)     5         627.0
+     10      (252,105)     4         377.5
+     11       (84,289)     4         565.5
+     12      (211,297)     4         549.5
+
+==============================================================================
+EN IYI KONFIG (tavana gore): rr13_R25  tavan=637.0mm
+==============================================================================
+    clearance olcumu: 1.019mm  (11s)
+    erisilebilirlik: kilitli=0/588  (1s)
+
+SONUC:
+  tavan       = 637.0mm   yerlesen=588/588
+  min_clear   = 1.019mm  (OK>=1)
+  kilit       = 0    (OK)
+  GECERLI. uretim 264'a kiyas: +373.0mm (-141.3%).
+  hedef 236 bandina: +401.0mm (ustunde).
+  Magics 250.24'e kiyas: ustunde kalir.
+  -> NO-GO: odul -373.0mm (<4mm) — routing kaydadeger kazanc vermedi; greedy zaten yapisal tavana yakin.
+
+IHTIYAT: yaklasim (a) sabit kok-site penceresi kullanir; site'lar mevcut 264-layout zincir merkezleridir (bazilari yanal ic-ice = ortusen pencereler). Blokaj gorulurse (b) zincir-yukseklik-cezali skorlama denenebilir. Bu bir prototip olcumdur.
+TOPLAM SURE: 11.0 dk
+
+##############################################################################
+K-24 ADIM-2 — YAKLASIM (b): zincir-yukseklik-cezali skorlama
+##############################################################################
+uretim referans: 264.0mm (0 kilit, clearance 1.023) | hedef ~236 (dugme tavani) | Magics 250.24
+(a/window ONCEKI kosuda: rr13_R12=925mm, rr13_R25=637mm = felaket)
+
+------------------------------------------------------------------------------
+KONFIG penalty_L0.5 [b/penalty]: TAM XY ozgurlugu + zincir-ceza eff=z_top+0.5*z_drop
+------------------------------------------------------------------------------
+  solve: tavan=264.0mm  yerlesen=588/588  ASY=62 ASY-max-tepe=264.0mm  (5.2 dk)
+   site         xy(mm)  adet  max-tepe(mm)
+      0      (213,254)     5         232.5
+      1       (268,98)     5         237.0
+      2       (299,67)     5         246.0
+      3        (26,45)     5         249.0
+      4       (87,224)     5         251.5
+      5      (140,100)     5         242.0
+      6      (214,232)     5         254.0
+      7       (86,246)     5         263.0
+      8       (85,268)     5         260.5
+      9      (212,276)     5         264.0
+     10      (252,105)     4         229.0
+     11       (84,289)     4         228.0
+     12      (211,297)     4         238.0
+
+------------------------------------------------------------------------------
+KONFIG penalty_L2.0 [b/penalty]: TAM XY ozgurlugu + zincir-ceza eff=z_top+2.0*z_drop
+------------------------------------------------------------------------------
+  solve: tavan=264.0mm  yerlesen=588/588  ASY=62 ASY-max-tepe=264.0mm  (4.6 dk)
+   site         xy(mm)  adet  max-tepe(mm)
+      0      (213,254)     5         232.5
+      1       (268,98)     5         237.0
+      2       (299,67)     5         246.0
+      3        (26,45)     5         249.0
+      4       (87,224)     5         251.5
+      5      (140,100)     5         242.0
+      6      (214,232)     5         254.0
+      7       (86,246)     5         263.0
+      8       (85,268)     5         260.5
+      9      (212,276)     5         264.0
+     10      (252,105)     4         229.0
+     11       (84,289)     4         228.0
+     12      (211,297)     4         238.0
+
+==============================================================================
+EN IYI KONFIG (tavana gore): penalty_L0.5  tavan=264.0mm
+==============================================================================
+    clearance olcumu: 1.023mm  (12s)
+    erisilebilirlik: kilitli=0/588  (1s)
+
+SONUC:
+  tavan       = 264.0mm   yerlesen=588/588
+  min_clear   = 1.023mm  (OK>=1)
+  kilit       = 0    (OK)
+  GECERLI. uretim 264'a kiyas: -0.0mm (+0.0%).
+  hedef 236 bandina: +28.0mm (ustunde).
+  Magics 250.24'e kiyas: ustunde kalir.
+  -> NO-GO: odul 0.0mm (<4mm) — routing kaydadeger kazanc vermedi; greedy zaten yapisal tavana yakin.
+
+IHTIYAT: yaklasim (a) sabit kok-site penceresi kullanir; site'lar mevcut 264-layout zincir merkezleridir (bazilari yanal ic-ice = ortusen pencereler). Blokaj gorulurse (b) zincir-yukseklik-cezali skorlama denenebilir. Bu bir prototip olcumdur.
+TOPLAM SURE: 10.1 dk

@@ -1,0 +1,27 @@
+==============================================================================
+K-23 ON-ANALIZ — ASY zincir yapisi (K-19 v2 282.0mm layout)
+==============================================================================
+voxelize @0.5 n=4 (35s)
+ASY adedi: 62 | govde yuksekligi (poz-bazli) ornek: [87.5, 131.5]
+
+[1] ZINCIR YAPISI: 10 kok (paralel zincir)
+    kok ASY-0176446_10: halka=11  taban=  20.5  tepe= 188.5mm
+    kok ASY-0176446_01: halka=30  taban=   0.0  tepe= 282.0mm
+    kok ASY-0176446_02: halka= 1  taban=   0.0  tepe=  87.5mm
+    kok ASY-0176446_03: halka=12  taban=   0.0  tepe= 234.0mm
+    kok ASY-0176446_04: halka= 3  taban=   0.0  tepe= 125.5mm
+    kok ASY-0176446_05: halka= 1  taban=   0.0  tepe=  87.5mm
+    kok ASY-0176446_06: halka= 1  taban=   0.0  tepe=  87.5mm
+    kok ASY-0176446_07: halka= 1  taban=   0.0  tepe=  87.5mm
+    kok ASY-0176446_08: halka= 1  taban=   0.0  tepe=  87.5mm
+    kok ASY-0176446_09: halka= 1  taban=   0.0  tepe=  87.5mm
+    halka dagilimi: toplam=62 | ort=6.2 | min=1 | max=30
+    zincir z-adimi (halka basina): ort 11.8mm | medyan 10.7mm
+
+[3] DENGE HESABI (analitik, kosusuz):
+    mevcut: K=10 zincir, en dolu=30 halka, tavan 282.0
+    dengeli dagitim: L=ceil(62/10)=7 -> tahmini tavan ~ 0 + 88 + 6*10.7 = 151.6mm
+    250.5 hedefi icin: zincir boyu <= 16 halka -> en az 4 zincir gerekir (mevcut 10)
+
+KARAR GIRDISI: dengeli-dagitim tavani 282'nin ALTINDA -> zincirler DENGESIZ, K-23 sira/dengeleme kosusu UMUTLU.
+TOPLAM SURE: 35s

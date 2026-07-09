@@ -1,0 +1,18 @@
+==================================================================
+DENEME4 CLEARANCE KAPISI — uretim coarse_to_fine (wall_aware) yolu
+==================================================================
+instance: plaka(auto)=301.6x301.6mm  fine_pitch=0.5  parca_tipi=13  (2s)
+
+--- clearance_mm=0.0  (fine margin=0, z_clearance=1) ---
+  yukseklik = 282.0 mm   yerlesen = 588/588   (494s)
+  min_bosluk = 0.084 mm   IHLAL (<1mm)   (en kotu cift=(562, 569), kontrol=2481, 11s)
+
+--- clearance_mm=1.0  (fine margin=1, z_clearance=2) ---
+  yukseklik = 296.0 mm   yerlesen = 588/588   (545s)
+  min_bosluk = 0.792 mm   IHLAL (<1mm)   (en kotu cift=(503, 559), kontrol=2241, 10s)
+
+==================================================================
+OZET: baseline 282.0mm (bosluk 0.084mm) -> clearance-1mm 296.0mm (bosluk 0.792mm)
+  yukseklik bedeli: +14.0mm (+5.0%)
+  hoca >=1mm kapisi: KALDI
+==================================================================

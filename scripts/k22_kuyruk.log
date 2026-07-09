@@ -1,0 +1,27 @@
+==============================================================================
+K-22 KUYRUK-HEDEFLI YENIDEN-YERLESIM PROBU — K-19 v2 282.0mm tabani
+==============================================================================
+==============================================================================
+K-22 KUYRUK-HEDEFLI YENIDEN-YERLESIM PROBU — K-19 v2 282.0mm tabani
+==============================================================================
+  [uyari] n=8 voxelize dustu (unable to recover polygon!) -> n=4 geri-dusus
+voxelize @0.5 n=4: 588 parca (94s)
+KAPI: tam replay = 282.0mm (beklenen 282.0)
+
+TUR 1: yukseklik 282.0 | kuyruk (tepe > 252.0mm) = 9 parca: ['ASY-0176446_53', 'ASY-0176446_55', 'ASY-0176446_56', 'ASY-0176446_57', 'ASY-0176446_58', 'ASY-0176446_59', 'ASY-0176446_60', 'ASY-0176446_61', 'ASY-0176446_62']
+  taban (579 parca) yuksekligi: 250.5mm
+  ASY-0176446_53: tepe 256.5 -> 281.5mm (oi 0->1)
+  ASY-0176446_55: tepe 253.5 -> 282.0mm (oi 1->2)
+  ASY-0176446_56: tepe 256.0 -> 313.5mm (oi 1->1)
+  ASY-0176446_57: tepe 265.5 -> 314.5mm (oi 0->1)
+  ASY-0176446_58: tepe 257.0 -> 315.0mm (oi 1->0)
+  ASY-0176446_59: tepe 282.0 -> 316.0mm (oi 2->1)
+  ASY-0176446_60: tepe 266.0 -> 317.0mm (oi 1->0)
+  ASY-0176446_61: tepe 276.5 -> 318.0mm (oi 1->1)
+  ASY-0176446_62: tepe 281.0 -> 322.0mm (oi 1->1)
+  TUR 1 sonucu: 282.0 -> 322.0mm
+  strict iyilesme yok -> dur.
+
+ERISILEBILIRLIK (0.9s): kilitli=0/588
+HUKUM: NO-GO — kuyruk yeniden-yerlesimi tavani indirmedi (9 ASY zaten en iyi yerinde; tavan yapisal).
+TOPLAM SURE: 251s

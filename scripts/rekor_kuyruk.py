@@ -34,7 +34,7 @@ def sq_n24():
             inst, plate_w_mm=335.0, plate_d_mm=335.0,
             coarse_pitch=None, fine_pitch=pitch, budget=70, seed=seed,
             n_orientations=24, clearance_mm=1.0,
-            no_go_bounds=((185.1, 0.2), (215.2, 45.3)),
+            no_go_bounds=((152.5, 0.2), (185.5, 45.0)),
             fine_angle_window=90.0, fine_angle_step=15.0, fine_angle_axes="z",
             drop_cache=True)
         meshes = placed_meshes(r.placements, r.fine_voxel_parts, float(r.fine_pitch))

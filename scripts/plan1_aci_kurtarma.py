@@ -25,7 +25,7 @@ from scripts.eval_gate import _load_instance, legal_of
 
 LOG = Path(__file__).parent / "plan1_aci_kurtarma.log"
 PLATE = (335.0, 335.0)
-NOGO = ((185.1, 0.2), (215.2, 45.3))
+NOGO = ((152.5, 0.2), (185.5, 45.0))
 PITCH = 1.0
 MARGIN = 1          # clearance_to_voxels(1.0, 1.0) = (1,1)
 ZC = 1

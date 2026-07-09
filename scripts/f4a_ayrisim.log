@@ -1,0 +1,94 @@
+==============================================================================
+F4-A AYRISIM ANALIZI — K-19 v2 (282.0mm) yerlesim anatomisi
+==============================================================================
+pickle: 588 placement, beklenen yukseklik 282.0mm @ 0.5mm
+plaka (auto): 301.6 x 301.6 mm -> grid 603 x 603 @ 0.5mm
+voxelize: 588 parca (35s)
+KAPI: yukseklik 282.0mm (beklenen 282.0), cifte-dolu voxel = 0  (1s)
+KAPI GECTI — rekonstruksiyon birebir; analiz basliyor.
+
+[1] CIFT-BAZLI Z-IC-ICELIK (bbox duzeyi; xy-kesisen + z-ortusen ciftler)
+    ic-ice cift sayisi : 2208  (588 parca, 172578 olasi cift)
+    z-ortusme mm       : toplam 44787 | ort 20.3 | medyan 16.0 | max 98.5
+    tabani baska parcanin bbox'una gomulu parca: 565/588 (%96)
+    gomulme derinligi mm: ort 60.9 | medyan 61.5 | max 131.0
+
+    TIP->TIP YUVALANMA (satir=ALT parca tipi, sutun icine giren UST adedi)
+      T00 = 01_202201790014_00-K179 Dugme Aksesuari
+      T01 = 02_202201790002_T00-K179 Dugme Cift Fonksiyonlu
+      T02 = 02_T00-K179 Dugme Cift Fonksiyonlu-25pcs
+      T03 = 03_00-K179 Dugme Tek Fonksiyonlu
+      T04 = 04_T00-K179 Dugme Fonksiyonsuz
+      T05 = 05_00-K179 WBT Dugme
+      T06 = 09_00-K179 Dugme Kilidi
+      T07 = 10_T00-K179 Kilitli Dugme
+      T08 = 17_00-K179 SSB Dugme
+      T09 = ASY-0176446
+      T10 = ASY-0176446-1
+      T11 = part239391_ROBT ALT v27
+      T12 = part239392_ROBT UST v27
+      ALT\UST   T00   T01   T02   T03   T04   T05   T06   T07   T08   T09   T10   T11   T12
+           T00     2     0     0     0     5     0     1     0     0     0     0     0     0
+           T01     0     2     0     0     0     6     0     1     0     8     0     0     0
+           T02    12     0     2     1    24     0    10     0     0     0    10     0     0
+           T03     6     0    29   132    37     1     7     0     0    63    41     0     0
+           T04     4     0     1     0     7     0     5     0     0     0     9     0     0
+           T05     0     0     0    13     0     3     0     0     0     6     0     0     0
+           T06     3     0     1     0     0     0    12     0     0     6     9     0     0
+           T07     0     1     0     3     0     1     0     0     1     9     0     0     1
+           T08     0     5     0     1     0     6     0     1    14    13     1     0     0
+           T09    31    32    65   512   116    52    65    44    32   305   264     0     5
+           T10     3     0     5     2     6     0     1     0     0    24    28     0     0
+           T11     0     0     0     0     0     0     0     2     2     1     0     0     1
+           T12     0     2     0     0     0     0     0     3     1    16     0     0     0
+
+[2] Z-DILIM YANAL DOLULUK (dolu voxel / plaka hucresi, 10mm bant ort.)
+       0.0-  10.0mm  % 12.6  ########
+      10.0-  20.0mm  % 14.3  #########
+      20.0-  30.0mm  % 24.2  ###############
+      30.0-  40.0mm  % 15.9  ##########
+      40.0-  50.0mm  % 18.5  ###########
+      50.0-  60.0mm  % 19.0  ###########
+      60.0-  70.0mm  % 19.7  ############
+      70.0-  80.0mm  % 19.3  ############
+      80.0-  90.0mm  % 18.7  ###########
+      90.0- 100.0mm  % 17.1  ##########
+     100.0- 110.0mm  % 18.2  ###########
+     110.0- 120.0mm  % 16.7  ##########
+     120.0- 130.0mm  % 16.7  ##########
+     130.0- 140.0mm  % 17.2  ##########
+     140.0- 150.0mm  % 17.2  ##########
+     150.0- 160.0mm  % 17.7  ###########
+     160.0- 170.0mm  % 19.6  ############
+     170.0- 180.0mm  % 21.8  #############
+     180.0- 190.0mm  % 23.1  ##############
+     190.0- 200.0mm  % 22.8  ##############
+     200.0- 210.0mm  % 22.6  ##############
+     210.0- 220.0mm  % 21.4  #############
+     220.0- 230.0mm  % 15.3  #########
+     230.0- 240.0mm  %  4.8  ###
+     240.0- 250.0mm  %  2.8  ##
+     250.0- 260.0mm  %  1.8  #
+     260.0- 270.0mm  %  1.0  #
+     270.0- 280.0mm  %  0.7  
+     280.0- 282.0mm  %  0.2  
+
+[3] TEPE-YUZEY KOMPOZISYONU (son 30mm = 252..282mm)
+    tip | bant-voxel | bant-icinde-tepesi-olan parca | tipin max tepesi
+    T09 ASY-0176446                                     224904    9    282.0mm
+    T11 part239391_ROBT ALT v27                              0    0     32.5mm
+    T12 part239392_ROBT UST v27                              0    0     62.0mm
+    T08 17_00-K179 SSB Dugme                                 0    0    106.5mm
+    T01 02_202201790002_T00-K179 Dugme Cift Fonksiyo         0    0    111.5mm
+    T05 05_00-K179 WBT Dugme                                 0    0    135.0mm
+    T07 10_T00-K179 Kilitli Dugme                            0    0    136.0mm
+    T03 03_00-K179 Dugme Tek Fonksiyonlu                     0    0    225.0mm
+    T02 02_T00-K179 Dugme Cift Fonksiyonlu-25pcs             0    0    230.0mm
+    T04 04_T00-K179 Dugme Fonksiyonsuz                       0    0    239.5mm
+    T06 09_00-K179 Dugme Kilidi                              0    0    228.0mm
+    T00 01_202201790014_00-K179 Dugme Aksesuari              0    0    229.0mm
+    T10 ASY-0176446-1                                        0    0    222.0mm
+
+TOPLAM SURE: 36s
+NOT: [1] bbox-duzeyi olcum (gercek voxel-yuvalanmasi degil) — 'ic-ice'
+     etiketi kanitli CAKISMASIZ (kapi: 0 cifte-dolu voxel) bbox ortusmesi.

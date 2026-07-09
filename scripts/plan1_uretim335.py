@@ -29,7 +29,7 @@ from scripts.demo_pipeline import WEB_MIN_CLEARANCE_MM, COARSE_BUDGET
 
 LOG = Path(__file__).parent / "plan1_uretim335.log"
 PLATE = (335.0, 335.0)
-NOGO = ((185.1, 0.2), (215.2, 45.3))
+NOGO = ((152.5, 0.2), (185.5, 45.0))
 FIT_GUARD_PITCH = 1.0   # baseplate 330.2mm ancak bu cozunurlukte sigar
 
 

@@ -1,0 +1,15 @@
+==============================================================================
+NFV FIX PROBU — solve_nfv(clearance_mm=1.0)  [EVAL-1 dogrulama]
+==============================================================================
+
+[plan1] yukseklik=131.4mm (ILLEGAL onceki 120.7)  yerlesen=112/112  pitch=0.635  (96s)
+       min_clearance=2.540mm  (once 0.083)  OK>=1
+       kilit=52/112  (once 81)  grup=1 boylar=[52]
+       LEGAL_HEIGHT: INVALID (kalan sebepler yukarida)
+
+[plan3] yukseklik=944.4mm  yerlesen=109/109  pitch=0.625  (401s)
+       min_clearance=2.606mm  (once 0.055)  OK>=1
+       kilit=81/109  (once 87)  grup=1 boylar=[81]
+       LEGAL_HEIGHT: INVALID (kalan sebepler yukarida)
+
+BITTI

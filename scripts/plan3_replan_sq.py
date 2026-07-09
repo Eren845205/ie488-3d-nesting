@@ -19,7 +19,7 @@ from scripts.eval_gate import _load_instance, legal_of
 
 LOG = Path(__file__).parent / "plan3_replan_sq.log"
 PLATE = (335.0, 335.0)
-NOGO = ((185.1, 0.2), (215.2, 45.3))
+NOGO = ((152.5, 0.2), (185.5, 45.0))
 
 
 def log(m=""):

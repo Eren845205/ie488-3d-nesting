@@ -15,10 +15,19 @@ güncelleyemez, üretime bağlanamaz. "Güven bana daha iyi" bir kanıt türü d
 
 **A2 — Dürüst metrik = legal-yükseklik.** Raporlanan yükseklik ancak ÜÇÜ birden
 sağlanıyorsa geçerlidir: (i) yerleşen == toplam parça, (ii) min. parça-arası
-boşluk ≥ 1mm (`clearance.min_clearance`), (iii) ayrılabilirlik: 0 kilit
-(`accessibility.check_result`). Biri ihlalde sonuç **INVALID**'dir ve sebep
-raporlanır. Gerekçe: K-19 (0.084mm ihlalli 282), K-21 (554 kilitli 262.5) —
-kısıt ihlalini maskeleyen metrik şişer.
+boşluk ≥ 2mm (`clearance.min_clearance`), (iii) ayrılabilirlik: 0 kilit.
+Biri ihlalde sonuç **INVALID**'dir ve sebep raporlanır. Gerekçe: K-19
+(0.084mm ihlalli 282), K-21 (554 kilitli 262.5) — kısıt ihlalini maskeleyen
+metrik şişer.
+
+> **A2 GÜNCELLEMESİ (2026-07-09, Eren onayı — hoca cevabı sonrası):**
+> (ii) boşluk eşiği 1mm → **2mm** (hoca: "2mm daha güvenli, tüm boşluklar").
+> (iii) kilit tanımı: +Z-tek düz çekme → **5-yön sıralı söküm** (±X, ±Y, +Z;
+> her turda herhangi bir yönden engelsiz parça çıkar). Gerekçe: hocanın gerçek
+> kabul kriteri (b)+(c) — "operatör kenara çekip veya döndürerek çıkarıyor";
+> +Z-tek metrik gerçeklikten SERTTİ (kendi kendini cezalandırma). Döndürme (c)
+> modellenene dek 5-yön = KONSERVATİF taraf. Raporlar hangi kriterle legal
+> olunduğunu belirtmeye devam eder. Eski +Z metriği telemetri olarak kalır.
 
 **A3 — Held-out dokunulmazdır.** Held-out ilan edilen veri tuning/geliştirme
 döngüsüne GİRMEZ; yalnız final doğrulamada koşulur ve her bakış
