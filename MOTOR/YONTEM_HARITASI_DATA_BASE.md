@@ -444,6 +444,26 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > yapısal (cache'li Bin3D _run_fine-lokal), reviewer PASS 0 C/H/M.**
 > KALAN: pitch R6 (riskli) · bit-pack/BVH (marjinal) · argmin tabanı/coarse-Z warm-start (marjinal).
 
+> **2026-07-09 GECE TOPLU GİRİŞ (detay: RESUME_2026-07-09.md):**
+> **H-17 coarse drop_cache — GO, ÜRETİMDE (commit `df37736`):** py-spy canlı kanıt (6/6 örnek):
+> tam-portföy süresi coarse tune'daki CACHE'SİZ `_drop_map_general`'de; H-16 cache yalnız fine'a
+> kabloluydu. Fix: aynı bayrak iki aşamayı da açar; bit-özdeşlik 2 A/B testle (no-go dahil) kanıtlı.
+> Saha: p3 sıkıştırma 47.9dk/seed (n8, cache'siz) → 38.8dk/seed (n24, cache'li). DERS: darboğaz
+> tahminle değil CANLI PROFİLLE bulunur (py-spy alet çantasında).
+> **K-25 n24 cross-dataset — TEYİT TAMAM:** d5 −%14.8 · p1 −%14 · p2 −%22.5 · p3 −%3.7 → 4/4 kazanç;
+> bedel p2'de 2× süre (61→122dk). Kablolama kararı bekliyor (öneri: kalite yolunda default n24).
+> **K-26 plan3 sıkıştırma@n24 — REKOR 685** (s13; 3/3 seed <706; Magics'e +%15.5). n24+fine_angle
+> eski çift-çökme kombinasyonu None.exterior fix'iyle (voxelize dejenere-poz atlama + orient_rot
+> hizalama; kök neden upstream: trimesh PR #2576) sorunsuz geçti.
+> **K-27 AYRILABİLİRLİK PROBLARI:** d4 K-21 yerleşimi 5-yön düz-çekmede 413/588 KİLİTLİ (NFV d4'te
+> yan-çekmeyle de kurtarılamıyor; kilit=ASY+ROBT). **plan3 NFV=606.9 no-go'suz (zincir 745'e −%18.5,
+> Magics 593'e +%2.3!) ve +Z 71 kilit → 5-yön 20** — plan3 kenetlenmesi çözülebilir sınıfta. NFV'nin
+> kaderi hoca kriter cevabında ("yan/döndürerek çıkarma kabul mü?"). ⚠️ söküm sanity kurgu hatalı
+> (dummy sahne bug'ı) — 413/20 sayıları doğrulama koşusuyla mühürlenecek. NOT: solve_nfv NO-GO
+> DESTEKLEMİYOR (kriter yeşilse ilk mühendislik işi).
+> **Süreç dersleri:** 9-SAAT DERSİ (zincir scripti kapı-sonrası duman testi + detach .err monitörü
+> şart) · harness arka plan task'ları öldürülüyor → uzun koşu HEP detach_run · pytest-xdist -n4 16dk.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)

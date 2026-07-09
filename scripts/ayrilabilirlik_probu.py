@@ -131,7 +131,7 @@ def main():
         persist_dir=_ROOT / "data" / "mail_stl" / "gen_deneme4")
     t = time.perf_counter()
     parts = to_voxel_parts(res.instance, pitch, n_orientations=8, margin=1)
-    by_id = {p.part_id: p for p in parts}
+    by_id = {p.id: p for p in parts}  # VoxelPart alani .id (part_id DEGIL — 9saat dersi)
     log(f"voxelize @{pitch} n8 margin1: {len(parts)} parca ({time.perf_counter() - t:.0f}s)")
 
     t = time.perf_counter()
