@@ -113,8 +113,9 @@ Registry'de DOĞUŞTAN held-out.
    kademeli çıkarılıyor; operatöre bağlı ve manuel — kenara çekip veya
    döndürerek olabiliyor." → +Z-tek kilit metriğimiz FAZLA SERTTİ; yana
    kaydırma + döndürme kabul. **NFV kalite modu YEŞİL IŞIK.**
-2. **Yerleşim dosyaları:** Plan1 STL olarak gönderildi (ek); diğerleri STL
-   kaydedilemiyor.
+2. **Yerleşim dosyaları:** STL'ler mevcut değil (düzeltme 2026-07-09 akşam:
+   Plan1 dahil hiçbiri gelmedi/gelemiyor); elimizdeki tek anatomi kaynağı
+   baseplate FOTOĞRAFI (`Plan 1Base plate.jpg` — analizi STRATEJI/06 §2).
 3. **Plan1 baseplate: DÜZ YATAK olarak yerleştiriliyor** (resim ekte) ve
    **"yasak bölgeye çok hafif girişler genelde sorun yaratmıyor"** →
    no-go YUMUŞAK kısıt (hafif ihlal tolere edilir). 110.41'in sırrı bu.
