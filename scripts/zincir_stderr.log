@@ -1,3 +1,0 @@
-C:\Users\erenk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\cupy\_environment.py:284: UserWarning: CUDA path could not be detected. Set CUDA_PATH environment variable if CuPy fails to load.
-  warnings.warn(
-nesting[B001]: RAM-guard (rapor-only): tahmini grid ~1164M hucre @pitch 0.50mm > bellek butcesi ~10M (bos RAM 4.8GB) -> bellek-riskli; pitch DEGISTIRILMEDI (davranis korundu), operator daha kaba pitch/plaka veya daha fazla RAM dusunmeli.

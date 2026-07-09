@@ -40,3 +40,5 @@ NUMUNE_YERLESIM_SA_Z155.stl
 hocaya_sunum/
 *.pdf.txt
 _extract.py
+scripts/*.log
+scripts/zincir_stl/
