@@ -78,7 +78,8 @@ class OccupancyBin3D:
 
     def __init__(self, nx: int, ny: int, nz_limit: int = 200,
                  pitch: float = 5.0, *, cavity: bool = False,
-                 cavity_cap: int = 60000) -> None:
+                 cavity_cap: int = 60000,
+                 no_go_mask: "Optional[np.ndarray]" = None) -> None:
         self.nx = int(nx)
         self.ny = int(ny)
         self.nz_limit = int(nz_limit)
@@ -99,6 +100,23 @@ class OccupancyBin3D:
         # column_top[i, j] = first free z above the topmost occupied voxel in
         # column (i, j).  0 means the column is entirely empty.
         self.column_top: np.ndarray = np.zeros((self.nx, self.ny), dtype=np.int32)
+        # --- NO-GO area (2026-07-09, hoca gercek-makine kisiti — NFV ayagi):
+        # yasak kolonlar TAM YUKSEKLIK dolu muhurlenir -> FFT feasibility,
+        # is_feasible ve drop-fallback OTOMATIK kacinir (tek enjeksiyon
+        # noktasi). Yukseklik metrigi _max_z_used yalniz place()'te guncellenir
+        # -> muhur yuksekligi ZEHIRLEMEZ. column_top yasakta nz'ye cekilir ki
+        # heightmap kisayolu (z >= max(column_top)) yasak ustunde ASLA tam-3D
+        # kontrolu atlamasin. default None = BIT-OZDES eski davranis.
+        self._no_go: Optional[np.ndarray] = None
+        if no_go_mask is not None:
+            m = np.asarray(no_go_mask, dtype=bool)
+            if m.shape != (self.nx, self.ny):
+                raise ValueError(
+                    f"no_go_mask sekli {m.shape} != grid ({self.nx},{self.ny})")
+            if m.any():
+                self._no_go = m
+                self.occupancy[m, :] = True
+                self.column_top[m] = self.occupancy.shape[2]
         self.extreme_points: Set[Tuple[int, int, int]] = {(0, 0, 0)}
         self.placed_voxels: int = 0
         self._max_z_used: int = 0  # tracks actual max z top seen so far
@@ -116,6 +134,10 @@ class OccupancyBin3D:
         new_occ = np.zeros((self.nx, self.ny, new_nz), dtype=bool)
         new_occ[:, :, :nz_cur] = self.occupancy
         self.occupancy = new_occ
+        if self._no_go is not None:
+            # muhur yeni z-katmanlarina da tasinir (yasak TAM yukseklik)
+            self.occupancy[self._no_go, :] = True
+            self.column_top[self._no_go] = new_nz
 
     # ------------------------------------------------------------------
     # Feasibility check (fast v2 with heightmap short-circuit)
@@ -149,6 +171,14 @@ class OccupancyBin3D:
         if x + fw > self.nx or y + fd > self.ny:
             return False
         z_top = z + fh
+
+        # --- NO-GO guard (2026-07-09): yasak TAM YUKSEKLIK — dolu footprint
+        # hucresi yasak kolona degen poz HER z'de reddedilir (Bin3D seal
+        # semantiginin birebiri; heightmap kisayolu tahsis-ustu z'de yasagi
+        # atlayamasin diye ACIK kontrol). _no_go None ise sifir ek maliyet.
+        if self._no_go is not None:
+            if (self._no_go[x:x + fw, y:y + fd] & orient.filled).any():
+                return False
 
         # --- Fast path: entire part is above all occupancy in its footprint ---
         local_max_top = int(self.column_top[x:x + fw, y:y + fd].max())

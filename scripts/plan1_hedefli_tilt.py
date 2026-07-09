@@ -48,6 +48,10 @@ def log(m=""):
         fh.write(m + "\n")
 
 
+def parts_by_id(parts):
+    return {p.id: p for p in parts}
+
+
 def _tilt_pozlari(p, nx, ny, z_esik_vox):
     """Hedef parcaya Rx/Ry tilt pozlari uret; grid'e sigan VE z-uzantisi
     esikten kucuk olanlari dondur. Log: poz tablosu."""
@@ -72,6 +76,9 @@ def _tilt_pozlari(p, nx, ny, z_esik_vox):
 
 
 def _kos(parts, n_total, etiket):
+    """Doner: (legal, bin) — bin, hedefin FIILEN kullandigi pozu okumak icin
+    (2026-07-09 filtre dersi: grid'e sigan ama no-go yuzunden YERLESEMEYEN
+    duz poz z-esigini zehirledi; esik = cozumun kullandigi pozun z'si olmali)."""
     mask = Bin3D.no_go_mask_from_bounds(NOGO, PLATE[0], PLATE[1], PITCH)
     t = time.perf_counter()
     _, b = dblf(parts, lambda: Bin3D(PLATE[0], PLATE[1], PITCH,
@@ -102,12 +109,27 @@ def _kos(parts, n_total, etiket):
         out = _ROOT / "results" / f"plan1_nogo335_tilt_{etiket}_{legal:.1f}mm.stl"
         trimesh.util.concatenate(meshes).export(out)
         log(f"[{etiket}] STL: {out}")
-    return legal
+    return legal, b
 
 
 def main():
     LOG.write_text("", encoding="utf-8")
     log("PLAN1 HEDEFLI-TILT — 335+NOGO (n24 dik baseline 260 / Magics 110.41)")
+    # RAM zinciri (2026-07-09): plan3 NFV probu bitene kadar bekle (tek surec
+    # kurali; o da d4 probunu, o da ax24 kuyrugunu bekliyor).
+    bekle = Path(__file__).parent / "plan3_nfv_probu.log"
+    tur = 0
+    while True:
+        satirlar = ([s.strip() for s in
+                     bekle.read_text(encoding="utf-8", errors="ignore").splitlines()
+                     if s.strip()] if bekle.exists() else [])
+        if satirlar and satirlar[-1] == "BITTI":
+            break
+        if tur % 10 == 0:
+            log(f"plan3 NFV probu bekleniyor ({time.strftime('%H:%M')})")
+        tur += 1
+        time.sleep(300)
+    log("zincir hazir — tilt kosusu basliyor")
     inst = _load_instance("plan1")
     n_total = sum(int(p.qty) for p in inst.parts)
     nx, ny = int(PLATE[0] // PITCH), int(PLATE[1] // PITCH)
@@ -121,21 +143,25 @@ def main():
             + ", ".join(sorted({str(getattr(p, 'name', '?'))[:30] for p in parts})))
         return
     # A) baseline: tilt'siz (ayni script, ayni parametreler — temiz A/B)
-    h_base = _kos(parts, n_total, "baseline_n24")
+    h_base, b_base = _kos(parts, n_total, "baseline_n24")
 
-    # B) tilt: hedefe sigan pozlarin en kisasindan KISA tilt pozlari ekle
+    # B) tilt: esik = cozumun hedef icin FIILEN kullandigi pozun z'si
+    # (onceki kosu dersi: "grid'e sigan" duz poz no-go yuzunden yerlesemiyor
+    # ama min-z esigini 41'e cekip TUM tilt pozlarini elemisti -> 260=260)
+    kullanilan_z = {}
+    for pl in b_base.placements:
+        kullanilan_z[pl.part_id] = \
+            parts_by_id(parts)[pl.part_id].orientations[pl.orientation_idx].grid.shape[2]
     for p in hedefler:
-        sigan_z = [o.grid.shape[2] for o in p.orientations
-                   if o.grid.shape[0] <= nx and o.grid.shape[1] <= ny]
-        z_esik = min(sigan_z) if sigan_z else 10 ** 9
-        log(f"hedef: {p.name[:40]}  sigan-poz-min-z={z_esik}vox — tilt taramasi:")
+        z_esik = kullanilan_z.get(p.id, 10 ** 9)
+        log(f"hedef: {p.name[:40]}  cozumde-kullanilan-poz-z={z_esik}vox — tilt taramasi:")
         yeni = _tilt_pozlari(p, nx, ny, z_esik)
         if yeni:
             p.orientations = list(p.orientations) + yeni
             log(f"  +{len(yeni)} tilt pozu eklendi (orijinaller korundu)")
         else:
             log("  hicbir tilt pozu kazanmadi — tilt bu parcada NO-GO")
-    h_tilt = _kos(parts, n_total, "tilt_n24")
+    h_tilt, _ = _kos(parts, n_total, "tilt_n24")
 
     if h_base is not None and h_tilt is not None:
         log(f"KIYAS: baseline={h_base:.1f} -> tilt={h_tilt:.1f}"

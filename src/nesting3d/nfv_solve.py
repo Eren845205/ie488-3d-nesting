@@ -131,7 +131,8 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
 def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               n_orientations=None, quality="fast", margin=1, seed=42, force=None,
               fine_settle=True, orient_ram_brake=False,
-              time_budget_sec=None, clearance_mm=0.0) -> CoarseToFineResult:
+              time_budget_sec=None, clearance_mm=0.0,
+              no_go_bounds=None) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -204,8 +205,17 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         if decode_budget <= 0:
             decode_budget = 0.0
 
+    # NO-GO (2026-07-09, kullanici karari "hepsine eklenecek"): yasak-bolge
+    # mm-bbox'u kullanilan pitch'te maskeye cevrilir; decode occupancy'sinde
+    # TAM yukseklik muhurlenir. default None = BIT-OZDES eski davranis.
+    _ng_mask = None
+    if no_go_bounds is not None:
+        _ng_mask = Bin3D.no_go_mask_from_bounds(
+            no_go_bounds, plate_w_mm, plate_d_mm, used_pitch)
+
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
-                                   time_budget_sec=decode_budget)
+                                   time_budget_sec=decode_budget,
+                                   no_go_mask=_ng_mask)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
     # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un
@@ -230,7 +240,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
                             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                             pitch=used_pitch, margin=settle_margin,
                             z_dilate=settle_zc,
-                            h_coarse_mm=bin3d.max_height_mm())
+                            h_coarse_mm=bin3d.max_height_mm(),
+                            no_go_bounds=no_go_bounds)
         if s is not None:
             fine_bin = Bin3D(plate_w_mm, plate_d_mm, s.fine_pitch)
             for (pid, oi, xf, yf, zf) in s.raw_fine:

@@ -61,7 +61,7 @@ def _worth_threading(ob, n_eligible) -> bool:
 
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
            return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
-           skip_status=None):
+           skip_status=None, no_go_mask=None):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
@@ -90,7 +90,10 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
         with _sfft.set_workers(per_fft):  # WORKER İÇİNDE (contextvar propagate etmez)
             return blb_xybbox(occ, grid, feasible_mask)
 
-    ob = OccupancyBin3D(nx, ny, nz_limit=_nz_limit(pitch), pitch=pitch)
+    # no_go_mask (2026-07-09): yasak kolonlar occupancy'de TAM yukseklik muhur
+    # -> FFT + is_feasible + drop-fallback otomatik kacinir (Bin3D seal esdegeri)
+    ob = OccupancyBin3D(nx, ny, nz_limit=_nz_limit(pitch), pitch=pitch,
+                        no_go_mask=no_go_mask)
     placements: List[RawPlacement] = []
     sorted_parts = sorted(parts, key=lambda vp: -vp.volume_voxels)
 
@@ -193,7 +196,7 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
 
 
 def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
-               time_budget_sec=None, budget_status=None):
+               time_budget_sec=None, budget_status=None, no_go_mask=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
     yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
@@ -210,6 +213,10 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
     mempool = cp.get_default_memory_pool()
 
     occ = cp.zeros((nx, ny, _nz_limit(pitch)), dtype=cp.bool_)  # RESIDENT
+    if no_go_mask is not None and np.asarray(no_go_mask).any():
+        # yasak kolonlar cihazda TAM yukseklik muhur (CPU ile ayni semantik);
+        # cur_max occupancy'den DEGIL yerlesimlerden izlenir -> zehirlenmez.
+        occ[cp.asarray(np.asarray(no_go_mask, dtype=bool))] = True
     grid_cache = {}
 
     def _grids(orient):
@@ -279,7 +286,8 @@ def _mark_budget(strategy: str, status: dict) -> str:
     return f"{strategy} budget_exceeded" if status.get("budget_exceeded") else strategy
 
 
-def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None):
+def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None,
+                no_go_mask=None):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
     GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
 
@@ -292,7 +300,8 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     if strat == "gpu-resident":
         try:
             h, raw = decode_gpu(parts, nx, ny, pitch=pitch, return_placements=True,
-                                time_budget_sec=time_budget_sec, budget_status=status)
+                                time_budget_sec=time_budget_sec, budget_status=status,
+                                no_go_mask=no_go_mask)
             return h, raw, _mark_budget("gpu-resident", status)
         except Exception as e:
             if verbose:
@@ -304,7 +313,7 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     skip: dict = {}
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
                     return_placements=True, time_budget_sec=time_budget_sec,
-                    budget_status=status, skip_status=skip)
+                    budget_status=status, skip_status=skip, no_go_mask=no_go_mask)
     strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
     dropped = skip.get("dropped")
     if dropped:

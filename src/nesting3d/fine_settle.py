@@ -75,6 +75,7 @@ def fine_settle_raw(
     z_dilate: int = 0,
     scale: int = DEFAULT_SCALE,
     mem_budget_bytes: int = MEM_BUDGET_BYTES,
+    no_go_bounds=None,
 ) -> Optional[SettleResult]:
     """NFV raw yerleşimini fine'da oturt; iyileşme yoksa/başarısızsa None.
 
@@ -89,7 +90,8 @@ def fine_settle_raw(
         return None
     try:
         return _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch,
-                       margin, h_coarse_mm, scale, mem_budget_bytes, z_dilate)
+                       margin, h_coarse_mm, scale, mem_budget_bytes, z_dilate,
+                       no_go_bounds)
     except MemoryError:
         return None   # bellek sıkışması → coarse sonucu korunur
     except Exception:
@@ -97,7 +99,8 @@ def fine_settle_raw(
 
 
 def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
-            h_coarse_mm, scale, mem_budget_bytes, z_dilate=0):
+            h_coarse_mm, scale, mem_budget_bytes, z_dilate=0,
+            no_go_bounds=None):
     # --- bellek pre-flight: occ grid boyutu bütçeyi aşarsa scale'i kıs/vazgeç
     while scale >= 2:
         fine = pitch / scale
@@ -126,6 +129,14 @@ def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
         fine_orients[key] = vp.orientations[0]
 
     occ = np.zeros((nxf, nyf, nzf), dtype=bool)
+    if no_go_bounds is not None:
+        # NO-GO (2026-07-09): fine grid'de de TAM yukseklik muhur — jitter
+        # halkalari parcayi yasak bolgeye mm-alti kaydiramasin.
+        from src.nesting3d.bin3d import Bin3D
+        _m = Bin3D.no_go_mask_from_bounds(no_go_bounds, plate_w_mm,
+                                          plate_d_mm, fine)
+        if _m.shape == (nxf, nyf) and _m.any():
+            occ[_m, :] = True
 
     def feasible(g, x, y, z):
         fw, fd, fh = g.shape
