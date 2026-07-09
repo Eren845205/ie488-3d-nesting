@@ -144,7 +144,8 @@ def _worth_threading(ob, n_eligible) -> bool:
 
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
            return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
-           skip_status=None, no_go_mask=None, exit_guard=False):
+           skip_status=None, no_go_mask=None, exit_guard=False,
+           exit_guard_retries=2):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
@@ -207,6 +208,38 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
             # kapali (default) -> _reduce_best BIREBIR eski davranis.
             best = (_reduce_best_guarded(results, cur_max, guard_scene, part)
                     if exit_guard else _reduce_best(results, cur_max))
+            if exit_guard and best is None and exit_guard_retries > 0:
+                # K-33 COKLU-ADAY: reddedilen pozisyonlar HAYALET isgalle
+                # kapatilip BLB o oryantasyon icin YENIDEN sorulur -> ikinci/
+                # ucuncu en-iyi kavite adaylari da guard'dan gecirilir.
+                # (tek-aday v2'de red = parca tepeye kacisi = 74mm vergi)
+                hayaletler = {}   # oi -> [(slice3, eklenen_bits)]
+                cur = {oi: o for oi, o, _fh in results if o is not None}
+                for _deneme in range(exit_guard_retries):
+                    yeni_results = []
+                    for oi, o, fh in results:
+                        o_son = cur.get(oi)
+                        if o_son is None:
+                            yeni_results.append((oi, None, fh))
+                            continue
+                        g = part.orientations[oi].grid
+                        sl = (slice(o_son[0], o_son[0] + g.shape[0]),
+                              slice(o_son[1], o_son[1] + g.shape[1]),
+                              slice(o_son[2], o_son[2] + g.shape[2]))
+                        ob._ensure_z_capacity(o_son[2] + g.shape[2])
+                        eklenen = g & ~ob.occupancy[sl]
+                        ob.occupancy[sl] |= eklenen
+                        hayaletler.setdefault(oi, []).append((sl, eklenen))
+                        o2 = _blb_w(ob.occupancy, g)
+                        cur[oi] = o2
+                        yeni_results.append((oi, o2, fh))
+                    best = _reduce_best_guarded(yeni_results, cur_max,
+                                                guard_scene, part)
+                    if best is not None:
+                        break
+                for oi, kayitlar in hayaletler.items():   # hayaletleri geri al
+                    for sl, eklenen in kayitlar:
+                        ob.occupancy[sl] &= ~eklenen
             if best is None:
                 fb = _drop_fallback(ob, part)
                 if fb is None:
