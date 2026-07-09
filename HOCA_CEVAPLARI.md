@@ -104,3 +104,40 @@ Registry'de DOĞUŞTAN held-out.
 - Operatör iş akışı önemli: alternatif dizilimler + parça takibi (STL-içi adlar).
 - Veri kanalı: mail eki ZIP + adet listesi (gözcü otomasyonunun canlı test zemini).
 - SaaS/ortaklık sinyali var (iş fırsatı bağlamı — APP_YOL_HARITASI).
+
+---
+
+## 2026-07-09 — 8 SORULUK MAİLİN CEVAPLARI (OYUN DEĞİŞTİREN SET)
+
+1. **AYRILABİLİRLİK KRİTERİ: (b) VE (c) KABUL.** "Parçalar üstten aşağıya
+   kademeli çıkarılıyor; operatöre bağlı ve manuel — kenara çekip veya
+   döndürerek olabiliyor." → +Z-tek kilit metriğimiz FAZLA SERTTİ; yana
+   kaydırma + döndürme kabul. **NFV kalite modu YEŞİL IŞIK.**
+2. **Yerleşim dosyaları:** Plan1 STL olarak gönderildi (ek); diğerleri STL
+   kaydedilemiyor.
+3. **Plan1 baseplate: DÜZ YATAK olarak yerleştiriliyor** (resim ekte) ve
+   **"yasak bölgeye çok hafif girişler genelde sorun yaratmıyor"** →
+   no-go YUMUŞAK kısıt (hafif ihlal tolere edilir). 110.41'in sırrı bu.
+4. **YASAK BÖLGE DÜZELTMESİ: x 152,5–185,5 / y 0,2–45 mm** (bizim
+   kullandığımız x 185,1–215,2 YANLIŞTI — tüm 2026-07-08/09 ölçümleri eski
+   koordinatla). Tam yükseklik. **Kenar payı: üretim/geometriye bağlı 5'er mm
+   boşluk bırakma durumları olabiliyor** (koşullu — güvenli taraf 5mm pay).
+5. **BOŞLUK: 2 mm daha güvenli; TÜM boşluklar için geçerli** (yatay+dikey).
+   (Bizim tüm ölçümler ≥1mm ile — 2mm'ye geçişte sayılar yükselir.)
+6. **KIYAS BOMBASI: gönderilen yükseklikler MAGICS DEĞİL, MANUEL yerleşim!**
+   "Veriler manuel hazırlanmıştır... yüksekliğe/adede/geometriye göre SAATLER
+   sürebilmektedir." → 593/492/250/209/110.41 = deneyimli operatör, saatlerce.
+   Bizim dakikalar mertebesi başlı başına değer önerisi.
+7. **Alternatif dizilim teyit + YENİ KISIT:** bazı parçalar yalnız dikey veya
+   yatay üretilir (silindir yatayda ELİPTİK çıkar) → parça-bazlı oryantasyon
+   kısıtı özelliği gerekiyor (voxelize allowed_orientations altyapısı mevcut).
+8. **DENEME6 GELDİ (yeni veri, ek): referans yükseklik 86,32 mm (manuel).**
+   → A3 gereği HELD-OUT doğar; tuning'e sokulmayacak.
+9. (Tekrar) "Yasak bölgeye Plan1'deki baseplate örneği gibi çok ufak girişler
+   kabul edilebilir."
+
+**Doğrudan sonuçlar:** kilit metriği yeniden tanımlanacak (≥5-yön söküm; c için
+rotasyon-söküm) · NOGO sabiti tüm scriptlerde düzeltilecek · 2mm clearance
+politika kararı (tablo yeniden ölçülür) · soft no-go modellemesi (hafif giriş
+penaltılı/toleranslı) · Deneme6 held-out kaydı · Plan1 manuel-yerleşim STL
+anatomi analizi.
