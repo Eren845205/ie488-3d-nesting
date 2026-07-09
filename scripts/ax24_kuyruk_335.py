@@ -68,7 +68,7 @@ def _load(name, plate):
     return res.instance
 
 
-def kos(name, n_or, pitch_force=None):
+def kos(name, n_or, pitch_force=None, clearance_mm=None):
     etiket = f"{name}_n{n_or}"
     t = time.perf_counter()
     inst = _load(name, PLATE)
@@ -87,7 +87,8 @@ def kos(name, n_or, pitch_force=None):
     kw = dict(coarse_pitch=(pitch if pitch != onerilen else None),
               fine_pitch=pitch, budget=COARSE_BUDGET,
               seed=42, n_orientations=n_or, drop_cache=True,
-              skip_fine_angle=wall, clearance_mm=WEB_MIN_CLEARANCE_MM,
+              skip_fine_angle=wall,
+              clearance_mm=(clearance_mm if clearance_mm is not None else WEB_MIN_CLEARANCE_MM),
               no_go_bounds=NOGO)
     if wall or pitch != onerilen:
         # fit-guard'li sette tam-portfoy@ince-pitch 8h+ yakti (plan1 dersi,

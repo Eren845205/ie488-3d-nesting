@@ -34,8 +34,8 @@ LOG = Path(__file__).parent / "plan1_hedefli_tilt.log"
 PLATE = (335.0, 335.0)
 NOGO = ((152.5, 0.2), (185.5, 45.0))
 PITCH = 1.0
-MARGIN = 1          # clearance_to_voxels(1.0, 1.0) = (1,1)
-ZC = 1
+MARGIN = 2          # HOCA 2026-07-09: 2mm -> clearance_to_voxels(2.0, 1.0) = (2,2)
+ZC = 2
 N_OR = 24           # ax24 kesfi: n24 neredeyse bedava, p1 n24=260 baseline
 HEDEF_AD = "baseplate"   # height-driver (ax24 dokumu: baseplate_v2 tek basina 260)
 ACILAR = range(5, 90, 5)
@@ -115,21 +115,7 @@ def _kos(parts, n_total, etiket):
 def main():
     LOG.write_text("", encoding="utf-8")
     log("PLAN1 HEDEFLI-TILT — 335+NOGO (n24 dik baseline 260 / Magics 110.41)")
-    # RAM zinciri (2026-07-09): plan3 NFV probu bitene kadar bekle (tek surec
-    # kurali; o da d4 probunu, o da ax24 kuyrugunu bekliyor).
-    bekle = Path(__file__).parent / "plan3_nfv_probu.log"
-    tur = 0
-    while True:
-        satirlar = ([s.strip() for s in
-                     bekle.read_text(encoding="utf-8", errors="ignore").splitlines()
-                     if s.strip()] if bekle.exists() else [])
-        if satirlar and satirlar[-1] == "BITTI":
-            break
-        if tur % 10 == 0:
-            log(f"plan3 NFV probu bekleniyor ({time.strftime('%H:%M')})")
-        tur += 1
-        time.sleep(300)
-    log("zincir hazir — tilt kosusu basliyor")
+    # gate KALDIRILDI (2026-07-10): gece2 kuyrugu dogrudan cagiriyor
     inst = _load_instance("plan1")
     n_total = sum(int(p.qty) for p in inst.parts)
     nx, ny = int(PLATE[0] // PITCH), int(PLATE[1] // PITCH)

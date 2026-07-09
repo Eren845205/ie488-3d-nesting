@@ -485,7 +485,11 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > ic-ice parmaklari goremiyor (NFV'nin dogal deseni!). **v2 EXACT (_GuardScene, _blocks tek dogruluk
 > kaynagi) -> plan3 @yeni-kurallar 691.9, 5-YON KILIT 0/109, clearance 2.52 — ILK A2-LEGAL NFV,
 > heightmap 735'i -43mm yener. YENI SAMPIYON.** Sokulebilirlik vergisi 618->692 = 74mm; azaltma
-> adaylari: poz-basina coklu BLB adayi + host-Rz (R3). META-DERS: 'garantili' iddiasi bile sahada
+> adaylari denendi: **K-33 coklu-aday 691.9->680.0 (-11.9); K-33b retries 2->6 = SIFIR fark,
+> telemetri guard[ilk=98 retry=11 fallback=0] -> tepe-kacisi YOK, vergi = coksayida kucuk
+> 'ikinci-en-iyi yuva' bedeli = (b) kriterinde ~680 yapisal tabana yakin. VIDA SONU.** Kalan
+> kaldiraclar: (c) dondurme-sokum modellemesi (R10 ONE CEKILDI — 618'i legallestirir, +%4.2)
+> + R3 host-Rz. META-DERS: 'garantili' iddiasi bile sahada
 > dogrulanmadan yazilmaz (K-30 tek kosuyla teoriyi yanlisladi, A1/A4 calisti).
 
 ---
