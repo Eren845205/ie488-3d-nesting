@@ -34,6 +34,7 @@ plaka · rol (dev/held-out) · held-out bakış sayısı + tarihleri · notlar`.
 | deneme4 | thin_shell (588; 62 çan + düğmeler + 2 ROBT) | **dev** | K-19..K-25 kabuk-ailesi geliştirmesinin ana aracı |
 | numune | (tek parça çeşidi; heightmap) | **held-out** | erken dönem frozen anchor'ı var; tuning döngüsünde değil |
 | boxy | solid_bulk (sentetik-gerçek karışım kutu) | **held-out** | c3_generality'de kontrol seti |
+| deneme6 | (15 parça × 1 adet; küçük-orta karışık; en büyük 149×149×30) | **held-out (doğuştan)** | 2026-07-09 hoca maili → `VERILER/Deneme6/`; **referans 86,32 mm (MANUEL yerleşim — Magics değil; koşullar yaklaşık, A10 şerhli)**. Envanter bakışı 2026-07-09 (yalnız metadata: gövde/adet sayımı; ÇÖZÜM KOŞULMADI). Adet STL'de gömülü değil → 15×1. Kör-test protokolü: R11 (`06_HOCA_2026-07-09...md`) |
 | *(yeni mail)* | *otomatik F1* | **held-out (doğuştan)** | gözcü kanalı, §3 |
 
 **Kural:** held-out koşusu yapıldığında bu tabloya `bakış: YYYY-MM-DD (sebep)`
