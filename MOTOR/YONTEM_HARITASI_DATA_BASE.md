@@ -461,8 +461,20 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > kaderi hoca kriter cevabında ("yan/döndürerek çıkarma kabul mü?"). ⚠️ söküm sanity kurgu hatalı
 > (dummy sahne bug'ı) — 413/20 sayıları doğrulama koşusuyla mühürlenecek. NOT: solve_nfv NO-GO
 > DESTEKLEMİYOR (kriter yeşilse ilk mühendislik işi).
+> **K-28 plan1 HEDEFLİ-TİLT — GO, BÜYÜK KAZANÇ (2026-07-09 gündüz):** baseplate'e Rx/Ry sürekli-açı
+> taraması (5..85°) → **260 → 135.0 LEGAL** (−%48.1; Magics 110.41'e +%135→+%22.3; clear 1.120,
+> 0 kilit; kule artık bobbin yığını = Magics taktiği yakalandı). İLK KOŞU TUZAĞI: poz-eşiği "grid'e
+> sığan min-z" alınınca no-go yüzünden YERLEŞEMEYEN düz poz (z=41) eşiği zehirledi → tüm tilt pozları
+> elendi (260=260 boşa koşu); fix = eşik "çözümün FİİLEN kullandığı pozun z'si". Kademe 3 rotasyon
+> programının ilk dilimi kanıtlandı; genelleme adayı: height-driver parçaya otomatik tilt.
+> **NFV NO-GO DESTEĞİ ÜRETİMDE (commit `32ff414`):** OccupancyBin3D tam-yükseklik mühür + is_feasible
+> açık reddi + GPU/decode/fine_settle plumbing; 4 test + 94 regresyon. **plan3 NFV @NOGO GERÇEK
+> KOŞUL = 626.2** (+Z 73 kilit → 5-yön 14/109; Magics'e +%5.6; no-go bedeli +19.3). Hoca maili
+> (9 soru + kriter a/b/c) kullanıcıda — HOCA_MAIL_2026-07-09.md.
 > **Süreç dersleri:** 9-SAAT DERSİ (zincir scripti kapı-sonrası duman testi + detach .err monitörü
-> şart) · harness arka plan task'ları öldürülüyor → uzun koşu HEP detach_run · pytest-xdist -n4 16dk.
+> şart) · harness arka plan task'ları öldürülüyor → uzun koşu HEP detach_run · pytest-xdist -n4 16dk
+> · zincir kapısı log-paylaşımıyla zehirlenebilir (import edilen yardımcı, eski probun loguna yazdı
+> → son satır BITTI'likten çıktı; yardımcılar log'suz/parametrik olmalı).
 
 ---
 

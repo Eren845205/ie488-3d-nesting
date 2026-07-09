@@ -144,10 +144,11 @@ def main():
     log(f"5-yon sahne kurulumu: {time.perf_counter() - t:.0f}s")
 
     # SANITY: yalniz +Z ile kac kilit? (K-21 referans ~554 — grid eslesme kaniti)
+    # FIX 2026-07-09: eski kurgu bos dummy sahneler kullaniyordu -> dummy'de
+    # engel 0 oldugundan HERKES o yonden 'cikti' (kilit=0 artefakti). Dogrusu:
+    # 5 sahnenin HEPSI +Z kopyasi = cikis ancak +Z'de mumkunse (+Z-tek semantigi).
     t = time.perf_counter()
-    cikan_z, kalan_z = _sirali_sokum({y: sahneler["+Z"] if y == "+Z" else
-                                      [_pv("bos", np.zeros((1, 1, 1)), 10**6, 10**6, 0)] * len(pls)
-                                      for y in YONLER})
+    cikan_z, kalan_z = _sirali_sokum({y: sahneler["+Z"] for y in YONLER})
     log(f"SANITY +Z-tek: kilit={len(kalan_z)}/588 (K-21 ref 554) ({(time.perf_counter()-t)/60:.1f} dk)")
 
     t = time.perf_counter()
