@@ -86,3 +86,28 @@ def test_solve_nfv_exit_guard_garantisi():
     assert r.n_placed == 8
     # DEGISMEZ: exit_guard acikken nihai sahne 5-yon kilitsiz
     assert check_separability_5dir(r.placements, r.fine_voxel_parts).n_locked == 0
+
+
+def test_guard_scene_ic_ice_parmagi_yakalar():
+    """K-32 dersi: bbox-slab yaklasik testi (_has_exit v1) ic-ice gecmis
+    parmaklari GOREMEZ (engel bbox icinde) -> yanlis-GECER. Exact _GuardScene
+    (_blocks tabanli) yakalamali. Fixture: tam-kenet cifti (5 yonde de
+    karsilikli blokeli)."""
+    from src.nesting3d.parallel_decode import _GuardScene, _has_exit
+    from tests.test_separability_repair import _fake_tam
+
+    A = _fake_tam("A", True)
+    B = _fake_tam("B", False)
+    scene = _GuardScene()
+    scene.ekle("A", A.orientations[0], 0, 0, 0)
+    # exact guard: B (0,0,0)'da CIKISSIZ (dogru)
+    assert not scene.cikisli_mi(B.orientations[0], 0, 0, 0)
+    # v1 yaklasik test ayni vakada yanlis-GECER veriyordu (bilinen acik —
+    # bu assert acigi belgeler; v1 artik uretim yolunda KULLANILMIYOR)
+    occ = np.zeros((4, 4, 4), dtype=bool)
+    g = A.orientations[0].grid
+    occ[0:2, 0:2, 0:2] |= g
+    assert _has_exit(occ, B.orientations[0], 0, 0, 0)  # v1: yanlis-GECER
+    # bos sahnede exact guard serbest birakir
+    bos = _GuardScene()
+    assert bos.cikisli_mi(B.orientations[0], 0, 0, 0)

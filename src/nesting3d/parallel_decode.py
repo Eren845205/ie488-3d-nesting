@@ -88,7 +88,35 @@ def _has_exit(occ, orient, x, y, z) -> bool:
     return False
 
 
-def _reduce_best_guarded(results, cur_max, occ, part):
+class _GuardScene:
+    """R2 v2: 5 yon-sahnesini (eksen-takasli PlacedVoxels listeleri) artimli
+    tutar; cikis testi accessibility._blocks ile YAPILIR (tek dogruluk
+    kaynagi — K-32 dersi: bbox-slab yaklasik testi ic-ice gecmis parmaklari
+    goremedi, yanlis-GECER uretti)."""
+
+    def __init__(self):
+        from src.nesting3d.accessibility import _YON_5, _yonlu_sahne, _blocks
+        self._yonler = _YON_5
+        self._yonlu = _yonlu_sahne
+        self._blocks = _blocks
+        self.sahneler = {y: [] for y in self._yonler}
+
+    def ekle(self, part_id, orient, x, y, z):
+        for yon in self._yonler:
+            self.sahneler[yon].append(
+                self._yonlu(part_id, orient.grid, x, y, z, yon))
+
+    def cikisli_mi(self, orient, x, y, z) -> bool:
+        """Aday poz mevcut sahneye karsi >=1 yonde engelsiz mi (EXACT)."""
+        for yon in self._yonler:
+            aday = self._yonlu("_aday", orient.grid, x, y, z, yon)
+            if not any(self._blocks(mevcut, aday)
+                       for mevcut in self.sahneler[yon]):
+                return True
+        return False
+
+
+def _reduce_best_guarded(results, cur_max, scene: "_GuardScene", part):
     """_reduce_best'in R2 hali: AYNI anahtar siralamasi, cikissiz adaylar
     ATLANIR (ilk cikisli aday kazanir). Hicbiri cikisli degilse None ->
     caller drop-fallback'e duser (tepe yerlesimi +Z-cikisli by construction)."""
@@ -100,7 +128,7 @@ def _reduce_best_guarded(results, cur_max, occ, part):
         adaylar.append((key, oi, o))
     adaylar.sort(key=lambda t: t[0])
     for _key, oi, o in adaylar:
-        if _has_exit(occ, part.orientations[oi], o[0], o[1], o[2]):
+        if scene.cikisli_mi(part.orientations[oi], o[0], o[1], o[2]):
             return (oi, o[0], o[1], o[2])
     return None
 
@@ -150,6 +178,7 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
     ob = OccupancyBin3D(nx, ny, nz_limit=_nz_limit(pitch), pitch=pitch,
                         no_go_mask=no_go_mask)
     placements: List[RawPlacement] = []
+    guard_scene = _GuardScene() if exit_guard else None
     sorted_parts = sorted(parts, key=lambda vp: -vp.volume_voxels)
 
     executor = None
@@ -176,7 +205,7 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
                            for oi, orient in elig]
             # R2 exit_guard: cikissiz aday atlanir (ayni anahtar siralamasi);
             # kapali (default) -> _reduce_best BIREBIR eski davranis.
-            best = (_reduce_best_guarded(results, cur_max, ob.occupancy, part)
+            best = (_reduce_best_guarded(results, cur_max, guard_scene, part)
                     if exit_guard else _reduce_best(results, cur_max))
             if best is None:
                 fb = _drop_fallback(ob, part)
@@ -190,6 +219,10 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
                 best = (oi, x, y, z)
             oi, x, y, z = best
             ob.place(part.orientations[oi], x, y, z)
+            if guard_scene is not None:
+                # fallback dahil HER yerlesim sahneye islenir (fallback tepe
+                # yerlesimi +Z-cikisli by construction — exact _blocks'ta da)
+                guard_scene.ekle(part.id, part.orientations[oi], x, y, z)
             if return_placements:
                 placements.append((part.id, oi, x, y, z))
     finally:
