@@ -476,6 +476,18 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > · zincir kapısı log-paylaşımıyla zehirlenebilir (import edilen yardımcı, eski probun loguna yazdı
 > → son satır BITTI'likten çıktı; yardımcılar log'suz/parametrik olmalı).
 
+> **2026-07-09 GECE-2 (R1/R2 zinciri; detay RESUME + STRATEJI/06):**
+> **K-29 kilit-tahliye — mekanizma GO, strateji NO-GO:** tahliye kilidi 20->0 yapti AMA plan3'un
+> ~470mm dev parcalari tepeye binince 618->1088 (heightmap 735'ten kotu). Ders: tamir degil ONLEME.
+> Uretim kablosu solve_nfv(repair_separability=) yine de mevcut (kucuk-parca kilitlerinde ise yarar).
+> **K-30/31/32 exit_guard sagasi:** v1 (bbox-slab yaklasik test) sahada 10 kilit birakti (garanti
+> TUTMADI) -> K-31 A/B: settle masum, H2 -> K-32/kod-incelemesi kok neden: slab testleri bbox-ICI
+> ic-ice parmaklari goremiyor (NFV'nin dogal deseni!). **v2 EXACT (_GuardScene, _blocks tek dogruluk
+> kaynagi) -> plan3 @yeni-kurallar 691.9, 5-YON KILIT 0/109, clearance 2.52 — ILK A2-LEGAL NFV,
+> heightmap 735'i -43mm yener. YENI SAMPIYON.** Sokulebilirlik vergisi 618->692 = 74mm; azaltma
+> adaylari: poz-basina coklu BLB adayi + host-Rz (R3). META-DERS: 'garantili' iddiasi bile sahada
+> dogrulanmadan yazilmaz (K-30 tek kosuyla teoriyi yanlisladi, A1/A4 calisti).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
