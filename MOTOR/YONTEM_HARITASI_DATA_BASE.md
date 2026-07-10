@@ -492,6 +492,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > + R3 host-Rz. META-DERS: 'garantili' iddiasi bile sahada
 > dogrulanmadan yazilmaz (K-30 tek kosuyla teoriyi yanlisladi, A1/A4 calisti).
 
+> **2026-07-10 GECE-4 — K-34 R10 DONDURME-SOKUM = GO 🏆 (plan3 sampiyon 680→618.1):**
+> `rotation_extract.check_separability_rot` — 5-yon peel + "mikro-kaldir(0-3vox) + yerinde
+> dondur (adaptif aci merdiveni, tunel tol 2.5vox) + duz cek" sertifikasi; cekme testinde
+> +1vox dilate (NN-buzulme yalanci-serbestligi TESTTE yakalandi: 60° sahte sertifika).
+> Saga: **v1** 13/20 kilit buyuk-grid muafiyetiyle hic denenmedi (0 cert — hukum degil
+> metodoloji boslugu) → **v2** muafiyet kapali + fail-telemetri: tum merdivenler rung1-5
+> carpisma = **dilate'li gridlerde cift-arasi bosluk ~0, sokum fizigi OLCULEMIYOR** →
+> **v3** SOKUM-FIZIGI grid'leri (`_erode_clearance` = morfolojik closing superset gercek
+> parca, sound; superset property-test'li): **(b+c) kilit 0/109, 618.1 LEGAL** (clear 2.501).
+> Tek sertifika kilit-tasi (171600021_02 lift3+Y−1°+−Y), kalan 19 dilate'li duz peel
+> kaskadi. exit_guard 680.0'i −61.9mm yener; manuel 593'e +%4.2. 7.2dk rot maliyeti.
+> **META-DERSLER:** (1) yerlestirme kurali (2mm bosluk) ile ekstraksiyon fizigi AYRI
+> uzaylar — kural-tasiyan dilate gridle sokum olcmek yapisal yanlis-negatif uretir;
+> (2) "0 sertifika" hukum degildir: once muafiyet/butce/neden telemetrisi (A4 teshis-once
+> K-34'te iki kez calisti); (3) tek kilit-tasi acilinca kaskad — kilit sayisi buyuk gorunse
+> de cozum tek parcada olabilir. ACIK: (b+c) kriter etiketi hoca onayina sunulacak
+> (rapor iki metrigi de tasiyor); R3 host-Rz siradaki kaldirac.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)

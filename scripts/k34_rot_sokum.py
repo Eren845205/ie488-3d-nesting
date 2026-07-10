@@ -107,7 +107,19 @@ def main():
     log(f"(b) 5-yon kilit={r5.n_locked}/{len(pls)}  ({kilitli[:6]}...)")
 
     t = time.perf_counter()
-    rot = check_separability_rot(pls, parts)
+    # v2: muafiyet fiilen kapali (560 > plaka gridi) + parca-basi 240s butce
+    # + basarisizlik telemetrisi (v1 dersi: 20 kilidin 13'u hic denenmemisti,
+    # denenen 7'nin neden'i loglanmamisti).
+    # v3: SOKUM-FIZIGI grid'leri — rot testleri clearance-dilate'siz (erode
+    # edilmis) geometriyle: hareket sirasinda 2mm KURAL degil, yalniz gercek
+    # carpisma (v2 dersi: dilate uzayinda cift-arasi bosluk ~0 -> tum
+    # merdivenler rung1-5'te oluyordu; gercek bosluk 2mm+ = donme payi).
+    from src.nesting3d.coarse_to_fine import clearance_to_voxels
+    erode_vox = clearance_to_voxels(2.0, px)
+    log(f"sokum-fizigi erode: xy={erode_vox[0]} z_up={erode_vox[1]} vox @pitch={px}")
+    rot = check_separability_rot(pls, parts, max_grid_vox=560,
+                                 sure_butcesi_s=240.0,
+                                 erode_clearance_vox=erode_vox)
     log(f"(b+c) rot kilit={rot.n_locked}/{len(pls)}  "
         f"sertifika={len(rot.certificates)}  "
         f"buyuk-muaf={len(rot.skipped_large)}  "
@@ -120,6 +132,8 @@ def main():
     if rot.n_locked:
         kalan = sorted(pid for grup in rot.locked_groups for pid in grup)
         log(f"  KALAN KILIT: {kalan}")
+    for pid, satirlar in sorted(rot.fail_telemetri.items()):
+        log(f"  NEDEN {pid}: {' | '.join(satirlar)}")
 
     meshes = placed_meshes(pls, parts, px)
     rep = min_clearance(meshes)

@@ -90,6 +90,9 @@ class RotSeparabilityReport:
     n_parts: int = 0
     certificates: Dict[str, RotCertificate] = field(default_factory=dict)
     skipped_large: List[str] = field(default_factory=list)  # max_grid_vox muaflari
+    # teshis telemetrisi: pid -> denenen her (lift,eksen,isaret) icin kisa
+    # basarisizlik ozeti ("Z+ rung2/6 carpisma", "X- pull-bloklu 6/6", "butce")
+    fail_telemetri: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
     def all_accessible(self) -> bool:
@@ -161,6 +164,44 @@ def _carpisma(grid: np.ndarray, pos: Tuple[int, int, int],
     return False
 
 
+# _dilate'in (voxelize) xy-cross yapisinin aynisi — erode bunun tersi olmali
+_CROSS_XY = np.zeros((3, 3, 1), dtype=bool)
+_CROSS_XY[1, :, 0] = True
+_CROSS_XY[:, 1, 0] = True
+
+
+def _erode_clearance(grid: np.ndarray, xy_vox: int, z_up_vox: int) -> np.ndarray:
+    """Clearance-dilate'li grid'den SOKUM-FIZIGI grid'i uret (K-34 v3).
+
+    Yerlestirme grid'leri voxelize._dilate (xy-cross x`xy_vox`) +
+    _dilate_z_up (tek-tarafli +z x`z_up_vox`) ile sismistir: 2mm bosluk
+    KURALI tasinir. Ekstraksiyon fiziginde ise yalniz GERCEK geometri
+    carpismasi onemlidir — hareket sirasinda 2mm sart kosulmaz (hoca (c):
+    operator dondururken parcalar birbirine yaklasabilir).
+
+    Ayni yapiyla erozyon = morfolojik CLOSING >= ORIJINAL geometri (kanit:
+    erode(dilate(X)) superset X; xy ve z operatorleri dik eksenlerde,
+    siralari degistirilebilir). Yani sonuc gercek parcanin SUPERSETI kalir
+    -> sertifika sound. Bos kalirsa (teorik olarak imkansiz, orijinal bos
+    degilse) orijinale donulur (daha siki taraf).
+    """
+    from scipy.ndimage import binary_erosion
+
+    g = np.asarray(grid, dtype=bool)
+    e = (binary_erosion(g, structure=_CROSS_XY, iterations=xy_vox,
+                        border_value=0) if xy_vox else g.copy())
+    if z_up_vox:
+        acc = e.copy()
+        for d in range(1, z_up_vox + 1):
+            sh = np.zeros_like(e)
+            sh[:, :, :-d] = e[:, :, d:]
+            acc &= sh
+        e = acc
+    if not e.any():
+        return g
+    return e
+
+
 def _merdiven(max_aci: float, r_max_vox: float) -> List[float]:
     """Adaptif aci merdiveni: adim ~ TUNEL_TOL_VOX / r_max (radyan) -> derece.
 
@@ -180,6 +221,8 @@ def check_separability_rot(placements: Sequence[object],
                            max_aci: Optional[Dict[str, float]] = None,
                            lifts: Sequence[int] = (0, 1, 2, 3),
                            max_grid_vox: int = 220,
+                           sure_butcesi_s: Optional[float] = None,
+                           erode_clearance_vox: Tuple[int, int] = (0, 0),
                            ) -> RotSeparabilityReport:
     """5-yon sirali sokum + rotasyon-fallback denetimi (A2 + (c) kriteri).
 
@@ -224,6 +267,25 @@ def check_separability_rot(placements: Sequence[object],
     removable_order: List[str] = []
     certs: Dict[str, RotCertificate] = {}
     skipped_large: List[str] = []
+    fail_telemetri: Dict[str, List[str]] = {}
+
+    # SOKUM-FIZIGI grid'leri (K-34 v3): rot asamasi carpisma/cekme testleri
+    # icin erode'lu kopyalar — LAZY kurulur (kilit yoksa hic maliyet yok).
+    # Peel sayaclari ((b) metrigi) ORIJINAL dilate'li grid'lerde kalir.
+    egrids: Optional[List[np.ndarray]] = None
+    esahneler: Optional[Dict[str, list]] = None
+
+    def _ensure_eroded() -> None:
+        nonlocal egrids, esahneler
+        if egrids is not None:
+            return
+        exy, ez = erode_clearance_vox
+        if exy or ez:
+            egrids = [_erode_clearance(g, exy, ez) for g in grids]
+        else:
+            egrids = grids
+        esahneler = {yon: [_yonlu_sahne(pids[k], egrids[k], *poz[k], yon)
+                           for k in range(n)] for yon in _YON_5}
 
     def _dusur(i: int) -> None:
         removable_order.append(pids[i])
@@ -248,14 +310,18 @@ def check_separability_rot(placements: Sequence[object],
         dpos = (rpos[0] - 1, rpos[1] - 1, rpos[2] - 1)
         for yon in _YON_5:
             rp = _yonlu_sahne(pids[i], dg, *dpos, yon)
-            if not any(_blocks(sahneler[yon][j], rp)
+            if not any(_blocks(esahneler[yon][j], rp)
                        for j in alive if j != i):
                 return yon
         return None
 
     def _rot_sertifika(i: int) -> Optional[RotCertificate]:
-        g0, p0 = _krop(grids[i], poz[i])
-        digerleri = [(grids[j], poz[j]) for j in sorted(alive) if j != i]
+        import time as _time
+        t0 = _time.perf_counter()
+        tel: List[str] = []
+        _ensure_eroded()
+        g0, p0 = _krop(egrids[i], poz[i])
+        digerleri = [(egrids[j], poz[j]) for j in sorted(alive) if j != i]
         # r_max: en uzak voxelin merkeze mesafesi ~ yarim kosegen
         r_max = 0.5 * math.sqrt(sum(s * s for s in g0.shape))
         for lift in lifts:
@@ -266,11 +332,20 @@ def check_separability_rot(placements: Sequence[object],
                     _carpisma(g0, (p0[0], p0[1], p0[2] + s), digerleri)
                     for s in range(1, lift + 1))
                 if bloklu:
+                    tel.append(f"lift{lift} bloklu")
                     break
             pl0 = (p0[0], p0[1], p0[2] + lift)
             for eksen in ("Z", "X", "Y"):
                 for isaret in (1.0, -1.0):
-                    for aci in _merdiven(max_aci[eksen], r_max):
+                    merdiven = _merdiven(max_aci[eksen], r_max)
+                    n_rung = len(merdiven)
+                    pull_blok = 0
+                    for k, aci in enumerate(merdiven):
+                        if (sure_butcesi_s is not None
+                                and _time.perf_counter() - t0 > sure_butcesi_s):
+                            tel.append("SURE-BUTCESI doldu")
+                            fail_telemetri[pids[i]] = tel
+                            return None
                         rg, rpos = _dondur(g0, pl0, eksen, isaret * aci)
                         if rg.size == 0:
                             # NN yeniden-orneklemesi kucuk grid'i yuttu:
@@ -279,13 +354,22 @@ def check_separability_rot(placements: Sequence[object],
                             # yeniden olusabilir (orn. 90 derece exact).
                             continue
                         if rpos[2] < 0:      # masa: z<0'a voxel indi
+                            tel.append(f"L{lift} {eksen}{'+' if isaret > 0 else '-'}"
+                                       f" rung{k + 1}/{n_rung} masa")
                             break            # daha buyuk acilar da iner/yol olu
                         if _carpisma(rg, rpos, digerleri):
+                            tel.append(f"L{lift} {eksen}{'+' if isaret > 0 else '-'}"
+                                       f" rung{k + 1}/{n_rung} carpisma")
                             break            # yol prefix'i carpisti -> eksen+yon olu
                         yon = _duz_cekilir(rg, rpos, i)
                         if yon is not None:
                             return RotCertificate(eksen, float(isaret * aci),
                                                   yon, int(lift))
+                        pull_blok += 1
+                    else:
+                        tel.append(f"L{lift} {eksen}{'+' if isaret > 0 else '-'}"
+                                   f" pull-bloklu {pull_blok}/{n_rung}")
+        fail_telemetri[pids[i]] = tel
         return None
 
     while alive:
@@ -325,4 +409,5 @@ def check_separability_rot(placements: Sequence[object],
         n_parts=n,
         certificates=certs,
         skipped_large=skipped_large,
+        fail_telemetri=fail_telemetri,
     )

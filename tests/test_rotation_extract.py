@@ -89,6 +89,24 @@ def test_serbest_sahne_5dir_ile_ozdes_ve_sertifikasiz():
     assert set(rr.removable_order) == set(r5.removable_order)
 
 
+def test_erode_clearance_superset_ozelligi():
+    """Sound'lugun temeli: erode(dilate(X)) her zaman X'in SUPERSETI (closing).
+    Rastgele grid'de dogrula — sokum-fizigi grid'i gercek geometriyi asla
+    kirpamaz (yanlis-serbest uretemez)."""
+    from src.nesting3d.rotation_extract import _erode_clearance
+    from src.nesting3d.voxelize import _dilate, _dilate_z_up
+
+    rng = np.random.default_rng(7)
+    x = rng.random((9, 9, 6)) > 0.7
+    d = _dilate_z_up(_dilate(x, 3), 2)
+    e = _erode_clearance(d, 3, 2)
+    # X, dilate'te (3,3,0) pad ile kaymisti -> ayni cerceveye tasi
+    x_pad = np.pad(x, ((3, 3), (3, 3), (0, 2)))
+    assert e.shape == d.shape
+    assert np.all(e[x_pad])          # X subseteq e (superset ozelligi)
+    assert np.all(d[e])              # e subseteq dilate'li grid
+
+
 def test_buyuk_parca_muafiyeti_konservatif():
     """max_grid_vox'u asan kilitli parca rotasyon DENEMEZ, kilitli kalir
     (konservatif taraf) ve raporda isaretlenir."""
