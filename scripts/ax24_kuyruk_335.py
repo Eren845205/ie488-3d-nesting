@@ -102,8 +102,13 @@ def kos(name, n_or, pitch_force=None, clearance_mm=None):
     meshes = placed_meshes(r.placements, r.fine_voxel_parts, float(r.fine_pitch))
     rep = min_clearance(meshes)
     acc = check_placements(r.placements, r.fine_voxel_parts)
+    # ETIKET DURUSTLUGU (2026-07-09 gece dersi): kosunun istedigi clearance
+    # neyse legal esigi de O olmali — default 1.0 esik, 2mm kosuda d4'u
+    # "288.0 legal" diye YANLIS etiketledi (olculen 1.555 < 2).
+    req = clearance_mm if clearance_mm is not None else WEB_MIN_CLEARANCE_MM
     legal, reason = legal_of(float(r.height_mm), int(r.n_placed), n_total,
-                             float(rep.min_mm), int(acc.n_locked))
+                             float(rep.min_mm), int(acc.n_locked),
+                             clearance_req=req)
     ref8, magics = REF.get(name, (None, None))
     kiyas = ""
     if legal is not None:
@@ -113,7 +118,7 @@ def kos(name, n_or, pitch_force=None, clearance_mm=None):
             kiyas += f"  Magics'e: +%{(legal / magics - 1) * 100:.1f}"
     log(f"[{etiket}] h={float(r.height_mm):.1f}  legal="
         f"{legal if legal is not None else 'INVALID(' + str(reason) + ')'}"
-        f"  clear={rep.min_mm:.3f}  kilit={acc.n_locked}"
+        f"  clear={rep.min_mm:.3f}(req={req:g}, pair={rep.worst_pair})  kilit={acc.n_locked}"
         f"  yerlesen={r.n_placed}/{n_total}{kiyas}  ({(time.perf_counter() - t) / 60:.1f} dk)")
     # HEIGHT-DRIVER: tepe kuleyi kuran ilk-10 parca
     px = float(r.fine_pitch)

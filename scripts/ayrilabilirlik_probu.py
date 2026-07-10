@@ -109,7 +109,9 @@ def main():
         satirlar = [s.strip() for s in
                     BEKLE.read_text(encoding="utf-8", errors="ignore").splitlines()
                     if s.strip()]
-        return bool(satirlar) and satirlar[-1] == "BITTI"
+        # gece2 kuyrugu "GECE2-BITTI" ile biter (tam-eslesme kapiyi ACMAZDI —
+        # 2026-07-09 gece fix): son satir "BITTI" VEYA "*-BITTI" kabul.
+        return bool(satirlar) and satirlar[-1].endswith("BITTI")
 
     tur = 0
     while not _kuyruk_bitti():

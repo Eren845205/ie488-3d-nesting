@@ -36,6 +36,7 @@ NOGO = ((152.5, 0.2), (185.5, 45.0))
 PITCH = 1.0
 MARGIN = 2          # HOCA 2026-07-09: 2mm -> clearance_to_voxels(2.0, 1.0) = (2,2)
 ZC = 2
+CLEAR_REQ = 2.0     # legal etiketi de AYNI esikle (default 1.0 etiket-yalani dersi)
 N_OR = 24           # ax24 kesfi: n24 neredeyse bedava, p1 n24=260 baseline
 HEDEF_AD = "baseplate"   # height-driver (ax24 dokumu: baseplate_v2 tek basina 260)
 ACILAR = range(5, 90, 5)
@@ -94,7 +95,8 @@ def _kos(parts, n_total, etiket):
     rep = min_clearance(meshes)
     acc = check_placements(b.placements, pbid)
     legal, reason = legal_of(h, len(b.placements), n_total,
-                             float(rep.min_mm), int(acc.n_locked))
+                             float(rep.min_mm), int(acc.n_locked),
+                             clearance_req=CLEAR_REQ)
     log(f"[{etiket}] SONUC: h={h:.1f}  legal="
         f"{legal if legal is not None else 'INVALID(' + str(reason) + ')'}"
         f"  clear={rep.min_mm:.3f}  kilit={acc.n_locked}")
