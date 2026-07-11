@@ -267,11 +267,14 @@ class TestSuggestedVsAppliedPitch:
 
         def _fake_c2f(instance, *, plate_w_mm, plate_d_mm, coarse_pitch,
                       fine_pitch, budget, seed, menu=None, skip_fine_angle=False,
-                      drop_cache=False, drop_cache_cap_mb=300.0, clearance_mm=0.0):
-            # clearance_mm: web pipeline 1.0 gecirir (kablo kilidi) — mock
-            # imzasi yeni kwarg'i KABUL ETMELI, yoksa TypeError broad-except'e
-            # yutulup sessiz DBLF-fallback'e kaciyor (bayat-mock tuzagi).
-            assert clearance_mm == 1.0, f"web pipeline clearance_mm=1.0 gecmeliydi, geldi: {clearance_mm}"
+                      drop_cache=False, drop_cache_cap_mb=300.0, clearance_mm=0.0,
+                      no_go_bounds=None):
+            # clearance_mm: web pipeline 2.0 gecirir (K-45/A2 2mm kurali; kablo
+            # kilidi) — mock imzasi yeni kwarg'lari (clearance_mm, no_go_bounds)
+            # KABUL ETMELI, yoksa TypeError broad-except'e yutulup sessiz
+            # DBLF-fallback'e kaciyor (bayat-mock tuzagi — 2026-07-11 no_go
+            # kablosunda AYNEN yasandi, bu imza kilidi yakaladi).
+            assert clearance_mm == 2.0, f"web pipeline clearance_mm=2.0 gecmeliydi, geldi: {clearance_mm}"
             bin3d = Bin3D(plate_w_mm, plate_d_mm, RESULT_PITCH)
             tune_result = SimpleNamespace(
                 winning_config_name="fake", baseline_height_mm=100.0,

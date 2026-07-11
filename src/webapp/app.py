@@ -3048,13 +3048,18 @@ def _register_routes(
     @app.route("/plaka-ayar", methods=["GET"])
     def plaka_ayar():
         """Plaka ayar formunu goster (mevcut config'i doldurur)."""
-        from src.runtime.plate_config import resolve_plate
+        from src.runtime.plate_config import resolve_plate, resolve_no_go
         w, d, h = resolve_plate(_ROOT)
+        ng = resolve_no_go(_ROOT)  # K-45: yasak bolge plaka ozelligi
         return render_template(
             "plaka_ayar.html",
             aktif_w=("" if w is None else w),
             aktif_d=("" if d is None else d),
             aktif_h=("" if h is None else h),
+            ng_x1=("" if ng is None else ng[0][0]),
+            ng_y1=("" if ng is None else ng[0][1]),
+            ng_x2=("" if ng is None else ng[1][0]),
+            ng_y2=("" if ng is None else ng[1][1]),
             otomatik=(w is None and d is None),
             kaydedildi=(request.args.get("kaydedildi") == "1"),
         )
@@ -3092,6 +3097,17 @@ def _register_routes(
         cfg = {"width_mm": w, "depth_mm": d}
         if h is not None:
             cfg["height_mm"] = h
+        # K-45: yasak bolge (no-go) — 4 alan da gecerliyse yazilir; x1<x2, y1<y2
+        # saglanmazsa sessizce atlanir (maskesiz devam = guvenli taraf).
+        def _ng_num(key):
+            raw = (request.form.get(key) or "").strip().replace(",", ".")
+            try:
+                return float(raw) if raw else None
+            except ValueError:
+                return None
+        _ngv = [_ng_num(k) for k in ("ng_x1", "ng_y1", "ng_x2", "ng_y2")]
+        if None not in _ngv and _ngv[0] < _ngv[2] and _ngv[1] < _ngv[3]:
+            cfg["no_go"] = [[_ngv[0], _ngv[1]], [_ngv[2], _ngv[3]]]
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
         return redirect(url_for("plaka_ayar") + "?kaydedildi=1")

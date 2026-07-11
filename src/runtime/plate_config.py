@@ -63,3 +63,40 @@ def resolve_plate(
             logger.warning("plate.local.json okunamadi (%s) — env'e dusuluyor", exc)
 
     return _pos_env("PLATE_W_MM"), _pos_env("PLATE_D_MM"), _pos_env("PLATE_H_MM")
+
+
+def resolve_no_go(
+    root: Optional[object] = None,
+) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
+    """Plakanin yasak bolgesi (no-go) dikdortgenini coz; yoksa None.
+
+    Kaynak onceligi plate ile ayni:
+      1. configs/plate.local.json  "no_go": [[x1,y1],[x2,y2]]  (mm)
+      2. env PLATE_NOGO="x1,y1,x2,y2"
+    Yasak bolge plaka/yazici OZELLIGIDIR (orn. hoca 2026-07-09: recoater kolonu
+    x[152.5,185.5] y[0.2,45]) — bu yuzden plaka konfiguruyla birlikte yasar.
+    Donen deger solve_nfv/solve_coarse_to_fine no_go_bounds ve
+    Bin3D.no_go_mask_from_bounds sozlesmesiyle ayni: ((x1,y1),(x2,y2)).
+    """
+    p = plate_cfg_path(root)
+    if p.exists():
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            ng = data.get("no_go")
+            if ng and len(ng) == 2:
+                (x1, y1), (x2, y2) = ng
+                vals = [_pos(x2), _pos(y2)]  # ust sinirlar pozitif olmali
+                if None not in vals and float(x1) < float(x2) and float(y1) < float(y2):
+                    return ((float(x1), float(y1)), (float(x2), float(y2)))
+        except Exception as exc:
+            logger.warning("plate.local.json no_go okunamadi (%s) — env'e dusuluyor", exc)
+
+    raw = os.environ.get("PLATE_NOGO", "").strip()
+    if raw:
+        try:
+            x1, y1, x2, y2 = (float(v) for v in raw.split(","))
+            if x1 < x2 and y1 < y2:
+                return ((x1, y1), (x2, y2))
+        except (TypeError, ValueError):
+            logger.warning("PLATE_NOGO parse edilemedi: %r", raw)
+    return None

@@ -48,6 +48,24 @@
             Boş bırakılırsa yükseklik sınırsız sayılır (parçalar yükseldikçe yığılır).
         </p>
 
+        <div style="margin:4px 0 16px; padding:10px 12px; border-radius:8px; border:1px solid var(--color-border);">
+            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">Yasak bölge (no-go) — opsiyonel</div>
+            <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 8px;">
+                Plakada parça yerleştirilemeyen dikdörtgen kolon (örn. recoater/sensör
+                bölgesi). Tam yükseklik boyunca uygulanır. Boş = yasak bölge yok.
+            </p>
+            <div style="display:flex; gap:8px;">
+                <input type="text" inputmode="decimal" name="ng_x1" value="{{ ng_x1 }}" placeholder="x1 (örn. 152.5)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_y1" value="{{ ng_y1 }}" placeholder="y1 (örn. 0.2)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_x2" value="{{ ng_x2 }}" placeholder="x2 (örn. 185.5)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_y2" value="{{ ng_y2 }}" placeholder="y2 (örn. 45)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+            </div>
+        </div>
+
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px; cursor:pointer;">
             <input type="checkbox" name="otomatik" value="1">
             Sabit plakayı kaldır — <strong>otomatik</strong> plakaya dön (parçalara göre)

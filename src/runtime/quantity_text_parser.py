@@ -66,7 +66,11 @@ _QTY_DASH_LINE = re.compile(
 # Beyan edilen toplam: "588 parça için ..." / "Toplam 42 parca" — mail
 # govdesindeki toplam-parca beyani. Cross-check (checksum) kaynagi:
 # parse edilen adetlerin toplamiyla karsilastirilir; tutarsizlik = celiski.
-_DECLARED_TOTAL = re.compile(r"(\d+)\s*par[cç]a", re.IGNORECASE)
+# (?<!\w): kelimeye YAPISIK rakam beyan sayilmaz — "Deneme5 parcalari" /
+# "Plan2 parça" gibi urun adlarindaki rakamlar sahte beyan uretiyordu
+# (K-45 E2E kenar durumu, 2026-07-12; sahte beyan -> sahte quantity_conflict
+# -> gercek siparis gereksiz operator kuyruguna duserdi).
+_DECLARED_TOTAL = re.compile(r"(?<!\w)(\d+)\s*par[cç]a", re.IGNORECASE)
 
 # Fix-1 (CRITICAL): mail govdesinde "<ad> 999999999 adet" gibi sinirsiz bir
 # sayi pipeline'i OOM'a dusurebilirdi. bkz. src/llm/roles/parser.py MAX_QTY

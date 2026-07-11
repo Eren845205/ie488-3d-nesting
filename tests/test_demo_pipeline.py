@@ -920,7 +920,8 @@ class TestClearanceGate:
 
     Gate KARARINI (uyari uret / gec / atla / fail-open) izole test eder;
     placed_meshes + min_clearance mock'lanir (agir geometri gerekmez). Hoca
-    >= 1mm sarti (WEB_MIN_CLEARANCE_MM=1.0).
+    >= 2mm sarti (WEB_MIN_CLEARANCE_MM=2.0; A2 guncellemesi 2026-07-09 cevap 5,
+    K-45 kablosu 2026-07-11 — eski 1mm kural degerleri birlikte guncellendi).
     """
 
     def test_flags_violation(self, monkeypatch):
@@ -944,11 +945,11 @@ class TestClearanceGate:
         import src.nesting3d.clearance as cl
         monkeypatch.setattr(es, "placed_meshes", lambda *a, **k: ["m1", "m2"])
         monkeypatch.setattr(cl, "min_clearance",
-                            lambda *a, **k: SimpleNamespace(min_mm=1.5))
+                            lambda *a, **k: SimpleNamespace(min_mm=2.5))
         instr = {}
         note = dp._clearance_gate(["p1", "p2"], {}, 0.5, instr)
         assert note == "", f"esik ustu -> uyari OLMAMALI: {note!r}"
-        assert instr["min_clearance_mm"] == 1.5
+        assert instr["min_clearance_mm"] == 2.5
 
     def test_skips_single_part(self):
         from scripts import demo_pipeline as dp

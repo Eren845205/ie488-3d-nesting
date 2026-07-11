@@ -62,13 +62,15 @@ class _SkipTelemetryV2(Exception):
     """Telemetri v2 yazimini bilerek atla (test/disable) — kontrol-akisi istisnasi."""
 COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
 
-# Web nesting NFV-DIŞI yollarında (heightmap/coarse_to_fine + tuner + dblf-fallback)
-# GARANTİ edilen parça-arası min boşluk (mm). Hoca şartı (2026-06-11): her yönde
-# >= 1 mm. Bu değer clearance_to_voxels ile pitch'e göre (margin, z_clearance)
-# voxel sayısına çevrilir. NFV yolu (solve_nfv) zaten margin=1 kullanır -> DOKUNULMAZ.
+# Web nesting yollarında GARANTİ edilen parça-arası min boşluk (mm). Hoca şartı
+# GÜNCELLENDİ (2026-07-09 cevap 5, ANAYASA A2): her yönde >= 2 mm ("2mm daha
+# güvenli; TÜM boşluklar için geçerli"). Eski 1mm değeri 2026-06-11 kuralıydı.
+# Bu değer clearance_to_voxels ile pitch'e göre (margin, z_clearance) voxel
+# sayısına çevrilir. NFV kalite yolu ayrıca pitch'ini de bundan türetir
+# (K-38 clearance-kuantizasyonu: pitch == clearance = tek-voxel TAM pencere).
 # Fix 2026-07-06: eski web yolu margin=0 + z_clearance=1 -> ince pitch'te (Deneme4
 # @0.5mm) gerçek boşluk 0.083mm'ye iniyordu (ihlal); artık pitch'ten türetilir.
-WEB_MIN_CLEARANCE_MM = 1.0
+WEB_MIN_CLEARANCE_MM = 2.0
 
 # HIGH-2 runtime clearance kapisi (2026-07-06): her web nest'ten SONRA uretilen
 # yerlesimin gercek min boslugu ORNEKLEM ile dogrulanir. min_clearance UST-sinir
@@ -548,17 +550,22 @@ def _build_nesting_instance(
 
 
 def _bin_factory(container: Dict[str, Any], pitch: float,
-                 clearance_mm: float = 0.0):
+                 clearance_mm: float = 0.0, no_go_bounds=None):
     """Bin3D fabrika fonksiyonu döndürür.
 
-    clearance_mm > 0 ise dikey z_clearance pitch'ten türetilir (hoca >= 1mm
-    şartı; tuner + dblf-fallback yolları). clearance_mm == 0.0 -> z_clearance=1
-    (mevcut davranış bit-özdeş).
+    clearance_mm > 0 ise dikey z_clearance pitch'ten türetilir (hoca >= 2mm
+    şartı, A2 2026-07-09; tuner + dblf-fallback yolları). clearance_mm == 0.0
+    -> z_clearance=1 (mevcut davranış bit-özdeş).
+    no_go_bounds ((x1,y1),(x2,y2)) mm verilirse yasak-bolge maskesi kurulur
+    (K-45 kablosu); None = maske yok (davranis birebir).
     """
     from src.nesting3d.bin3d import Bin3D
     from src.nesting3d.coarse_to_fine import clearance_to_voxels
 
     _margin, _zc = clearance_to_voxels(clearance_mm, pitch)
+    _mask = (Bin3D.no_go_mask_from_bounds(
+        no_go_bounds, float(container["width_mm"]),
+        float(container["depth_mm"]), pitch) if no_go_bounds else None)
 
     def factory() -> Bin3D:
         return Bin3D(
@@ -566,6 +573,7 @@ def _bin_factory(container: Dict[str, Any], pitch: float,
             plate_d_mm=float(container["depth_mm"]),
             pitch=pitch,
             z_clearance=_zc,
+            no_go_mask=_mask,
         )
     return factory
 
@@ -722,6 +730,13 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
     wall_aware_pitch = bool(payload.get("wall_aware_pitch", False))  # K-19 OPT-IN; False=davranis birebir
     auto_family_routing = bool(payload.get("auto_family_routing", False))  # F5 OPT-IN; False=davranis birebir
+    # NO-GO (yasak bolge) plaka ozelligi: ((x1,y1),(x2,y2)) mm veya None.
+    # run_pipeline scenario/plate-config'ten cozer (K-45 kablosu, 2026-07-11);
+    # None = mevcut davranis BIREBIR (maske hic kurulmaz).
+    _ng = payload.get("no_go_bounds")
+    no_go_bounds = (
+        ((float(_ng[0][0]), float(_ng[0][1])), (float(_ng[1][0]), float(_ng[1][1])))
+        if _ng else None)
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -823,28 +838,29 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     nfv_pitch_reason = None
     if nesting_mode == "nfv":
-        # NFV-farkında pitch: parça-GÜVENLİ pitch (min_feature/1.0) + bellek pre-flight kabalaştırma.
-        # Hem veriden (parça boyutu) hem donanımdan (RAM) türer — SABİT DEĞİL. Ölçüm: c3_xdataset_speed
-        # (eski tek-oran 0.5 Plan1'de çöküyordu → güvenli orandan başla + bellek için kabalaştır).
-        # voxel_parts + factory + solve_nfv hepsi bu pitch'i kullanır.
-        from src.nesting3d.instances.pitch import suggest_nfv_pitch
-        from src.nesting3d.capabilities import probe_capabilities
+        # K-45 KALITE RECETESI (2026-07-11): NFV pitch'i artik suggest_nfv_pitch
+        # DEGIL, clearance'tan turer: pitch == WEB_MIN_CLEARANCE_MM (K-38 kaniti:
+        # efektif bosluk = ceil(clearance/pitch)*pitch; pitch==clearance tek-voxel
+        # TAM pencere; (clearance/2, clearance) araligi ZEHIRLI = sanal sisme;
+        # daha ince tam basamak clearance/2 grid butcesini asiyor). Sampiyon
+        # kosulari birebir bu pitch'le alindi: plan3 598.5 / plan2 544.5 /
+        # deneme5 223.5 (MOTOR/YONTEM_HARITASI §3 K-36/41/44). suggest_nfv_pitch
+        # onerisi yalniz TELEMETRI olarak korunur (sessiz sapma izi).
+        pitch = float(WEB_MIN_CLEARANCE_MM)
+        nfv_pitch_reason = (
+            f"kalite-recetesi: pitch=clearance={pitch}mm (K-38 kuantizasyon)")
         try:
-            _nfv_pitch, _nfv_feasible, nfv_pitch_reason = suggest_nfv_pitch(
+            from src.nesting3d.instances.pitch import suggest_nfv_pitch
+            from src.nesting3d.capabilities import probe_capabilities
+            _sug_pitch, _, _sug_reason = suggest_nfv_pitch(
                 instance, plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
                 ram_bytes=probe_capabilities().ram_bytes,
-                wall_aware=wall_aware_pitch,  # K-19 OPT-IN (plaka-boyut kosullu iceride)
+                wall_aware=wall_aware_pitch,
             )
-            if _nfv_feasible:
-                pitch = _nfv_pitch
-            else:
-                # En kaba güvenli pitch bile bellek bütçesini aşıyor → NFV bu instance+donanımda
-                # riskli. Güvenli moda (heightmap) düş; suggest_pitch ile devam (regresyon yok).
-                nesting_mode = "heightmap"
-                nfv_pitch_reason = f"NFV->heightmap dususu (bellek): {nfv_pitch_reason}"
+            _instr["nfv_suggested_pitch_mm"] = round(float(_sug_pitch), 3)
         except Exception:
-            pass  # türetme başarısızsa suggest_pitch'te kal (güvenli düşüş)
+            pass  # oneri yalniz rapor — kurulamazsa recete etkilenmez
 
     # APPLIED pitch nihai (nfv bellek pre-flight sonrasi kabalasmis olabilir);
     # suggested (ideal ince) ile fark = sessiz geri-kabalastirma izi.
@@ -883,7 +899,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     t_nest_start = _time.perf_counter()
     # Web NFV-DIŞI yolları (tuner + dblf-fallback) için z_clearance pitch'ten
     # türetilir (hoca >= 1mm). NFV yolu bu factory'yi kullanmaz (kendi margin=1).
-    factory = _bin_factory(container, pitch, clearance_mm=WEB_MIN_CLEARANCE_MM)
+    factory = _bin_factory(container, pitch, clearance_mm=WEB_MIN_CLEARANCE_MM,
+                           no_go_bounds=no_go_bounds)
     # Tuner + dblf-fallback voxelize'ında yatay margin (parça-arası >= 1mm boşluk)
     # aynı pitch'ten türetilir. coarse_to_fine kendi içinde türetir; NFV margin=1.
     from src.nesting3d.coarse_to_fine import clearance_to_voxels as _clear_vox
@@ -911,23 +928,25 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     voxel_parts = None  # yalnız tuner/DBLF yolunda üretilir (None = henüz voxelize edilmedi)
     try:
         if nesting_mode == "nfv":
-            # Opt-in NFV cavity "kalite modu": solve_nfv KENDİ voxelize'ını yapar (voxel_parts gereksiz).
-            from src.nesting3d.nfv_solve import solve_nfv
-            _c2f_result = solve_nfv(
+            # K-45: Opt-in NFV "kalite modu" artik SAMPIYON RECETESIYLE kosar
+            # (solve_nfv_kalite = pitch==clearance + kosullu exit_guard; kanit
+            # K-36/41/44: plan3 598.5 / plan2 544.5 / deneme5 223.5 cift-legal).
+            # Ham sonuc kilitsizse guard vergisi ODENMEZ (d5 +20.5 tasarrufu);
+            # kilitliyse exit_guard'la yeniden kosulur (p2'de 532-INVALID ->
+            # 544.5-legal). solve KENDI voxelize'ini yapar (voxel_parts gereksiz).
+            from src.nesting3d.nfv_solve import solve_nfv_kalite
+            _c2f_result, _nfv_tel = solve_nfv_kalite(
                 instance,
                 plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
-                fine_pitch=pitch,
+                clearance_mm=WEB_MIN_CLEARANCE_MM,
+                no_go_bounds=no_go_bounds,
                 n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
                 quality=nfv_quality,
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
-                # Hoca >= 1mm boşluk (EVAL-1 fix 2026-07-06): NFV yolu Bin3D
-                # z_clearance'tan geçmez; dikey boşluk yalnız tek-taraflı
-                # z-dilation ile gelir. clearance_to_voxels(pitch) -> xy margin
-                # + z-dilation. 0.0 olsaydı davranış eski (dikeyde 0mm) olurdu.
-                clearance_mm=WEB_MIN_CLEARANCE_MM,
             )
+            _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim)
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
@@ -968,11 +987,14 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 # drop_cache=False -> mevcut davranis BIT-OZDES. Bin3D per-decode
                 # tek-thread (bkz. solve_coarse_to_fine THREAD-GUVENLIGI).
                 drop_cache=wall_aware_pitch,
-                # Hoca >= 1mm boşluk şartı (2026-06-11, fix 2026-07-06): coarse+
+                # Hoca >= 2mm boşluk şartı (A2 2026-07-09; fix 2026-07-06): coarse+
                 # fine voxelize ve Bin3D'ler pitch'ten türetilen (margin,
                 # z_clearance) ile kurulur. NFV yolu ayrı (zaten margin=1); bu
                 # yalnız NFV-DIŞI coarse_to_fine (web heightmap) yolunu etkiler.
                 clearance_mm=WEB_MIN_CLEARANCE_MM,
+                # K-45: yasak bolge (plaka ozelligi) heightmap yolunda da maske
+                # olarak kurulur; None = maske yok (davranis birebir).
+                no_go_bounds=no_go_bounds,
             )
             if wall_aware_pitch:
                 _instr["fine_angle_reason"] = "skipped: thin_shell/H-15p"
@@ -1462,6 +1484,16 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     pitch_fallback = float(scenario.get("pitch", 15.0))
     n_orient = int(scenario.get("n_orientations", 4))
     seed = int(scenario.get("seed", 42))
+    # K-45: yasak bolge (no-go) plaka OZELLIGIDIR — oncelik: scenario acik degeri
+    # > plate.local.json "no_go" > env PLATE_NOGO > None (maske yok, davranis
+    # birebir). Hoca 2026-07-09 duzeltmesi: x[152.5,185.5] y[0.2,45] tam-yukseklik.
+    no_go_bounds = scenario.get("no_go_bounds")
+    if no_go_bounds is None:
+        try:
+            from src.runtime.plate_config import resolve_no_go
+            no_go_bounds = resolve_no_go(_ROOT)
+        except Exception:
+            no_go_bounds = None  # config cozulemezse maskesiz devam (guvenli)
 
     # Algoritma-seçim model zarif yükleme (model yoksa None, None)
     _sel_prefilter, _sel_model = _load_selection_model_safe()
@@ -1558,6 +1590,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "pricing_rules": scenario["pricing_rules"],
             "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality", "fast"),
+            "no_go_bounds": no_go_bounds,  # K-45: yasak bolge (plaka ozelligi)
             "time_budget_sec": scenario.get("time_budget_sec"),  # #22: None = bugünkü davranış
             # K-19 OPT-IN cidar-duyarli pitch. Yoksa False = gozcu/default davranis
             # DEGISMEZ (BIT-OZDES). True olunca suggest_pitch/suggest_nfv_pitch'e

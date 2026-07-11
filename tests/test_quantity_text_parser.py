@@ -252,6 +252,20 @@ def test_declared_total_parca_ascii():
     assert parse_declared_total("Toplam 42 parca gonderilmistir.") == 42
 
 
+def test_declared_total_kelimeye_yapisik_rakam_beyan_DEGIL():
+    """K-45 E2E'de yakalanan kenar durumu (2026-07-12): "Deneme5 parcalari"
+    icindeki yapisik 5, beyan SANILMAMALI (urun adlarinda rakam yaygin:
+    Plan2, V2, Deneme5). Yanlis beyan -> sahte quantity_conflict ->
+    gercek siparis gereksiz operator kuyruguna duser."""
+    from src.runtime.quantity_text_parser import parse_declared_total
+    assert parse_declared_total("Deneme5 parcalari icin adetler ektedir.") is None
+    assert parse_declared_total("V2 parca listesi ektedir.") is None
+    assert parse_declared_total("Plan2 parçaları ekte.") is None
+    # gercek beyanlar CALISMAYA DEVAM ETMELI
+    assert parse_declared_total("352 parca icin yerlestirme rica ederim.") == 352
+    assert parse_declared_total("Deneme5 siparisi: 352 parca icin ekte.") == 352
+
+
 # ---------------------------------------------------------------------------
 # match_quantities_to_stls — toleransli eslestirme
 # ---------------------------------------------------------------------------

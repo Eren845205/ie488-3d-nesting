@@ -72,12 +72,17 @@ Aşağıdaki 2A (heightmap) ve 2B (NFV) o modların çekirdeği; `auto` ikisinde
 | Metaheuristik | SA portföy + algoritma-seçim modeli | ✅ seçim modeli | `tuner.py`, `selection/` |
 
 ### 2B. OPT-IN — NFV "kalite modu" (gerçek geometrik cavity)
-`scenario["nesting_mode"]="nfv"` (UI checkbox) → `solve_nfv`. Default BİREBİR değişmedi (2043 test yeşil).
+`scenario["nesting_mode"]="nfv"` (UI checkbox) → **`solve_nfv_kalite` (K-45, 2026-07-11)**: pitch=clearance
+(K-38) + koşullu exit_guard (K-41/44; ham kilitsizse guard vergisi ödenmez) + `_instr["nfv_kalite"]` izi.
+E2E-parite kanıtlı (deneme5 223.5 birebir mail-yolundan). Default BİREBİR değişmedi.
+**GENEL (K-45): 2mm boşluk kuralı (`WEB_MIN_CLEARANCE_MM=2.0`, A2) + NO-GO uçtan uca
+(`plate_config.resolve_no_go` → NFV/c2f/tuner-dblf üç yol + /plaka-ayar UI).**
 | Bileşen | Nasıl | Adaptif mi? | Dosya |
 |---|---|---|---|
 | Çekirdek | FFT-NFV: `feasible = irfftn(rfftn(occ)·rfftn(grid_flip)) < 0.5`; en düşük z'de BLB | sabit (geometrik exact) | `parallel_decode.py`, `fft_backend.py` |
 | Decode→üretim | NFV decode → (pid,oi,x,y,z) → `Bin3D.place` REPLAY (drop YOK, cavity korunur) | — | `nfv_solve.py` |
-| Pitch | `suggest_nfv_pitch` — parça-koruyan EN KABA + bellek pre-flight + plaka guard | ✅ veri+donanım | `instances/pitch.py` |
+| Kalite reçetesi | pitch=clearance (K-38) → ham → 5-yön kilit>0 ise exit_guard (K-41/44) | ✅ kilit-koşullu | `nfv_solve.py solve_nfv_kalite` |
+| Pitch (kalite modu) | = clearance (2.0; K-38 tek-voxel tam pencere); `suggest_nfv_pitch` yalnız telemetri | ✅ kural-türevli | `demo_pipeline.py` |
 | Oryantasyon | n=8 default (4⊂8 küme-içerme garanti); `quality="max"`→RAM-tavanı (8→12→28) | ✅ küme-içerme + RAM | `nfv_solve.py:31` |
 | Dispatcher | GPU-resident → CPU Kol A → seri (probe + graceful fallback, hepsi BİREBİR) | ✅ donanım-probe | `parallel_decode.py best_decode`, `capabilities.py` |
 | Hız | xy-bbox kırpma + kademeli z-dilim + GPU-resident (3-5.5×) | — | `parallel_decode.py` |
@@ -509,6 +514,130 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > K-34'te iki kez calisti); (3) tek kilit-tasi acilinca kaskad — kilit sayisi buyuk gorunse
 > de cozum tek parcada olabilir. ACIK: (b+c) kriter etiketi hoca onayina sunulacak
 > (rapor iki metrigi de tasiyor); R3 host-Rz siradaki kaldirac.
+
+> **2026-07-10 GUNDUZ — K-35 R3 HOST-RZ (plan1) = NOTR:** dik 260 → tilt 141.0 dogrulandi →
+> +16 Rz/kombo pozla hostrz 141.0 (+0.0). Neden: baseplate kulesi tilt'le ZATEN kirik; tepe
+> artik bobbin yigini (141'in driver'i) ve bobbin donel-simetrik → Rz alcaltamaz. R3'un dogru
+> devami "height-driver'a genelleme" ama plan1'de yapisal taban ~141 gorunumu — ek odul yok.
+> Log: k35_host_rz.log; STL plan1_nogo335_hostrz_hostrz_n24_141.0mm.stl.
+
+> **2026-07-10 GUNDUZ — K-36 DERIN ARAMA = GO 🏆🏆 (plan3 598.5 CIFT-LEGAL REKOR):**
+> (1) Seed taramasi OLU: s7/s13/s99/s2025 HEPSI birebir 618.1 — NFV plan3'te tamamen
+> seed-DUYARSIZ (deterministik cekim noktasi; hoca "farkli dizilim" istegi icin seed
+> kaldirac DEGIL). (2) **fine_pitch=2.0 bacagi: h=598.5, (b) kilit=0 VE (b+c) kilit=0 —
+> sertifikasiz, siki metrikte bile temiz, kriter serhi GEREKMEZ.** clear 2.271; 31.5dk.
+> Manuel 593'e +5.5mm (+%0.9). STL plan3_nfv_derin_p2.0_s42_598.5mm.stl.
+> **DERS: pitch inceltme = kavite kalitesi kaldiraci KANITLI (2.5→2.0 = −19.6mm);
+> asil kaldirac seed degil COZUNURLUK.** Uretim adayi: NFV kalite modunda fine_pitch=2.0
+> default (eval kapisiyla, A1 — henuz kablolanmadi).
+
+> **2026-07-10 GECE — K-37 R4 SOFT-NOGO (plan1) ARA SONUC / K-38 PITCH-1.75 (plan3) KUYRUKTA:**
+> K-37 teshis: 141 tavaninin kok nedeni HARD no-go (duz baseplate 330x302 no-go y≤45 seridine
+> ~12mm girer → duz poz imkansiz → egik baseplate taban yer). Hoca cevap 9 "Plan1 baseplate
+> ornegi gibi cok ufak girisler kabul" → maske y-ust 45→33 (T=12mm giris seridi, SERHLI).
+> **r4_duz = 129.0 LEGAL (clear 2.000, 0 kilit; 141'den −12; manuel 110.41'e +%16.8)** — iki
+> bagimsiz kosuda teyitli. **r4_btilt = 129.0 (+0.0) — bobbin ara-aci tilt ODULSUZ** (K-35
+> host-Rz notruyle tutarli: bobbin donel-simetrik, tilt/Rz alcaltamiyor). HUKUM: K-37 GO
+> (kok-neden teshisi dogru, hard→soft no-go −12mm) ama plan1 soft-nogo altinda ~129 YAPISAL
+> TABAN gorunumu — kalan 18.6mm fark manuel operatorun no-go'ya serbest-derinlik girisi +
+> surekli-aci istifinde. STL: plan1_softnogo_r4_btilt_129.0mm.stl.
+
+> **2026-07-11 GECE-5 — K-38 PITCH-1.75 (plan3) = NO-GO, MEKANIZMA DERSLI:** h=674.2
+> (598.5'ten +75.7 GERILEME; 62.7dk; (b) kilit 23, (b+c) 0). Kok neden GRID degil
+> **CLEARANCE KUANTIZASYONU**: dilation voxel-tamsayi → efektif bosluk =
+> ceil(2.0/pitch)×pitch. pitch=2.0'da 1 vox = tam 2.0mm; 1.75'te 2 vox = 3.5mm →
+> parcalar sanal sisti, yigin buyudu (olculen clear 3.737 hipotezi DOGRULAR).
+> **DERS/KURAL: 2mm kuralinda kalite-pitch'i icin tek-voxel penceresi pitch>=2.0;
+> (1.0, 2.0) araligi TAMAMEN zehirli (hepsi 2 vox = asiri-dilation); pitch<=1.0
+> grid butcesini patlatir (1.0 → ~179M >> 34M). Sonuc: fine_pitch=2.0 = 2mm
+> kuralinin YAPISAL optimumu, pitch kaldiraci TUKENDI.** 598.5 sampiyonlugu kalici
+> (kirmak icin muhendislik degisikligi gerekir: alt-voxel/asimetrik dilation — dusuk oncelik).
+> **K-39 v1 (plan2 NFV, auto-pitch) = CRASH + URETIM BULGUSU:** suggest_nfv_pitch
+> ince kanatlar (7.2mm) icin ~0.69 secti → (486,432,625) float64 = 1001MiB
+> MemoryError. **BULGU: suggest_nfv_pitch bellek guard'i dense float64 ara-array'i
+> hesaba katmiyor** (gunduz fix'i). v2 (K-39b) pitch merdiveni 2.0→1.0 ile kuyrukta
+> (K-38 dersi: 2mm kuralinda TAM pitch'ler yalniz 2.0 ve 1.0).
+> **K-39b SONUC (plan2 NFV v2): YUKSEKLIK GO / LEGALITE NO — 532.0 INVALID.**
+> p2.0: h=532.0 (8.7dk, 226/226, clear 2.002) = heightmap 618'den **−86mm (−%13.9)**,
+> Plan2.jpg beklenti bandi (520-570) DOGRULANDI — ama (b) 61 / (b+c) 29 kilit:
+> R10 rot-sokum 32'sini cozdu, 29 kaldi = plan2 kanat kenetlenmesi plan3'ten derin.
+> p1.0 bacagi MemoryError, v1 ile BIREBIR ayni shape (486,432,625) → alloc acik
+> fine_pitch'ten BAGIMSIZ (parca-bazli voxelize/oneri katmani supheli — ayni gunduz
+> debug'ina dahil). SIRADAKI: K-41 exit_guard (plan3 K-30v2 emsali: onleme vergisi
+> +50-90 beklenir → 580-620 bandi, 618 alti hala mumkun).
+
+> **2026-07-11 GECE-5 — K-41 PLAN2 EXIT-GUARD = GO 🏆🏆 (plan2 YENI SAMPIYON 544.5 CIFT-LEGAL):**
+> NFV @fine_pitch=2.0 + exit_guard=True → **h=544.5, (b) VE (b+c) kilit 0/226, cert 0
+> — SERHSIZ; clear 2.004; 226/226; 29.6dk.** Heightmap sampiyonu 618.0'dan **−73.5
+> (−%11.9)**; manuel 492.39'a +%10.6 (onceki +%25.5). Guard vergisi yalniz **+12.5**
+> (ham 532.0 29-kilit INVALID → 544.5 kilitsiz) — plan3'te ayni vergi +66 idi.
+> **DERSLER:** (1) Plan2.jpg manuel-yerlesim analizi ("acik=istif zekasi, tum pozlar
+> eksen-hizali = NFV sinifi; beklenti 520-570") IKI KOSUDA dogrulandi — rakip yerlesim
+> GORSELI tek basina yol haritasi cikartabiliyor (anatomi-istihbarati metodu);
+> (2) guard vergisi aile-bagimli: plan2'nin cok-sayida orta-boy parcasi "ikinci-en-iyi
+> yuva"yi ucuza buluyor, plan3'un dev parcalari bulamiyordu; (3) NFV rotasi artik
+> 2 ailede kanitli (plan3 duvar-kavite, plan2 karma-istif) / 2 ailede zararli
+> (plan1 duz-plaka K-40, d4 sokum-kilitli K-27). ACIK: uretime kablolama
+> (family_routing'e plan2-ailesi NFV+guard rotasi — eval kapisiyla, A1).
+> STL: results/plan2_nfv_guard_544.5mm.stl.
+
+> **2026-07-11 GUNDUZ — K-42 PLAN2 ROT-DERIN = NO-GO:** ham 532.0 deterministik
+> yeniden uretildi ✓; default R10 29 kilit/8 cert birebir teyit (131dk) ✓;
+> DERIN butce (Z180/X60/Y60, lift 0-6, 2400s) yalniz 6 parca daha actı:
+> **kilit 29→23, cert 11 (255dk)** → 532.0 INVALID KALDI, **544.5 guard
+> sampiyonlugu KALICI**. DERSLER: (1) plan2'nin kalan kilitleri aci-butcesi
+> sorunu DEGIL — gercek kenetlenme (kanat ic-ice deseni); "onleme > tamir"
+> (K-29 dersi) bir kez daha dogrulandi, guard'in +12.5 vergisi bu 23 kilidin
+> gercek fiyati. (2) MALIYET: derin rot denetimi 226-parcali sahnede ~4.3 saat
+> (default 2.2 saat) — sokum-denetimi olcek sorunu var; buyuk sahnede rot
+> denetimini yalniz mühürleme (final dogrulama) icin kos, arama dongusune koyma.
+
+> **2026-07-11 GUNDUZ — K-43 PLAN1 MULTI-START = NOTR (siralama uzayi KAPALI):**
+> r4_btilt kurulumu birebir + 7 kosu: ref_vol 129.0 · vol_tilt 129.0 ·
+> fp_desc 132.0 · h_desc 146.0 · shuf7 129.0 · shuf13 135.0 · shuf99 129.0
+> → **EN IYI = 129.0, hicbir siralama gecemedi** (K-08 "largest-first optimal"
+> plan1'de de dogrulandi; 129 coklu-baslangicta cekim noktasi).
+> **PLAN1 YAPISAL TABAN ARTIK KANITLI: 129.0 serhli / 141.0 serhsiz — 5 kaldirac
+> ailesi olculdu ve kapandi (tilt K-28/37 · Rz K-35 · soft-nogo K-37 · NFV K-40 ·
+> siralama K-43). Manuel 110.41'e kalan +%16.8 = surekli-poz uzayi (A1) +
+> operatorun serbest no-go girisi — voxel-tabanli mevcut motorla erisimsiz.**
+
+> **2026-07-11 GUNDUZ — K-44 DENEME5 NFV = GO 🏆🏆🏆 (PROJENIN EN BUYUK TEK-SET
+> SICRAMASI: 338.4 → 223.5, −%34.0):** NFV @2.0 HAM bacak = **h=223.5, (b) VE
+> (b+c) kilit 0/352, cert 0 — SERHSIZ CIFT-LEGAL, guard bile GEREKMEDI**
+> (clear 2.000; 352/352; 20.3dk). Manuel 209'a **+%6.9** (onceki +%61.9!).
+> **DERSLER:** (1) d5 anatomisi (216x ozdes ince cubuk 11x19x147) NFV'nin ideal
+> sahasi cikti — tekrarli/orgu-istif aileleri kavite-decode ile kilitsiz sikisir;
+> heightmap'in 338'i tamamen istif-verimsizligiydi. (2) NFV rota haritasi
+> guncellendi: kanitli 3 aile (p3 duvar-kavite · p2 karma-istif · d5 tekrarli-cubuk)
+> / zararli 2 (p1 duz-plaka · d4). (3) "En buyuk goreli acik = en buyuk firsat"
+> sezgisi dogrulandi (kullanici yonlendirmesi). ACIK: family_routing'e d5-ailesi
+> (yuksek-tekrar ince-parca) NFV rotasi + hoca sorusu "manuel 209 hangi bosluk?"
+> STL: results/deneme5_nfv_ham_223.5mm.stl. Guard bacagi TAMAM: 244.0 legal
+> (kilit 0/0) — ham kilitsizken guard gereksiz +20.5 vergi; guard-vergisi
+> tablosu: p2 +12.5 · d5 +20.5 · p3 +66 (aile-bagimli). KURAL ADAYI: once ham
+> kos, kilit CIKARSA guard'la tekrarla (K-41/44 birlesik recetesi).
+
+> **2026-07-11/12 — K-45 URETIM KABLOLAMASI = GO ✅ (E2E PARITE PASS):**
+> Sampiyon recetesi URETIME baglandi: `solve_nfv_kalite()` (pitch=clearance
+> K-38 + kosullu exit_guard K-41/44 + rot recete-disi K-42) · WEB_MIN_CLEARANCE
+> 1.0→2.0 (A2) · NO-GO uctan uca (plate.local.json/env → NFV+c2f+tuner/dblf
+> uc yol; /plaka-ayar UI 4 alan) · plate.local.json canli 335x335x600+no_go.
+> **A1 KANITI: E2E parite PASS — deneme5 gercek mail yolundan h=223.5 BIREBIR
+> (352/352; recete izi: pitch 2.0, secilen=ham, guard_kosuldu=false, kilit 0;
+> 26.2dk).** Tam suite 2641/2641. YAN URUNLER: (1) bayat-mock tuzagi (A9)
+> reporting_wave mock'unda yasandi+yakalandi (imza-kilidi calisti);
+> (2) parse_declared_total kenar-durum fix'i ("Deneme5 parcalari" yapisik
+> rakami beyan saniyordu → (?<!\\w) + 5 test; guvenli-yon dususu dogruydu,
+> false-positive maliyeti kalkti). SURECDERSI: detach sonrasi duman testi
+> ATLANDI ve ilk E2E gece bosa gitti — 9-saat dersi istisnasiz uygulanir.
+> **K-40 (plan1 NFV, hard+soft bacak) = SERT NO-GO:** iki bacak da 333.0 (2.6dk,
+> pitch auto 0.6, 112/112) — heightmap 129.0'in 2.6 KATI. Ders: plan1 "duz plaka +
+> cok kucuk parca" sinifi = heightmap/DBLF sahasi; NFV kavite-decode bu ailede
+> zararli (F5 family_routing'in plan1'i heightmap'e yollamasi dogru davranis).
+> Piramit-ici gomme/bel-kenetleme hipotezi NFV'nin mevcut decode'uyla gerceklesmedi.
+> **plan1 NIHAI: 129.0 serhli / 141.0 serhsiz — tum kaldiraclar (tilt/Rz/soft-nogo/NFV)
+> denendi, kalan fark manuel operatorun serbest no-go girisi + surekli-aci istifi.**
 
 ---
 

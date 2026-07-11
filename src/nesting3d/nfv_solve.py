@@ -310,3 +310,72 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         + (f" | {settle_note}" if settle_note else "")
         + (f" | {repair_note}" if repair_note else ""),
     )
+
+
+def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
+                     no_go_bounds=None, seed=42, quality="max",
+                     n_orientations=None, time_budget_sec=None,
+                     _solve=None, _check_5dir=None):
+    """K-36/38/41/44 sampiyon recetesi: kalite-NFV + kosullu exit_guard.
+
+    Uc olcumle-kanitli kural tek fonksiyonda (kanit: MOTOR/YONTEM_HARITASI §3):
+      1. PITCH = clearance_mm (K-38 clearance-kuantizasyonu: efektif bosluk =
+         ceil(clearance/pitch)*pitch; tek-voxel TAM pencere pitch==clearance.
+         (clearance/2, clearance) araligi ZEHIRLI — 3.5mm sanal sisme kaniti;
+         daha ince tam basamak clearance/2 grid butcesini asiyor. Sampiyonlar:
+         plan3 598.5 / plan2 544.5 / deneme5 223.5 hepsi pitch=clearance=2.0).
+      2. ONCE HAM kos; 5-yon sokum denetimi kilit>0 derse exit_guard=True ile
+         YENIDEN kos (K-41/44 recetesi: onleme>tamir K-29; guard vergisi
+         aile-bagimli p2+12.5/d5+20.5/p3+66 — kilitsiz ailede odenmez).
+      3. Rot-sokum (R10) denetimi BURADA KOSULMAZ (K-42: 226 parcada 2-4 saat;
+         yalniz final muhurleme/rapor icin ayri adim).
+
+    Doner: (CoarseToFineResult, telemetri_dict). Telemetri: pitch, ham/guard
+    yukseklik + kilit sayilari, secilen bacak, sure. _solve/_check_5dir test
+    enjeksiyonu icindir (A9 bayat-mock tuzagina karsi imzalar gercekle ayni).
+    """
+    from src.nesting3d.accessibility import check_separability_5dir
+    solve = _solve or solve_nfv
+    check = _check_5dir or check_separability_5dir
+    t0 = time.perf_counter()
+
+    def _kilit(res):
+        try:
+            return int(check(list(res.placements), res.fine_voxel_parts).n_locked)
+        except Exception:
+            return None  # denetim kurulamadi -> bilinmiyor (guard'i yine de dene)
+
+    ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+                fine_pitch=float(clearance_mm), quality=quality, seed=seed,
+                n_orientations=n_orientations, time_budget_sec=time_budget_sec,
+                clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds)
+    ham_kilit = _kilit(ham)
+    tel = {"recete": "nfv_kalite(K-36/41/44)", "pitch_mm": float(clearance_mm),
+           "ham_height_mm": float(ham.height_mm), "ham_n_locked": ham_kilit,
+           "guard_kosuldu": False, "guard_height_mm": None,
+           "guard_n_locked": None, "secilen": "ham"}
+    if not ham_kilit:  # 0 veya None-degil-0 -> ham kilitsiz, guard vergisi odenmez
+        if ham_kilit == 0:
+            tel["sure_s"] = round(time.perf_counter() - t0, 1)
+            return ham, tel
+
+    guard = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+                  fine_pitch=float(clearance_mm), quality=quality, seed=seed,
+                  n_orientations=n_orientations, time_budget_sec=time_budget_sec,
+                  clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
+                  exit_guard=True)
+    guard_kilit = _kilit(guard)
+    tel.update(guard_kosuldu=True, guard_height_mm=float(guard.height_mm),
+               guard_n_locked=guard_kilit)
+    # Secim: kilitsiz olan kazanir; ikisi de kilitsiz/bilinmiyorsa alcak olan.
+    ham_ok = ham_kilit == 0
+    guard_ok = guard_kilit == 0
+    if guard_ok and not ham_ok:
+        secilen = ("guard", guard)
+    elif ham_ok and not guard_ok:
+        secilen = ("ham", ham)
+    else:
+        secilen = ("ham", ham) if ham.height_mm <= guard.height_mm else ("guard", guard)
+    tel["secilen"] = secilen[0]
+    tel["sure_s"] = round(time.perf_counter() - t0, 1)
+    return secilen[1], tel
