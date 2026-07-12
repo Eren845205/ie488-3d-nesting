@@ -711,6 +711,30 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > R11 + kapilar (kazanc>0.5 / clear>=2.0 / kilit(post)<=pre, margin-0 @1.0
 > ayni-metrik pre-post). GO ise uretim kablolamasi eval-gate ile ayri is.**
 
+> **2026-07-13 — ML-PLANI SPRINT 1-2 (Faz A+B+C) = TAMAM (kod katmani; onaylanan
+> plan: ~/.claude/plans/vivid-snacking-wadler.md):** Karar-yuzeyi gocu altyapisi
+> kuruldu — (A) kxx_telemetri + backfill_v2: 17 elle-transkribe K-olcumu
+> (log-alintili) + 118 otonom kaydi -> runs_v2 136 satir; registry deneme5(dev)/
+> deneme6(held-out). (B) **KURAL-REGRET ILK OLCUMU: ortalama 71.5mm / maks
+> 192mm** — plan1 192mm (KURAL NFV'YE YOLLUYOR, K-40 kanitina ragmen; kutu/
+> plaka esikleri yakalamiyor -> CANLI ROUTING HATASI) · d5 120.4mm (kural
+> heightmap diyor; en iyi 218.0 NFV@1.0) · d4 45mm kotumser (wall_aware kolu
+> 2mm kuralinda OLCUMSUZ -> K-49 olcum adayi) · p2/p3 0.0 (kural optimal).
+> nfv_kalite esdegeri uretim tetigiyle (5-yon b_kilit) turetildi — d4'te
+> uretim ciktisi 276.5'tir, 231.5 sampiyonu rot-sertifika otomasyonu ister
+> (UI cift-aday / R10-kablolama gerekcesi). (C) dataset_v2 (mevcut TrainingRow
+> uzerine mod-duzeyi adaptor — gengap/gate/loo SIFIR degisiklik) + 4 yeni model
+> (argmin yukseklik-regresyonu / regret-agirlikli lojistik / LOO-conformal
+> guven kumeleri / mini-bagging) + mod_yarismasi (9 aday + KURAL baseline).
+> **YARISMA ILK KOSUSU (n=5): argmin_ridge 70.9 ~ kural 71.5 basabas;
+> tek-ornekli aileler LOO'da yapisal ogrenilemez -> MODEL DEVREYE ALINMADI
+> (dogru karar kendiliginden cikti). Kritik yol = veri birikimi: Faz D dongusu
+> + sentetik kabuk/cubuk jeneratorleri (01_VERI §6).** Testler: +28 yesil
+> (5+6+5+12+3 yeni dosya + regret_raporu 3). Commit'ler: fafc860 (A),
+> 346362a (B+C1), 8baf53d (C2+C3). SIRADA (Sprint 3, zincir-bitti kapili):
+> eval_gate sampiyon-yolu NFV guncellemesi + baseline kilidi + registry guard
+> + C4 challenger parametresi (default bit-ozdes).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
