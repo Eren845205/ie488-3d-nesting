@@ -683,6 +683,22 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > vergisi geri gelirse 532-alti legal potansiyel). Kosullu guard bacaklari
 > K-41/44 recetesiyle scriptte.
 
+> **2026-07-12 — R11 SUREKLI Z-KOMPAKSIYON INSA EDILDI (K-48 PROBU KUYRUKTA):**
+> fine_settle (K-17) pitch/4 kafesinde durur; R11 kafesi tamamen birakir —
+> mesh-gercek mesafeler (min_clearance ile AYNI orneklem+cKDTree ailesi),
+> surekli z'de asagi oturtma. KRITIK kural: dusme hicbir komsu ciftini
+> min(hedef=2.0+0.1 pay, MEVCUT mesafe)-eps altina indiremez — mutlak esik
+> olsaydi kafesin tam-2.0mm yan bosluklari her dusmeyi bloklardi. Yasak-bolge
+> kolonu tam-yukseklik oldugundan z-dusme onu ihlal EDEMEZ (analitik).
+> Tarama kaba(0.5)->ince(0.02) ilk-ihlalde-dur (binary search DEGIL: yan
+> komsu mesafesi dz'de monoton olmayabilir). Deterministik (sabit tohum/sira/
+> adim). src/nesting3d/continuous_settle.py + tests/test_r11 7 yesil.
+> UYARI: orneklem-tabanli (konservatif DEGIL) -> pay + cagiranin 6000-ornekli
+> clearance kapisi ZORUNLU; kilit yeniden-denetimi sart (z-dusme kilit
+> URETEBILIR — R2 dersi). **K-48 (k47b-kapili kuyrukta): d5 223.5 replay +
+> R11 + kapilar (kazanc>0.5 / clear>=2.0 / kilit(post)<=pre, margin-0 @1.0
+> ayni-metrik pre-post). GO ise uretim kablolamasi eval-gate ile ayri is.**
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
