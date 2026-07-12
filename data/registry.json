@@ -1,56 +1,15 @@
 {
- "_doc": "Instance registry — STRATEJI/01_VERI.md §2'nin kod karsiligi (Faz-1). Roller: dev = tuning serbest; held-out = DOKUNULMAZ (yalniz --heldout-final ile final dogrulama, her bakis 'bakislar'a loglanir). Rol degisikligi = insan karari + tarih.",
- "sets": {
-  "plan1": {
-   "rol": "dev",
-   "aile_f1": "mixed",
-   "kaynak": "hoca-2026-06",
-   "not": "kosul 335x335+NOGO (hoca 2026-07-07, Magics 110.41). 335+nogo legal: dblf-n8=303.0 -> dblf-n24=260.0 (2026-07-08, 14.6dk, clear 1.000, 0 kilit) -> Magics +%135. ALTIN TESHIS (height-driver): kule tepesi BASEPLATE'in kendisi (260), sonraki parca 147! Bobinler ~147'ye istifleniyor; baseplate kotu poz/sirayla +113 ekliyor -> baseplate-tabana-duz isi ~150-160 bandi vaat ediyor (olc-once). TAM PORTFOY hala olculemedi (8h+ patolojik; parca-bazli cozunurluk 4.6)."
+  "_doc": "Instance registry — STRATEJI/01_VERI.md §2'nin kod karsiligi (Faz-1). Roller: dev = tuning serbest; held-out = DOKUNULMAZ (yalniz --heldout-final ile final dogrulama, her bakis 'bakislar'a loglanir). Rol degisikligi = insan karari + tarih.",
+  "sets": {
+    "plan1":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "K-12+ NFV gelistirmesinde kullanildi; legal default 125.0mm (2026-07-07)"},
+    "plan2":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cavity-zengin capa; plaka 328.74x328.19 BILINEN gercek"},
+    "plan3":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cubuk-agir; solo auto-plaka 1046mm (2026-07-07); gercek plaka SORULACAK (S8)"},
+    "deneme4": {"rol": "dev",      "aile_f1": "thin_shell", "kaynak": "hoca-2026-07-03", "not": "kabuk ailesi; plaka 325x325 (hoca 335-2x5); anchor 264.0mm"},
+    "deneme5": {"rol": "dev",      "aile_f1": "tube",       "kaynak": "hoca-2026-07-07", "not": "K-44/47a tuning'de kullanildi -> dev (A3: held-out ILAN EDILEMEZ); 216x ince cubuk + kutular; aile_f1=classify_prelim(tube, conf 0.53) — Eren teyit edecek; sampiyon 218.0 @1.0 (2026-07-13)"},
+    "deneme6": {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-08", "not": "DOGUSTAN held-out (01_VERI §3); 15 parca x1; referans 86.32 MANUEL (A10 serhli); cozum HIC kosulmadi (A3)"},
+    "numune":  {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-05", "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"},
+    "boxy":    {"rol": "held-out", "aile_f1": "solid_bulk", "kaynak": "sentetik",     "not": "kutu stres seti"}
   },
-  "plan2": {
-   "rol": "dev",
-   "aile_f1": "mixed",
-   "kaynak": "hoca-2026-06",
-   "not": "cavity-zengin capa; plaka 328.74x328.19 BILINEN gercek; kosul 335x335+NOGO (hoca 2026-07-07, Magics 492.39)"
-  },
-  "plan3": {
-   "rol": "dev",
-   "aile_f1": "mixed",
-   "kaynak": "hoca-2026-06",
-   "not": "cubuk-agir; kosul 335x335+NOGO (hoca 2026-07-07, Magics 593); 335+nogo legal: default 747.0 -> SIKISTIRMA 706.0 (2026-07-07, w90+b70 seed13; s42=721/s7=710; STL plan3_nogo335_sq_706.0mm_s13.stl) -> Magics +%19.1. Aci-taramasi eski-plakada -%3.6 olculdu (692)"
-  },
-  "deneme4": {
-   "rol": "dev",
-   "aile_f1": "thin_shell",
-   "kaynak": "hoca-2026-07-03",
-   "not": "kabuk ailesi; kosul 335x335+NOGO (hoca 2026-07-07, Magics 250.24); 335+nogo legal=288.5 (2026-07-07, 588/588, clear 1.021, 0 kilit, wall_aware, 14dk) -> Magics +%15.3 (nogo'suz@335 277.0 -> nogo bedeli +11.5); eski anchor 264.0 (325 nogo'suz) TARIHSEL, kiyas disi"
-  },
-  "numune": {
-   "rol": "held-out",
-   "aile_f1": "mixed",
-   "kaynak": "hoca-2026-05",
-   "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"
-  },
-  "boxy": {
-   "rol": "held-out",
-   "aile_f1": "solid_bulk",
-   "kaynak": "sentetik",
-   "not": "kutu stres seti"
-  },
-  "deneme5": {
-   "rol": "held-out",
-   "aile_f1": "mixed",
-   "kaynak": "hoca-2026-07-07",
-   "not": "12 tip / 352 parca (PO siparisleri + bending testleri); DOGUSTAN held-out. Kosul: 335x335+NOGO (hoca 2026-07-07). Sonuclar: n8=329.4 (nogo'suz 270) -> n24=280.8 LEGAL (2026-07-08, -48.6mm; 6.4dk; nogo bedelinin cogu geri kazanildi) -> Magics 209'a +%34.4. Height-driver: kuleyi P503842 (24 adet) kuruyor (268-281 bandi)."
-  }
- },
- "bakislar": [
-  {
-   "set": "deneme5",
-   "tarih": "2026-07-07",
-   "amac": "uretim/teslim kosusu (hoca siparisi): 335+nogo legal=329.4 STL + nogo'suz 270 kiyas — tuning DEGIL (A3)",
-   "kim": "claude+kullanici"
-  }
- ],
- "kural": "Yeni gercek siparis DOGUSTAN held-out (01_VERI §3); ayni aileden >=2 birikince en eskisi ACIK KARARLA dev'e terfi edebilir."
+  "bakislar": [],
+  "kural": "Yeni gercek siparis DOGUSTAN held-out (01_VERI §3); ayni aileden >=2 birikince en eskisi ACIK KARARLA dev'e terfi edebilir."
 }
