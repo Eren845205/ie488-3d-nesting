@@ -677,11 +677,23 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > (zorla-dilimli solve_nfv yerlesim BIREBIR) + tam suite 2654 yesil (2 fail =
 > webapp-async xdist flake, seri 8/8). ACTIGI KAPI: pitch 1.0 (2mm kuralinda
 > ikinci TAM pitch) artik kosulabilir -> K-47.
-> **K-47 KOSUYOR (2026-07-12 ~14:52 zinciri):** k47c d4 sokum-plani dokumu
-> (231.5 replay + cert JSON; hoca gorseli) → k47a d5 @1.0 (ref 223.5) →
-> k47b p2 @1.0 (ref 544.5; @2.0 ham 532 INVALID 29 kilitti — @1.0 kuantizasyon
-> vergisi geri gelirse 532-alti legal potansiyel). Kosullu guard bacaklari
-> K-41/44 recetesiyle scriptte.
+> **2026-07-13 — K-47a DENEME5 @1.0 = GO 🏆 (YENI SAMPIYON 218.0; H-17'nin
+> ILK SAHA KANITI):** ham NFV @pitch=1.0 = **218.0 CIFT-LEGAL SERHSIZ** (kilit
+> 0/0 cert 0, clear 2.000, 352/352). 223.5'ten −5.5 (−%2.5); manuel 209'a
+> +%4.3 (onceki +%6.9). K-38'in ongordugu kuantizasyon-vergisi geri alimi
+> DOGRULANDI (2mm kuralinda ikinci TAM pitch calisiyor). **SURE BEDELI AGIR:
+> solve 344.6 dk (5.7 saat) vs @2.0'in 20.3 dk'si (~17x)** — kalite/sure
+> takasi regret raporunda ayri kolon olacak (ML plani Faz B). GPU %90-100
+> doluydu (VRAM 5.8/6.1GB — H-17 dilimleme sayesinde sigdi; eskiden MemErr).
+> STL: results/deneme5_p1_ham_218.0mm.stl. Guard bacagi GEREKMEDI (kilit 0).
+> **K-47b PLAN2 @1.0 = ALTYAPI-FAIL (kalite hukmu DEGIL):** ham bacagi
+> `MemoryError: std::bad_alloc` (C++ katmani) ile oldu — muhtemel kok:
+> quality=max 24-oryantasyon KANAT gridleri @1.0 (f64 flip cache ~8x buyudu,
+> 6GB VRAM/host asimi; d5'in kucuk cubuk gridlerinde sorun yoktu). p2
+> sampiyonu 544.5 @2.0 KALIYOR. Tekrar secenegi (dusuk oncelik): CPU-yol
+> (NFV_BACKEND=fast) + n_orientations=8 ile ~6-12 saatlik kosu — karar Eren'e.
+> DERS: pitch-1.0 kapisi parca-grid boyutuyla olceklenir; buyuk-parcali
+> setlerde once grid-cache bellek on-tahmini yapilmali (H-18 adayi).
 
 > **2026-07-12 — R11 SUREKLI Z-KOMPAKSIYON INSA EDILDI (K-48 PROBU KUYRUKTA):**
 > fine_settle (K-17) pitch/4 kafesinde durur; R11 kafesi tamamen birakir —
