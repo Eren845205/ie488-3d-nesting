@@ -657,6 +657,32 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > **plan1 NIHAI: 129.0 serhli / 141.0 serhsiz — tum kaldiraclar (tilt/Rz/soft-nogo/NFV)
 > denendi, kalan fark manuel operatorun serbest no-go girisi + surekli-aci istifi.**
 
+> **2026-07-12 — H-17 FFT BELLEK TAVANI = GO ✅ (URETIMDE; K-39 MemErr kapandi):**
+> KOK teshis: MemErr (486,432,625)=1001MiB float64 = scipy fftconvolve'un
+> next_fast_len'li TAM-BOY ic tamponu (336x336x600 occ + 151x97x26 kernel;
+> 486=2*3^5/432/625 hepsi 5-smooth — pitch'ten "bagimsiz" gorunmesi padding
+> yuvarlamasiydi). OLC-ONCE bulgulari (A4, bench_oa_vs_fft/bench_zchunk):
+> (1) oaconvolve COZUM DEGIL — kernel plakaya oranla buyukken bloklar ise
+> yaramaz, uretim boyunda tepe 5.4GB; (2) f32 sapmasi 4.4e-03 (esik 0.5'e
+> ~100x marj var AMA buyuk N'de buyur — koddaki f64-zorunlu notu hakli, f32'ye
+> GECILMEDI); (3) TEK-EKSEN dilim yonu kritik: kanat kernel'inde z-dilim
+> 704MB, cubuk kernel'inde z-dilim 2.5GB ama x-dilim ~1GB. FIX: eksen-adaptif
+> dilimli 'valid' konvolusyon (out/ker orani en buyuk eksen; cikti dilimleri
+> bagimsiz -> karar BIREBIR, f64 hata ~1e-11 << 0.5). Butce SABIT+env
+> (NFV_FFT_BUDGET_MB=768 CPU / NFV_FFT_GPU_BUDGET_MB=1536 GPU) — canli
+> RAM'den TURETILMEZ (determinizm). Tam-boy tahmin butceye sigarsa ESKI yol
+> -> mevcut @2mm sampiyonlar bit-ozdes. Kablolar: get_backend sarmali (seri+
+> paralel CPU) + gpu_conv_valid_chunked (GPU-resident _blb_xybbox_gpu).
+> KANIT: tests/test_h17_fft_chunk.py 14 yesil (GPU dahil) + E2E duman
+> (zorla-dilimli solve_nfv yerlesim BIREBIR) + tam suite 2654 yesil (2 fail =
+> webapp-async xdist flake, seri 8/8). ACTIGI KAPI: pitch 1.0 (2mm kuralinda
+> ikinci TAM pitch) artik kosulabilir -> K-47.
+> **K-47 KOSUYOR (2026-07-12 ~14:52 zinciri):** k47c d4 sokum-plani dokumu
+> (231.5 replay + cert JSON; hoca gorseli) → k47a d5 @1.0 (ref 223.5) →
+> k47b p2 @1.0 (ref 544.5; @2.0 ham 532 INVALID 29 kilitti — @1.0 kuantizasyon
+> vergisi geri gelirse 532-alti legal potansiyel). Kosullu guard bacaklari
+> K-41/44 recetesiyle scriptte.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)

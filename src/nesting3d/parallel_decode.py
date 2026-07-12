@@ -16,7 +16,8 @@ from typing import List, Optional, Tuple
 import numpy as np
 import scipy.fft as _sfft
 
-from src.nesting3d.fft_backend import get_backend, blb, blb_xybbox
+from src.nesting3d.fft_backend import (get_backend, blb, blb_xybbox,
+                                       gpu_conv_valid_chunked)
 from src.nesting3d.capabilities import probe_capabilities, probe_cupy
 from src.nesting3d.extreme_point import OccupancyBin3D, _drop_fallback
 
@@ -312,10 +313,9 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
             crop = sub[cx0:cx1, cy0:cy1, :]
             mask = cp.ones(mshape, dtype=cp.bool_)
             if crop.shape[0] >= fw and crop.shape[1] >= fd:
-                full = (crop.shape[0] + fw - 1, crop.shape[1] + fd - 1, crop.shape[2] + fh - 1)
-                C = cp.fft.irfftn(cp.fft.rfftn(crop.astype(cp.float64), s=full) *
-                                  cp.fft.rfftn(grid_flip, s=full), s=full)
-                Cc = (C[fw - 1:crop.shape[0], fd - 1:crop.shape[1], fh - 1:crop.shape[2]] < 0.5)
+                # H-17: tam-boy FFT tamponu VRAM butcesini asarsa eksen-dilimli
+                # (butceye sigan durumda ayni matematik — bit-ozdes eski yol).
+                Cc = gpu_conv_valid_chunked(cp, crop, grid_flip, gshape)
                 gx1 = min(cx0 + Cc.shape[0], mshape[0]); gy1 = min(cy0 + Cc.shape[1], mshape[1])
                 bx = gx1 - cx0; by = gy1 - cy0
                 if bx > 0 and by > 0:

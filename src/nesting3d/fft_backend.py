@@ -23,6 +23,128 @@ FeasibleMaskFn = Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
 # --------------------------------------------------------------------------
+# H-17: FFT bellek tavani — eksen-adaptif dilimli 'valid' konvolusyon
+# --------------------------------------------------------------------------
+# K-39/K-39b koku: fftconvolve TAM-BOY padded f64 tamponlari acar (pitch 1.0
+# plakada (486,432,625)=1001MiB tekil alloc, tepe ~5GB -> MemoryError).
+# 'valid' cikti eksen boyunca dilimlenebilir: cikti[i] yalniz occ[i:i+ker]
+# penceresine bagli -> dilim basina ayri (kucuk) FFT, KARAR BIREBIR (cakisma
+# sayisi tamsayi, f64 FFT hatasi ~1e-11 << 0.5 esik payi; olcum 2026-07-12
+# bench_zchunk: orta boy maske birebir, tepe 608->179MB).
+# Eksen secimi: out/ker orani en buyuk eksen (kanat: z; dikey cubuk: x —
+# yanlis eksen dilimlemek overlap yuzunden kazandirmaz, olcum: cubukta
+# z-dilim 2.5GB, x-dilim ~1GB). Butce SABIT default + env override —
+# canli RAM'den TURETILMEZ (determinizm: ayni girdi -> ayni plan -> ayni
+# yerlesim; A-serisi ilkesi). Tam-boy tahmin butceye sigarsa dilimsiz eski
+# yol secilir -> mevcut @2mm sampiyon kosulari bit-ozdes kalir.
+NFV_FFT_BUDGET_MB_DEFAULT = 768.0        # CPU tampon butcesi (bench: zc~64 -> tepe ~0.9GB)
+NFV_FFT_GPU_BUDGET_MB_DEFAULT = 1536.0   # GPU (6GB VRAM kartta occ+cache disinda guvenli pay)
+_FFT_BUF_FACTOR = 5.0  # olculen tepe / raw-padded-f64 orani (bench 2026-07-12: 4.6-7.0 bandi)
+
+
+def _fft_budget_bytes(gpu: bool = False) -> float:
+    env = os.environ.get("NFV_FFT_GPU_BUDGET_MB" if gpu else "NFV_FFT_BUDGET_MB")
+    if env:
+        try:
+            return float(env) * 1e6
+        except ValueError:
+            pass
+    return (NFV_FFT_GPU_BUDGET_MB_DEFAULT if gpu else NFV_FFT_BUDGET_MB_DEFAULT) * 1e6
+
+
+def _padded_bytes(shape) -> float:
+    """fftconvolve ic tamponu tahmini: next_fast_len'li full-boy f64 * tampon katsayisi."""
+    cells = 1.0
+    for n in shape:
+        cells *= _sfft.next_fast_len(int(n), True)
+    return cells * 8.0 * _FFT_BUF_FACTOR
+
+
+def plan_fft_chunks(occ_shape, ker_shape, budget_bytes: Optional[float] = None):
+    """Dilim plani: None -> tam-boy sigar (eski yol, bit-ozdes). (eksen, cikti_dilimi) -> dilimle.
+
+    Deterministik: yalniz sekiller + butce (sabit/env) girdi; canli RAM okunmaz."""
+    if budget_bytes is None:
+        budget_bytes = _fft_budget_bytes()
+    full = tuple(int(o) + int(k) - 1 for o, k in zip(occ_shape, ker_shape))
+    if _padded_bytes(full) <= budget_bytes:
+        return None
+    out = tuple(int(o) - int(k) + 1 for o, k in zip(occ_shape, ker_shape))
+    if min(out) <= 0:
+        return None  # patolojik (cagiran mshape>0 garanti eder) — tam-boy birak
+    # out/ker orani en buyuk eksen = dilim basina overlap vergisi (ker-1) en dusuk
+    axis = max(range(3), key=lambda a: (out[a] / ker_shape[a], -a))
+    if out[axis] <= 1:
+        return None  # dilimlenecek genislik yok
+    diger = 1.0
+    for a in range(3):
+        if a != axis:
+            diger *= _sfft.next_fast_len(full[a], True)
+    per_unit = diger * 8.0 * _FFT_BUF_FACTOR
+    chunk = int(budget_bytes / per_unit) - int(ker_shape[axis]) + 1
+    chunk = max(1, min(chunk, out[axis]))
+    if chunk >= out[axis]:
+        return None  # tek dilim = tam-boy
+    return axis, chunk
+
+
+def chunked_feasible_mask(base_fn: FeasibleMaskFn, occ: np.ndarray, grid: np.ndarray,
+                          budget_bytes: Optional[float] = None) -> np.ndarray:
+    """base_fn'i (herhangi bir backend maskesi) gerekirse eksen-dilimli uygula. Karar birebir."""
+    plan = plan_fft_chunks(occ.shape, grid.shape, budget_bytes)
+    if plan is None:
+        return base_fn(occ, grid)
+    axis, chunk = plan
+    k = int(grid.shape[axis])
+    out_n = int(occ.shape[axis]) - k + 1
+    parcalar = []
+    for s0 in range(0, out_n, chunk):
+        s1 = min(s0 + chunk, out_n)
+        sl = [slice(None)] * 3
+        sl[axis] = slice(s0, s1 + k - 1)
+        parcalar.append(base_fn(occ[tuple(sl)], grid))
+    return np.concatenate(parcalar, axis=axis)
+
+
+def _wrap_chunked(base_fn: FeasibleMaskFn) -> FeasibleMaskFn:
+    def wrapped(occ_sub: np.ndarray, grid: np.ndarray) -> np.ndarray:
+        return chunked_feasible_mask(base_fn, occ_sub, grid)
+    return wrapped
+
+
+def gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
+                           budget_bytes: Optional[float] = None):
+    """GPU-resident 'valid' feasibility karari (<0.5) — gerekirse eksen-dilimli.
+
+    crop: cihazda bool occupancy kirpigi; grid_flip: cihazda ters-cevrili f64 kernel.
+    Donus cihazda bool mask (host transferi YOK — GPU-resident semantik korunur).
+    Dilimsiz dal mevcut _blb_xybbox_gpu konvolusyonuyla ayni matematik (bit-ozdes)."""
+    if budget_bytes is None:
+        budget_bytes = _fft_budget_bytes(gpu=True)
+    fw, fd, fh = (int(g) for g in gshape)
+
+    def _conv(sub):
+        full = tuple(int(sub.shape[i]) + (fw, fd, fh)[i] - 1 for i in range(3))
+        C = cp.fft.irfftn(cp.fft.rfftn(sub.astype(cp.float64), s=full) *
+                          cp.fft.rfftn(grid_flip, s=full), s=full)
+        return C[fw - 1:sub.shape[0], fd - 1:sub.shape[1], fh - 1:sub.shape[2]] < 0.5
+
+    plan = plan_fft_chunks(tuple(int(s) for s in crop.shape), (fw, fd, fh), budget_bytes)
+    if plan is None:
+        return _conv(crop)
+    axis, chunk = plan
+    k = (fw, fd, fh)[axis]
+    out_n = int(crop.shape[axis]) - k + 1
+    parcalar = []
+    for s0 in range(0, out_n, chunk):
+        s1 = min(s0 + chunk, out_n)
+        sl = [slice(None)] * 3
+        sl[axis] = slice(s0, s1 + k - 1)
+        parcalar.append(_conv(crop[tuple(sl)]))
+    return cp.concatenate(parcalar, axis=axis)
+
+
+# --------------------------------------------------------------------------
 # Backend implementasyonları (hepsi AYNI boolean mask → birebir)
 # --------------------------------------------------------------------------
 
@@ -61,20 +183,21 @@ def _make_cupy_feasible_mask(cp) -> FeasibleMaskFn:
 
 def get_backend(name: Optional[str] = None) -> tuple[FeasibleMaskFn, str]:
     """feasible_mask + ad döner. name=None → oto (GPU→FastCPU→Scipy). NFV_BACKEND env override.
-    İstenen yoksa SESSİZCE scipy'ye düşer (graceful fallback, ASLA hata)."""
+    İstenen yoksa SESSİZCE scipy'ye düşer (graceful fallback, ASLA hata).
+    H-17: tüm backend'ler dilim-sarmalı — tam-boy bütçeye sığarsa dilimsiz (bit-özdeş)."""
     req = (name or os.environ.get("NFV_BACKEND", "auto")).lower()
 
     if req in ("cupy", "gpu", "auto"):
         cp = probe_cupy()
         if cp is not None:
-            return _make_cupy_feasible_mask(cp), "cupy"
+            return _wrap_chunked(_make_cupy_feasible_mask(cp)), "cupy"
 
     if req in ("fast", "mkl", "mkl_fft", "pyfftw", "auto"):
         be, bename = probe_fast_backend()
         if be is not None:
-            return _make_fast_feasible_mask(be), bename
+            return _wrap_chunked(_make_fast_feasible_mask(be)), bename
 
-    return _scipy_feasible_mask, "scipy"
+    return _wrap_chunked(_scipy_feasible_mask), "scipy"
 
 
 # --------------------------------------------------------------------------
