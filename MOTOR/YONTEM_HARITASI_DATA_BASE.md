@@ -735,6 +735,19 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > eval_gate sampiyon-yolu NFV guncellemesi + baseline kilidi + registry guard
 > + C4 challenger parametresi (default bit-ozdes).
 
+> **2026-07-13 — K-48 R11 SUREKLI Z-KOMPAKSIYON PROBU (d5) = NO-GO v1 /
+> MEKANIZMA-GO:** replay 223.5 birebir (17.5dk; mesh-gercek h=221.50 — voxel
+> raporu 2mm sarma-payi tasiyor, R11'in avlanma alani). Kompaksiyon: 283/352
+> parca oturdu, toplam dusme 1245.8mm, **kazanc 7.76mm (221.50->213.74),
+> KILIT 0->0 (dusme kilit URETMEDI — R2 korkusu bu probda dogrulanmadi)**.
+> ENGEL: clearance(6000)=1.591 < 2.0 -> kapi REDDETTI. Kok: R11 orneklem-
+> tabanli mesafe (4000 nokta) en yakin cifti kacirdi; 0.1mm pay yetmedi —
+> continuous_settle.py'nin kendi risk notundaki senaryo AYNEN. **KAPILARIN
+> DEGERI: 7.76mm'lik 'kahraman sayi' uretime/rapora SIZAMADI (A1/A2).**
+> FIX v2 (K-48b kuyrukta): pay_mm 0.4 + samples 8000 (beklenti: kazancin
+> ~%60-80'i korunur, clearance >=2.0'a doner). Sure: R11 fazi 27.6dk (352
+> parca) — uretim-uyumlu.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
