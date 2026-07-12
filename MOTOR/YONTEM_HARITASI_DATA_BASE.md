@@ -618,6 +618,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > tablosu: p2 +12.5 · d5 +20.5 · p3 +66 (aile-bagimli). KURAL ADAYI: once ham
 > kos, kilit CIKARSA guard'la tekrarla (K-41/44 birlesik recetesi).
 
+> **2026-07-12 — K-46 DENEME4 NFV = GO 🏆🏆🏆🏆 (TARIHI: MANUEL ILK KEZ GECILDI):**
+> ham NFV @2.0 = **231.5, manuel 250.24'un −%7.5 ALTINDA** — projenin ilk
+> manuel-alti LEGAL sonucu. clear 2.018 (6000-orneklem DURUST olcum; d4'un eski
+> 288'i 1mm kablosu + 3000-ornek iyimserligiyle INVALID'di), 588/588, 32.4dk.
+> (b) kilit 363 (d4 klasigi — 62 ASY cani) → **R10 rot-sokum 39 SERTIFIKAYLA
+> 0/588'e indirdi** (K-34 mekanizmasi buyuk olcekte ilk kez). Hoca kriteri
+> (b)+(c) KABUL oldugundan tam-legal; rapor 5-yon-tek metrikte INVALID oldugunu
+> + sokum-sertifika planini tasir (A2). **DERSLER:** (1) "d4 NFV yolu kapali
+> (K-27 413/588)" hukmu ROT-SOKUMSUZ dunyaya aitti — R10 + erode-clearance
+> gridleri hukmu TERSINE cevirdi; NO-GO kayitlari mekanizma degisince yeniden
+> denenir (A7'nin sinir kosulu). (2) "288 yapisal tavan" hukmu heightmap'e
+> ozguydu — cozucu ailesi degisince tavan tasinamaz. (3) Rot-sokum buyuk
+> olcekte de pratik: 363 kilit → 39 cert + kaskad, denetim dahil ~1s/parca.
+> GUARD BACAGI TAMAM: **276.5 CIFT-LEGAL SERHSIZ** (kilit 0/0 cert 0, clear
+> 2.019 @6000-ornek) — sertifikasiz-sokum yedegi (hoca (c)'yi cekerse bile
+> eski 288'den iyi). Guard-vergi tablosu FINAL: p2 +12.5 · d5 +20.5 ·
+> **d4 +45** · p3 +66. ACIK: hoca paketine sokum-plani gorseli (39 cert).
+
 > **2026-07-11/12 — K-45 URETIM KABLOLAMASI = GO ✅ (E2E PARITE PASS):**
 > Sampiyon recetesi URETIME baglandi: `solve_nfv_kalite()` (pitch=clearance
 > K-38 + kosullu exit_guard K-41/44 + rot recete-disi K-42) · WEB_MIN_CLEARANCE
