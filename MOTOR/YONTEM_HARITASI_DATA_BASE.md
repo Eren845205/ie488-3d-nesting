@@ -763,6 +763,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > (218.0) + R11 kombinasyonu (beklenti 213-215 bandi); R11'in uretim
 > kablolamasi (solve_nfv_kalite post-pass'i, eval-gate'li) ayri is.
 
+> **2026-07-13 — K-49 SERISI (p3 R11) = GO 🏆🏆 (PLAN3 MANUEL GECILDI —
+> PROJENIN IKINCI MANUEL-ALTI SETI):** K-49c (pay 1.2 + samples 12000):
+> **596.50 -> 589.76 (kazanc 6.74mm) | clear 2.186 | kilit 0->0 | manuel
+> 593.0 -> GECILDI (−3.24mm, −%0.55)**. STL: results/plan3_r11c_589.8mm.stl;
+> telemetri v2 satiri otomatik. Yol haritasi: K-49a v3 (pay 0.4) kazanc
+> POTANSIYELINI olctu (17.56mm, 578.94!) ama clearance 1.231'e kacti (buyuk
+> yuzeyde 8000 ornek seyrek — pay yetmedi) + kilit denetimi subdivide ucgen
+> patlamasiyla MemErr (52M ucgen, 3.5GB) -> fix: _kilit_5dir_meshes
+> method=slice (denetim 200dk'dan 2.4dk'ya!). DERSLER: (1) R11 orneklem
+> yogunlugu yuzey ALANIYLA olceklenmeli (d5 kucuk-yuzey gecti, p3 buyuk-yuzey
+> kacirdi); (2) pay/kazanc takasi ailebagimli: d5'te pay 0.4 yetti (%59 koru),
+> p3'te 1.2 gerekti (%38 koru); (3) subdivide voxelize yuksek-yuzlu STL'de
+> yasak — slice. SUREC KAZALARI (kayit): v2 7h kosusu olduruldu (kose-bulut
+> patlamasi -> VERTEX_CAP 1500 fix); k49c regex-turetme self-gate deadlock'u
+> (ders: script turetme ACIK YAZIMLA). ACIK: K-49d (R11 v4 dogrula-ve-rafine,
+> pay 0.15 + kesin 2.00 oturma) KOSUYOR — beklenti 582-586 bandi (pay kaybini
+> geri alir); ayrica d4/d5/p2'ye R11 v4 uygulanmasi (K-50 serisi adayi).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
