@@ -194,10 +194,57 @@ def continuous_z_settle(
 
 def apply_settle(meshes: Sequence, result: ContinuousSettleResult) -> List:
     """Dusmeleri uygulanmis mesh KOPYALARI (export/clearance-gate icin)."""
+    return apply_dz(meshes, result.dz)
+
+
+def apply_dz(meshes: Sequence, dz) -> List:
     out = []
-    for m, d in zip(meshes, result.dz):
+    for m, d in zip(meshes, dz):
         c = m.copy()
-        if d > 0.0:
+        if float(d) > 0.0:
             c.apply_translation([0.0, 0.0, -float(d)])
         out.append(c)
     return out
+
+
+def dogrula_ve_rafine(
+    meshes: Sequence,
+    dz,
+    *,
+    clearance_mm: float = 2.0,
+    ek_pay_mm: float = 0.05,
+    samples_per_mesh: int = 6000,
+    max_tur: int = 12,
+):
+    """R11 v4 — dogrula-ve-rafine: pay tamponu yerine KESIN oturma (K-49c dersi).
+
+    Buyuk pay (1.2mm) saf kalite kaybi: parcalar gercek 2.0 sinirina degil
+    tampona yaslanir. v4 tersini yapar: kucuk payla agresif kompakt edilmis
+    dz alinir; URETIM METRIGI (min_clearance, ayni orneklem ailesi) ihlalci
+    cifti soyler; ciftin COK DUSMUS uyesi eksik kadar GERI KALDIRILIR
+    (dz azaltilir, asla <0 olmaz -> orijinal-legal pozisyon dogal alt-sinir);
+    yakinsayana dek tekrarlanir. Boylece sonuc tam 2.00x'e oturur.
+
+    Doner: (yeni_dz, son_rapor, tur, converged). converged=False ise cagiran
+    v3 (payli) sonucu korumali — kapi zaten reddeder (tek-tarafli sozlesme).
+    """
+    import numpy as _np
+    from src.nesting3d.clearance import min_clearance as _mc
+    dz = _np.asarray(dz, dtype=float).copy()
+    rapor = None
+    for tur in range(max_tur):
+        shifted = apply_dz(meshes, dz)
+        rapor = _mc(shifted, samples_per_mesh=samples_per_mesh)
+        if rapor.min_mm >= clearance_mm:
+            return dz, rapor, tur, True
+        if rapor.worst_pair is None:
+            return dz, rapor, tur, False
+        i, j = rapor.worst_pair
+        eksik = (clearance_mm - float(rapor.min_mm)) + ek_pay_mm
+        k = i if dz[i] >= dz[j] else j
+        if dz[k] <= 0.0:
+            k = j if k == i else i          # dusmemis parca kaldirilamaz; digerini dene
+            if dz[k] <= 0.0:
+                return dz, rapor, tur, False  # ikisi de orijinalde — R11 disi ihlal
+        dz[k] = max(0.0, dz[k] - eksik)
+    return dz, rapor, max_tur, False
