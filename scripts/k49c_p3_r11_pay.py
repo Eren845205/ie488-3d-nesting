@@ -26,7 +26,7 @@ from scripts.k48_r11_probe import _kilit_5dir_meshes
 from scripts.kxx_telemetri import kaydet
 
 LOG = Path(__file__).parent / "k49c_p3_r11_pay.log"
-BEKLE = Path(__file__).parent / "k49c_p3_r11_pay.log"
+BEKLE = Path(__file__).parent / "k49a_p3_r11.log"
 PLATE = (335.0, 335.0)
 NOGO = ((152.5, 0.2), (185.5, 45.0))
 MANUEL = 593.0
