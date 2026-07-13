@@ -1,0 +1,7909 @@
+{
+ "kaynak": "K-46 deneme4 NFV ham @2.0 seed=42 (replay, v2)",
+ "h_mm": 231.5,
+ "pitch_mm": 0.5,
+ "plate": [
+  335.0,
+  335.0
+ ],
+ "no_go_bounds": [
+  [
+   152.5,
+   0.2
+  ],
+  [
+   185.5,
+   45.0
+  ]
+ ],
+ "n_parca": 588,
+ "b_kilit": 363,
+ "b_kilit_notu": "K-46 olcumu (k46_d4_nfv.log); bu koseda tekrar olculmedi",
+ "placements": [
+  {
+   "part_id": "part239391_ROBT ALT v27_01",
+   "oi": 1,
+   "x": 0,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    474,
+    592,
+    69
+   ]
+  },
+  {
+   "part_id": "part239392_ROBT UST v27_01",
+   "oi": 11,
+   "x": 108,
+   "y": 16,
+   "z": 47,
+   "grid_shape": [
+    419,
+    493,
+    96
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_01",
+   "oi": 20,
+   "x": 420,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_02",
+   "oi": 14,
+   "x": 484,
+   "y": 224,
+   "z": 0,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_03",
+   "oi": 21,
+   "x": 88,
+   "y": 392,
+   "z": 0,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_04",
+   "oi": 15,
+   "x": 76,
+   "y": 480,
+   "z": 0,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_05",
+   "oi": 21,
+   "x": 332,
+   "y": 480,
+   "z": 0,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_06",
+   "oi": 20,
+   "x": 484,
+   "y": 0,
+   "z": 46,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_07",
+   "oi": 12,
+   "x": 0,
+   "y": 380,
+   "z": 46,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_08",
+   "oi": 15,
+   "x": 272,
+   "y": 388,
+   "z": 58,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_09",
+   "oi": 15,
+   "x": 396,
+   "y": 484,
+   "z": 64,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_10",
+   "oi": 12,
+   "x": 0,
+   "y": 0,
+   "z": 70,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_11",
+   "oi": 14,
+   "x": 476,
+   "y": 268,
+   "z": 74,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_12",
+   "oi": 15,
+   "x": 124,
+   "y": 476,
+   "z": 80,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_13",
+   "oi": 15,
+   "x": 84,
+   "y": 256,
+   "z": 83,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_14",
+   "oi": 21,
+   "x": 360,
+   "y": 0,
+   "z": 92,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_15",
+   "oi": 12,
+   "x": 0,
+   "y": 368,
+   "z": 90,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_16",
+   "oi": 13,
+   "x": 160,
+   "y": 92,
+   "z": 95,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_17",
+   "oi": 12,
+   "x": 24,
+   "y": 0,
+   "z": 114,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_18",
+   "oi": 15,
+   "x": 384,
+   "y": 476,
+   "z": 108,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_19",
+   "oi": 14,
+   "x": 472,
+   "y": 272,
+   "z": 118,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_20",
+   "oi": 15,
+   "x": 84,
+   "y": 228,
+   "z": 127,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_21",
+   "oi": 15,
+   "x": 112,
+   "y": 472,
+   "z": 124,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_22",
+   "oi": 14,
+   "x": 392,
+   "y": 0,
+   "z": 128,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_23",
+   "oi": 22,
+   "x": 352,
+   "y": 172,
+   "z": 131,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_24",
+   "oi": 12,
+   "x": 0,
+   "y": 356,
+   "z": 136,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_25",
+   "oi": 14,
+   "x": 476,
+   "y": 0,
+   "z": 149,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_26",
+   "oi": 12,
+   "x": 48,
+   "y": 0,
+   "z": 159,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_27",
+   "oi": 15,
+   "x": 384,
+   "y": 432,
+   "z": 152,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_28",
+   "oi": 17,
+   "x": 120,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    183,
+    106,
+    267
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_29",
+   "oi": 15,
+   "x": 84,
+   "y": 184,
+   "z": 171,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_30",
+   "oi": 15,
+   "x": 112,
+   "y": 452,
+   "z": 168,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_31",
+   "oi": 14,
+   "x": 288,
+   "y": 248,
+   "z": 175,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_32",
+   "oi": 14,
+   "x": 476,
+   "y": 252,
+   "z": 185,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_33",
+   "oi": 12,
+   "x": 0,
+   "y": 344,
+   "z": 180,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_34",
+   "oi": 12,
+   "x": 72,
+   "y": 0,
+   "z": 203,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_35",
+   "oi": 14,
+   "x": 388,
+   "y": 0,
+   "z": 194,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_36",
+   "oi": 15,
+   "x": 372,
+   "y": 428,
+   "z": 200,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_37",
+   "oi": 14,
+   "x": 256,
+   "y": 244,
+   "z": 219,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_38",
+   "oi": 15,
+   "x": 100,
+   "y": 444,
+   "z": 212,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_39",
+   "oi": 14,
+   "x": 472,
+   "y": 0,
+   "z": 214,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_40",
+   "oi": 13,
+   "x": 64,
+   "y": 256,
+   "z": 222,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_41",
+   "oi": 12,
+   "x": 0,
+   "y": 336,
+   "z": 224,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_42",
+   "oi": 15,
+   "x": 372,
+   "y": 392,
+   "z": 246,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_43",
+   "oi": 12,
+   "x": 0,
+   "y": 0,
+   "z": 254,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_44",
+   "oi": 11,
+   "x": 384,
+   "y": 224,
+   "z": 177,
+   "grid_shape": [
+    271,
+    106,
+    179
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_45",
+   "oi": 7,
+   "x": 180,
+   "y": 140,
+   "z": 183,
+   "grid_shape": [
+    271,
+    106,
+    179
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_46",
+   "oi": 12,
+   "x": 288,
+   "y": 228,
+   "z": 263,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_47",
+   "oi": 15,
+   "x": 100,
+   "y": 432,
+   "z": 258,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_48",
+   "oi": 14,
+   "x": 484,
+   "y": 368,
+   "z": 272,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_49",
+   "oi": 12,
+   "x": 0,
+   "y": 324,
+   "z": 277,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_50",
+   "oi": 12,
+   "x": 24,
+   "y": 0,
+   "z": 298,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_51",
+   "oi": 13,
+   "x": 372,
+   "y": 0,
+   "z": 303,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_52",
+   "oi": 12,
+   "x": 268,
+   "y": 212,
+   "z": 308,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_53",
+   "oi": 13,
+   "x": 0,
+   "y": 252,
+   "z": 311,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_54",
+   "oi": 15,
+   "x": 108,
+   "y": 420,
+   "z": 302,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_55",
+   "oi": 14,
+   "x": 484,
+   "y": 92,
+   "z": 311,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_56",
+   "oi": 14,
+   "x": 452,
+   "y": 364,
+   "z": 316,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_57",
+   "oi": 13,
+   "x": 183,
+   "y": 92,
+   "z": 323,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_58",
+   "oi": 21,
+   "x": 286,
+   "y": 460,
+   "z": 322,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_59",
+   "oi": 12,
+   "x": 0,
+   "y": 338,
+   "z": 339,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_60",
+   "oi": 13,
+   "x": 372,
+   "y": 0,
+   "z": 347,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_61",
+   "oi": 14,
+   "x": 456,
+   "y": 100,
+   "z": 355,
+   "grid_shape": [
+    183,
+    271,
+    102
+   ]
+  },
+  {
+   "part_id": "ASY-0176446_62",
+   "oi": 15,
+   "x": 0,
+   "y": 97,
+   "z": 361,
+   "grid_shape": [
+    271,
+    183,
+    102
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_01",
+   "oi": 0,
+   "x": 0,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_02",
+   "oi": 6,
+   "x": 64,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_03",
+   "oi": 0,
+   "x": 128,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_04",
+   "oi": 0,
+   "x": 372,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_05",
+   "oi": 6,
+   "x": 436,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_06",
+   "oi": 6,
+   "x": 584,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_07",
+   "oi": 7,
+   "x": 0,
+   "y": 64,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_08",
+   "oi": 1,
+   "x": 68,
+   "y": 64,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_09",
+   "oi": 7,
+   "x": 136,
+   "y": 64,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_10",
+   "oi": 0,
+   "x": 288,
+   "y": 92,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_11",
+   "oi": 0,
+   "x": 196,
+   "y": 104,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_12",
+   "oi": 1,
+   "x": 0,
+   "y": 128,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_13",
+   "oi": 7,
+   "x": 68,
+   "y": 128,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_14",
+   "oi": 6,
+   "x": 344,
+   "y": 136,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_15",
+   "oi": 0,
+   "x": 404,
+   "y": 176,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_16",
+   "oi": 7,
+   "x": 472,
+   "y": 200,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_17",
+   "oi": 6,
+   "x": 412,
+   "y": 256,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_18",
+   "oi": 0,
+   "x": 512,
+   "y": 260,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_19",
+   "oi": 7,
+   "x": 584,
+   "y": 260,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "17_00-K179 SSB Dugme_20",
+   "oi": 0,
+   "x": 452,
+   "y": 316,
+   "z": 0,
+   "grid_shape": [
+    78,
+    78,
+    35
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_01",
+   "oi": 6,
+   "x": 204,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_02",
+   "oi": 0,
+   "x": 604,
+   "y": 72,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_03",
+   "oi": 6,
+   "x": 604,
+   "y": 128,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_04",
+   "oi": 6,
+   "x": 148,
+   "y": 156,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_05",
+   "oi": 6,
+   "x": 0,
+   "y": 200,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_06",
+   "oi": 6,
+   "x": 0,
+   "y": 328,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_07",
+   "oi": 6,
+   "x": 528,
+   "y": 328,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_08",
+   "oi": 0,
+   "x": 592,
+   "y": 328,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_09",
+   "oi": 6,
+   "x": 396,
+   "y": 348,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_10",
+   "oi": 6,
+   "x": 60,
+   "y": 368,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_11",
+   "oi": 6,
+   "x": 120,
+   "y": 368,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_12",
+   "oi": 6,
+   "x": 260,
+   "y": 368,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_01",
+   "oi": 6,
+   "x": 320,
+   "y": 368,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_02",
+   "oi": 0,
+   "x": 0,
+   "y": 384,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_03",
+   "oi": 6,
+   "x": 460,
+   "y": 384,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_04",
+   "oi": 0,
+   "x": 516,
+   "y": 384,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_05",
+   "oi": 6,
+   "x": 584,
+   "y": 384,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_06",
+   "oi": 0,
+   "x": 376,
+   "y": 404,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_07",
+   "oi": 0,
+   "x": 60,
+   "y": 424,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_08",
+   "oi": 0,
+   "x": 292,
+   "y": 424,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_09",
+   "oi": 6,
+   "x": 0,
+   "y": 440,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_10",
+   "oi": 6,
+   "x": 516,
+   "y": 440,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_11",
+   "oi": 6,
+   "x": 348,
+   "y": 460,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_12",
+   "oi": 6,
+   "x": 60,
+   "y": 480,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_13",
+   "oi": 0,
+   "x": 564,
+   "y": 492,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_14",
+   "oi": 0,
+   "x": 0,
+   "y": 496,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_15",
+   "oi": 0,
+   "x": 304,
+   "y": 516,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_16",
+   "oi": 6,
+   "x": 544,
+   "y": 548,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_17",
+   "oi": 6,
+   "x": 604,
+   "y": 548,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_18",
+   "oi": 6,
+   "x": 0,
+   "y": 552,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_19",
+   "oi": 7,
+   "x": 120,
+   "y": 576,
+   "z": 0,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "05_00-K179 WBT Dugme_20",
+   "oi": 1,
+   "x": 176,
+   "y": 576,
+   "z": 0,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_01",
+   "oi": 1,
+   "x": 516,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_02",
+   "oi": 0,
+   "x": 240,
+   "y": 576,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_03",
+   "oi": 6,
+   "x": 348,
+   "y": 580,
+   "z": 0,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_04",
+   "oi": 0,
+   "x": 548,
+   "y": 604,
+   "z": 8,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_05",
+   "oi": 0,
+   "x": 608,
+   "y": 604,
+   "z": 8,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_06",
+   "oi": 1,
+   "x": 0,
+   "y": 608,
+   "z": 8,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_07",
+   "oi": 4,
+   "x": 143,
+   "y": 253,
+   "z": 12,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_08",
+   "oi": 0,
+   "x": 204,
+   "y": 256,
+   "z": 11,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_09",
+   "oi": 0,
+   "x": 264,
+   "y": 256,
+   "z": 12,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_10",
+   "oi": 0,
+   "x": 324,
+   "y": 264,
+   "z": 11,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_11",
+   "oi": 0,
+   "x": 84,
+   "y": 264,
+   "z": 15,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_12",
+   "oi": 1,
+   "x": 604,
+   "y": 184,
+   "z": 22,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_13",
+   "oi": 4,
+   "x": 492,
+   "y": 496,
+   "z": 22,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_14",
+   "oi": 14,
+   "x": 0,
+   "y": 264,
+   "z": 0,
+   "grid_shape": [
+    30,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_15",
+   "oi": 13,
+   "x": 436,
+   "y": 440,
+   "z": 0,
+   "grid_shape": [
+    64,
+    30,
+    54
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_16",
+   "oi": 1,
+   "x": 604,
+   "y": 8,
+   "z": 27,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_17",
+   "oi": 1,
+   "x": 412,
+   "y": 360,
+   "z": 28,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_18",
+   "oi": 4,
+   "x": 603,
+   "y": 469,
+   "z": 28,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_19",
+   "oi": 0,
+   "x": 603,
+   "y": 533,
+   "z": 28,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_20",
+   "oi": 8,
+   "x": 244,
+   "y": 172,
+   "z": 0,
+   "grid_shape": [
+    58,
+    30,
+    60
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_21",
+   "oi": 1,
+   "x": 404,
+   "y": 136,
+   "z": 31,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_22",
+   "oi": 0,
+   "x": 528,
+   "y": 336,
+   "z": 30,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_23",
+   "oi": 1,
+   "x": 84,
+   "y": 0,
+   "z": 35,
+   "grid_shape": [
+    64,
+    58,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_24",
+   "oi": 0,
+   "x": 148,
+   "y": 0,
+   "z": 35,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "10_T00-K179 Kilitli Dugme_25",
+   "oi": 0,
+   "x": 0,
+   "y": 116,
+   "z": 35,
+   "grid_shape": [
+    58,
+    64,
+    26
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_01",
+   "oi": 1,
+   "x": 452,
+   "y": 212,
+   "z": 35,
+   "grid_shape": [
+    65,
+    59,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_02",
+   "oi": 0,
+   "x": 520,
+   "y": 244,
+   "z": 35,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_03",
+   "oi": 0,
+   "x": 500,
+   "y": 400,
+   "z": 36,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_04",
+   "oi": 1,
+   "x": 575,
+   "y": 597,
+   "z": 36,
+   "grid_shape": [
+    65,
+    59,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_05",
+   "oi": 6,
+   "x": 140,
+   "y": 224,
+   "z": 39,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_06",
+   "oi": 6,
+   "x": 200,
+   "y": 228,
+   "z": 37,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_07",
+   "oi": 6,
+   "x": 260,
+   "y": 228,
+   "z": 38,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_08",
+   "oi": 6,
+   "x": 320,
+   "y": 228,
+   "z": 37,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_09",
+   "oi": 6,
+   "x": 548,
+   "y": 460,
+   "z": 37,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_10",
+   "oi": 1,
+   "x": 56,
+   "y": 268,
+   "z": 46,
+   "grid_shape": [
+    65,
+    59,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_11",
+   "oi": 12,
+   "x": 360,
+   "y": 508,
+   "z": 30,
+   "grid_shape": [
+    40,
+    65,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_12",
+   "oi": 7,
+   "x": 480,
+   "y": 572,
+   "z": 49,
+   "grid_shape": [
+    65,
+    59,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_13",
+   "oi": 13,
+   "x": 0,
+   "y": 180,
+   "z": 35,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_14",
+   "oi": 23,
+   "x": 0,
+   "y": 440,
+   "z": 36,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_15",
+   "oi": 6,
+   "x": 400,
+   "y": 244,
+   "z": 51,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_16",
+   "oi": 10,
+   "x": 604,
+   "y": 440,
+   "z": 55,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_17",
+   "oi": 15,
+   "x": 152,
+   "y": 276,
+   "z": 38,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_18",
+   "oi": 15,
+   "x": 240,
+   "y": 280,
+   "z": 38,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_19",
+   "oi": 15,
+   "x": 332,
+   "y": 280,
+   "z": 37,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_20",
+   "oi": 6,
+   "x": 0,
+   "y": 100,
+   "z": 61,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_21",
+   "oi": 6,
+   "x": 8,
+   "y": 272,
+   "z": 62,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_22",
+   "oi": 15,
+   "x": 540,
+   "y": 536,
+   "z": 53,
+   "grid_shape": [
+    65,
+    40,
+    55
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_23",
+   "oi": 0,
+   "x": 372,
+   "y": 0,
+   "z": 69,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_24",
+   "oi": 0,
+   "x": 60,
+   "y": 64,
+   "z": 69,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_25",
+   "oi": 6,
+   "x": 88,
+   "y": 120,
+   "z": 69,
+   "grid_shape": [
+    59,
+    65,
+    36
+   ]
+  },
+  {
+   "part_id": "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_26",
+   "oi": 7,
+   "x": 352,
+   "y": 440,
+   "z": 69,
+   "grid_shape": [
+    65,
+    59,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_001",
+   "oi": 5,
+   "x": 339,
+   "y": 192,
+   "z": 69,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_002",
+   "oi": 1,
+   "x": 420,
+   "y": 512,
+   "z": 69,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_003",
+   "oi": 3,
+   "x": 84,
+   "y": 592,
+   "z": 48,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_004",
+   "oi": 13,
+   "x": 240,
+   "y": 64,
+   "z": 53,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_005",
+   "oi": 15,
+   "x": 604,
+   "y": 528,
+   "z": 54,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_006",
+   "oi": 15,
+   "x": 464,
+   "y": 624,
+   "z": 56,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_007",
+   "oi": 0,
+   "x": 184,
+   "y": 192,
+   "z": 74,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_008",
+   "oi": 0,
+   "x": 244,
+   "y": 192,
+   "z": 74,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_009",
+   "oi": 6,
+   "x": 508,
+   "y": 404,
+   "z": 72,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_010",
+   "oi": 18,
+   "x": 76,
+   "y": 317,
+   "z": 52,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_011",
+   "oi": 9,
+   "x": 292,
+   "y": 584,
+   "z": 55,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_012",
+   "oi": 6,
+   "x": 240,
+   "y": 432,
+   "z": 75,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_013",
+   "oi": 0,
+   "x": 296,
+   "y": 92,
+   "z": 83,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_014",
+   "oi": 7,
+   "x": 228,
+   "y": 104,
+   "z": 83,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_015",
+   "oi": 6,
+   "x": 232,
+   "y": 352,
+   "z": 83,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_016",
+   "oi": 6,
+   "x": 352,
+   "y": 364,
+   "z": 83,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_017",
+   "oi": 4,
+   "x": 520,
+   "y": 176,
+   "z": 83,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_018",
+   "oi": 0,
+   "x": 560,
+   "y": 324,
+   "z": 88,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_019",
+   "oi": 6,
+   "x": 216,
+   "y": 516,
+   "z": 88,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_020",
+   "oi": 6,
+   "x": 212,
+   "y": 580,
+   "z": 88,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_021",
+   "oi": 15,
+   "x": 0,
+   "y": 328,
+   "z": 69,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_022",
+   "oi": 6,
+   "x": 388,
+   "y": 0,
+   "z": 86,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_023",
+   "oi": 0,
+   "x": 396,
+   "y": 208,
+   "z": 87,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_024",
+   "oi": 7,
+   "x": 300,
+   "y": 212,
+   "z": 89,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_025",
+   "oi": 6,
+   "x": 504,
+   "y": 304,
+   "z": 90,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_026",
+   "oi": 0,
+   "x": 180,
+   "y": 412,
+   "z": 90,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_027",
+   "oi": 0,
+   "x": 568,
+   "y": 416,
+   "z": 91,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_028",
+   "oi": 6,
+   "x": 88,
+   "y": 48,
+   "z": 95,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_029",
+   "oi": 7,
+   "x": 196,
+   "y": 216,
+   "z": 94,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_030",
+   "oi": 6,
+   "x": 424,
+   "y": 348,
+   "z": 95,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_031",
+   "oi": 1,
+   "x": 140,
+   "y": 352,
+   "z": 95,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_032",
+   "oi": 0,
+   "x": 428,
+   "y": 404,
+   "z": 95,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_033",
+   "oi": 7,
+   "x": 508,
+   "y": 468,
+   "z": 93,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_034",
+   "oi": 15,
+   "x": 0,
+   "y": 628,
+   "z": 75,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_035",
+   "oi": 6,
+   "x": 580,
+   "y": 148,
+   "z": 95,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_036",
+   "oi": 19,
+   "x": 280,
+   "y": 604,
+   "z": 79,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_037",
+   "oi": 6,
+   "x": 584,
+   "y": 56,
+   "z": 98,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_038",
+   "oi": 6,
+   "x": 312,
+   "y": 92,
+   "z": 100,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_039",
+   "oi": 1,
+   "x": 0,
+   "y": 268,
+   "z": 98,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_040",
+   "oi": 12,
+   "x": 183,
+   "y": 501,
+   "z": 90,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_041",
+   "oi": 1,
+   "x": 64,
+   "y": 272,
+   "z": 109,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_042",
+   "oi": 13,
+   "x": 148,
+   "y": 40,
+   "z": 95,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_043",
+   "oi": 13,
+   "x": 96,
+   "y": 440,
+   "z": 95,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_044",
+   "oi": 14,
+   "x": 628,
+   "y": 104,
+   "z": 102,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_045",
+   "oi": 7,
+   "x": 0,
+   "y": 284,
+   "z": 119,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_046",
+   "oi": 0,
+   "x": 372,
+   "y": 0,
+   "z": 122,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_047",
+   "oi": 11,
+   "x": 472,
+   "y": 168,
+   "z": 124,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_048",
+   "oi": 13,
+   "x": 236,
+   "y": 64,
+   "z": 107,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_049",
+   "oi": 12,
+   "x": 84,
+   "y": 592,
+   "z": 108,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_050",
+   "oi": 6,
+   "x": 428,
+   "y": 0,
+   "z": 126,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_051",
+   "oi": 15,
+   "x": 268,
+   "y": 440,
+   "z": 111,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_052",
+   "oi": 0,
+   "x": 608,
+   "y": 168,
+   "z": 131,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_053",
+   "oi": 0,
+   "x": 576,
+   "y": 28,
+   "z": 134,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_054",
+   "oi": 20,
+   "x": 184,
+   "y": 440,
+   "z": 122,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_055",
+   "oi": 6,
+   "x": 144,
+   "y": 168,
+   "z": 143,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_056",
+   "oi": 0,
+   "x": 128,
+   "y": 224,
+   "z": 143,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_057",
+   "oi": 15,
+   "x": 480,
+   "y": 436,
+   "z": 123,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_058",
+   "oi": 7,
+   "x": 416,
+   "y": 80,
+   "z": 143,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_059",
+   "oi": 6,
+   "x": 348,
+   "y": 416,
+   "z": 146,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_060",
+   "oi": 6,
+   "x": 412,
+   "y": 424,
+   "z": 146,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_061",
+   "oi": 4,
+   "x": 329,
+   "y": 474,
+   "z": 146,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_062",
+   "oi": 7,
+   "x": 128,
+   "y": 32,
+   "z": 149,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_063",
+   "oi": 7,
+   "x": 416,
+   "y": 140,
+   "z": 144,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_064",
+   "oi": 15,
+   "x": 0,
+   "y": 624,
+   "z": 129,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_065",
+   "oi": 6,
+   "x": 0,
+   "y": 264,
+   "z": 156,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_066",
+   "oi": 1,
+   "x": 372,
+   "y": 0,
+   "z": 158,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_067",
+   "oi": 0,
+   "x": 428,
+   "y": 284,
+   "z": 167,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_068",
+   "oi": 6,
+   "x": 304,
+   "y": 472,
+   "z": 163,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_069",
+   "oi": 7,
+   "x": 252,
+   "y": 412,
+   "z": 171,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_070",
+   "oi": 7,
+   "x": 132,
+   "y": 412,
+   "z": 172,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_071",
+   "oi": 12,
+   "x": 60,
+   "y": 272,
+   "z": 155,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_072",
+   "oi": 0,
+   "x": 428,
+   "y": 0,
+   "z": 174,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_073",
+   "oi": 1,
+   "x": 171,
+   "y": 169,
+   "z": 179,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_074",
+   "oi": 15,
+   "x": 488,
+   "y": 316,
+   "z": 163,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_075",
+   "oi": 6,
+   "x": 348,
+   "y": 320,
+   "z": 183,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_076",
+   "oi": 14,
+   "x": 68,
+   "y": 604,
+   "z": 162,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_077",
+   "oi": 0,
+   "x": 144,
+   "y": 24,
+   "z": 185,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_078",
+   "oi": 14,
+   "x": 308,
+   "y": 400,
+   "z": 171,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_079",
+   "oi": 0,
+   "x": 224,
+   "y": 72,
+   "z": 184,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_080",
+   "oi": 0,
+   "x": 248,
+   "y": 180,
+   "z": 185,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_081",
+   "oi": 7,
+   "x": 196,
+   "y": 412,
+   "z": 188,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_082",
+   "oi": 8,
+   "x": 372,
+   "y": 60,
+   "z": 163,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_083",
+   "oi": 2,
+   "x": 608,
+   "y": 616,
+   "z": 163,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_084",
+   "oi": 20,
+   "x": 84,
+   "y": 368,
+   "z": 170,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_085",
+   "oi": 15,
+   "x": 368,
+   "y": 628,
+   "z": 165,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_086",
+   "oi": 6,
+   "x": 0,
+   "y": 232,
+   "z": 194,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_087",
+   "oi": 3,
+   "x": 0,
+   "y": 0,
+   "z": 167,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_088",
+   "oi": 7,
+   "x": 372,
+   "y": 0,
+   "z": 194,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_089",
+   "oi": 7,
+   "x": 280,
+   "y": 92,
+   "z": 195,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_090",
+   "oi": 6,
+   "x": 284,
+   "y": 464,
+   "z": 199,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_091",
+   "oi": 12,
+   "x": 436,
+   "y": 180,
+   "z": 183,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_092",
+   "oi": 13,
+   "x": 0,
+   "y": 616,
+   "z": 179,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_093",
+   "oi": 6,
+   "x": 156,
+   "y": 8,
+   "z": 202,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_094",
+   "oi": 14,
+   "x": 312,
+   "y": 176,
+   "z": 185,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_095",
+   "oi": 14,
+   "x": 628,
+   "y": 520,
+   "z": 186,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_096",
+   "oi": 0,
+   "x": 524,
+   "y": 340,
+   "z": 215,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_097",
+   "oi": 7,
+   "x": 116,
+   "y": 368,
+   "z": 213,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_098",
+   "oi": 3,
+   "x": 344,
+   "y": 92,
+   "z": 203,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_099",
+   "oi": 2,
+   "x": 0,
+   "y": 296,
+   "z": 192,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_100",
+   "oi": 3,
+   "x": 0,
+   "y": 60,
+   "z": 193,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_101",
+   "oi": 3,
+   "x": 0,
+   "y": 120,
+   "z": 193,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_102",
+   "oi": 7,
+   "x": 420,
+   "y": 52,
+   "z": 218,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_103",
+   "oi": 0,
+   "x": 408,
+   "y": 108,
+   "z": 218,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_104",
+   "oi": 4,
+   "x": 180,
+   "y": 360,
+   "z": 219,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_105",
+   "oi": 23,
+   "x": 372,
+   "y": 212,
+   "z": 205,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_106",
+   "oi": 15,
+   "x": 488,
+   "y": 612,
+   "z": 197,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_107",
+   "oi": 13,
+   "x": 424,
+   "y": 616,
+   "z": 197,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_108",
+   "oi": 13,
+   "x": 548,
+   "y": 616,
+   "z": 197,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_109",
+   "oi": 8,
+   "x": 216,
+   "y": 0,
+   "z": 206,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_110",
+   "oi": 7,
+   "x": 48,
+   "y": 608,
+   "z": 216,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_111",
+   "oi": 6,
+   "x": 372,
+   "y": 0,
+   "z": 230,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_112",
+   "oi": 3,
+   "x": 264,
+   "y": 176,
+   "z": 211,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_113",
+   "oi": 9,
+   "x": 244,
+   "y": 368,
+   "z": 215,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_114",
+   "oi": 15,
+   "x": 188,
+   "y": 620,
+   "z": 214,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_115",
+   "oi": 0,
+   "x": 159,
+   "y": 12,
+   "z": 238,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_116",
+   "oi": 15,
+   "x": 276,
+   "y": 412,
+   "z": 225,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_117",
+   "oi": 12,
+   "x": 184,
+   "y": 428,
+   "z": 224,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_118",
+   "oi": 23,
+   "x": 360,
+   "y": 620,
+   "z": 215,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_119",
+   "oi": 2,
+   "x": 468,
+   "y": 248,
+   "z": 217,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_120",
+   "oi": 2,
+   "x": 112,
+   "y": 628,
+   "z": 219,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_121",
+   "oi": 15,
+   "x": 232,
+   "y": 16,
+   "z": 230,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_122",
+   "oi": 0,
+   "x": 84,
+   "y": 340,
+   "z": 249,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_123",
+   "oi": 6,
+   "x": 156,
+   "y": 360,
+   "z": 249,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_124",
+   "oi": 13,
+   "x": 432,
+   "y": 0,
+   "z": 230,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_125",
+   "oi": 14,
+   "x": 288,
+   "y": 92,
+   "z": 231,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_126",
+   "oi": 0,
+   "x": 12,
+   "y": 140,
+   "z": 248,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_127",
+   "oi": 11,
+   "x": 0,
+   "y": 268,
+   "z": 252,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_128",
+   "oi": 23,
+   "x": 476,
+   "y": 316,
+   "z": 232,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_129",
+   "oi": 0,
+   "x": 8,
+   "y": 48,
+   "z": 253,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_130",
+   "oi": 9,
+   "x": 440,
+   "y": 196,
+   "z": 233,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_131",
+   "oi": 12,
+   "x": 0,
+   "y": 604,
+   "z": 233,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_132",
+   "oi": 15,
+   "x": 304,
+   "y": 628,
+   "z": 239,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_133",
+   "oi": 6,
+   "x": 148,
+   "y": 0,
+   "z": 263,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_134",
+   "oi": 15,
+   "x": 300,
+   "y": 492,
+   "z": 237,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_135",
+   "oi": 8,
+   "x": 496,
+   "y": 0,
+   "z": 235,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_136",
+   "oi": 9,
+   "x": 348,
+   "y": 92,
+   "z": 253,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_137",
+   "oi": 0,
+   "x": 40,
+   "y": 588,
+   "z": 252,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_138",
+   "oi": 13,
+   "x": 300,
+   "y": 204,
+   "z": 246,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_139",
+   "oi": 15,
+   "x": 604,
+   "y": 628,
+   "z": 250,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_140",
+   "oi": 0,
+   "x": 372,
+   "y": 0,
+   "z": 266,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_141",
+   "oi": 6,
+   "x": 484,
+   "y": 204,
+   "z": 262,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_142",
+   "oi": 0,
+   "x": 608,
+   "y": 280,
+   "z": 273,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_143",
+   "oi": 0,
+   "x": 548,
+   "y": 412,
+   "z": 273,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_144",
+   "oi": 6,
+   "x": 604,
+   "y": 424,
+   "z": 272,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_145",
+   "oi": 13,
+   "x": 392,
+   "y": 64,
+   "z": 254,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_146",
+   "oi": 15,
+   "x": 416,
+   "y": 620,
+   "z": 247,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_147",
+   "oi": 7,
+   "x": 532,
+   "y": 316,
+   "z": 274,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_148",
+   "oi": 6,
+   "x": 460,
+   "y": 340,
+   "z": 275,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_149",
+   "oi": 8,
+   "x": 216,
+   "y": 56,
+   "z": 257,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_150",
+   "oi": 2,
+   "x": 112,
+   "y": 216,
+   "z": 257,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_151",
+   "oi": 15,
+   "x": 472,
+   "y": 596,
+   "z": 251,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_152",
+   "oi": 15,
+   "x": 528,
+   "y": 616,
+   "z": 251,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_153",
+   "oi": 7,
+   "x": 360,
+   "y": 576,
+   "z": 269,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_154",
+   "oi": 12,
+   "x": 440,
+   "y": 400,
+   "z": 264,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_155",
+   "oi": 6,
+   "x": 472,
+   "y": 20,
+   "z": 280,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_156",
+   "oi": 12,
+   "x": 544,
+   "y": 228,
+   "z": 254,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_157",
+   "oi": 1,
+   "x": 264,
+   "y": 93,
+   "z": 285,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_158",
+   "oi": 0,
+   "x": 104,
+   "y": 152,
+   "z": 291,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_159",
+   "oi": 10,
+   "x": 56,
+   "y": 592,
+   "z": 277,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_160",
+   "oi": 1,
+   "x": 104,
+   "y": 20,
+   "z": 294,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_161",
+   "oi": 0,
+   "x": 412,
+   "y": 104,
+   "z": 284,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_162",
+   "oi": 7,
+   "x": 64,
+   "y": 272,
+   "z": 286,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_163",
+   "oi": 10,
+   "x": 84,
+   "y": 340,
+   "z": 287,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_164",
+   "oi": 13,
+   "x": 164,
+   "y": 628,
+   "z": 269,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_165",
+   "oi": 15,
+   "x": 220,
+   "y": 628,
+   "z": 268,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_166",
+   "oi": 7,
+   "x": 160,
+   "y": 0,
+   "z": 299,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_167",
+   "oi": 13,
+   "x": 224,
+   "y": 0,
+   "z": 280,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_168",
+   "oi": 0,
+   "x": 540,
+   "y": 0,
+   "z": 290,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_169",
+   "oi": 1,
+   "x": 320,
+   "y": 92,
+   "z": 313,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_170",
+   "oi": 1,
+   "x": 208,
+   "y": 96,
+   "z": 305,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_171",
+   "oi": 12,
+   "x": 428,
+   "y": 0,
+   "z": 284,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_172",
+   "oi": 7,
+   "x": 224,
+   "y": 40,
+   "z": 307,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_173",
+   "oi": 6,
+   "x": 452,
+   "y": 164,
+   "z": 298,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_174",
+   "oi": 6,
+   "x": 0,
+   "y": 572,
+   "z": 300,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_175",
+   "oi": 23,
+   "x": 296,
+   "y": 620,
+   "z": 289,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_176",
+   "oi": 10,
+   "x": 544,
+   "y": 136,
+   "z": 302,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_177",
+   "oi": 6,
+   "x": 140,
+   "y": 264,
+   "z": 310,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_178",
+   "oi": 1,
+   "x": 464,
+   "y": 320,
+   "z": 311,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_179",
+   "oi": 6,
+   "x": 140,
+   "y": 340,
+   "z": 310,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_180",
+   "oi": 23,
+   "x": 556,
+   "y": 208,
+   "z": 284,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_181",
+   "oi": 0,
+   "x": 520,
+   "y": 56,
+   "z": 311,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_182",
+   "oi": 0,
+   "x": 604,
+   "y": 140,
+   "z": 303,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_183",
+   "oi": 6,
+   "x": 120,
+   "y": 180,
+   "z": 308,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_184",
+   "oi": 4,
+   "x": 200,
+   "y": 336,
+   "z": 315,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_185",
+   "oi": 1,
+   "x": 484,
+   "y": 576,
+   "z": 305,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_186",
+   "oi": 15,
+   "x": 288,
+   "y": 472,
+   "z": 296,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_187",
+   "oi": 19,
+   "x": 456,
+   "y": 228,
+   "z": 293,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_188",
+   "oi": 2,
+   "x": 380,
+   "y": 420,
+   "z": 301,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_189",
+   "oi": 0,
+   "x": 60,
+   "y": 600,
+   "z": 313,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_190",
+   "oi": 12,
+   "x": 512,
+   "y": 180,
+   "z": 298,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_191",
+   "oi": 15,
+   "x": 600,
+   "y": 628,
+   "z": 304,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_192",
+   "oi": 4,
+   "x": 108,
+   "y": 0,
+   "z": 330,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_193",
+   "oi": 0,
+   "x": 456,
+   "y": 68,
+   "z": 320,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_194",
+   "oi": 7,
+   "x": 272,
+   "y": 92,
+   "z": 412,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_195",
+   "oi": 3,
+   "x": 352,
+   "y": 200,
+   "z": 304,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_196",
+   "oi": 23,
+   "x": 140,
+   "y": 72,
+   "z": 311,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_197",
+   "oi": 6,
+   "x": 164,
+   "y": 0,
+   "z": 335,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_198",
+   "oi": 7,
+   "x": 476,
+   "y": 332,
+   "z": 328,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_199",
+   "oi": 7,
+   "x": 84,
+   "y": 328,
+   "z": 327,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "03_00-K179 Dugme Tek Fonksiyonlu_200",
+   "oi": 6,
+   "x": 216,
+   "y": 336,
+   "z": 332,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_01",
+   "oi": 12,
+   "x": 352,
+   "y": 456,
+   "z": 317,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_02",
+   "oi": 15,
+   "x": 372,
+   "y": 628,
+   "z": 311,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_03",
+   "oi": 6,
+   "x": 440,
+   "y": 400,
+   "z": 336,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_04",
+   "oi": 6,
+   "x": 116,
+   "y": 604,
+   "z": 329,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_05",
+   "oi": 15,
+   "x": 524,
+   "y": 228,
+   "z": 308,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_06",
+   "oi": 0,
+   "x": 224,
+   "y": 0,
+   "z": 343,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_07",
+   "oi": 6,
+   "x": 0,
+   "y": 604,
+   "z": 336,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_08",
+   "oi": 2,
+   "x": 540,
+   "y": 628,
+   "z": 323,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_09",
+   "oi": 13,
+   "x": 220,
+   "y": 615,
+   "z": 321,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_10",
+   "oi": 6,
+   "x": 272,
+   "y": 168,
+   "z": 347,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_11",
+   "oi": 5,
+   "x": 152,
+   "y": 360,
+   "z": 346,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_12",
+   "oi": 0,
+   "x": 124,
+   "y": 184,
+   "z": 344,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_13",
+   "oi": 7,
+   "x": 488,
+   "y": 276,
+   "z": 347,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_14",
+   "oi": 19,
+   "x": 84,
+   "y": 528,
+   "z": 319,
+   "grid_shape": [
+    40,
+    58,
+    60
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_15",
+   "oi": 8,
+   "x": 0,
+   "y": 0,
+   "z": 337,
+   "grid_shape": [
+    58,
+    40,
+    60
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_16",
+   "oi": 14,
+   "x": 628,
+   "y": 0,
+   "z": 329,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_17",
+   "oi": 1,
+   "x": 424,
+   "y": 172,
+   "z": 357,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_18",
+   "oi": 7,
+   "x": 364,
+   "y": 220,
+   "z": 356,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_19",
+   "oi": 4,
+   "x": 424,
+   "y": 232,
+   "z": 357,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_20",
+   "oi": 0,
+   "x": 380,
+   "y": 384,
+   "z": 361,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_21",
+   "oi": 5,
+   "x": 288,
+   "y": 444,
+   "z": 353,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_22",
+   "oi": 6,
+   "x": 56,
+   "y": 596,
+   "z": 353,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_23",
+   "oi": 1,
+   "x": 60,
+   "y": 0,
+   "z": 366,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_24",
+   "oi": 6,
+   "x": 240,
+   "y": 0,
+   "z": 360,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_25",
+   "oi": 6,
+   "x": 385,
+   "y": 441,
+   "z": 361,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_26",
+   "oi": 0,
+   "x": 392,
+   "y": 496,
+   "z": 358,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_27",
+   "oi": 6,
+   "x": 596,
+   "y": 588,
+   "z": 362,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_28",
+   "oi": 7,
+   "x": 116,
+   "y": 0,
+   "z": 371,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_29",
+   "oi": 6,
+   "x": 452,
+   "y": 332,
+   "z": 365,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_30",
+   "oi": 7,
+   "x": 168,
+   "y": 604,
+   "z": 356,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_31",
+   "oi": 6,
+   "x": 144,
+   "y": 168,
+   "z": 369,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_32",
+   "oi": 6,
+   "x": 208,
+   "y": 328,
+   "z": 368,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_33",
+   "oi": 7,
+   "x": 76,
+   "y": 464,
+   "z": 365,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_34",
+   "oi": 6,
+   "x": 544,
+   "y": 356,
+   "z": 373,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_35",
+   "oi": 6,
+   "x": 604,
+   "y": 356,
+   "z": 371,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_36",
+   "oi": 0,
+   "x": 444,
+   "y": 396,
+   "z": 372,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_37",
+   "oi": 7,
+   "x": 100,
+   "y": 544,
+   "z": 364,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_38",
+   "oi": 12,
+   "x": 428,
+   "y": 92,
+   "z": 355,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_39",
+   "oi": 0,
+   "x": 180,
+   "y": 0,
+   "z": 379,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_40",
+   "oi": 7,
+   "x": 404,
+   "y": 156,
+   "z": 374,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_41",
+   "oi": 0,
+   "x": 0,
+   "y": 280,
+   "z": 376,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_42",
+   "oi": 6,
+   "x": 305,
+   "y": 421,
+   "z": 371,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_43",
+   "oi": 6,
+   "x": 320,
+   "y": 492,
+   "z": 371,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_44",
+   "oi": 7,
+   "x": 433,
+   "y": 553,
+   "z": 370,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_45",
+   "oi": 6,
+   "x": 0,
+   "y": 576,
+   "z": 372,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_46",
+   "oi": 6,
+   "x": 12,
+   "y": 10,
+   "z": 382,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_47",
+   "oi": 0,
+   "x": 72,
+   "y": 60,
+   "z": 386,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_48",
+   "oi": 7,
+   "x": 4,
+   "y": 76,
+   "z": 386,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_49",
+   "oi": 6,
+   "x": 68,
+   "y": 116,
+   "z": 386,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_50",
+   "oi": 7,
+   "x": 347,
+   "y": 556,
+   "z": 369,
+   "grid_shape": [
+    64,
+    58,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_51",
+   "oi": 0,
+   "x": 232,
+   "y": 604,
+   "z": 375,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_52",
+   "oi": 15,
+   "x": 160,
+   "y": 48,
+   "z": 367,
+   "grid_shape": [
+    64,
+    40,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_53",
+   "oi": 14,
+   "x": 504,
+   "y": 344,
+   "z": 364,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_54",
+   "oi": 14,
+   "x": 628,
+   "y": 436,
+   "z": 362,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_55",
+   "oi": 14,
+   "x": 628,
+   "y": 500,
+   "z": 362,
+   "grid_shape": [
+    40,
+    64,
+    54
+   ]
+  },
+  {
+   "part_id": "04_T00-K179 Dugme Fonksiyonsuz_56",
+   "oi": 6,
+   "x": 128,
+   "y": 88,
+   "z": 388,
+   "grid_shape": [
+    58,
+    64,
+    36
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_01",
+   "oi": 11,
+   "x": 352,
+   "y": 64,
+   "z": 0,
+   "grid_shape": [
+    71,
+    63,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_02",
+   "oi": 6,
+   "x": 304,
+   "y": 156,
+   "z": 0,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_03",
+   "oi": 10,
+   "x": 524,
+   "y": 188,
+   "z": 0,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_04",
+   "oi": 7,
+   "x": 276,
+   "y": 480,
+   "z": 0,
+   "grid_shape": [
+    71,
+    63,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_05",
+   "oi": 4,
+   "x": 100,
+   "y": 492,
+   "z": 0,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_06",
+   "oi": 0,
+   "x": 120,
+   "y": 424,
+   "z": 10,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_07",
+   "oi": 11,
+   "x": 364,
+   "y": 480,
+   "z": 16,
+   "grid_shape": [
+    71,
+    63,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_08",
+   "oi": 0,
+   "x": 56,
+   "y": 540,
+   "z": 12,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_09",
+   "oi": 0,
+   "x": 392,
+   "y": 80,
+   "z": 18,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_10",
+   "oi": 4,
+   "x": 208,
+   "y": 596,
+   "z": 25,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_11",
+   "oi": 0,
+   "x": 476,
+   "y": 0,
+   "z": 35,
+   "grid_shape": [
+    63,
+    71,
+    20
+   ]
+  },
+  {
+   "part_id": "01_202201790014_00-K179 Dugme Aksesuari_12",
+   "oi": 5,
+   "x": 200,
+   "y": 61,
+   "z": 35,
+   "grid_shape": [
+    71,
+    63,
+    20
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_01",
+   "oi": 11,
+   "x": 484,
+   "y": 504,
+   "z": 0,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_02",
+   "oi": 11,
+   "x": 491,
+   "y": 609,
+   "z": 0,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_03",
+   "oi": 1,
+   "x": 128,
+   "y": 76,
+   "z": 27,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_04",
+   "oi": 4,
+   "x": 596,
+   "y": 116,
+   "z": 28,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_05",
+   "oi": 5,
+   "x": 156,
+   "y": 136,
+   "z": 28,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_06",
+   "oi": 0,
+   "x": 440,
+   "y": 272,
+   "z": 27,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_07",
+   "oi": 1,
+   "x": 216,
+   "y": 388,
+   "z": 28,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_08",
+   "oi": 1,
+   "x": 144,
+   "y": 396,
+   "z": 28,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_09",
+   "oi": 1,
+   "x": 40,
+   "y": 604,
+   "z": 28,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_10",
+   "oi": 0,
+   "x": 461,
+   "y": 79,
+   "z": 32,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_11",
+   "oi": 22,
+   "x": 644,
+   "y": 340,
+   "z": 0,
+   "grid_shape": [
+    23,
+    60,
+    54
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_12",
+   "oi": 8,
+   "x": 149,
+   "y": 640,
+   "z": 0,
+   "grid_shape": [
+    58,
+    23,
+    56
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_13",
+   "oi": 4,
+   "x": 460,
+   "y": 296,
+   "z": 35,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_14",
+   "oi": 10,
+   "x": 0,
+   "y": 356,
+   "z": 36,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_15",
+   "oi": 6,
+   "x": 20,
+   "y": 380,
+   "z": 36,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_16",
+   "oi": 0,
+   "x": 596,
+   "y": 68,
+   "z": 40,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_17",
+   "oi": 4,
+   "x": 604,
+   "y": 208,
+   "z": 46,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_18",
+   "oi": 1,
+   "x": 440,
+   "y": 376,
+   "z": 47,
+   "grid_shape": [
+    60,
+    58,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_19",
+   "oi": 4,
+   "x": 436,
+   "y": 436,
+   "z": 47,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_20",
+   "oi": 18,
+   "x": 216,
+   "y": 0,
+   "z": 16,
+   "grid_shape": [
+    58,
+    23,
+    56
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_21",
+   "oi": 2,
+   "x": 143,
+   "y": 317,
+   "z": 13,
+   "grid_shape": [
+    58,
+    23,
+    56
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_22",
+   "oi": 0,
+   "x": 424,
+   "y": 100,
+   "z": 50,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_23",
+   "oi": 4,
+   "x": 400,
+   "y": 160,
+   "z": 49,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_24",
+   "oi": 18,
+   "x": 204,
+   "y": 320,
+   "z": 16,
+   "grid_shape": [
+    58,
+    23,
+    56
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_25",
+   "oi": 2,
+   "x": 264,
+   "y": 320,
+   "z": 16,
+   "grid_shape": [
+    58,
+    23,
+    56
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_26",
+   "oi": 0,
+   "x": 604,
+   "y": 0,
+   "z": 53,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "09_00-K179 Dugme Kilidi_27",
+   "oi": 4,
+   "x": 8,
+   "y": 496,
+   "z": 63,
+   "grid_shape": [
+    58,
+    60,
+    19
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_001",
+   "oi": 2,
+   "x": 276,
+   "y": 0,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_002",
+   "oi": 8,
+   "x": 208,
+   "y": 184,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_003",
+   "oi": 9,
+   "x": 596,
+   "y": 192,
+   "z": 0,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_004",
+   "oi": 2,
+   "x": 60,
+   "y": 196,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_005",
+   "oi": 8,
+   "x": 28,
+   "y": 280,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_006",
+   "oi": 3,
+   "x": 180,
+   "y": 364,
+   "z": 0,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_007",
+   "oi": 2,
+   "x": 640,
+   "y": 492,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_008",
+   "oi": 2,
+   "x": 364,
+   "y": 536,
+   "z": 0,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_009",
+   "oi": 3,
+   "x": 208,
+   "y": 640,
+   "z": 0,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_010",
+   "oi": 3,
+   "x": 252,
+   "y": 640,
+   "z": 0,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_011",
+   "oi": 0,
+   "x": 352,
+   "y": 432,
+   "z": 0,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_012",
+   "oi": 3,
+   "x": 464,
+   "y": 28,
+   "z": 13,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_013",
+   "oi": 8,
+   "x": 96,
+   "y": 156,
+   "z": 13,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_014",
+   "oi": 3,
+   "x": 344,
+   "y": 164,
+   "z": 16,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_015",
+   "oi": 8,
+   "x": 16,
+   "y": 220,
+   "z": 13,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_016",
+   "oi": 8,
+   "x": 16,
+   "y": 325,
+   "z": 16,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_017",
+   "oi": 8,
+   "x": 76,
+   "y": 500,
+   "z": 13,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_018",
+   "oi": 3,
+   "x": 340,
+   "y": 640,
+   "z": 16,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_019",
+   "oi": 2,
+   "x": 368,
+   "y": 92,
+   "z": 15,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_020",
+   "oi": 2,
+   "x": 336,
+   "y": 584,
+   "z": 18,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_021",
+   "oi": 2,
+   "x": 276,
+   "y": 0,
+   "z": 22,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_022",
+   "oi": 6,
+   "x": 612,
+   "y": 292,
+   "z": 9,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_023",
+   "oi": 3,
+   "x": 540,
+   "y": 0,
+   "z": 26,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_024",
+   "oi": 0,
+   "x": 276,
+   "y": 388,
+   "z": 13,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_025",
+   "oi": 6,
+   "x": 600,
+   "y": 392,
+   "z": 16,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_026",
+   "oi": 6,
+   "x": 496,
+   "y": 468,
+   "z": 16,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_027",
+   "oi": 6,
+   "x": 328,
+   "y": 488,
+   "z": 16,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_028",
+   "oi": 6,
+   "x": 148,
+   "y": 592,
+   "z": 14,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_029",
+   "oi": 3,
+   "x": 496,
+   "y": 156,
+   "z": 30,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_030",
+   "oi": 8,
+   "x": 244,
+   "y": 468,
+   "z": 30,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_031",
+   "oi": 8,
+   "x": 176,
+   "y": 472,
+   "z": 30,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_032",
+   "oi": 2,
+   "x": 244,
+   "y": 544,
+   "z": 28,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_033",
+   "oi": 3,
+   "x": 88,
+   "y": 60,
+   "z": 35,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_034",
+   "oi": 3,
+   "x": 520,
+   "y": 84,
+   "z": 33,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_035",
+   "oi": 3,
+   "x": 272,
+   "y": 92,
+   "z": 32,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_036",
+   "oi": 3,
+   "x": 540,
+   "y": 156,
+   "z": 30,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_037",
+   "oi": 2,
+   "x": 468,
+   "y": 160,
+   "z": 35,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_038",
+   "oi": 3,
+   "x": 552,
+   "y": 308,
+   "z": 35,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_039",
+   "oi": 9,
+   "x": 476,
+   "y": 356,
+   "z": 35,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_040",
+   "oi": 3,
+   "x": 404,
+   "y": 420,
+   "z": 36,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_041",
+   "oi": 8,
+   "x": 564,
+   "y": 480,
+   "z": 36,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_042",
+   "oi": 2,
+   "x": 96,
+   "y": 496,
+   "z": 36,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_043",
+   "oi": 2,
+   "x": 172,
+   "y": 516,
+   "z": 33,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_044",
+   "oi": 2,
+   "x": 328,
+   "y": 516,
+   "z": 36,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_045",
+   "oi": 8,
+   "x": 84,
+   "y": 540,
+   "z": 31,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_046",
+   "oi": 3,
+   "x": 172,
+   "y": 560,
+   "z": 36,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_047",
+   "oi": 2,
+   "x": 416,
+   "y": 592,
+   "z": 33,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_048",
+   "oi": 2,
+   "x": 0,
+   "y": 220,
+   "z": 36,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_049",
+   "oi": 20,
+   "x": 96,
+   "y": 232,
+   "z": 37,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_050",
+   "oi": 3,
+   "x": 324,
+   "y": 320,
+   "z": 37,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_051",
+   "oi": 2,
+   "x": 332,
+   "y": 560,
+   "z": 38,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_052",
+   "oi": 21,
+   "x": 164,
+   "y": 616,
+   "z": 34,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_053",
+   "oi": 3,
+   "x": 320,
+   "y": 640,
+   "z": 36,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_054",
+   "oi": 2,
+   "x": 160,
+   "y": 316,
+   "z": 38,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_055",
+   "oi": 6,
+   "x": 244,
+   "y": 512,
+   "z": 31,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_056",
+   "oi": 6,
+   "x": 424,
+   "y": 640,
+   "z": 29,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_057",
+   "oi": 2,
+   "x": 131,
+   "y": 61,
+   "z": 44,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_058",
+   "oi": 3,
+   "x": 156,
+   "y": 64,
+   "z": 46,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_059",
+   "oi": 9,
+   "x": 160,
+   "y": 92,
+   "z": 43,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_060",
+   "oi": 3,
+   "x": 192,
+   "y": 168,
+   "z": 46,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_061",
+   "oi": 9,
+   "x": 16,
+   "y": 199,
+   "z": 46,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_062",
+   "oi": 2,
+   "x": 380,
+   "y": 244,
+   "z": 44,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_063",
+   "oi": 2,
+   "x": 280,
+   "y": 320,
+   "z": 42,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_064",
+   "oi": 9,
+   "x": 172,
+   "y": 388,
+   "z": 45,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_065",
+   "oi": 3,
+   "x": 216,
+   "y": 388,
+   "z": 45,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_066",
+   "oi": 8,
+   "x": 8,
+   "y": 457,
+   "z": 47,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_067",
+   "oi": 14,
+   "x": 44,
+   "y": 588,
+   "z": 46,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_068",
+   "oi": 0,
+   "x": 0,
+   "y": 80,
+   "z": 35,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_069",
+   "oi": 0,
+   "x": 424,
+   "y": 220,
+   "z": 35,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_070",
+   "oi": 9,
+   "x": 476,
+   "y": 68,
+   "z": 51,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_071",
+   "oi": 9,
+   "x": 496,
+   "y": 176,
+   "z": 45,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_072",
+   "oi": 8,
+   "x": 536,
+   "y": 264,
+   "z": 48,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_073",
+   "oi": 2,
+   "x": 516,
+   "y": 400,
+   "z": 49,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_074",
+   "oi": 9,
+   "x": 464,
+   "y": 496,
+   "z": 48,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_075",
+   "oi": 8,
+   "x": 476,
+   "y": 524,
+   "z": 48,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_076",
+   "oi": 3,
+   "x": 596,
+   "y": 612,
+   "z": 49,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_077",
+   "oi": 2,
+   "x": 244,
+   "y": 468,
+   "z": 50,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_078",
+   "oi": 3,
+   "x": 600,
+   "y": 568,
+   "z": 54,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_079",
+   "oi": 3,
+   "x": 520,
+   "y": 57,
+   "z": 55,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_080",
+   "oi": 2,
+   "x": 452,
+   "y": 580,
+   "z": 57,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_081",
+   "oi": 2,
+   "x": 428,
+   "y": 592,
+   "z": 56,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_082",
+   "oi": 2,
+   "x": 84,
+   "y": 0,
+   "z": 61,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_083",
+   "oi": 3,
+   "x": 108,
+   "y": 0,
+   "z": 61,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_084",
+   "oi": 8,
+   "x": 168,
+   "y": 0,
+   "z": 61,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_085",
+   "oi": 2,
+   "x": 28,
+   "y": 28,
+   "z": 63,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_086",
+   "oi": 8,
+   "x": 84,
+   "y": 228,
+   "z": 59,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_087",
+   "oi": 2,
+   "x": 604,
+   "y": 220,
+   "z": 65,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_088",
+   "oi": 2,
+   "x": 632,
+   "y": 220,
+   "z": 65,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_089",
+   "oi": 9,
+   "x": 420,
+   "y": 464,
+   "z": 66,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_090",
+   "oi": 8,
+   "x": 140,
+   "y": 508,
+   "z": 61,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_091",
+   "oi": 0,
+   "x": 484,
+   "y": 0,
+   "z": 55,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_092",
+   "oi": 0,
+   "x": 460,
+   "y": 292,
+   "z": 52,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_093",
+   "oi": 11,
+   "x": 396,
+   "y": 308,
+   "z": 51,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_094",
+   "oi": 0,
+   "x": 132,
+   "y": 344,
+   "z": 52,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_095",
+   "oi": 15,
+   "x": 436,
+   "y": 0,
+   "z": 67,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_096",
+   "oi": 3,
+   "x": 200,
+   "y": 44,
+   "z": 65,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_097",
+   "oi": 2,
+   "x": 60,
+   "y": 132,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_098",
+   "oi": 2,
+   "x": 64,
+   "y": 176,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_099",
+   "oi": 8,
+   "x": 92,
+   "y": 184,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_100",
+   "oi": 8,
+   "x": 304,
+   "y": 188,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_101",
+   "oi": 3,
+   "x": 404,
+   "y": 192,
+   "z": 68,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_102",
+   "oi": 3,
+   "x": 460,
+   "y": 248,
+   "z": 71,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_103",
+   "oi": 3,
+   "x": 520,
+   "y": 276,
+   "z": 71,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_104",
+   "oi": 3,
+   "x": 288,
+   "y": 356,
+   "z": 69,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_105",
+   "oi": 2,
+   "x": 112,
+   "y": 360,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_106",
+   "oi": 8,
+   "x": 488,
+   "y": 392,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_107",
+   "oi": 8,
+   "x": 112,
+   "y": 404,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_108",
+   "oi": 2,
+   "x": 76,
+   "y": 436,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_109",
+   "oi": 2,
+   "x": 296,
+   "y": 436,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_110",
+   "oi": 2,
+   "x": 324,
+   "y": 440,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_111",
+   "oi": 3,
+   "x": 0,
+   "y": 556,
+   "z": 69,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_112",
+   "oi": 3,
+   "x": 44,
+   "y": 556,
+   "z": 69,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_113",
+   "oi": 3,
+   "x": 604,
+   "y": 0,
+   "z": 72,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_114",
+   "oi": 2,
+   "x": 0,
+   "y": 44,
+   "z": 72,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_115",
+   "oi": 3,
+   "x": 496,
+   "y": 80,
+   "z": 73,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_116",
+   "oi": 3,
+   "x": 476,
+   "y": 156,
+   "z": 71,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_117",
+   "oi": 2,
+   "x": 156,
+   "y": 200,
+   "z": 75,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_118",
+   "oi": 2,
+   "x": 132,
+   "y": 232,
+   "z": 75,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_119",
+   "oi": 2,
+   "x": 212,
+   "y": 256,
+   "z": 73,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_120",
+   "oi": 9,
+   "x": 236,
+   "y": 256,
+   "z": 74,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_121",
+   "oi": 3,
+   "x": 296,
+   "y": 268,
+   "z": 74,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_122",
+   "oi": 8,
+   "x": 256,
+   "y": 452,
+   "z": 69,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_123",
+   "oi": 9,
+   "x": 540,
+   "y": 480,
+   "z": 73,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_124",
+   "oi": 6,
+   "x": 72,
+   "y": 280,
+   "z": 59,
+   "grid_shape": [
+    26,
+    26,
+    37
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_125",
+   "oi": 3,
+   "x": 532,
+   "y": 36,
+   "z": 77,
+   "grid_shape": [
+    41,
+    26,
+    22
+   ]
+  },
+  {
+   "part_id": "ASY-0176446-1_126",
+   "oi": 2,
+   "x": 540,
+   "y": 60,
+   "z": 76,
+   "grid_shape": [
+    26,
+    41,
+    22
+   ]
+  }
+ ],
+ "bc_kilit": 0,
+ "removable_order": [
+  "ASY-0176446_62",
+  "17_00-K179 SSB Dugme_01",
+  "17_00-K179 SSB Dugme_02",
+  "17_00-K179 SSB Dugme_03",
+  "17_00-K179 SSB Dugme_04",
+  "17_00-K179 SSB Dugme_07",
+  "17_00-K179 SSB Dugme_12",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_02",
+  "05_00-K179 WBT Dugme_02",
+  "05_00-K179 WBT Dugme_09",
+  "05_00-K179 WBT Dugme_14",
+  "05_00-K179 WBT Dugme_18",
+  "10_T00-K179 Kilitli Dugme_01",
+  "10_T00-K179 Kilitli Dugme_04",
+  "10_T00-K179 Kilitli Dugme_05",
+  "10_T00-K179 Kilitli Dugme_06",
+  "10_T00-K179 Kilitli Dugme_12",
+  "10_T00-K179 Kilitli Dugme_14",
+  "10_T00-K179 Kilitli Dugme_18",
+  "10_T00-K179 Kilitli Dugme_23",
+  "10_T00-K179 Kilitli Dugme_24",
+  "10_T00-K179 Kilitli Dugme_25",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_16",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_20",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_23",
+  "03_00-K179 Dugme Tek Fonksiyonlu_003",
+  "03_00-K179 Dugme Tek Fonksiyonlu_005",
+  "03_00-K179 Dugme Tek Fonksiyonlu_006",
+  "03_00-K179 Dugme Tek Fonksiyonlu_020",
+  "03_00-K179 Dugme Tek Fonksiyonlu_021",
+  "03_00-K179 Dugme Tek Fonksiyonlu_034",
+  "03_00-K179 Dugme Tek Fonksiyonlu_038",
+  "03_00-K179 Dugme Tek Fonksiyonlu_039",
+  "03_00-K179 Dugme Tek Fonksiyonlu_044",
+  "03_00-K179 Dugme Tek Fonksiyonlu_045",
+  "03_00-K179 Dugme Tek Fonksiyonlu_046",
+  "03_00-K179 Dugme Tek Fonksiyonlu_049",
+  "03_00-K179 Dugme Tek Fonksiyonlu_050",
+  "03_00-K179 Dugme Tek Fonksiyonlu_052",
+  "03_00-K179 Dugme Tek Fonksiyonlu_053",
+  "03_00-K179 Dugme Tek Fonksiyonlu_064",
+  "03_00-K179 Dugme Tek Fonksiyonlu_065",
+  "03_00-K179 Dugme Tek Fonksiyonlu_072",
+  "03_00-K179 Dugme Tek Fonksiyonlu_076",
+  "03_00-K179 Dugme Tek Fonksiyonlu_083",
+  "03_00-K179 Dugme Tek Fonksiyonlu_085",
+  "03_00-K179 Dugme Tek Fonksiyonlu_086",
+  "03_00-K179 Dugme Tek Fonksiyonlu_087",
+  "03_00-K179 Dugme Tek Fonksiyonlu_088",
+  "03_00-K179 Dugme Tek Fonksiyonlu_092",
+  "03_00-K179 Dugme Tek Fonksiyonlu_093",
+  "03_00-K179 Dugme Tek Fonksiyonlu_095",
+  "03_00-K179 Dugme Tek Fonksiyonlu_099",
+  "03_00-K179 Dugme Tek Fonksiyonlu_100",
+  "03_00-K179 Dugme Tek Fonksiyonlu_101",
+  "03_00-K179 Dugme Tek Fonksiyonlu_106",
+  "03_00-K179 Dugme Tek Fonksiyonlu_109",
+  "03_00-K179 Dugme Tek Fonksiyonlu_111",
+  "03_00-K179 Dugme Tek Fonksiyonlu_114",
+  "03_00-K179 Dugme Tek Fonksiyonlu_120",
+  "03_00-K179 Dugme Tek Fonksiyonlu_124",
+  "03_00-K179 Dugme Tek Fonksiyonlu_127",
+  "03_00-K179 Dugme Tek Fonksiyonlu_129",
+  "03_00-K179 Dugme Tek Fonksiyonlu_131",
+  "03_00-K179 Dugme Tek Fonksiyonlu_132",
+  "03_00-K179 Dugme Tek Fonksiyonlu_133",
+  "03_00-K179 Dugme Tek Fonksiyonlu_135",
+  "03_00-K179 Dugme Tek Fonksiyonlu_137",
+  "03_00-K179 Dugme Tek Fonksiyonlu_139",
+  "03_00-K179 Dugme Tek Fonksiyonlu_140",
+  "03_00-K179 Dugme Tek Fonksiyonlu_142",
+  "03_00-K179 Dugme Tek Fonksiyonlu_144",
+  "03_00-K179 Dugme Tek Fonksiyonlu_146",
+  "03_00-K179 Dugme Tek Fonksiyonlu_152",
+  "03_00-K179 Dugme Tek Fonksiyonlu_159",
+  "03_00-K179 Dugme Tek Fonksiyonlu_165",
+  "03_00-K179 Dugme Tek Fonksiyonlu_167",
+  "03_00-K179 Dugme Tek Fonksiyonlu_171",
+  "03_00-K179 Dugme Tek Fonksiyonlu_174",
+  "03_00-K179 Dugme Tek Fonksiyonlu_182",
+  "03_00-K179 Dugme Tek Fonksiyonlu_185",
+  "03_00-K179 Dugme Tek Fonksiyonlu_189",
+  "03_00-K179 Dugme Tek Fonksiyonlu_191",
+  "03_00-K179 Dugme Tek Fonksiyonlu_192",
+  "03_00-K179 Dugme Tek Fonksiyonlu_194",
+  "03_00-K179 Dugme Tek Fonksiyonlu_197",
+  "04_T00-K179 Dugme Fonksiyonsuz_02",
+  "04_T00-K179 Dugme Fonksiyonsuz_04",
+  "04_T00-K179 Dugme Fonksiyonsuz_06",
+  "04_T00-K179 Dugme Fonksiyonsuz_07",
+  "04_T00-K179 Dugme Fonksiyonsuz_08",
+  "04_T00-K179 Dugme Fonksiyonsuz_15",
+  "04_T00-K179 Dugme Fonksiyonsuz_16",
+  "04_T00-K179 Dugme Fonksiyonsuz_18",
+  "04_T00-K179 Dugme Fonksiyonsuz_22",
+  "04_T00-K179 Dugme Fonksiyonsuz_23",
+  "04_T00-K179 Dugme Fonksiyonsuz_24",
+  "04_T00-K179 Dugme Fonksiyonsuz_25",
+  "04_T00-K179 Dugme Fonksiyonsuz_27",
+  "04_T00-K179 Dugme Fonksiyonsuz_28",
+  "04_T00-K179 Dugme Fonksiyonsuz_30",
+  "04_T00-K179 Dugme Fonksiyonsuz_32",
+  "04_T00-K179 Dugme Fonksiyonsuz_34",
+  "04_T00-K179 Dugme Fonksiyonsuz_35",
+  "04_T00-K179 Dugme Fonksiyonsuz_36",
+  "04_T00-K179 Dugme Fonksiyonsuz_37",
+  "04_T00-K179 Dugme Fonksiyonsuz_39",
+  "04_T00-K179 Dugme Fonksiyonsuz_41",
+  "04_T00-K179 Dugme Fonksiyonsuz_42",
+  "04_T00-K179 Dugme Fonksiyonsuz_43",
+  "04_T00-K179 Dugme Fonksiyonsuz_44",
+  "04_T00-K179 Dugme Fonksiyonsuz_45",
+  "04_T00-K179 Dugme Fonksiyonsuz_46",
+  "04_T00-K179 Dugme Fonksiyonsuz_48",
+  "04_T00-K179 Dugme Fonksiyonsuz_50",
+  "04_T00-K179 Dugme Fonksiyonsuz_51",
+  "04_T00-K179 Dugme Fonksiyonsuz_54",
+  "04_T00-K179 Dugme Fonksiyonsuz_55",
+  "01_202201790014_00-K179 Dugme Aksesuari_10",
+  "01_202201790014_00-K179 Dugme Aksesuari_11",
+  "09_00-K179 Dugme Kilidi_02",
+  "09_00-K179 Dugme Kilidi_11",
+  "09_00-K179 Dugme Kilidi_12",
+  "09_00-K179 Dugme Kilidi_16",
+  "09_00-K179 Dugme Kilidi_17",
+  "09_00-K179 Dugme Kilidi_20",
+  "09_00-K179 Dugme Kilidi_26",
+  "ASY-0176446-1_001",
+  "ASY-0176446-1_003",
+  "ASY-0176446-1_007",
+  "ASY-0176446-1_009",
+  "ASY-0176446-1_010",
+  "ASY-0176446-1_018",
+  "ASY-0176446-1_021",
+  "ASY-0176446-1_023",
+  "ASY-0176446-1_048",
+  "ASY-0176446-1_052",
+  "ASY-0176446-1_053",
+  "ASY-0176446-1_056",
+  "ASY-0176446-1_068",
+  "ASY-0176446-1_083",
+  "ASY-0176446-1_084",
+  "ASY-0176446-1_088",
+  "ASY-0176446-1_091",
+  "ASY-0176446-1_111",
+  "ASY-0176446-1_113",
+  "ASY-0176446-1_114",
+  "ASY-0176446_59",
+  "ASY-0176446_60",
+  "ASY-0176446_61",
+  "17_00-K179 SSB Dugme_08",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_01",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_06",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_08",
+  "05_00-K179 WBT Dugme_07",
+  "05_00-K179 WBT Dugme_16",
+  "05_00-K179 WBT Dugme_20",
+  "10_T00-K179 Kilitli Dugme_02",
+  "10_T00-K179 Kilitli Dugme_03",
+  "03_00-K179 Dugme Tek Fonksiyonlu_041",
+  "03_00-K179 Dugme Tek Fonksiyonlu_066",
+  "03_00-K179 Dugme Tek Fonksiyonlu_071",
+  "03_00-K179 Dugme Tek Fonksiyonlu_102",
+  "03_00-K179 Dugme Tek Fonksiyonlu_107",
+  "03_00-K179 Dugme Tek Fonksiyonlu_108",
+  "03_00-K179 Dugme Tek Fonksiyonlu_110",
+  "03_00-K179 Dugme Tek Fonksiyonlu_115",
+  "03_00-K179 Dugme Tek Fonksiyonlu_118",
+  "03_00-K179 Dugme Tek Fonksiyonlu_121",
+  "03_00-K179 Dugme Tek Fonksiyonlu_126",
+  "03_00-K179 Dugme Tek Fonksiyonlu_151",
+  "03_00-K179 Dugme Tek Fonksiyonlu_153",
+  "03_00-K179 Dugme Tek Fonksiyonlu_155",
+  "03_00-K179 Dugme Tek Fonksiyonlu_164",
+  "03_00-K179 Dugme Tek Fonksiyonlu_166",
+  "03_00-K179 Dugme Tek Fonksiyonlu_168",
+  "03_00-K179 Dugme Tek Fonksiyonlu_175",
+  "04_T00-K179 Dugme Fonksiyonsuz_09",
+  "04_T00-K179 Dugme Fonksiyonsuz_14",
+  "04_T00-K179 Dugme Fonksiyonsuz_26",
+  "04_T00-K179 Dugme Fonksiyonsuz_31",
+  "04_T00-K179 Dugme Fonksiyonsuz_47",
+  "04_T00-K179 Dugme Fonksiyonsuz_49",
+  "04_T00-K179 Dugme Fonksiyonsuz_52",
+  "04_T00-K179 Dugme Fonksiyonsuz_56",
+  "ASY-0176446-1_005",
+  "ASY-0176446-1_020",
+  "ASY-0176446-1_032",
+  "ASY-0176446-1_033",
+  "ASY-0176446-1_034",
+  "ASY-0176446-1_047",
+  "ASY-0176446-1_058",
+  "ASY-0176446-1_081",
+  "ASY-0176446-1_082",
+  "ASY-0176446-1_087",
+  "ASY-0176446-1_097",
+  "ASY-0176446-1_112",
+  "ASY-0176446_51",
+  "ASY-0176446_55",
+  "17_00-K179 SSB Dugme_09",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_10",
+  "03_00-K179 Dugme Tek Fonksiyonlu_082",
+  "03_00-K179 Dugme Tek Fonksiyonlu_181",
+  "04_T00-K179 Dugme Fonksiyonsuz_19",
+  "04_T00-K179 Dugme Fonksiyonsuz_33",
+  "04_T00-K179 Dugme Fonksiyonsuz_40",
+  "ASY-0176446-1_008",
+  "ASY-0176446-1_016",
+  "ASY-0176446-1_051",
+  "ASY-0176446-1_080",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_11",
+  "03_00-K179 Dugme Tek Fonksiyonlu_022",
+  "03_00-K179 Dugme Tek Fonksiyonlu_058",
+  "03_00-K179 Dugme Tek Fonksiyonlu_098",
+  "03_00-K179 Dugme Tek Fonksiyonlu_103",
+  "03_00-K179 Dugme Tek Fonksiyonlu_136",
+  "03_00-K179 Dugme Tek Fonksiyonlu_145",
+  "03_00-K179 Dugme Tek Fonksiyonlu_169",
+  "03_00-K179 Dugme Tek Fonksiyonlu_193",
+  "04_T00-K179 Dugme Fonksiyonsuz_17",
+  "04_T00-K179 Dugme Fonksiyonsuz_38",
+  "ASY-0176446-1_044",
+  "03_00-K179 Dugme Tek Fonksiyonlu_161",
+  "03_00-K179 Dugme Tek Fonksiyonlu_173",
+  "ASY-0176446-1_006",
+  "ASY-0176446_04",
+  "05_00-K179 WBT Dugme_15",
+  "ASY-0176446-1_055",
+  "01_202201790014_00-K179 Dugme Aksesuari_04",
+  "ASY-0176446-1_027",
+  "ASY-0176446-1_077",
+  "ASY-0176446-1_030",
+  "ASY-0176446_05",
+  "10_T00-K179 Kilitli Dugme_13",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_12",
+  "01_202201790014_00-K179 Dugme Aksesuari_07",
+  "09_00-K179 Dugme Kilidi_01",
+  "ASY-0176446-1_075",
+  "ASY-0176446_06",
+  "03_00-K179 Dugme Tek Fonksiyonlu_035",
+  "03_00-K179 Dugme Tek Fonksiyonlu_037",
+  "ASY-0176446-1_126",
+  "ASY-0176446-1_115",
+  "ASY-0176446_10",
+  "ASY-0176446_17",
+  "03_00-K179 Dugme Tek Fonksiyonlu_055",
+  "ASY-0176446_19",
+  "ASY-0176446_11",
+  "03_00-K179 Dugme Tek Fonksiyonlu_027",
+  "ASY-0176446-1_123",
+  "03_00-K179 Dugme Tek Fonksiyonlu_033",
+  "03_00-K179 Dugme Tek Fonksiyonlu_057",
+  "ASY-0176446_25",
+  "ASY-0176446_26",
+  "03_00-K179 Dugme Tek Fonksiyonlu_056",
+  "03_00-K179 Dugme Tek Fonksiyonlu_062",
+  "03_00-K179 Dugme Tek Fonksiyonlu_073",
+  "ASY-0176446_27",
+  "ASY-0176446_18",
+  "ASY-0176446_09",
+  "03_00-K179 Dugme Tek Fonksiyonlu_002",
+  "ASY-0176446-1_078",
+  "ASY-0176446_36",
+  "ASY-0176446_38",
+  "ASY-0176446_30",
+  "03_00-K179 Dugme Tek Fonksiyonlu_117",
+  "ASY-0176446_21",
+  "ASY-0176446_12",
+  "03_00-K179 Dugme Tek Fonksiyonlu_081",
+  "03_00-K179 Dugme Tek Fonksiyonlu_090",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_11",
+  "03_00-K179 Dugme Tek Fonksiyonlu_068",
+  "05_00-K179 WBT Dugme_11",
+  "03_00-K179 Dugme Tek Fonksiyonlu_069",
+  "05_00-K179 WBT Dugme_06",
+  "ASY-0176446-1_011",
+  "ASY-0176446_39",
+  "10_T00-K179 Kilitli Dugme_16",
+  "03_00-K179 Dugme Tek Fonksiyonlu_176",
+  "03_00-K179 Dugme Tek Fonksiyonlu_187",
+  "17_00-K179 SSB Dugme_06",
+  "03_00-K179 Dugme Tek Fonksiyonlu_180",
+  "03_00-K179 Dugme Tek Fonksiyonlu_190",
+  "04_T00-K179 Dugme Fonksiyonsuz_05",
+  "03_00-K179 Dugme Tek Fonksiyonlu_141",
+  "ASY-0176446_35",
+  "03_00-K179 Dugme Tek Fonksiyonlu_130",
+  "03_00-K179 Dugme Tek Fonksiyonlu_156",
+  "03_00-K179 Dugme Tek Fonksiyonlu_157",
+  "ASY-0176446_41",
+  "ASY-0176446_33",
+  "ASY-0176446_24",
+  "03_00-K179 Dugme Tek Fonksiyonlu_122",
+  "03_00-K179 Dugme Tek Fonksiyonlu_123",
+  "03_00-K179 Dugme Tek Fonksiyonlu_084",
+  "03_00-K179 Dugme Tek Fonksiyonlu_104",
+  "03_00-K179 Dugme Tek Fonksiyonlu_134",
+  "03_00-K179 Dugme Tek Fonksiyonlu_097",
+  "ASY-0176446_15",
+  "ASY-0176446_07",
+  "03_00-K179 Dugme Tek Fonksiyonlu_070",
+  "03_00-K179 Dugme Tek Fonksiyonlu_036",
+  "03_00-K179 Dugme Tek Fonksiyonlu_043",
+  "09_00-K179 Dugme Kilidi_09",
+  "03_00-K179 Dugme Tek Fonksiyonlu_011",
+  "01_202201790014_00-K179 Dugme Aksesuari_08",
+  "ASY-0176446-1_067",
+  "ASY-0176446-1_045",
+  "ASY-0176446-1_042",
+  "ASY-0176446_49",
+  "03_00-K179 Dugme Tek Fonksiyonlu_163",
+  "09_00-K179 Dugme Kilidi_14",
+  "09_00-K179 Dugme Kilidi_27",
+  "09_00-K179 Dugme Kilidi_15",
+  "ASY-0176446_50",
+  "03_00-K179 Dugme Tek Fonksiyonlu_160",
+  "04_T00-K179 Dugme Fonksiyonsuz_12",
+  "03_00-K179 Dugme Tek Fonksiyonlu_183",
+  "03_00-K179 Dugme Tek Fonksiyonlu_196",
+  "ASY-0176446_43",
+  "ASY-0176446_57",
+  "03_00-K179 Dugme Tek Fonksiyonlu_158",
+  "03_00-K179 Dugme Tek Fonksiyonlu_172",
+  "03_00-K179 Dugme Tek Fonksiyonlu_195",
+  "04_T00-K179 Dugme Fonksiyonsuz_10",
+  "ASY-0176446-1_085",
+  "03_00-K179 Dugme Tek Fonksiyonlu_149",
+  "03_00-K179 Dugme Tek Fonksiyonlu_170",
+  "ASY-0176446_28",
+  "17_00-K179 SSB Dugme_10",
+  "03_00-K179 Dugme Tek Fonksiyonlu_028",
+  "03_00-K179 Dugme Tek Fonksiyonlu_042",
+  "03_00-K179 Dugme Tek Fonksiyonlu_048",
+  "03_00-K179 Dugme Tek Fonksiyonlu_079",
+  "03_00-K179 Dugme Tek Fonksiyonlu_089",
+  "03_00-K179 Dugme Tek Fonksiyonlu_125",
+  "ASY-0176446-1_096",
+  "ASY-0176446_45",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_24",
+  "03_00-K179 Dugme Tek Fonksiyonlu_004",
+  "03_00-K179 Dugme Tek Fonksiyonlu_013",
+  "03_00-K179 Dugme Tek Fonksiyonlu_014",
+  "03_00-K179 Dugme Tek Fonksiyonlu_080",
+  "03_00-K179 Dugme Tek Fonksiyonlu_091",
+  "03_00-K179 Dugme Tek Fonksiyonlu_094",
+  "01_202201790014_00-K179 Dugme Aksesuari_12",
+  "ASY-0176446-1_035",
+  "ASY-0176446-1_098",
+  "ASY-0176446_16",
+  "17_00-K179 SSB Dugme_11",
+  "03_00-K179 Dugme Tek Fonksiyonlu_119",
+  "ASY-0176446-1_059",
+  "03_00-K179 Dugme Tek Fonksiyonlu_105",
+  "ASY-0176446-1_002",
+  "ASY-0176446_22",
+  "03_00-K179 Dugme Tek Fonksiyonlu_077",
+  "ASY-0176446_34",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_25",
+  "03_00-K179 Dugme Tek Fonksiyonlu_150",
+  "03_00-K179 Dugme Tek Fonksiyonlu_162",
+  "03_00-K179 Dugme Tek Fonksiyonlu_177",
+  "ASY-0176446-1_099",
+  "ASY-0176446_14",
+  "03_00-K179 Dugme Tek Fonksiyonlu_047",
+  "03_00-K179 Dugme Tek Fonksiyonlu_063",
+  "09_00-K179 Dugme Kilidi_04",
+  "ASY-0176446-1_095",
+  "ASY-0176446-1_125",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_03",
+  "03_00-K179 Dugme Tek Fonksiyonlu_017",
+  "ASY-0176446-1_079",
+  "ASY-0176446-1_116",
+  "ASY-0176446_01",
+  "ASY-0176446-1_036",
+  "ASY-0176446-1_070",
+  "ASY-0176446-1_071",
+  "01_202201790014_00-K179 Dugme Aksesuari_03",
+  "09_00-K179 Dugme Kilidi_10",
+  "09_00-K179 Dugme Kilidi_22",
+  "ASY-0176446-1_029",
+  "ASY-0176446-1_102",
+  "01_202201790014_00-K179 Dugme Aksesuari_09",
+  "ASY-0176446-1_037",
+  "01_202201790014_00-K179 Dugme Aksesuari_01",
+  "ASY-0176446-1_019",
+  "ASY-0176446_44",
+  "03_00-K179 Dugme Tek Fonksiyonlu_128",
+  "03_00-K179 Dugme Tek Fonksiyonlu_147",
+  "04_T00-K179 Dugme Fonksiyonsuz_13",
+  "03_00-K179 Dugme Tek Fonksiyonlu_148",
+  "ASY-0176446_32",
+  "03_00-K179 Dugme Tek Fonksiyonlu_096",
+  "03_00-K179 Dugme Tek Fonksiyonlu_143",
+  "03_00-K179 Dugme Tek Fonksiyonlu_074",
+  "03_00-K179 Dugme Tek Fonksiyonlu_067",
+  "ASY-0176446_23",
+  "03_00-K179 Dugme Tek Fonksiyonlu_075",
+  "ASY-0176446-1_103",
+  "ASY-0176446_48",
+  "ASY-0176446_56",
+  "ASY-0176446_42",
+  "03_00-K179 Dugme Tek Fonksiyonlu_178",
+  "03_00-K179 Dugme Tek Fonksiyonlu_198",
+  "04_T00-K179 Dugme Fonksiyonsuz_03",
+  "04_T00-K179 Dugme Fonksiyonsuz_53",
+  "ASY-0176446-1_076",
+  "ASY-0176446_58",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_04",
+  "03_00-K179 Dugme Tek Fonksiyonlu_009",
+  "03_00-K179 Dugme Tek Fonksiyonlu_154",
+  "04_T00-K179 Dugme Fonksiyonsuz_29",
+  "ASY-0176446_54",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_09",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_22",
+  "03_00-K179 Dugme Tek Fonksiyonlu_025",
+  "03_00-K179 Dugme Tek Fonksiyonlu_032",
+  "03_00-K179 Dugme Tek Fonksiyonlu_188",
+  "04_T00-K179 Dugme Fonksiyonsuz_01",
+  "ASY-0176446-1_073",
+  "ASY-0176446-1_106",
+  "ASY-0176446_47",
+  "10_T00-K179 Kilitli Dugme_19",
+  "03_00-K179 Dugme Tek Fonksiyonlu_018",
+  "03_00-K179 Dugme Tek Fonksiyonlu_199",
+  "04_T00-K179 Dugme Fonksiyonsuz_20",
+  "04_T00-K179 Dugme Fonksiyonsuz_21",
+  "ASY-0176446-1_041",
+  "ASY-0176446-1_072",
+  "ASY-0176446_02",
+  "ASY-0176446_53",
+  "05_00-K179 WBT Dugme_13",
+  "05_00-K179 WBT Dugme_17",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_02",
+  "03_00-K179 Dugme Tek Fonksiyonlu_054",
+  "03_00-K179 Dugme Tek Fonksiyonlu_186",
+  "04_T00-K179 Dugme Fonksiyonsuz_11",
+  "ASY-0176446-1_028",
+  "ASY-0176446-1_090",
+  "ASY-0176446_52",
+  "05_00-K179 WBT Dugme_05",
+  "05_00-K179 WBT Dugme_10",
+  "05_00-K179 WBT Dugme_19",
+  "10_T00-K179 Kilitli Dugme_22",
+  "03_00-K179 Dugme Tek Fonksiyonlu_030",
+  "03_00-K179 Dugme Tek Fonksiyonlu_179",
+  "03_00-K179 Dugme Tek Fonksiyonlu_184",
+  "ASY-0176446-1_022",
+  "ASY-0176446-1_025",
+  "ASY-0176446-1_038",
+  "ASY-0176446-1_046",
+  "ASY-0176446_03",
+  "17_00-K179 SSB Dugme_19",
+  "05_00-K179 WBT Dugme_04",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_03",
+  "03_00-K179 Dugme Tek Fonksiyonlu_112",
+  "03_00-K179 Dugme Tek Fonksiyonlu_200",
+  "01_202201790014_00-K179 Dugme Aksesuari_05",
+  "ASY-0176446-1_026",
+  "ASY-0176446-1_043",
+  "17_00-K179 SSB Dugme_18",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_07",
+  "05_00-K179 WBT Dugme_08",
+  "03_00-K179 Dugme Tek Fonksiyonlu_040",
+  "03_00-K179 Dugme Tek Fonksiyonlu_138",
+  "01_202201790014_00-K179 Dugme Aksesuari_06",
+  "ASY-0176446-1_031",
+  "ASY-0176446-1_108",
+  "ASY-0176446-1_110",
+  "ASY-0176446_46",
+  "17_00-K179 SSB Dugme_16",
+  "17_00-K179 SSB Dugme_20",
+  "05_00-K179 WBT Dugme_01",
+  "05_00-K179 WBT Dugme_03",
+  "03_00-K179 Dugme Tek Fonksiyonlu_019",
+  "09_00-K179 Dugme Kilidi_08",
+  "ASY-0176446-1_039",
+  "ASY-0176446_37",
+  "17_00-K179 SSB Dugme_15",
+  "17_00-K179 SSB Dugme_17",
+  "10_T00-K179 Kilitli Dugme_15",
+  "03_00-K179 Dugme Tek Fonksiyonlu_026",
+  "03_00-K179 Dugme Tek Fonksiyonlu_116",
+  "09_00-K179 Dugme Kilidi_18",
+  "ASY-0176446_31",
+  "ASY-0176446_40",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_09",
+  "10_T00-K179 Kilitli Dugme_21",
+  "03_00-K179 Dugme Tek Fonksiyonlu_031",
+  "03_00-K179 Dugme Tek Fonksiyonlu_051",
+  "03_00-K179 Dugme Tek Fonksiyonlu_113",
+  "ASY-0176446_29",
+  "17_00-K179 SSB Dugme_14",
+  "10_T00-K179 Kilitli Dugme_17",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_21",
+  "03_00-K179 Dugme Tek Fonksiyonlu_059",
+  "03_00-K179 Dugme Tek Fonksiyonlu_060",
+  "03_00-K179 Dugme Tek Fonksiyonlu_061",
+  "03_00-K179 Dugme Tek Fonksiyonlu_078",
+  "ASY-0176446-1_086",
+  "ASY-0176446_08",
+  "ASY-0176446_20",
+  "ASY-0176446-1_014",
+  "ASY-0176446-1_124",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_26",
+  "03_00-K179 Dugme Tek Fonksiyonlu_012",
+  "03_00-K179 Dugme Tek Fonksiyonlu_016",
+  "01_202201790014_00-K179 Dugme Aksesuari_02",
+  "09_00-K179 Dugme Kilidi_19",
+  "ASY-0176446-1_074",
+  "ASY-0176446-1_089",
+  "ASY-0176446-1_109",
+  "ASY-0176446-1_122",
+  "ASY-0176446_13",
+  "03_00-K179 Dugme Tek Fonksiyonlu_015",
+  "ASY-0176446-1_040",
+  "part239392_ROBT UST v27_01",
+  "03_00-K179 Dugme Tek Fonksiyonlu_010",
+  "ASY-0176446-1_094",
+  "ASY-0176446-1_104",
+  "ASY-0176446-1_105",
+  "ASY-0176446-1_107",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_01",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_10",
+  "03_00-K179 Dugme Tek Fonksiyonlu_023",
+  "03_00-K179 Dugme Tek Fonksiyonlu_024",
+  "03_00-K179 Dugme Tek Fonksiyonlu_029",
+  "09_00-K179 Dugme Kilidi_24",
+  "ASY-0176446-1_024",
+  "ASY-0176446-1_050",
+  "ASY-0176446-1_054",
+  "ASY-0176446-1_057",
+  "ASY-0176446-1_063",
+  "ASY-0176446-1_064",
+  "ASY-0176446-1_065",
+  "ASY-0176446-1_092",
+  "ASY-0176446-1_093",
+  "ASY-0176446-1_100",
+  "ASY-0176446-1_117",
+  "ASY-0176446-1_118",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_12",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_15",
+  "03_00-K179 Dugme Tek Fonksiyonlu_001",
+  "03_00-K179 Dugme Tek Fonksiyonlu_007",
+  "03_00-K179 Dugme Tek Fonksiyonlu_008",
+  "09_00-K179 Dugme Kilidi_03",
+  "09_00-K179 Dugme Kilidi_13",
+  "09_00-K179 Dugme Kilidi_21",
+  "09_00-K179 Dugme Kilidi_23",
+  "09_00-K179 Dugme Kilidi_25",
+  "ASY-0176446-1_049",
+  "ASY-0176446-1_069",
+  "ASY-0176446-1_101",
+  "ASY-0176446-1_119",
+  "ASY-0176446-1_120",
+  "ASY-0176446-1_121",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_04",
+  "10_T00-K179 Kilitli Dugme_20",
+  "09_00-K179 Dugme Kilidi_05",
+  "09_00-K179 Dugme Kilidi_06",
+  "09_00-K179 Dugme Kilidi_07",
+  "ASY-0176446-1_060",
+  "17_00-K179 SSB Dugme_05",
+  "ASY-0176446-1_012",
+  "17_00-K179 SSB Dugme_13",
+  "ASY-0176446-1_004",
+  "ASY-0176446-1_013",
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_05",
+  "ASY-0176446-1_015",
+  "05_00-K179 WBT Dugme_12",
+  "ASY-0176446-1_017",
+  "10_T00-K179 Kilitli Dugme_11",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_05",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_06",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_17",
+  "10_T00-K179 Kilitli Dugme_07",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_07",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_18",
+  "10_T00-K179 Kilitli Dugme_08",
+  "10_T00-K179 Kilitli Dugme_09",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_08",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_13",
+  "ASY-0176446-1_061",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_14",
+  "ASY-0176446-1_066",
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_19",
+  "ASY-0176446-1_062",
+  "10_T00-K179 Kilitli Dugme_10",
+  "part239391_ROBT ALT v27_01"
+ ],
+ "certificates": {
+  "ASY-0176446_04": {
+   "eksen": "X",
+   "aci_deg": 8.0,
+   "yon": "+Y",
+   "lift_vox": 1
+  },
+  "ASY-0176446_05": {
+   "eksen": "Z",
+   "aci_deg": -3.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_06": {
+   "eksen": "Y",
+   "aci_deg": -6.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_10": {
+   "eksen": "Y",
+   "aci_deg": -8.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_17": {
+   "eksen": "Y",
+   "aci_deg": -7.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_19": {
+   "eksen": "Z",
+   "aci_deg": -10.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_25": {
+   "eksen": "Z",
+   "aci_deg": -28.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_26": {
+   "eksen": "Y",
+   "aci_deg": -7.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_27": {
+   "eksen": "X",
+   "aci_deg": 5.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_18": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_36": {
+   "eksen": "X",
+   "aci_deg": 6.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_38": {
+   "eksen": "X",
+   "aci_deg": 6.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_30": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_21": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_39": {
+   "eksen": "Z",
+   "aci_deg": 7.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_35": {
+   "eksen": "Z",
+   "aci_deg": -9.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_41": {
+   "eksen": "Y",
+   "aci_deg": -1.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_33": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_15": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_49": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_50": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_22": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "ASY-0176446_14": {
+   "eksen": "Z",
+   "aci_deg": 1.0,
+   "yon": "-Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_44": {
+   "eksen": "X",
+   "aci_deg": -9.0,
+   "yon": "-Y",
+   "lift_vox": 0
+  },
+  "ASY-0176446_32": {
+   "eksen": "Z",
+   "aci_deg": 28.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "ASY-0176446_48": {
+   "eksen": "Z",
+   "aci_deg": -25.0,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "17_00-K179 SSB Dugme_05": {
+   "eksen": "Z",
+   "aci_deg": 2.727272727272727,
+   "yon": "+X",
+   "lift_vox": 0
+  },
+  "17_00-K179 SSB Dugme_13": {
+   "eksen": "Z",
+   "aci_deg": 2.727272727272727,
+   "yon": "-Y",
+   "lift_vox": 0
+  },
+  "02_202201790002_T00-K179 Dugme Cift Fonksiyonlu_05": {
+   "eksen": "Z",
+   "aci_deg": 3.4615384615384617,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "05_00-K179 WBT Dugme_12": {
+   "eksen": "Z",
+   "aci_deg": 3.4615384615384617,
+   "yon": "+Y",
+   "lift_vox": 0
+  },
+  "10_T00-K179 Kilitli Dugme_11": {
+   "eksen": "Z",
+   "aci_deg": 3.6,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_05": {
+   "eksen": "X",
+   "aci_deg": 26.666666666666668,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_06": {
+   "eksen": "Z",
+   "aci_deg": 3.3333333333333335,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_07": {
+   "eksen": "X",
+   "aci_deg": 26.666666666666668,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "10_T00-K179 Kilitli Dugme_09": {
+   "eksen": "Z",
+   "aci_deg": 3.6,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_08": {
+   "eksen": "X",
+   "aci_deg": 26.666666666666668,
+   "yon": "+Z",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_13": {
+   "eksen": "Z",
+   "aci_deg": 3.3333333333333335,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_14": {
+   "eksen": "Z",
+   "aci_deg": 3.3333333333333335,
+   "yon": "-X",
+   "lift_vox": 0
+  },
+  "02_T00-K179 Dugme Cift Fonksiyonlu-25pcs_19": {
+   "eksen": "Z",
+   "aci_deg": 3.3333333333333335,
+   "yon": "+Z",
+   "lift_vox": 0
+  }
+ },
+ "locked_groups": [],
+ "skipped_large": []
+}

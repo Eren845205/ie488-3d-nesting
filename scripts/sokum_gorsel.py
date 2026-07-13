@@ -44,8 +44,10 @@ def main(json_path: str):
         pid = p["part_id"]
         if pid in certs:
             n_kir += 1
+            # dusuk alpha + kalin kontur: sertifikali parcalar buyuk canlar —
+            # opak dolgu plakayi kirmiziya boyayip yaniltiyordu
             ax.add_patch(Rectangle((gx, gy), gw, gd, fc="#e74c3c", ec="#922b21",
-                                   lw=0.8, alpha=0.75, zorder=3))
+                                   lw=1.6, alpha=0.22, zorder=3))
             c = certs[pid]
             cxm, cym = gx + gw / 2, gy + gd / 2
             no = sira.get(pid)
@@ -75,8 +77,10 @@ def main(json_path: str):
     ax.set_title(
         f"Deneme4 — {d['h_mm']:.1f} mm yerleşim, söküm planı (üst görünüm)\n"
         f"{n_gri} parça düz çekme (gri) · {n_kir} parça sertifikalı döndürme-söküm "
-        f"(kırmızı; sayı = söküm sırası, ok = çekme yönü, halka = +Z)",
-        fontsize=11)
+        f"(kırmızı kontur; sayı = söküm sırası, ok = çekme yönü, halka = +Z)\n"
+        f"Not: kırmızı parçalar büyük çan gövdeleridir — ayak izlerinin geniş "
+        f"görünmesi normaldir; risk parça SAYISIYLA ölçülür ({n_kir}/{n_gri + n_kir})",
+        fontsize=10)
     out = src.with_suffix(".png")
     fig.savefig(out, dpi=200, bbox_inches="tight")
     print(f"PNG: {out}")

@@ -1,0 +1,221 @@
+{
+ "adaylar": {
+  "1nn": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "karar_agaci": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "knn": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "logistic": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_knn_reg": {
+   "mean": 113.48,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 120.4,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_ridge_reg": {
+   "mean": 70.9,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.4,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 45.5,
+     "n": 3
+    },
+    "tube": {
+     "mean": 26.0,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "regret_logistic": {
+   "mean": 104.48,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.2,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 70.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 120.4,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "conformal_logistic": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "mini_bagging(deney)": {
+   "mean": 90.5,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.0,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 85.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 5.5,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  },
+  "KURAL(baseline)": {
+   "mean": 71.48,
+   "max": 192.0,
+   "n": 5,
+   "accuracy": 0.4,
+   "aile": {
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "thin_shell": {
+     "mean": 15.0,
+     "n": 3
+    },
+    "tube": {
+     "mean": 120.4,
+     "n": 1
+    }
+   },
+   "overfit_flag": false
+  }
+ },
+ "n_tablo": 5,
+ "tablo_istatistik": {
+  "n_heldout_dislanan": 0,
+  "n_featuresiz_satir": 0,
+  "n_invalid_satir": 121,
+  "n_legal_armsiz_instance": 119
+ }
+}
