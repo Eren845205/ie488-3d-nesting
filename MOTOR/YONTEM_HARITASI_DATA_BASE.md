@@ -780,6 +780,15 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > (ders: script turetme ACIK YAZIMLA). ACIK: K-49d (R11 v4 dogrula-ve-rafine,
 > pay 0.15 + kesin 2.00 oturma) KOSUYOR — beklenti 582-586 bandi (pay kaybini
 > geri alir); ayrica d4/d5/p2'ye R11 v4 uygulanmasi (K-50 serisi adayi).
+> **K-49d SONUCU (ayni gece) = GO 🏆🏆🏆 (v4 KANITLANDI, YENI P3 SAMPIYONU):**
+> agresif kompakt (pay 0.15): 596.50 -> 577.62 (kazanc 18.88) + rafine dongusu
+> 5 tur / 0.8 dk'da clear'i tam 2.033'e oturttu, YUKSEKLIK HIC ARTMADI ->
+> **577.62 | clear 2.033 | kilit 0->0 | manuel 593'e −15.38mm (−%2.6)**.
+> STL: results/plan3_r11d_577.6mm.stl. v4 payli-v3'ten 12.14mm derin —
+> "pay tamponu yerine dogrula-ve-rafine" mimarisi (Eren'in "3.2 cok, optimum
+> degil" itirazi) SAHADA DOGRULANDI. Rafine ucuz (tur basina bir 6000-ornek
+> olcum); sonlanma garantili (dz>=0 klamp). SIRADA: K-50 seri (d5/d4/p2'ye
+> v4) -> 4-set dagilim tablosu -> eval-gate -> uretim terfi dosyasi.
 
 ---
 
