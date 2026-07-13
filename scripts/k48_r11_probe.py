@@ -48,8 +48,10 @@ def _kilit_5dir_meshes(meshes):
     pls = []
     for i, m in enumerate(meshes):
         pid = f"m{i}"
+        # method="slice": yuksek-yuz-sayili gercek STL'lerde subdivide ucgen
+        # patlamasi yapiyor (K-49a: 52M ucgen = 3.5GB MemErr) — slice hizli yol
         vp = voxelize_part(pid, m, CHECK_PITCH, n_orientations=1, margin=0,
-                           z_dilate=0, rot_matrices=[np.eye(4)])
+                           z_dilate=0, rot_matrices=[np.eye(4)], method="slice")
         parts[pid] = vp
         org = m.bounds[0]
         pls.append(SimpleNamespace(
