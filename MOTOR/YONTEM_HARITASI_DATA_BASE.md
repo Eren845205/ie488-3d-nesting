@@ -748,6 +748,21 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > ~%60-80'i korunur, clearance >=2.0'a doner). Sure: R11 fazi 27.6dk (352
 > parca) — uretim-uyumlu.
 
+> **2026-07-13 — K-48b R11 v2 (d5) = GO ✅🏆 (R11 KANITLANDI):** pay 0.4 +
+> samples 8000 fix'i CALISTI: **kazanc 4.54mm (221.50 -> 216.96), clearance
+> 2.000 TAM, kilit 0->0** — v1 kazancinin %59'u korundu (tahmin bandi icinde).
+> STL: results/deneme5_r11v2_217.0mm.stl. **STRATEJIK BULGU: @2.0+R11
+> (~1.5 saat) = 216.96, pitch-1.0 sampiyonundan (218.0, 5.7 saat) HEM IYI HEM
+> 4x UCUZ** — R11 kalite/sure takasinda pitch-inceltmeyi geride birakti.
+> METODOLOJI SERHI (A10): 216.96 MESH-GERCEK olcu; eski sampiyonlar
+> VOXEL-RAPORLU (voxel >= mesh, d5'te fark ~2mm). Manuel 250.24/209/593
+> zaten Magics STL olculeri (mesh-gercek) oldugundan MANUEL kiyasta
+> mesh-gercek DAHA ADIL; set-ici kiyaslarda taban belirtilmeli. YAN URUN:
+> kxx_telemetri kablosunun ILK CANLI kullanimi (K-48b kendi v2 satirini
+> yazdi: legal=216.96, kosu_id=K-48b/r11v2). ACIK: K-50 adayi = @1.0 layout
+> (218.0) + R11 kombinasyonu (beklenti 213-215 bandi); R11'in uretim
+> kablolamasi (solve_nfv_kalite post-pass'i, eval-gate'li) ayri is.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
