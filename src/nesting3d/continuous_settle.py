@@ -55,13 +55,23 @@ class ContinuousSettleResult:
         return self.height_before_mm - self.height_mm
 
 
+VERTEX_CAP = 1500  # v3 (K-49a dersi): yuksek-yuzlu STL'lerde TUM koseler bulutu
+#                    patlatiyor (p3'te sweep basina saatler) — deterministik
+#                    stride alt-orneklemesiyle sinirla; ekstremler yine temsil
+#                    edilir (orneklem + kose alt-kumesi), pay_mm tamponu ve
+#                    6000-ornekli final kapi legaliteyi zaten koruyor.
+
+
 def _surface_cloud(mesh, n: int, seed: int) -> np.ndarray:
     """Yuzey orneklemi (clearance._surface_samples ile AYNI mekanizma/tohumlama)
-    + kose noktalari (ekstremler garanti)."""
+    + kose noktalari (VERTEX_CAP'e deterministik stride ile sinirli)."""
     import trimesh as _tm
     pts, _face = _tm.sample.sample_surface(mesh, n, seed=seed)
-    return np.vstack([np.asarray(pts, dtype=np.float64),
-                      np.asarray(mesh.vertices, dtype=np.float64)])
+    v = np.asarray(mesh.vertices, dtype=np.float64)
+    if len(v) > VERTEX_CAP:
+        stride = int(np.ceil(len(v) / VERTEX_CAP))
+        v = v[::stride]
+    return np.vstack([np.asarray(pts, dtype=np.float64), v])
 
 
 def _box_dist(pts: np.ndarray, x0: float, y0: float, x1: float, y1: float) -> float:
