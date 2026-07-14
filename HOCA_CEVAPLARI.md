@@ -142,3 +142,36 @@ rotasyon-söküm) · NOGO sabiti tüm scriptlerde düzeltilecek · 2mm clearance
 politika kararı (tablo yeniden ölçülür) · soft no-go modellemesi (hafif giriş
 penaltılı/toleranslı) · Deneme6 held-out kaydı · Plan1 manuel-yerleşim STL
 anatomi analizi.
+
+
+---
+
+## 2026-07-14 — Hoca cevabı (HOCA_PAKETI_2026-07-14 mailine; "çalışmaların çok iyi yönde devam ediyor")
+
+**Bağlam:** İki manuel-altı sonuç (Deneme4 229.3 −%8.4, Plan3 577.6 −%2.6) +
+söküm planı görseli + 4 soru gönderilmişti (Mert abi üzerinden).
+
+1. **Söküm toleransı (soru 2 cevabı):** "Bazı parçaların çıkartılmasında
+   zorlansak bile bu İHMAL EDİLEBİLECEK kadar az seviyede. Parçaların
+   birbiriyle yapışması (yeterli mesafe bırakmama) ve birbirinin içine geçip
+   ÇIKARILAMAYAN durumlar haricinde hepsi kolay çıkabilmektedir. **Tamamı
+   kolay söküm seçeneği daha yakın geliyor.**"
+   → SONUÇLAR: (a) UI çift-aday özelliğinde DEFAULT = tamamı-kolay-söküm
+   (bizim tasarımla birebir örtüştü); riskli-alçak aday opsiyonel kalır.
+   (b) Az sayıda zor-söküm TOLERE edilebilir → K-46 tarzı sertifikalı
+   çözümler meşru. (c) "Yapışma = yetersiz mesafe" → 2mm clearance kuralının
+   dolaylı teyidi.
+2. **Deneme4 229.3 kabulü (soru 3 cevabı):** **"Herhangi bir sorun
+   görünmemektedir."** → d4 REKORU (231.5 voxel / 229.3 mesh, söküm-planlı
+   (b+c) legalite) HOCA-ONAYLI. Projenin ilk resmî manuel-altı kabulü.
+3. **Yeni veri (soru 4 cevabı):** "Yeni verileri en kısa zamanda
+   göndereceğim." → kör-test seti geliyor; geldiğinde A3 gereği HELD-OUT
+   doğar (registry kaydı + tuning'e girmez).
+
+**CEVAPSIZ KALAN: Soru 1 (manuel yerleşimlerde parça-arası boşluk kaç mm —
+özellikle Deneme5 209'un koşulu).** Kıyas-adaleti için kritik; bir sonraki
+temasta nazikçe tekrar sorulmalı.
+
+**Doğrudan işler:** UI çift-aday default'u kesinleşti (tamamı-kolay) ·
+d4 kabul notu YONTEM/RESUME'ye · yeni veri gelince held-out protokolü hazır
+(gözcü + registry + kxx_telemetri kablosu bekliyor).
