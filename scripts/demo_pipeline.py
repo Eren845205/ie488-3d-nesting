@@ -1258,6 +1258,14 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         "selection": selection_pred,
         "placements": winner_result.placements,
         "voxel_parts": voxel_parts_3d,
+        # K-50 dz export kablosu: r11 uygulandiysa mesh-duzeyi dusme listesi
+        # (winner_result.placements ile AYNI sira/uzunluk — uretim_r11 ayni
+        # listeden hesapladi). GLB/STL export bu dz'yi uygular; boylece
+        # musteriye giden dosya rapor edilen r11 kazancini GERCEKTEN tasir.
+        **({"r11_dz": [float(_d) for _d in
+                       _instr["nfv_kalite"]["r11"]["dz"]]}
+           if (_instr.get("nfv_kalite", {}).get("r11", {}) or {})
+           .get("uygulandi") else {}),
     }
 
     pricing_inputs = _build_pricing_inputs(

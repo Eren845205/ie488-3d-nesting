@@ -979,6 +979,9 @@ def _register_routes(
                 _pl = _nr.get("placements")
                 _vp = _nr.get("voxel_parts")
                 _pitch = _nr.get("pitch_mm") or _nr.get("pitch")
+                # K-50 dz export kablosu: r11 dusme listesi varsa GLB'ye islenir
+                # (STL indirme bu GLB'den turedigi icin kazanc dosyaya yansir).
+                _dz = _nr.get("r11_dz") or None
                 if not _pl or not _vp or not _pitch:
                     glb_haritasi[_bid] = False
                     continue
@@ -991,7 +994,8 @@ def _register_routes(
                     # gorunum birebir, tarayici draw-call sayisi ~40x duser
                     # (buyuk sahnede viewer kasmasinin ana sebebi).
                     _scene = build_result_scene(
-                        _pl, _vp, pitch=float(_pitch), merge_by_type=True)
+                        _pl, _vp, pitch=float(_pitch), merge_by_type=True,
+                        dz=_dz)
                     _glb = scene_to_glb_bytes(_scene)
                     if toplam_glb + len(_glb) > _GECMIS_GLB_TAVAN_BYTES:
                         glb_haritasi[_bid] = False
@@ -1010,7 +1014,8 @@ def _register_routes(
                             _psc = build_result_scene(
                                 _pl, _vp, pitch=float(_pitch),
                                 merge_by_type=True,
-                                max_faces_total=_GECMIS_ONIZLEME_UCGEN)
+                                max_faces_total=_GECMIS_ONIZLEME_UCGEN,
+                                dz=_dz)
                             _otonom_gecmis.glb_kaydet(
                                 kayit_id, f"{_bid}__onizleme",
                                 scene_to_glb_bytes(_psc))
@@ -1731,7 +1736,8 @@ def _register_routes(
             # (STL indirme gecmis kaydinin tam-detay GLB'sinden gider).
             scene = build_result_scene(
                 placements, voxel_parts, pitch=float(pitch), merge_by_type=True,
-                max_faces_total=_GECMIS_ONIZLEME_UCGEN)
+                max_faces_total=_GECMIS_ONIZLEME_UCGEN,
+                dz=nr.get("r11_dz") or None)
             glb_bytes = scene_to_glb_bytes(scene)
         except Exception as exc:
             logger.warning("GLB export hatasi batch=%s: %s", batch_id, exc)

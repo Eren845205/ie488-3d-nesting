@@ -44,14 +44,33 @@ _PART_COLOURS = [
 ]
 
 
+def _dz_dogrula(dz, n: int):
+    """dz listesini dogrula (K-50/R11 kablosu): None -> None, aksi halde
+    uzunluk == yerlesim sayisi olmali. Sessiz hizasizlik illegal STL uretir —
+    fail-loud sart."""
+    if dz is None:
+        return None
+    if len(dz) != n:
+        raise ValueError(
+            f"dz uzunlugu ({len(dz)}) yerlesim sayisiyla ({n}) eslesmiyor — "
+            "R11 dz listesi placements ile ayni sirali/uzunlukta olmali")
+    return [float(d) for d in dz]
+
+
 def placed_meshes(
     placements: List[Placement3D],
     parts_by_id: Dict[str, VoxelPart],
     pitch: float,
+    dz=None,
 ) -> List[trimesh.Trimesh]:
-    """The original meshes, transformed to their placed poses (mm frame)."""
+    """The original meshes, transformed to their placed poses (mm frame).
+
+    dz (K-50 R11 kablosu): parca-basina mm cinsinden EK asagi otelenme
+    (continuous_settle.apply_dz semantigi: yalniz d>0 uygulanir). None ->
+    bugunku davranis birebir. Uzunluk uyusmazligi ValueError."""
+    dz = _dz_dogrula(dz, len(placements))
     out = []
-    for pl in placements:
+    for i, pl in enumerate(placements):
         part = parts_by_id[pl.part_id]
         orient = part.orientations[pl.orientation_idx]
         m = part.mesh.copy()
@@ -59,6 +78,8 @@ def placed_meshes(
         m.apply_translation(-m.bounds[0])
         cell_centre = (np.array([pl.x, pl.y, pl.z], dtype=float) + 0.5) * pitch
         m.apply_translation(cell_centre - orient.voxel_origin)
+        if dz is not None and dz[i] > 0.0:
+            m.apply_translation([0.0, 0.0, -dz[i]])
         out.append(m)
     return out
 
@@ -70,6 +91,7 @@ def build_result_scene(
     pitch: float,
     merge_by_type: bool = False,
     max_faces_total: int | None = None,
+    dz=None,
 ) -> trimesh.Scene:
     """Build a trimesh.Scene of the nesting result using REAL part geometry.
 
@@ -100,15 +122,20 @@ def build_result_scene(
     Default False, tarihsel placement-basina-geometri yerlesimini korur
     (testler + STL araclari).
 
+    dz (K-50 R11 kablosu): parca-basina ek asagi otelenme; placed_meshes ile
+    ayni sozlesme. Instanced yolda dugum matrisine islenir (geometri paylasimi
+    bozulmaz).
+
     Returns an empty Scene for an empty placements list.
     """
+    dz = _dz_dogrula(dz, len(placements))
     scene = trimesh.Scene()
     if not placements:
         return scene
 
     if merge_by_type:
         return _build_instanced_scene(placements, parts_by_id, pitch,
-                                      max_faces_total=max_faces_total)
+                                      max_faces_total=max_faces_total, dz=dz)
 
     # Assign one colour index per unique part name (model type).
     name_colour_idx: Dict[str, int] = {}
@@ -116,7 +143,7 @@ def build_result_scene(
     name_counter: Dict[str, int] = {}
 
     # Reuse placed_meshes for the transform — single source of truth.
-    meshes = placed_meshes(placements, parts_by_id, pitch)
+    meshes = placed_meshes(placements, parts_by_id, pitch, dz=dz)
 
     for pl, mesh in zip(placements, meshes):
         part_name = parts_by_id[pl.part_id].name
@@ -151,6 +178,7 @@ def _build_instanced_scene(
     parts_by_id: Dict[str, VoxelPart],
     pitch: float,
     max_faces_total: int | None = None,
+    dz=None,
 ) -> trimesh.Scene:
     """Tip basina TEK geometri + yerlesim basina dugum-matrisi (instancing).
 
@@ -214,6 +242,8 @@ def _build_instanced_scene(
         cell_centre = (np.array([pl.x, pl.y, pl.z], dtype=float) + 0.5) * pitch
         t_top = np.eye(4)
         t_top[:3, 3] = (cell_centre - orient.voxel_origin) - bmin
+        if dz is not None and dz[i] > 0.0:
+            t_top[2, 3] -= dz[i]  # R11 dusmesi dugum matrisinde (placed_meshes paritesi)
         matrix = t_top @ np.asarray(orient.rot_matrix, dtype=float)
         node_name = f"{pl.part_id}#{i:04d}"
 
@@ -259,10 +289,14 @@ def export_scene(
     parts_by_id: Dict[str, VoxelPart],
     pitch: float,
     out_path: Path | str,
+    dz=None,
 ) -> Path:
-    """Write all placed parts as a single STL file; returns the path."""
+    """Write all placed parts as a single STL file; returns the path.
+
+    dz: bkz. placed_meshes (K-50 R11 kablosu)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    scene = trimesh.util.concatenate(placed_meshes(placements, parts_by_id, pitch))
+    scene = trimesh.util.concatenate(
+        placed_meshes(placements, parts_by_id, pitch, dz=dz))
     scene.export(out_path)
     return out_path
