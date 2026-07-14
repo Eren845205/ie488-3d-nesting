@@ -459,3 +459,76 @@ def long_rods(
             "n_parts": n_parts,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-14 eklemeleri (ML plani / 01_VERI §6 sentetik cogaltma)
+# ---------------------------------------------------------------------------
+
+def repeat_rod_mix(
+    n_rod_models: int = 2,
+    qty_per_rod: int = 40,
+    n_boxes: int = 8,
+    cross_min: float = 6.0,
+    cross_max: float = 14.0,
+    length_min: float = 80.0,
+    length_max: float = 160.0,
+    box_min: float = 15.0,
+    box_max: float = 55.0,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """deneme5-sinifi 'tekrarli-orgu' ailesi: az rod-modeli x YUKSEK adet ince
+    cubuk + az sayida kutu karisimi (K-44 dersi: bu anatomi NFV'nin ideal
+    sahasi — 216x ozdes cubuk). Egitim tablosunda bu ailenin sentetik temsili
+    yoktu; mod-secici d5-tipi siparisi hic goremiyordu."""
+    rng = random.Random(seed)
+    cnt = container or _default_container()
+    parts: List[PartSpec] = []
+    for i in range(n_rod_models):
+        cx = _uniform(rng, cross_min, cross_max)
+        cy = _uniform(rng, cross_min, cross_max)
+        length = _uniform(rng, length_min, length_max)
+        parts.append(_box_part(f"rrm_rod_{i+1:02d}", f"rrm_rod_{i+1:02d}",
+                               qty_per_rod, cx, cy, length))
+    for i in range(n_boxes):
+        w = _uniform(rng, box_min, box_max)
+        d = _uniform(rng, box_min, box_max)
+        h = _uniform(rng, box_min, box_max)
+        parts.append(_box_part(f"rrm_box_{i+1:02d}", f"rrm_box_{i+1:02d}",
+                               1, w, d, h))
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={"family": "repeat_rod_mix", "seed": seed,
+              "n_rod_models": n_rod_models, "qty_per_rod": qty_per_rod},
+    )
+
+
+def perturb_instance(
+    instance: NestingInstance,
+    *,
+    seed: int,
+    qty_jitter: float = 0.30,
+    scale_jitter: float = 0.10,
+) -> NestingInstance:
+    """Domain randomization (01_VERI §6): qty +-%30, olcek +-%10 jitter.
+
+    Deterministik: ayni (instance, seed) -> ayni varyant. Kaynak izi meta'da
+    (source=perturb(<orijinal aile>), perturb_seed). Parca id'lerine _p<seed>
+    eki (orijinalle karismasin)."""
+    rng = random.Random(seed)
+    parts: List[PartSpec] = []
+    for p in instance.parts:
+        qty = max(1, int(round(p.qty * _uniform(rng, 1.0 - qty_jitter,
+                                                1.0 + qty_jitter))))
+        s = _uniform(rng, 1.0 - scale_jitter, 1.0 + scale_jitter)
+        parts.append(_box_part(f"{p.id}_p{seed}", f"{p.name}_p{seed}", qty,
+                               p.width_mm * s, p.depth_mm * s, p.height_mm * s))
+    orijinal_aile = (instance.meta or {}).get("family", "unknown")
+    return NestingInstance(
+        container=instance.container,
+        parts=parts,
+        meta={"family": orijinal_aile, "source": f"perturb({orijinal_aile})",
+              "perturb_seed": seed},
+    )

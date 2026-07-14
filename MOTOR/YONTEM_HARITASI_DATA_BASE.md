@@ -813,6 +813,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > coarse korunur — boylece d4'te bile guvenli). SIRADA: tam suite ->
 > eval-gate -> solve_nfv_kalite post-pass kablosu (insan onayiyla).
 
+> **2026-07-14 — SENTETIK COGALTMA + YARISMA-2 = MODEL KURALI ILK KEZ YENDI 🎉:**
+> (Eren talimati "sentetik cogaltmayi baslat") 01_VERI §6 uygulandi:
+> repeat_rod_mix (d5-sinifi, YENI jenerator) + perturb_instance (qty +-%30 /
+> olcek +-%10 jitter) + mevcut-ama-hic-kosulmamis shell_bells & hollow_tubes
+> ilk kez kosuldu. **44 instance x 2 arm (heightmap=_run_champion URETIM
+> PARITESI / nfv=solve_nfv_kalite) = 88 satir, 0 hata, ~1.5 saat** — egitim
+> tablosu 5 -> 49 instance. **YARISMA-2 SONUCU (LOO-regret, n=49):
+> regret_logistic 9.66mm (acc .837) < mini_bagging 9.81 < karar_agaci 10.0
+> < ... < KURAL 17.0mm (acc .306) — kural-kanamasi %43 azaldi.** Aile
+> kirilimi: kural long_rod'da 17.15 ve solid_bulk'ta 18.73 kaniyor (model
+> ~0) = plan1/d5 canli-hata bulgusunun sentetik teyidi; thin_shell'de KURAL
+> hala iyi (6.77 vs 8.37) -> C4 allowlist tasarimi dogrulandi (model yalniz
+> kanitli ailelerde konusmali). Overfit bayragi tum adaylarda temiz.
+> argmin_ridge n=49'da cokdu (19.26 — dogrusal model yetersiz, ADAY-DISI).
+> Kanit: results/mod_yarismasi_v2.json. **PROMOTE = INSAN KARARI (Y-1/Y-4,
+> Eren'e sunuldu):** oneri = regret_logistic + guvenli_aileler allowlist
+> {long_rod, solid_bulk} ile C4 challenger'a baglamak (Sprint 3).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
