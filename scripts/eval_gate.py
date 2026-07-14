@@ -58,9 +58,17 @@ from scripts.c3_generality import DATASETS, _boxy_stl_map_and_qty  # noqa: E402
 BASELINE = _ROOT / "results" / "eval_gate_baseline.json"
 LAST = _ROOT / "results" / "eval_gate_last.json"
 
-CLEARANCE_REQ_MM = 1.0
+CLEARANCE_REQ_MM = 2.0  # A2 guncellemesi 2026-07-09 (hoca: "2mm daha guvenli");
+#                         Sprint-3'te eval_gate'e islendi (eskisi 1.0'di)
 FAIL_PCT = 2.0    # B2: bir sette bundan fazla kotulesme -> FAIL
 NOISE_PCT = 0.5   # B2: voxel-kuantizasyon gurultu bandi
+
+# Sprint-3 v2 sozlesmesi (2026-07-14): kapi GERCEK URETIM KOSULLARINDA kosar —
+# hocanin yazicisi 335x335 + yasak-bolge kolonu (K-38..50 sampiyonlarinin
+# olculdugu kosullar). Eski 325/328.74 config plakalari ve no-go'suz kosum
+# tarihseldir; baseline ILK KEZ bu sozlesmeyle kilitlenir (A8 gerekceli).
+PLATE_STD = (335.0, 335.0)
+NOGO_STD = ((152.5, 0.2), (185.5, 45.0))
 
 # Faz-1: roller data/registry.json'dan (tek dogruluk kaynagi; 01_VERI §2).
 # Registry yoksa/bozuksa guvenli fallback sabitler.
@@ -99,8 +107,6 @@ def _log_heldout_bakis(set_names, reason):
 
 
 DEV_SETS, HELDOUT_SETS = _load_roles()
-# Hoca cevabi 2026-07-06: deneme4 gercek plaka 335-2x5 kenar = 325x325
-DENEME4_PLATE = (325.0, 325.0)
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +116,12 @@ DENEME4_PLATE = (325.0, 325.0)
 def _load_instance(name):
     if name == "boxy":
         stl_map, qty = _boxy_stl_map_and_qty()
-        plate = None
+        plate = None  # sentetik stres seti: auto-plaka
     else:
         cfg = DATASETS[name]
         stl_map = {f.stem: f.read_bytes() for f in sorted(cfg["stl_dir"].glob("*.stl"))}
         qty = cfg["qty"]
-        plate = cfg["plate"]
-    if name == "deneme4":
-        plate = DENEME4_PLATE
+        plate = PLATE_STD  # v2 sozlesmesi: gercek yazici plakasi (config degil)
     kwargs = {"persist_dir": _ROOT / "data" / "mail_stl" / f"gen_{name}"}
     if plate is not None:
         kwargs["container_w_mm"], kwargs["container_d_mm"] = plate
@@ -134,22 +138,39 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
       solve_coarse_to_fine(budget=COARSE_BUDGET, menu=dblf_only|None,
                            skip_fine_angle=wall, drop_cache=wall,
                            clearance_mm=WEB_MIN_CLEARANCE_MM)
-    deneme4'te bu zincir 264-config'i KENDISI uretir (zincir testi 3/3 +
-    anchor 264.0 bu kapida iki kez birebir dogrulandi).
-    NFV kalite modu bilerek DISARIDA (docstring'deki EVAL-1 INVALID bulgusu)."""
+    Sprint-3 v2 (2026-07-14, K-45 sonrasi parite): dec.mode=="nfv" artik
+    solve_nfv_kalite kosar (uretim DEFAULT'lari: quality="fast", 2mm kural,
+    NOGO_STD; r11=False — r11 height_mm'i degistirmez, kapida CPU israfi
+    olurdu). heightmap dallari no_go_bounds tasir. Eski "NFV disarida"
+    hukmu EVAL-1 donemine aitti; K-45 recetesi uretim yolu olali gecersiz."""
     from src.nesting3d.adaptive_params import predict_nfv_benefit
     from src.nesting3d.instances.pitch import suggest_pitch
     from scripts.demo_pipeline import COARSE_BUDGET, WEB_MIN_CLEARANCE_MM
 
     pw = float(inst.container.width_mm)
     pd = float(inst.container.depth_mm)
-    dec = predict_nfv_benefit(inst, family_routing=True)
+    # C4: uretim paritesi — pipeline'in yukledigi mod-modeli kapida da yuklenir
+    from src.nesting3d.selection.mode_model_io import (
+        MODE_MODEL_PATH, load_mode_model)
+    _mm = load_mode_model(_ROOT / MODE_MODEL_PATH)
+    dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm)
+    if getattr(dec, "mode", "heightmap") == "nfv":
+        from src.nesting3d.nfv_solve import solve_nfv_kalite
+        print(f"    [{name}] routing: NFV kalite (uretim default: fast/2mm/nogo)",
+              flush=True)
+        res, _tel = solve_nfv_kalite(
+            inst, plate_w_mm=pw, plate_d_mm=pd,
+            clearance_mm=WEB_MIN_CLEARANCE_MM, no_go_bounds=NOGO_STD,
+            quality="fast", seed=seed,
+            n_orientations=n_orientations, r11=False)
+        return res
     wall = bool(getattr(dec, "wall_aware", False))
     pitch = suggest_pitch(inst, wall_aware=wall)
     kw = dict(coarse_pitch=None, fine_pitch=pitch,
               budget=(budget if budget is not None else COARSE_BUDGET),
               seed=seed, drop_cache=wall, skip_fine_angle=wall,
-              clearance_mm=WEB_MIN_CLEARANCE_MM)
+              clearance_mm=WEB_MIN_CLEARANCE_MM,
+              no_go_bounds=NOGO_STD)
     if n_orientations is not None:
         kw["n_orientations"] = n_orientations  # tune_bo override (04 §1)
     if wall:
@@ -243,7 +264,7 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
     if not skip_clearance:
         pitch = float(getattr(r, "fine_pitch"))
         meshes = placed_meshes(r.placements, r.fine_voxel_parts, pitch)
-        rep = min_clearance(meshes)
+        rep = min_clearance(meshes, samples_per_mesh=6000)  # d4 dersi: 3000 iyimser
         min_clear = float(rep.min_mm)
 
     n_locked = int(check_placements(r.placements, r.fine_voxel_parts).n_locked)

@@ -138,6 +138,7 @@ def predict_nfv_benefit(
     box_aspect_thr: float = BOX_ASPECT_THR,
     thin_plate_thr: float = THIN_PLATE_THR,
     wall_aware_conf_thr: float | None = None,
+    mode_model=None,
 ) -> ModeDecision:
     """Instance'a NFV cavity mi heightmap mi uygun — veri-odaklı, açıklanabilir, kalite-güvenli.
 
@@ -172,6 +173,29 @@ def predict_nfv_benefit(
     build_instance_from_order bbox'ları doldurur). İleride telemetri birikince selection/
     altyapısıyla öğrenen sürüme yükseltilebilir (adaptive_params felsefesi).
     """
+    # --- C4 CHALLENGER (OPT-IN — yalniz mode_model verilirse; Sprint-3) -------
+    # YARISMA-2 kaniti (2026-07-14, Eren onayi): regret_logistic 9.66mm < kural
+    # 17.0mm. CIFT KILIT modelde: aile allowlist'te VE conformal-tekil ise
+    # kurali ezer; aksi TUM durumlarda (None donus / hata / model yok) asagidaki
+    # kurallar BIT-OZDES calisir. default mode_model=None = eski davranis.
+    if mode_model is not None:
+        try:
+            from src.nesting3d.instances.family import classify_prelim as _clf
+            from src.nesting3d.instances.features import (
+                extract_features_extended as _fx)
+            _fam_m, _ = _clf(instance)
+            _sonuc = mode_model.karar(list(_fx(instance).values), _fam_m)
+            if _sonuc is not None:
+                _arm, _gerekce = _sonuc
+                if _arm == "heightmap+wall_aware":
+                    return ModeDecision("heightmap", _gerekce, wall_aware=True)
+                if _arm.startswith("nfv"):
+                    return ModeDecision("nfv", _gerekce)
+                return ModeDecision("heightmap", _gerekce)
+        except Exception as _exc:
+            _LOG.warning("mode_model karari turetilemedi, kurala dusuldu: %s",
+                         type(_exc).__name__)
+
     # --- F5 aile katmanı (OPT-IN — yalnız family_routing=True) ----------------
     # Kabuk ailesi (thin_shell/tube) + yeterli güven → heightmap + wall_aware önerisi.
     # Eşik + aile listesi F3'ten (pitch.py) import edilir → çift kaynak yok; F5 aile

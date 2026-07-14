@@ -805,7 +805,16 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             # katmani predict icinde HIC calismaz (mod/gerekce/wall_aware v1 BIT-OZDES);
             # acikken kabuk-ailesi mod-flip + wall_aware onerisi BIRLIKTE gelir (tek kapi,
             # asimetri yok).
-            _dec = predict_nfv_benefit(instance, family_routing=auto_family_routing)
+            # C4 CHALLENGER (Sprint-3, Eren onayi 2026-07-14): promote edilmis
+            # mod-modeli varsa yukle; model YALNIZ allowlist-aile + conformal-
+            # tekil durumda kurali ezer (mode_model_io cift-kilit sozlesmesi).
+            # Dosya yok/bozuk -> None -> kural BIT-OZDES.
+            from src.nesting3d.selection.mode_model_io import (
+                MODE_MODEL_PATH, load_mode_model)
+            _mm = load_mode_model(_ROOT / MODE_MODEL_PATH)
+            _dec = predict_nfv_benefit(instance,
+                                       family_routing=auto_family_routing,
+                                       mode_model=_mm)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
             # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
