@@ -57,7 +57,7 @@ def _rot_meshes(meshes):
                                    z=int(round(org[2] / CHECK_PITCH))))
     return check_separability_rot(pls, parts, max_grid_vox=800,
                                   sure_butcesi_s=1200.0,
-                                  erode_clearance_vox=2)
+                                  erode_clearance_vox=(2, 2))
 
 
 def main():
@@ -87,8 +87,13 @@ def main():
         return
     shifted = apply_dz(meshes, dz4)
     h4 = max(float(m.bounds[1][2]) for m in shifted)
+    # dz sigortasi: rot/kaydet asamasi cokerse ~6 saatlik settle kaybolmasin
+    snap = _ROOT / "results" / "k52_dz_snapshot.npz"
+    np.savez(snap, dz=np.asarray(dz4, dtype=float), h4=h4,
+             clear=float(rapor4.min_mm))
     log(f"R11v4: h {h0:.2f} -> {h4:.2f}  clear={rapor4.min_mm:.3f}"
         f"  ({(time.perf_counter()-t)/60:.1f} dk)  [K-50 beklentisi 220.69]")
+    log(f"dz-sigorta: {snap}")
 
     t = time.perf_counter()
     rot = _rot_meshes(shifted)

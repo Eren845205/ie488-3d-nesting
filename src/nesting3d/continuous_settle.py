@@ -232,6 +232,38 @@ def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
     return int(check_separability_5dir(pls, parts).n_locked)
 
 
+def kilit_rot_meshes(meshes: Sequence, pitch: float = 1.0,
+                     max_grid_vox: int = 800,
+                     sure_butcesi_s: Optional[float] = 1200.0,
+                     erode_clearance_vox=(2, 2)):
+    """Mesh listesinde rot-sokum denetimi (K-52 tabani; kilit_5yon_meshes ile
+    AYNI re-voxelize: margin-0 @pitch, slice). RotSeparabilityReport doner.
+
+    erode_clearance_vox default (2,2) = clearance_to_voxels(2.0, 1.0): rot
+    mekanigi (K-34 v3 sokum fizigi) 2mm kuralinin voxel karsiligiyla kosar.
+    Butce dolan / max_grid_vox asan parca sertifikasiz kalir -> n_locked'a
+    sayilir (konservatif: kabul tarafina sizamaz)."""
+    import numpy as _np
+    from types import SimpleNamespace as _NS
+    from src.nesting3d.rotation_extract import check_separability_rot
+    from src.nesting3d.voxelize import voxelize_part
+    parts = {}
+    pls = []
+    for i, m in enumerate(meshes):
+        pid = f"m{i}"
+        parts[pid] = voxelize_part(pid, m, pitch, n_orientations=1, margin=0,
+                                   z_dilate=0, rot_matrices=[_np.eye(4)],
+                                   method="slice")
+        org = m.bounds[0]
+        pls.append(_NS(part_id=pid, orientation_idx=0,
+                       x=int(round(org[0] / pitch)),
+                       y=int(round(org[1] / pitch)),
+                       z=int(round(org[2] / pitch))))
+    return check_separability_rot(pls, parts, max_grid_vox=max_grid_vox,
+                                  sure_butcesi_s=sure_butcesi_s,
+                                  erode_clearance_vox=erode_clearance_vox)
+
+
 def uretim_r11(
     meshes: Sequence,
     *,
@@ -240,6 +272,10 @@ def uretim_r11(
     pay_mm: float = 0.15,
     samples_kompakt: int = 12000,
     samples_dogrula: int = 6000,
+    rot_kabul=False,
+    rot_butce_s: float = 1200.0,
+    _kilit_fn=None,
+    _rot_fn=None,
 ) -> Optional[dict]:
     """R11 v4'un TEK-TARAFLI uretim sarmalayicisi (K-50 dagilim dosyasi temeli).
 
@@ -248,7 +284,16 @@ def uretim_r11(
     (fine_settle sozlesmesi): (1) rafine yakinsadi, (2) clearance >= kural,
     (3) kilit artmadi (K-50 d4 dersi: kazanc 8.64 vardi, kilit 11->12 -> RED),
     (4) kazanc > 0.01mm. Basarida dict: dz/height_mm/min_clearance_mm/
-    kilit_pre/kilit_post/kazanc_mm/rafine_tur."""
+    kilit_pre/kilit_post/kazanc_mm/rafine_tur.
+
+    rot_kabul (hoca 2026-07-14 kriteri; K-52 probu): kapi-3 kilit-artisi
+    reddi yerine rot-sokum denetimine sorulur — "zor cikan ama cikabilen"
+    red sebebi DEGILDIR. rot kilit=0 ise SOKUM-PLANLI kabul (dict'e
+    sokum_planli/rot_kilit/rot_cert eklenir); rot kilit>0 / hata -> eski RED
+    (tek-tarafli sozlesme korunur). Default False = BIT-OZDES eski davranis.
+    Kilit artmadiysa rot denetimi HIC kosulmaz (K-42 maliyet dersi).
+    _kilit_fn/_rot_fn test enjeksiyonu (A9 bayat-mock tuzagina karsi imzalar
+    gercekle ayni: meshes -> sayi / meshes -> rapor)."""
     if not meshes:
         return None
     h0 = max(float(m.bounds[1][2]) for m in meshes)
@@ -265,14 +310,27 @@ def uretim_r11(
     kazanc = h0 - h4
     if kazanc <= 0.01:
         return None
+    kilit = _kilit_fn or kilit_5yon_meshes
     try:
-        kilit_pre = kilit_5yon_meshes(meshes)
-        kilit_post = kilit_5yon_meshes(shifted)
+        kilit_pre = kilit(meshes)
+        kilit_post = kilit(shifted)
     except MemoryError:
         return None  # denetlenemeyen sonuc uretime giremez (A2)
+    rot_bilgi = None
     if kilit_post > kilit_pre:
-        return None
-    return {
+        if not rot_kabul:
+            return None
+        rot_check = _rot_fn or (
+            lambda ms: kilit_rot_meshes(ms, sure_butcesi_s=rot_butce_s))
+        try:
+            rot = rot_check(shifted)
+        except Exception:
+            return None  # rot denetimi kurulamadi -> kabul tarafina sizamaz
+        if int(rot.n_locked) > 0:
+            return None
+        rot_bilgi = {"sokum_planli": True, "rot_kilit": 0,
+                     "rot_cert": len(rot.certificates)}
+    out = {
         "dz": [float(d) for d in dz4],
         "height_mm": h4,
         "height_before_mm": h0,
@@ -282,6 +340,9 @@ def uretim_r11(
         "kilit_post": int(kilit_post),
         "rafine_tur": int(tur4),
     }
+    if rot_bilgi:
+        out.update(rot_bilgi)
+    return out
 
 
 def dogrula_ve_rafine(

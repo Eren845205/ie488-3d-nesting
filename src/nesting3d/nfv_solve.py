@@ -323,7 +323,8 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                      no_go_bounds=None, seed=42, quality="max",
                      n_orientations=None, time_budget_sec=None,
                      r11=False, r11_samples=12000,
-                     _solve=None, _check_5dir=None):
+                     rot_kabul=False, rot_butce_s=1200.0,
+                     _solve=None, _check_5dir=None, _check_rot=None):
     """K-36/38/41/44 sampiyon recetesi: kalite-NFV + kosullu exit_guard.
 
     Uc olcumle-kanitli kural tek fonksiyonda (kanit: MOTOR/YONTEM_HARITASI §3):
@@ -347,6 +348,15 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     TEK-TARAFLI: uretim_r11 dort kapinin birini gecemezse sonuc AYNEN korunur;
     basarida tel["r11"] dz/height/clear/kilit tasir (mesh-duzeyi ekstra dusme —
     voxel sonucu ve bin3d DEGISMEZ; STL/rapor katmani dz'yi uygular).
+
+    rot_kabul (hoca 2026-07-14 kriteri; K-52 probu): ham 5-yon KILITLI ciktiginda
+    guard'i kosup vergiyi odemeden ONCE rot-sokum denetimine sorulur — rot
+    kilit=0 ise ham SOKUM-PLANLI kabul edilir, guard HIC kosulmaz (vergi
+    aile-bagimli p2+12.5/p3+66 idi). rot kilit>0 / hata / kilit-bilinmiyor ->
+    eski akis (guard). False (default, BIT-OZDES) | True | "auto" (yalniz
+    n_placed <= R11_AUTO_PARCA_TAVANI; rot denetimi @1.0 re-voxelize pahali,
+    K-42: 226 parcada saatler — butce rot_butce_s ile sinirli). tel["rot_kabul"]
+    yalniz denendiginde yazilir. _check_rot test enjeksiyonu (res -> rapor).
     """
     from src.nesting3d.accessibility import check_separability_5dir
     solve = _solve or solve_nfv
@@ -383,6 +393,40 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
         except Exception:
             return None  # denetim kurulamadi -> bilinmiyor (guard'i yine de dene)
 
+    def _rot_kabul_dene(res, tel):
+        """Ham kilitliyken sokum-planli kabul denemesi (hoca 2026-07-14).
+
+        True donerse cagiran guard'i ATLAR. Hata/kilit -> False + durust iz."""
+        if not rot_kabul:
+            return False
+        n = int(res.n_placed)
+        if rot_kabul == "auto" and n > R11_AUTO_PARCA_TAVANI:
+            tel["rot_kabul"] = {"uygulandi": False, "neden": "parca_tavani",
+                                "n_placed": n, "tavan": R11_AUTO_PARCA_TAVANI}
+            return False
+        try:
+            if _check_rot is not None:
+                rapor = _check_rot(res)
+            else:
+                from src.nesting3d.continuous_settle import kilit_rot_meshes
+                from src.nesting3d.export_stl import placed_meshes
+                meshes = placed_meshes(list(res.placements),
+                                       res.fine_voxel_parts,
+                                       float(res.fine_pitch))
+                rapor = kilit_rot_meshes(meshes, sure_butcesi_s=rot_butce_s)
+        except Exception as e:
+            tel["rot_kabul"] = {"uygulandi": False,
+                                "neden": f"hata:{type(e).__name__}"}
+            return False
+        rk = int(rapor.n_locked)
+        if rk > 0:
+            tel["rot_kabul"] = {"uygulandi": False, "neden": "rot_kilitli",
+                                "rot_kilit": rk}
+            return False
+        tel["rot_kabul"] = {"uygulandi": True, "rot_kilit": 0,
+                            "cert": len(rapor.certificates)}
+        return True
+
     ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                 fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                 n_orientations=n_orientations, time_budget_sec=time_budget_sec,
@@ -397,6 +441,13 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
             _r11_uygula(ham, tel)
             tel["sure_s"] = round(time.perf_counter() - t0, 1)
             return ham, tel
+
+    # ham KESIN kilitli (>0): guard vergisinden once rot-sokum kabulu dene
+    # (hoca 2026-07-14: "zor cikan ama cikabilen" red sebebi degil).
+    if ham_kilit and _rot_kabul_dene(ham, tel):
+        _r11_uygula(ham, tel)
+        tel["sure_s"] = round(time.perf_counter() - t0, 1)
+        return ham, tel  # secilen="ham" (init degeri), guard_kosuldu=False
 
     guard = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                   fine_pitch=float(clearance_mm), quality=quality, seed=seed,

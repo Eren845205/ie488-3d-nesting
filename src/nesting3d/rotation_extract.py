@@ -235,6 +235,12 @@ def check_separability_rot(placements: Sequence[object],
     peel denenir). Deterministiktir: girdi sirasi + eksen (Z,X,Y) + kucuk
     aci once + yon sirasi sabit.
     """
+    if isinstance(erode_clearance_vox, (int, np.integer)):
+        # K-52 dersi: ciplak int, _ensure_eroded unpack'inde TypeError'du —
+        # lazy yol yalniz kilitli sahnede kosuldugundan hata saatler sonra
+        # patlar; burada normalize edilir.
+        erode_clearance_vox = (int(erode_clearance_vox),
+                               int(erode_clearance_vox))
     lookup = _parts_lookup(parts)
     n = len(placements)
     pids: List[str] = []
