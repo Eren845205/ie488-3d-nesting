@@ -312,9 +312,17 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     )
 
 
+# R11 "auto" parca tavani (K-50 sure olcumleri: kompakt 226p=63dk / 352p=70dk /
+# 588p=375dk — buyuk sette uretim penceresini asar; gercek gozcu siparisleri
+# 10-112 parca bandinda, orada dakikalar). Ustunde auto ATLAR (iz birakir);
+# rekor/deney kosulari r11=True ile acikca zorlayabilir.
+R11_AUTO_PARCA_TAVANI = 150
+
+
 def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                      no_go_bounds=None, seed=42, quality="max",
                      n_orientations=None, time_budget_sec=None,
+                     r11=False, r11_samples=12000,
                      _solve=None, _check_5dir=None):
     """K-36/38/41/44 sampiyon recetesi: kalite-NFV + kosullu exit_guard.
 
@@ -333,11 +341,41 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     Doner: (CoarseToFineResult, telemetri_dict). Telemetri: pitch, ham/guard
     yukseklik + kilit sayilari, secilen bacak, sure. _solve/_check_5dir test
     enjeksiyonu icindir (A9 bayat-mock tuzagina karsi imzalar gercekle ayni).
+
+    r11 (K-50 kablosu, 2026-07-14): False (default, BIT-OZDES eski davranis) |
+    True (hep dene) | "auto" (yalniz n_placed <= R11_AUTO_PARCA_TAVANI).
+    TEK-TARAFLI: uretim_r11 dort kapinin birini gecemezse sonuc AYNEN korunur;
+    basarida tel["r11"] dz/height/clear/kilit tasir (mesh-duzeyi ekstra dusme —
+    voxel sonucu ve bin3d DEGISMEZ; STL/rapor katmani dz'yi uygular).
     """
     from src.nesting3d.accessibility import check_separability_5dir
     solve = _solve or solve_nfv
     check = _check_5dir or check_separability_5dir
     t0 = time.perf_counter()
+
+    def _r11_uygula(res, tel):
+        if not r11:
+            return
+        n = int(res.n_placed)
+        if r11 == "auto" and n > R11_AUTO_PARCA_TAVANI:
+            tel["r11"] = {"uygulandi": False, "neden": "parca_tavani",
+                          "n_placed": n, "tavan": R11_AUTO_PARCA_TAVANI}
+            return
+        try:
+            from src.nesting3d.continuous_settle import uretim_r11
+            from src.nesting3d.export_stl import placed_meshes
+            meshes = placed_meshes(list(res.placements), res.fine_voxel_parts,
+                                   float(res.fine_pitch))
+            sonuc = uretim_r11(meshes, clearance_mm=float(clearance_mm),
+                               no_go_bounds=no_go_bounds,
+                               samples_kompakt=int(r11_samples))
+        except Exception as e:  # R11 hicbir kosulda cozumu dusuremez
+            tel["r11"] = {"uygulandi": False, "neden": f"hata:{type(e).__name__}"}
+            return
+        if sonuc is None:
+            tel["r11"] = {"uygulandi": False, "neden": "kapilar"}
+        else:
+            tel["r11"] = {"uygulandi": True, **sonuc}
 
     def _kilit(res):
         try:
@@ -356,6 +394,7 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
            "guard_n_locked": None, "secilen": "ham"}
     if not ham_kilit:  # 0 veya None-degil-0 -> ham kilitsiz, guard vergisi odenmez
         if ham_kilit == 0:
+            _r11_uygula(ham, tel)
             tel["sure_s"] = round(time.perf_counter() - t0, 1)
             return ham, tel
 
@@ -377,5 +416,6 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     else:
         secilen = ("ham", ham) if ham.height_mm <= guard.height_mm else ("guard", guard)
     tel["secilen"] = secilen[0]
+    _r11_uygula(secilen[1], tel)
     tel["sure_s"] = round(time.perf_counter() - t0, 1)
     return secilen[1], tel

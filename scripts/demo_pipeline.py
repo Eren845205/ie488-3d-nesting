@@ -945,8 +945,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 quality=nfv_quality,
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
+                r11="auto",  # K-50 kablosu: kucuk/orta sette mesh-duzeyi son
+                             # dusme (tek-tarafli; kapilar gecemezse sonuc AYNEN;
+                             # parca tavani ustunde atlar + iz birakir)
             )
-            _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim)
+            _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim + r11)
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
@@ -1207,6 +1210,14 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             duration_s=round(t_nest_elapsed, 3),
             clearance_req_mm=WEB_MIN_CLEARANCE_MM,
             winning_config=str(winner_config),
+            # K-50 kablosu: r11 uygulandiysa mesh-duzeyi ekstra dusme izi
+            # (ana height_mm voxel-raporlu kalir; r11 alanlari additive)
+            **({"r11_height_mm": _instr["nfv_kalite"]["r11"]["height_mm"],
+                "r11_kazanc_mm": _instr["nfv_kalite"]["r11"]["kazanc_mm"],
+                "r11_min_clearance_mm":
+                    _instr["nfv_kalite"]["r11"]["min_clearance_mm"]}
+               if (_instr.get("nfv_kalite", {}).get("r11", {}) or {})
+               .get("uygulandi") else {}),
         )
     except _SkipTelemetryV2:
         pass

@@ -207,6 +207,83 @@ def apply_dz(meshes: Sequence, dz) -> List:
     return out
 
 
+def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
+    """Mesh listesinde 5-yon kilit sayisi (margin-0, @pitch re-voxelize, slice).
+
+    R11 uretim kapisinin uyesi (K-50 metrigi ile AYNI): pozisyon kafese
+    yuvarlanir (<=pitch/2), pre/post ayni metrik -> delta durust. slice
+    yontemi zorunlu (K-49a: subdivide yuksek-yuzlu STL'de 52M ucgen MemErr)."""
+    import numpy as _np
+    from types import SimpleNamespace as _NS
+    from src.nesting3d.accessibility import check_separability_5dir
+    from src.nesting3d.voxelize import voxelize_part
+    parts = {}
+    pls = []
+    for i, m in enumerate(meshes):
+        pid = f"m{i}"
+        parts[pid] = voxelize_part(pid, m, pitch, n_orientations=1, margin=0,
+                                   z_dilate=0, rot_matrices=[_np.eye(4)],
+                                   method="slice")
+        org = m.bounds[0]
+        pls.append(_NS(part_id=pid, orientation_idx=0,
+                       x=int(round(org[0] / pitch)),
+                       y=int(round(org[1] / pitch)),
+                       z=int(round(org[2] / pitch))))
+    return int(check_separability_5dir(pls, parts).n_locked)
+
+
+def uretim_r11(
+    meshes: Sequence,
+    *,
+    clearance_mm: float = 2.0,
+    no_go_bounds=None,
+    pay_mm: float = 0.15,
+    samples_kompakt: int = 12000,
+    samples_dogrula: int = 6000,
+) -> Optional[dict]:
+    """R11 v4'un TEK-TARAFLI uretim sarmalayicisi (K-50 dagilim dosyasi temeli).
+
+    Kompakt (kucuk pay) + dogrula-ve-rafine + kapilar. DORT kapinin
+    HERHANGI biri gecilemezse None doner — cagiran mevcut sonucu AYNEN korur
+    (fine_settle sozlesmesi): (1) rafine yakinsadi, (2) clearance >= kural,
+    (3) kilit artmadi (K-50 d4 dersi: kazanc 8.64 vardi, kilit 11->12 -> RED),
+    (4) kazanc > 0.01mm. Basarida dict: dz/height_mm/min_clearance_mm/
+    kilit_pre/kilit_post/kazanc_mm/rafine_tur."""
+    if not meshes:
+        return None
+    h0 = max(float(m.bounds[1][2]) for m in meshes)
+    res = continuous_z_settle(meshes, clearance_mm=clearance_mm, pay_mm=pay_mm,
+                              samples_per_mesh=samples_kompakt,
+                              no_go_bounds=no_go_bounds)
+    dz4, rapor4, tur4, ok4 = dogrula_ve_rafine(
+        meshes, res.dz, clearance_mm=clearance_mm,
+        samples_per_mesh=samples_dogrula)
+    if not ok4 or rapor4 is None or rapor4.min_mm < clearance_mm:
+        return None
+    shifted = apply_dz(meshes, dz4)
+    h4 = max(float(m.bounds[1][2]) for m in shifted)
+    kazanc = h0 - h4
+    if kazanc <= 0.01:
+        return None
+    try:
+        kilit_pre = kilit_5yon_meshes(meshes)
+        kilit_post = kilit_5yon_meshes(shifted)
+    except MemoryError:
+        return None  # denetlenemeyen sonuc uretime giremez (A2)
+    if kilit_post > kilit_pre:
+        return None
+    return {
+        "dz": [float(d) for d in dz4],
+        "height_mm": h4,
+        "height_before_mm": h0,
+        "kazanc_mm": round(kazanc, 3),
+        "min_clearance_mm": float(rapor4.min_mm),
+        "kilit_pre": int(kilit_pre),
+        "kilit_post": int(kilit_post),
+        "rafine_tur": int(tur4),
+    }
+
+
 def dogrula_ve_rafine(
     meshes: Sequence,
     dz,
