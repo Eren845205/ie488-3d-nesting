@@ -790,6 +790,29 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > olcum); sonlanma garantili (dz>=0 klamp). SIRADA: K-50 seri (d5/d4/p2'ye
 > v4) -> 4-set dagilim tablosu -> eval-gate -> uretim terfi dosyasi.
 
+> **2026-07-14 — K-50 R11-v4 COK-SET SERISI = TAMAM (A5 dagilim dosyasi;
+> 3 GO / 1 NO-GO):** tek proses seri (d5->d4->p2), her sette sampiyon-recete
+> replay birebir + v4 (pay 0.15 + dogrula-ve-rafine) + kapilar + otomatik
+> telemetri. SONUCLAR (mesh-gercek):
+> **d5: 221.50->214.64 GO 🏆 (kazanc 6.86; clear 2.000; kilit 0->0; rafine
+> 0 tur — pay 0.15 bile yetti; manuel 209'a +%2.7; YENI SAMPIYON; STL
+> deneme5_r11v4_214.6mm.stl)** ·
+> **d4: 229.33->220.69 NO-GO (kazanc 8.64 VARDI ama kilit 11->12 — kompaksiyon
+> 1 parca kilitledi, kapi REDDETTI; sampiyon 231.5 KALIR; not: pre=11, K-46'nin
+> 363'u dilated-grid metrigiydi, helper margin-0 @1.0 olcer — pre/post ayni
+> metrik, delta durust)** ·
+> **p2: 542.20->541.44 GO (kazanc yalnizca 0.76; clear 2.003; kilit 0->0;
+> guard'li kanat yerlesimi zaten sikiymis; rafine 8 tur)**.
+> p3 (K-49d) ile dagilim: **+18.9 / +8.6(red) / +6.9 / +0.8 — kazanc AILE-
+> BAGIMLI** (kule yuksekligi x arayuz sayisiyla olcekleniyor; alcak/genis
+> istifte kirinti). DERSLER: (1) v4 rafine dongusu 4 sette de ucuz ve stabil
+> (0-8 tur, <1.5dk); (2) d4 tipi kilit-hassas ailede v5 ihtiyaci = kilit-
+> farkindali geri-alma (yeni kilitlenen parcanin dz'sini geri al — 8.64'un
+> cogu kurtarilabilir, ADAY); (3) uretim kablolamasi TEK-TARAFLI olmali
+> (fine_settle sozlesmesi gibi: kapilardan gecemezse R11 sonucu atilir,
+> coarse korunur — boylece d4'te bile guvenli). SIRADA: tam suite ->
+> eval-gate -> solve_nfv_kalite post-pass kablosu (insan onayiyla).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
