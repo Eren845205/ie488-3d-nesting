@@ -897,6 +897,38 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > plan1'in NFV'ye routing'i (kural canli-hatasi, model allowlist disi).
 > SIRADA: A9 tam suite -> k51c (`scripts/k51c_baseline_kilit.py`).
 
+> **2026-07-15 — K-51c: ROT-SOKUM KATMANLI SOZLESME ILK OLCUM (exit 4 —
+> plan1 eski-routing INVALID'i baseline'i engelledi, kalan 3 set LEGAL):**
+> plan2 **542.5 SOKUM-PLANLI** (219 kilit -> rot 0, 4 cert; 933.9s) — max
+> rekoru 541.44'e +%0.2, **fast-vs-max ucurumu plan2'de rot-kabulle KAPANDI**
+> (eski k51b: INVALID 59 kilit). plan3 **601.9 SOKUM-PLANLI** (3 kilit ->
+> rot 0, 1 cert; 5740.6s=96dk — fast NFV plan3'te YAVAS, acik yon) — max
+> 577.62'nin +%4.2 ustu ama artik LEGAL (k51b: INVALID 63 kilit). deneme4
+> **276.5 SOKUM-PLANLI (338 kilit -> rot 0, 0 CERT!** — tum kilitler erode'lu
+> sokum fiziginin PEEL'iyle acildi, rotasyon hic gerekmedi: 5-yon metriginin
+> dilate-kaynakli asiri-sertliginin kaniti; 454.9s) — eski heightmap-fast
+> 287.0'dan -10.5mm (yeni NFV+rot routing k51c'de canliydi); sampiyon 220.69
+> (max+R11) ile fark %25 = d4'te fast-vs-max acik. plan1 INVALID 111/112
+> (tilt-zorunlu kapi k51c BASLADIKTAN SONRA yazildi). Kanit:
+> results/eval_gate_last.json; scripts/k51c_baseline_kilit.log.
+> SIRADAKI: k51d = ayni sozlesme + tilt-zorunlu kapili routing (plan1 ->
+> heightmap-fast) -> 4 set legal ise BASELINE ILK KEZ KURULUR.
+
+> **2026-07-15 — PLAN1 ROUTING CANLI-HATASI KAPANDI: TILT-ZORUNLU FIZIBILITE
+> KAPISI (Eren istegi "plan1'i hallet"):** kok mekanizma GEOMETRIK KESIN
+> bulundu: baseplate_v2 330.2x302 @335x335 plaka + no-go kolonu
+> (x[152.5,185.5], y<=45) -> parca x'te en fazla 4.8mm kayabilir, no-go her
+> duz eksen-hizali konumda parcanin ICINDE kalir = duz poz IMKANSIZ
+> ("hedefli-TILT zorunlu" dersinin geometrik kaniti). NFV tilt bilmez ->
+> 111/112 eksik yerlesim (k51c) / dikse 333.0 (K-40). COZUM:
+> `predict_nfv_benefit(no_go_bounds=...)` ADIM -1 kapisi — hicbir duz pozu
+> (WxD, DxW dikdortgen aritmetigi, kesin test) no-go'lu plakaya sigmayan
+> parca varsa HEIGHTMAP zorunlu; fizibilite kaniti model dahil her katmani
+> ezer. Default None = bit-ozdes; pipeline+eval no-go'yu gecirir. Dagilim
+> (A5): yalniz plan1 tetikler — plan2/3 NFV, d4 NFV+rot AYNEN (canli probe).
+> TDD 5 test. NOT: k51c plan1'i ESKI routing'le olctu -> exit 4 beklenir;
+> k51d yeni routing'le baseline'i yeniden dener.
+
 > **2026-07-15 — /run(rich) ~50s YAVASLAMA KOK TESHISI (A4 ucuz teshis,
 > kosusuz):** kok = C4 mode_model promote (`94283b9`): rich senaryonun 3
 > partisi de aile=solid_bulk (guven 0.79) + allowlist + conformal-tekil ->
