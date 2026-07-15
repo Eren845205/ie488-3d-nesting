@@ -213,12 +213,23 @@ def test_session_cookie_secure_default_kapali(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_run_rate_limit_uygulanir(monkeypatch):
-    """FIX 5: /run agir pipeline; asiri istekte 429 donmeli."""
+    """FIX 5: /run agir pipeline; asiri istekte 429 donmeli.
+
+    Pipeline STUB'lanir (2026-07-15): /run(rich) gercek kosusu artik istek
+    basina ~50s (olcum: 25 istek = 20dk44sn) — seri istemci "3 per minute"
+    penceresini hicbir zaman dolduramiyor, test surekli-yesil donemin hizli
+    pipeline varsayimiyla yazilmisti. Limiter'in test ettigi sey SAYAC,
+    pipeline degil — stub dogru ozne. (Limiter route girisinde sayar;
+    4. istek view'a inmeden 429 doner.)
+    """
+    import scripts.demo_pipeline as dp
+    monkeypatch.setattr(dp, "run_pipeline", lambda scenario: {
+        "ranked_orders": [], "batches": [], "nesting_results": {},
+        "pricing_results": {}, "elapsed_sec": 0.0})
     c = _client(monkeypatch)  # ADMIN_PASSWORD yok -> serbest erisim, sadece limit test edilir
     tok = _csrf(c, "/")
     son = None
-    # limit'in makul (dusuk) oldugunu varsayarak bol deneme yapip 429 ariyoruz
-    for _ in range(25):
+    for _ in range(5):  # limit 3/dk -> en gec 4. istek 429
         son = c.post("/run", data={"scenario_type": "rich", "_csrf": tok})
         if son.status_code == 429:
             break
