@@ -151,9 +151,9 @@
 <div class="card">
     <div class="card-title">Parti {{ bid }}</div>
 
-    {# --- 3D onizleme (kalici GLB) --- #}
+    {# --- 3D onizleme (kalici GLB) + Sokum Konsolu (P2-P5) --- #}
     {% if detay.glb and detay.glb.get(bid) %}
-    <div id="viewer-container-{{ bid }}" class="viewer-container gd-viewer" style="margin-bottom:20px;">
+    <div id="viewer-container-{{ bid }}" class="viewer-container gd-viewer">
         <div class="viewer-placeholder" id="viewer-placeholder-{{ bid }}">
             <span class="gd-viewer-hint">3D önizleme yükleniyor&hellip;</span>
         </div>
@@ -173,8 +173,38 @@
             </span>
         </div>
     </div>
+    {# Konsol arac cubugu koku — viewer'in hemen altina JS kurar (P3-P5).
+       parca_kimlik yoksa (eski kayit) JS hicbir sey kurmaz, cubuk bos kalmaz. #}
+    {% if nr.get('parca_kimlik') %}
+    <div id="sk-arac-{{ bid }}"></div>
+    <script type="application/json" id="sk-data-{{ bid }}">{{ {
+        'parca_kimlik': nr.get('parca_kimlik'),
+        'siparis_ozeti': nr.get('siparis_ozeti'),
+        'sokum_sirasi': nr.get('sokum_sirasi'),
+        'sokum_plani': nr.get('sokum_plani'),
+    } | tojson }}</script>
+    {% else %}
+    <div style="margin-bottom:20px;"></div>
+    {% endif %}
     {% else %}
     <div class="gd-viewer-yok">3B önizleme bu parti için kaydedilmedi.</div>
+    {% endif %}
+
+    {# --- Siparis ozet kartlari (P3) — operator kutu etiketleri --- #}
+    {% set so = nr.get('siparis_ozeti') %}
+    {% if so %}
+    <div class="sk-ozet">
+        {% for o in so %}
+        <div class="sk-ozet-kart">
+            <div class="sk-ozet-siparis">{{ o.get('order_id') or '—' }}</div>
+            <div class="sk-ozet-musteri">{{ o.get('musteri') or 'Müşteri bilinmiyor' }}</div>
+            <div class="sk-ozet-sayilar">
+                <span><strong>{{ o.get('n_parca', 0) }}</strong> parça</span>
+                <span><strong>{{ o.get('n_sokum_planli', 0) }}</strong> söküm-planlı</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
     {% endif %}
 
     {# --- Nesting metrikleri --- #}
@@ -299,10 +329,15 @@
             Bu yerlesim "sokum-planli" kabul edildi: asagidaki parcalar duz cekmeyle degil,
             kucuk bir dondurmeyle cikar. Diger tum parcalar normal sirayla duz cekilir.
         </div>
+        {% set ss = nr.get('sokum_sirasi') or [] %}
         <ul style="font-size:13px; margin:0; padding-left:18px;">
             {% for e in sp %}
             <li style="margin-bottom:4px;">
-                <strong>{{ e.get('parca', '?') }}</strong>:
+                {% if e.get('part_id') and e.get('part_id') in ss %}
+                <span class="badge" style="font-family:var(--font-mono); font-size:10.5px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2);"
+                      title="Genel sokum sirasindaki yeri — rehberli sokum modunda bu adimda gelir">sira {{ ss.index(e.get('part_id')) + 1 }}/{{ ss | length }}</span>
+                {% endif %}
+                <strong>{{ e.get('parca', '?') }}</strong>{% if e.get('part_id') and e.get('part_id') != e.get('parca') %} <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted);">({{ e.get('part_id') }})</span>{% endif %}:
                 {% if (e.get('lift_vox', 0) | int) > 0 %}once ~{{ e.get('lift_vox') }} mm yukari kaldir, {% endif %}
                 {{ e.get('eksen', '?') }} ekseninde {{ "%.0f"|format(e.get('aci_deg', 0.0) | float) }}&deg; dondur,
                 sonra {{ e.get('yon', '?') }} yonunden cek
@@ -476,64 +511,8 @@
 }
 </script>
 <style>
-.viewer-container {
-    position: relative;
-    width: 100%;
-    height: 300px;
-    background: #0f172a;
-    border-radius: 10px;
-    overflow: hidden;
-}
-.viewer-placeholder {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 8px;
-    color: #94a3b8;
-    font-size: 13px;
-}
-.viewer-canvas { width: 100%; height: 100%; display: block; }
-.gd-viewer-hint { color: #94a3b8; font-size: 13px; }
-.gd-viewer-yok {
-    margin-bottom: 20px; padding: 14px; border: 1px dashed var(--line-2);
-    border-radius: 10px; color: var(--muted); font-size: 13px; text-align: center;
-}
-/* Alt bilgi cubugu + tam ekran dugmesi — sahnenin ustune biner */
-.gd-viewer-bar {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 12px; pointer-events: none;
-    background: linear-gradient(to top, rgba(8, 12, 22, 0.85), rgba(8, 12, 22, 0));
-}
-.gd-viewer-tag {
-    font-family: var(--font-mono); font-size: 11px; color: #7d8aa0;
-    letter-spacing: 0.04em;
-}
-.gd-fs-btn {
-    pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(221, 91, 23, 0.14); color: #ffb187;
-    border: 1px solid rgba(221, 91, 23, 0.45); border-radius: 6px;
-    padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
-    font-family: inherit; transition: background .15s ease, color .15s ease;
-}
-.gd-fs-btn:hover { background: rgba(221, 91, 23, 0.32); color: #ffd6c0; }
-/* Tam ekran modu: container fixed overlay olur; renderer JS'te resize edilir */
-.viewer-container.gd-fs {
-    position: fixed; inset: 0; z-index: 1000; height: 100vh; border-radius: 0;
-}
-.viewer-container.gd-fs .gd-viewer-bar { padding: 14px 20px; }
-body.gd-fs-open { overflow: hidden; }
-.gd-fs-exit {
-    pointer-events: auto; display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(15, 23, 42, 0.72); color: #e2e8f0;
-    border: 1px solid rgba(148, 163, 184, 0.4); border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
-    font-family: inherit; position: absolute; top: 14px; right: 16px; z-index: 2;
-}
-.gd-fs-exit:hover { background: rgba(30, 41, 59, 0.9); }
+/* Viewer/tam-ekran/konsol stilleri style.css'te (P2 tek kaynak) — burada
+   yalniz sayfaya ozgu kalanlar. */
 .teklif-body {
     background: #f0fdf4; border-left: 4px solid #22c55e;
     padding: 14px 18px; border-radius: 6px; font-size: 14px;
@@ -620,25 +599,17 @@ body.gd-fs-open { overflow: hidden; }
     }
 </script>
 
-<!-- 3D Viewer — kalici GLB'lerden (three.js offline) + tam ekran modu -->
+<!-- 3D Viewer + Sokum Konsolu — ortak modul (P2: viewer3d.js tek kaynak) -->
 <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from '{{ url_for("static", filename="OrbitControls.js") }}';
-    import { GLTFLoader } from '{{ url_for("static", filename="GLTFLoader.js") }}';
+    import { initViewer3d } from '{{ url_for("static", filename="viewer3d.js") }}';
+    import { kurSokumKonsolu } from '{{ url_for("static", filename="sokum_konsol.js") }}';
 
     const batchIds = [{% for bid in detay.nesting_results.keys() %}{% if detay.glb and detay.glb.get(bid) %}'{{ bid }}',{% endif %}{% endfor %}];
-    // Viewer durumlari: tam ekran gecisinde renderer/camera resize icin saklanir.
+    // Viewer handle'lari: tam ekran gecisinde resize icin saklanir.
     const viewers = {};
     // Cifte init korumasi: observer VE tam-ekran dugmesi ayni viewer'i
     // tetikleyebilir — ilk tetikleyen kurar, digeri no-op.
     const initialized = new Set();
-
-    function sizeFor(container) {
-        return {
-            w: container.clientWidth || 600,
-            h: container.clientHeight || 300,
-        };
-    }
 
     function initViewer(batchId) {
         if (initialized.has(batchId)) return;
@@ -648,149 +619,26 @@ body.gd-fs-open { overflow: hidden; }
         const canvas = document.getElementById('viewer-canvas-' + batchId);
         if (!container || !canvas) return;
 
-        fetch('/gecmis/{{ k.id }}/geometri/' + encodeURIComponent(batchId))
-            .then(resp => {
-                if (!resp.ok) {
-                    placeholder.innerHTML =
-                        '<span style="color:#64748b; font-size:12px;">3D onizleme dosyasi bulunamadi</span>';
-                    return null;
-                }
-                return resp.arrayBuffer();
-            })
-            .then(buffer => {
-                if (!buffer) return;
-
-                placeholder.style.display = 'none';
-                canvas.style.display = 'block';
-                const sz = sizeFor(container);
-
-                // AGIR SAHNE modu: buyuk GLB (cok ucgenli plan parcalari) =
-                // GPU ucgen/fill yuku. AA kapat + piksel oranini 1'e indir —
-                // kasmanin kalan kaynagi bu (draw-call zaten instancing'le az).
-                const agirSahne = buffer.byteLength > 12 * 1024 * 1024;
-                const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: !agirSahne});
-                // Yuksek-DPI ekranda 1.5 ustu piksel orani buyuk sahnede
-                // fill-rate'i patlatir (kasma) — gorsel fark yokken sinirla.
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, agirSahne ? 1 : 1.5));
-                renderer.setSize(sz.w, sz.h);
-                renderer.setClearColor(0x0f172a);
-
-                const scene = new THREE.Scene();
-                const camera = new THREE.PerspectiveCamera(45, sz.w / sz.h, 1, 10000);
-                camera.position.set(300, 300, 400);
-
-                // Isik duzenegi: gokyuzu/zemin (hemisphere) + anahtar + dolgu
-                // isigi — tek zayif directional'in "golgeli/karanlik" gorunumu
-                // yerine STL goruntuleyici benzeri net yuzey okumasi.
-                scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4252, 0.9));
-                const key = new THREE.DirectionalLight(0xffffff, 1.1);
-                key.position.set(300, 500, 400);
-                scene.add(key);
-                const fill = new THREE.DirectionalLight(0xdde6ff, 0.45);
-                fill.position.set(-350, 200, -300);
-                scene.add(fill);
-
-                const controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.screenSpacePanning = true;  // sag-tik/iki-parmak: modeli kaydir
-
-                const loader = new GLTFLoader();
-                loader.parse(buffer, '', gltf => {
-                    const raw = gltf.scene;
-                    raw.updateMatrixWorld(true);
-
-                    // --- INSTANCING: GLB'de ayni geometriye referans veren
-                    // yuzlerce dugumu tip basina TEK InstancedMesh'e cevir.
-                    // 588 draw-call -> ~13 draw-call = kasmanin ana ilaci.
-                    const gruplar = new Map();  // geometry.uuid -> grup
-                    raw.traverse(child => {
-                        if (!child.isMesh) return;
-                        let mat = child.material;
-                        if (!mat || !mat.color) {
-                            mat = new THREE.MeshLambertMaterial({color: 0x4ade80});
-                        }
-                        // GLB malzemeleri PBR (MeshStandardMaterial) gelir;
-                        // ortam haritasi olmadigindan metalik yuzey KOYU/golgeli
-                        // gorunur. Mat plastik gibi davransin: metal yok,
-                        // yuksek puruzluluk -> aydinlik, net yuzey okumasi.
-                        if (mat.isMeshStandardMaterial) {
-                            mat.metalness = 0.0;
-                            mat.roughness = 0.9;
-                        }
-                        // STL yuzeyleri duz-yuzlu: flat shading fasetleri
-                        // keskin okutur (parca detayi "bulanik" gorunmez).
-                        mat.flatShading = true;
-                        mat.needsUpdate = true;
-                        if (child.geometry && !child.geometry.attributes.normal) {
-                            child.geometry.computeVertexNormals();
-                        }
-                        let g = gruplar.get(child.geometry.uuid);
-                        if (!g) {
-                            g = {geometry: child.geometry, material: mat, matrisler: []};
-                            gruplar.set(child.geometry.uuid, g);
-                        }
-                        g.matrisler.push(child.matrixWorld.clone());
-                    });
-
-                    const model = new THREE.Group();
-                    const box = new THREE.Box3();
-                    const kose = new THREE.Vector3();
-                    gruplar.forEach(g => {
-                        g.geometry.computeBoundingBox();
-                        const gb = g.geometry.boundingBox;
-                        let nesne;
-                        if (g.matrisler.length === 1) {
-                            nesne = new THREE.Mesh(g.geometry, g.material);
-                            nesne.applyMatrix4(g.matrisler[0]);
-                        } else {
-                            nesne = new THREE.InstancedMesh(g.geometry, g.material, g.matrisler.length);
-                            g.matrisler.forEach((m, i) => nesne.setMatrixAt(i, m));
-                            nesne.instanceMatrix.needsUpdate = true;
-                        }
-                        model.add(nesne);
-                        // bbox: her instance icin geometrinin 8 kosesini donustur
-                        g.matrisler.forEach(m => {
-                            for (let ci = 0; ci < 8; ci++) {
-                                kose.set(
-                                    (ci & 1) ? gb.max.x : gb.min.x,
-                                    (ci & 2) ? gb.max.y : gb.min.y,
-                                    (ci & 4) ? gb.max.z : gb.min.z,
-                                ).applyMatrix4(m);
-                                box.expandByPoint(kose);
-                            }
+        initViewer3d({
+            container, canvas, placeholder,
+            glbUrl: '/gecmis/{{ k.id }}/geometri/' + encodeURIComponent(batchId),
+            onReady: handle => {
+                viewers[batchId] = handle;
+                // Sokum Konsolu (P3-P5): kimlik kaydi olan koyularda kurulur;
+                // eski kayitlarda sk-data yok -> konsol hic olusmaz.
+                const dataEl = document.getElementById('sk-data-' + batchId);
+                const arac = document.getElementById('sk-arac-' + batchId);
+                if (dataEl && arac) {
+                    try {
+                        kurSokumKonsolu({
+                            bid: batchId, viewer: handle,
+                            data: JSON.parse(dataEl.textContent),
+                            arac, panelKok: container,
                         });
-                    });
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
-                    scene.add(model);
-
-                    const size = box.getSize(new THREE.Vector3()).length();
-                    camera.position.set(size, size * 0.8, size * 1.2);
-                    camera.lookAt(0, 0, 0);
-                    controls.target.set(0, 0, 0);
-                    controls.update();
-
-                    viewers[batchId] = {renderer, camera, container, canvas, controls, size};
-
-                    function animate() {
-                        requestAnimationFrame(animate);
-                        controls.update();
-                        renderer.render(scene, camera);
-                    }
-                    animate();
-                }, () => {
-                    placeholder.style.display = 'flex';
-                    canvas.style.display = 'none';
-                    placeholder.innerHTML =
-                        '<span style="color:#ef4444; font-size:12px;">GLB parse hatasi</span>';
-                });
-            })
-            .catch(() => {
-                if (placeholder) {
-                    placeholder.innerHTML =
-                        '<span style="color:#64748b; font-size:12px;">3D onizleme hazir degil</span>';
+                    } catch (e) { /* konsol kurulamazsa viewer normal calisir */ }
                 }
-            });
+            },
+        });
     }
 
     // --- Tam ekran modu: container fixed-overlay olur, renderer resize edilir ---
@@ -798,20 +646,7 @@ body.gd-fs-open { overflow: hidden; }
 
     function resizeViewer(batchId, refit) {
         const v = viewers[batchId];
-        if (!v) return;
-        const sz = sizeFor(v.container);
-        v.renderer.setSize(sz.w, sz.h);
-        v.camera.aspect = sz.w / sz.h;
-        v.camera.updateProjectionMatrix();
-        if (refit && v.controls && v.size) {
-            // Tam ekran giris/cikisinda kamerayi modele YENIDEN oturt —
-            // aksi halde model ekranin yarisinda kalip "asagi cekilemez"
-            // gorunuyordu (eski orbit hedefi/pozisyon yeni orana uymuyor).
-            v.controls.target.set(0, 0, 0);
-            v.camera.position.set(v.size, v.size * 0.8, v.size * 1.2);
-            v.camera.lookAt(0, 0, 0);
-            v.controls.update();
-        }
+        if (v) v.resize(refit);
     }
 
     function enterFs(batchId) {

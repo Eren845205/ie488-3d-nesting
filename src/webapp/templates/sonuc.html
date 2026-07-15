@@ -214,15 +214,52 @@
         {% endif %}
     </div>
 
-    <!-- 3D Onizleme (VİTRİN A) -->
-    <div id="viewer-container-{{ batch.batch_id }}" class="viewer-container" style="margin-bottom: 20px;">
+    <!-- 3D Onizleme (VİTRİN A) + Sokum Konsolu (P6 parite) -->
+    <div id="viewer-container-{{ batch.batch_id }}" class="viewer-container">
         <div class="viewer-placeholder" id="viewer-placeholder-{{ batch.batch_id }}">
             <span style="color: var(--color-text-muted); font-size: 13px;">
                 3D onizleme yukluyor...
             </span>
         </div>
         <canvas id="viewer-canvas-{{ batch.batch_id }}" class="viewer-canvas" style="display:none;"></canvas>
+        <div class="gd-viewer-bar">
+            <span class="gd-viewer-tag">{{ nr.get('n_parts', 0) }} parça &middot; {{ nr.get('pitch_mm', '?') }} mm voxel</span>
+            <span style="display:flex; gap:8px; pointer-events:auto;">
+                <button type="button" class="gd-fs-btn" data-bid="{{ batch.batch_id }}" title="Tam ekranda incele — çıkmak için ESC">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    Tam ekranda incele
+                </button>
+            </span>
+        </div>
     </div>
+    {% if nr.get('parca_kimlik') %}
+    <div id="sk-arac-{{ batch.batch_id }}"></div>
+    <script type="application/json" id="sk-data-{{ batch.batch_id }}">{{ {
+        'parca_kimlik': nr.get('parca_kimlik'),
+        'siparis_ozeti': nr.get('siparis_ozeti'),
+        'sokum_sirasi': nr.get('sokum_sirasi'),
+        'sokum_plani': nr.get('sokum_plani'),
+    } | tojson }}</script>
+    {% else %}
+    <div style="margin-bottom: 20px;"></div>
+    {% endif %}
+
+    <!-- Siparis ozet kartlari (P3/P6) -->
+    {% set so = nr.get('siparis_ozeti') %}
+    {% if so %}
+    <div class="sk-ozet">
+        {% for o in so %}
+        <div class="sk-ozet-kart">
+            <div class="sk-ozet-siparis">{{ o.get('order_id') or '—' }}</div>
+            <div class="sk-ozet-musteri">{{ o.get('musteri') or 'Müşteri bilinmiyor' }}</div>
+            <div class="sk-ozet-sayilar">
+                <span><strong>{{ o.get('n_parca', 0) }}</strong> parça</span>
+                <span><strong>{{ o.get('n_sokum_planli', 0) }}</strong> söküm-planlı</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Nesting metrikleri -->
     <div class="info-grid" style="margin-bottom: 20px;">
@@ -295,6 +332,36 @@
     {% if nr.get('ram_guard_reason') %}
     <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff8e6; border: 1px solid #e0c268; border-radius: 8px; font-size: 12px; color: #92400e;">
         <strong>&#9888; Bellek uyarisi:</strong> {{ nr.get('ram_guard_reason') }}
+    </div>
+    {% endif %}
+
+    {# Sokum Plani (K-52 rot-kabul; P6 gecmis_detay paritesi) #}
+    {% set sp = nr.get('sokum_plani') %}
+    {% if sp %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Sokum Plani</strong>
+            <span class="badge badge-yellow">{{ sp | length }} parca ozel islem ister</span>
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+            Bu yerlesim "sokum-planli" kabul edildi: asagidaki parcalar duz cekmeyle degil,
+            kucuk bir dondurmeyle cikar. Diger tum parcalar normal sirayla duz cekilir.
+        </div>
+        {% set ss = nr.get('sokum_sirasi') or [] %}
+        <ul style="font-size:13px; margin:0; padding-left:18px;">
+            {% for e in sp %}
+            <li style="margin-bottom:4px;">
+                {% if e.get('part_id') and e.get('part_id') in ss %}
+                <span class="badge" style="font-family:var(--font-mono); font-size:10.5px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2);"
+                      title="Genel sokum sirasindaki yeri — rehberli sokum modunda bu adimda gelir">sira {{ ss.index(e.get('part_id')) + 1 }}/{{ ss | length }}</span>
+                {% endif %}
+                <strong>{{ e.get('parca', '?') }}</strong>{% if e.get('part_id') and e.get('part_id') != e.get('parca') %} <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted);">({{ e.get('part_id') }})</span>{% endif %}:
+                {% if (e.get('lift_vox', 0) | int) > 0 %}once ~{{ e.get('lift_vox') }} mm yukari kaldir, {% endif %}
+                {{ e.get('eksen', '?') }} ekseninde {{ "%.0f"|format(e.get('aci_deg', 0.0) | float) }}&deg; dondur,
+                sonra {{ e.get('yon', '?') }} yonunden cek
+            </li>
+            {% endfor %}
+        </ul>
     </div>
     {% endif %}
 
@@ -621,30 +688,7 @@
     line-height: 1.7;
     margin-top: 12px;
 }
-.viewer-container {
-    position: relative;
-    width: 100%;
-    height: 280px;
-    background: #0f172a;
-    border-radius: 8px;
-    overflow: hidden;
-}
-.viewer-placeholder {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 8px;
-    color: #94a3b8;
-    font-size: 13px;
-}
-.viewer-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
+/* Viewer/tam-ekran/konsol stilleri style.css'te (P2 tek kaynak). */
 .teklif-body {
     background: #f0fdf4;
     border-left: 4px solid #22c55e;
@@ -926,104 +970,85 @@
     }
 </script>
 
-<!-- 3D Viewer -- ES module (three.js offline) (VİTRİN A) -->
+<!-- 3D Viewer + Sokum Konsolu — ortak modul (P2/P6: viewer3d.js tek kaynak;
+     sonuc.html instancing + tikla-tani + tam ekrani bedava kazanir) -->
 <script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from '{{ url_for("static", filename="OrbitControls.js") }}';
-    import { GLTFLoader } from '{{ url_for("static", filename="GLTFLoader.js") }}';
+    import { initViewer3d } from '{{ url_for("static", filename="viewer3d.js") }}';
+    import { kurSokumKonsolu } from '{{ url_for("static", filename="sokum_konsol.js") }}';
 
     // batch_ids: Jinja render zamaninda enjekte edilir
     const batchIds = [{% for batch in batches %}'{{ batch.batch_id }}'{% if not loop.last %},{% endif %}{% endfor %}];
+    const viewers = {};
 
     function initViewer(batchId) {
         const container = document.getElementById('viewer-container-' + batchId);
         const placeholder = document.getElementById('viewer-placeholder-' + batchId);
         const canvas = document.getElementById('viewer-canvas-' + batchId);
-
         if (!container || !canvas) return;
 
-        fetch('/geometri/' + batchId)
-            .then(resp => {
-                if (!resp.ok) {
-                    placeholder.innerHTML =
-                        '<span style="color:#64748b; font-size:12px;">3D onizleme hazir degil</span>';
-                    return null;
+        initViewer3d({
+            container, canvas, placeholder,
+            glbUrl: '/geometri/' + encodeURIComponent(batchId),
+            onReady: handle => {
+                viewers[batchId] = handle;
+                const dataEl = document.getElementById('sk-data-' + batchId);
+                const arac = document.getElementById('sk-arac-' + batchId);
+                if (dataEl && arac) {
+                    try {
+                        kurSokumKonsolu({
+                            bid: batchId, viewer: handle,
+                            data: JSON.parse(dataEl.textContent),
+                            arac, panelKok: container,
+                        });
+                    } catch (e) { /* konsol kurulamazsa viewer normal calisir */ }
                 }
-                return resp.arrayBuffer();
-            })
-            .then(buffer => {
-                if (!buffer) return;
-
-                // Show canvas, hide placeholder
-                placeholder.style.display = 'none';
-                canvas.style.display = 'block';
-                canvas.width = container.clientWidth || 600;
-                canvas.height = container.clientHeight || 280;
-
-                // Three.js sahne kur
-                const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true});
-                renderer.setSize(canvas.width, canvas.height);
-                renderer.setClearColor(0x0f172a);
-
-                const scene = new THREE.Scene();
-                const camera = new THREE.PerspectiveCamera(45, canvas.width / canvas.height, 1, 10000);
-                camera.position.set(300, 300, 400);
-
-                // Isik
-                scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-                const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-                dir.position.set(200, 400, 300);
-                scene.add(dir);
-
-                // OrbitControls
-                const controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-
-                // GLB yukle
-                const loader = new GLTFLoader();
-                loader.parse(buffer, '', gltf => {
-                    const model = gltf.scene;
-
-                    // Renk uygula (materyal varsa koru; yoksa yesil-gri)
-                    model.traverse(child => {
-                        if (child.isMesh && !child.material.color) {
-                            child.material = new THREE.MeshLambertMaterial({color: 0x4ade80});
-                        }
-                    });
-
-                    // Merkeze al
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
-                    scene.add(model);
-
-                    // Kamera fit
-                    const size = box.getSize(new THREE.Vector3()).length();
-                    camera.position.set(size, size * 0.8, size * 1.2);
-                    camera.lookAt(0, 0, 0);
-                    controls.update();
-
-                    // Render dongusu
-                    function animate() {
-                        requestAnimationFrame(animate);
-                        controls.update();
-                        renderer.render(scene, camera);
-                    }
-                    animate();
-                }, err => {
-                    placeholder.style.display = 'flex';
-                    canvas.style.display = 'none';
-                    placeholder.innerHTML =
-                        '<span style="color:#ef4444; font-size:12px;">GLB parse hatasi</span>';
-                });
-            })
-            .catch(() => {
-                if (placeholder) {
-                    placeholder.innerHTML =
-                        '<span style="color:#64748b; font-size:12px;">3D onizleme hazir degil</span>';
-                }
-            });
+            },
+        });
     }
+
+    // --- Tam ekran modu (gecmis_detay paritesi) ---
+    let fsBatchId = null;
+    function resizeViewer(batchId, refit) {
+        const v = viewers[batchId];
+        if (v) v.resize(refit);
+    }
+    function enterFs(batchId) {
+        const container = document.getElementById('viewer-container-' + batchId);
+        if (!container) return;
+        if (!viewers[batchId]) initViewer(batchId);
+        container.classList.add('gd-fs');
+        document.body.classList.add('gd-fs-open');
+        fsBatchId = batchId;
+        let exitBtn = container.querySelector('.gd-fs-exit');
+        if (!exitBtn) {
+            exitBtn = document.createElement('button');
+            exitBtn.type = 'button';
+            exitBtn.className = 'gd-fs-exit';
+            exitBtn.textContent = '✕  Kapat (ESC)';
+            exitBtn.addEventListener('click', exitFs);
+            container.appendChild(exitBtn);
+        }
+        exitBtn.style.display = 'inline-flex';
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(batchId, true)));
+    }
+    function exitFs() {
+        if (fsBatchId === null) return;
+        const container = document.getElementById('viewer-container-' + fsBatchId);
+        if (container) {
+            container.classList.remove('gd-fs');
+            const exitBtn = container.querySelector('.gd-fs-exit');
+            if (exitBtn) exitBtn.style.display = 'none';
+        }
+        document.body.classList.remove('gd-fs-open');
+        const bid = fsBatchId;
+        fsBatchId = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(bid, true)));
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') exitFs(); });
+    window.addEventListener('resize', () => { if (fsBatchId !== null) resizeViewer(fsBatchId); });
+    document.querySelectorAll('.gd-fs-btn[data-bid]').forEach(btn => {
+        btn.addEventListener('click', () => enterFs(btn.dataset.bid));
+    });
 
     // Lazy-init via IntersectionObserver: her viewer SADECE canvas gorünür olunca baslatilir.
     // Boylece ayni anda aktif WebGL context sayisi azalir (CONTEXT_LOST_WEBGL onlenir).
