@@ -105,6 +105,75 @@ def test_tube_ailesi_heightmap_wall_aware():
 
 
 # ---------------------------------------------------------------------------
+# TILT-ZORUNLU fizibilite kapisi (Eren istegi 2026-07-15 "plan1'i hallet";
+# kanit K-40 SERT NO-GO + k51c 111/112): bir parcanin HICBIR duz eksen-hizali
+# pozu no-go'lu plakaya sigmiyorsa NFV o parcayi yerlestiremez (tilt yok) ->
+# heightmap ZORUNLU. Geometrik kesin test — veri-uydurma degil.
+# ---------------------------------------------------------------------------
+
+_PLAN1_NOGO = ((152.5, 0.2), (185.5, 45.0))
+
+
+def _plate335(parts):
+    from src.nesting3d.instances.format import ContainerSpec, NestingInstance
+    return NestingInstance(
+        container=ContainerSpec(width_mm=335.0, depth_mm=335.0), parts=parts)
+
+
+def test_tilt_zorunlu_parca_heightmap():
+    """plan1 senaryosu: 330x302 baseplate + no-go kolonu -> duz poz imkansiz."""
+    inst = _plate335([_box("bp", 330.2, 302.0, 12.0),
+                      _box("kucuk", 40, 30, 20, 5)])
+    dec = predict_nfv_benefit(inst, family_routing=True,
+                              no_go_bounds=_PLAN1_NOGO)
+    assert dec.mode == "heightmap"
+    assert "tilt-zorunlu" in dec.reason
+
+
+def test_tilt_zorunlu_nogo_yoksa_tetiklemez():
+    """Ayni dev parca no-go'suz plakaya sigar (335>330) -> eski karar."""
+    inst = _plate335([_box("bp", 330.2, 302.0, 12.0)])
+    d_nogosuz = predict_nfv_benefit(inst, family_routing=True)
+    d_none = predict_nfv_benefit(inst, family_routing=True, no_go_bounds=None)
+    assert "tilt-zorunlu" not in d_nogosuz.reason
+    assert d_nogosuz.mode == d_none.mode and d_nogosuz.reason == d_none.reason
+
+
+def test_tilt_zorunlu_kucuk_parcalar_etkilenmez():
+    """No-go var ama parcalar kacabiliyor -> kapi tetiklemez (bit-ozdes)."""
+    inst = _plate335([_box("k", 100, 80, 40, 6)])
+    d1 = predict_nfv_benefit(inst, family_routing=True,
+                             no_go_bounds=_PLAN1_NOGO)
+    d2 = predict_nfv_benefit(inst, family_routing=True)
+    assert "tilt-zorunlu" not in d1.reason
+    assert d1.mode == d2.mode
+
+
+def test_tilt_zorunlu_90_derece_kacis_taninir():
+    """Parca 90 derece donunce siriyorsa tilt-zorunlu DEGILDIR (kesin test).
+
+    300x60 parca: (W=300,D=60) pozunda y>=45'e kacar (60<=335-45) -> sigar.
+    """
+    inst = _plate335([_box("uzun", 300.0, 60.0, 20.0)])
+    dec = predict_nfv_benefit(inst, family_routing=True,
+                              no_go_bounds=_PLAN1_NOGO)
+    assert "tilt-zorunlu" not in dec.reason
+
+
+def test_tilt_zorunlu_model_katmanindan_once():
+    """Fizibilite kaniti HER karar katmanini ezer (model dahil)."""
+    class _SahteModel:
+        def karar(self, feats, fam):
+            return ("nfv_guard", "sahte-model: nfv")
+
+    inst = _plate335([_box("bp", 330.2, 302.0, 12.0)])
+    dec = predict_nfv_benefit(inst, family_routing=True,
+                              mode_model=_SahteModel(),
+                              no_go_bounds=_PLAN1_NOGO)
+    assert dec.mode == "heightmap" and "tilt-zorunlu" in dec.reason
+
+
+# ---------------------------------------------------------------------------
 # rot-sokum dunyasi (Eren karari 2026-07-15; kanit K-46/K-52): thin_shell
 # kabuk hukmu TERSINE — d4 NFV ham 231.5 (b+c)-legal + rot-kabul 220.69.
 # rot_sokum=True + family_routing=True iken thin_shell NFV'ye gider (rot

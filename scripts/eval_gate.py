@@ -160,7 +160,7 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
     # d4 routing (Eren 2026-07-15): uretim default'u rot-sokum dunyasi
     # (demo_pipeline rot_sokum_routing=True) — kapi ayni routing'le kosar.
     dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm,
-                              rot_sokum=True)
+                              rot_sokum=True, no_go_bounds=NOGO_STD)
     if getattr(dec, "mode", "heightmap") == "nfv":
         from src.nesting3d.nfv_solve import solve_nfv_kalite
         print(f"    [{name}] routing: NFV kalite (uretim default: "

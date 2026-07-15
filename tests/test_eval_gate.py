@@ -313,6 +313,8 @@ def test_run_champion_nfv_dali_uretim_paritesi(monkeypatch):
     # routing kararina rot_sokum=True gecer (thin_shell -> NFV+rot).
     assert routing_kw["rot_sokum"] is True
     assert routing_kw["family_routing"] is True
+    # plan1 dersi (K-40): tilt-zorunlu fizibilite kapisi no-go'yu bilir
+    assert routing_kw["no_go_bounds"] == eg.NOGO_STD
 
 
 def test_run_champion_heightmap_dali_nogo_tasir(monkeypatch):

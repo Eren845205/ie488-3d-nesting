@@ -114,6 +114,39 @@ BOX_ASPECT_THR: float = 4.0
 THIN_PLATE_THR: float = 0.6
 
 
+def _tilt_zorunlu_parca(instance, no_go_bounds):
+    """Hicbir duz eksen-hizali pozu no-go'lu plakaya sigmayan ilk parca.
+
+    Kesin dikdortgen testi (uretim formati: tek no-go dikdortgeni
+    ((x1,y1),(x2,y2))). (W,D) pozu sigar <=> plakaya sigar VE parca no-go'dan
+    kacabilir: sol (x1>=W) / sag (x2<=PW-W) / alt (y1>=D) / ust (y2<=PD-D)
+    seritlerinden biri parcayi aliyor. Iki taban pozu da (WxD, DxW) sigmayan
+    parca doner; None = boyle parca yok. Format cozulemezse None (kapi
+    tetiklemez — konservatif: mevcut davranis).
+    """
+    try:
+        (x1, y1), (x2, y2) = no_go_bounds
+        x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
+        pw = float(instance.container.width_mm)
+        pd = float(instance.container.depth_mm)
+    except Exception:
+        return None
+    for p in instance.parts:
+        w, d = p.width_mm, p.depth_mm
+        if not w or not d:
+            continue
+        sigar = False
+        for W, D in ((float(w), float(d)), (float(d), float(w))):
+            if W > pw or D > pd:
+                continue
+            if x1 >= W or x2 <= pw - W or y1 >= D or y2 <= pd - D:
+                sigar = True
+                break
+        if not sigar:
+            return p
+    return None
+
+
 @dataclass
 class ModeDecision:
     """Akıllı mod kararı + ŞEFFAFLIK için açıklanabilir gerekçe.
@@ -140,6 +173,7 @@ def predict_nfv_benefit(
     wall_aware_conf_thr: float | None = None,
     mode_model=None,
     rot_sokum: bool = False,
+    no_go_bounds=None,
 ) -> ModeDecision:
     """Instance'a NFV cavity mi heightmap mi uygun — veri-odaklı, açıklanabilir, kalite-güvenli.
 
@@ -177,6 +211,24 @@ def predict_nfv_benefit(
     build_instance_from_order bbox'ları doldurur). İleride telemetri birikince selection/
     altyapısıyla öğrenen sürüme yükseltilebilir (adaptive_params felsefesi).
     """
+    # --- ADIM -1: TILT-ZORUNLU fizibilite kapisi (Eren istegi 2026-07-15,
+    # "plan1'i hallet"; kanit K-40 plan1-NFV 333.0 SERT NO-GO + k51c 111/112
+    # eksik yerlesim). Bir parcanin HICBIR duz eksen-hizali pozu no-go'lu
+    # plakaya sigmiyorsa NFV o parcayi yerlestiremez (tilt yok) — heightmap
+    # yolu (tilt havuzlu) ZORUNLU. Geometrik KESIN dikdortgen testi
+    # (veri-uydurma degil); fizibilite kaniti her karar katmanini (model
+    # dahil) ezer. no_go_bounds=None (default) -> hic calismaz, BIT-OZDES.
+    if no_go_bounds is not None:
+        _tp = _tilt_zorunlu_parca(instance, no_go_bounds)
+        if _tp is not None:
+            return ModeDecision(
+                "heightmap",
+                f"tilt-zorunlu parca ({_tp.name}: {float(_tp.width_mm):.0f}x"
+                f"{float(_tp.depth_mm):.0f}mm hicbir duz pozda no-go'lu "
+                f"plakaya sigmiyor): NFV eksen-hizali yerlestiremez -> "
+                f"heightmap tilt yolu (K-40)",
+            )
+
     # --- C4 CHALLENGER (OPT-IN — yalniz mode_model verilirse; Sprint-3) -------
     # YARISMA-2 kaniti (2026-07-14, Eren onayi): regret_logistic 9.66mm < kural
     # 17.0mm. CIFT KILIT modelde: aile allowlist'te VE conformal-tekil ise
