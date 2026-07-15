@@ -1022,6 +1022,9 @@ def _ingest_zip_stl_order(
             # #17/#19: gercek-hacim doluluk% icin true_fill tasi (None ise
             # 'hacim eksik' sayilir). wall/family raporlama meta'si.
             "true_fill": p.true_fill, "wall_mm": p.wall_mm, "family": p.family,
+            # P0 kimlik: loader'in doldurdugu icerik imzasi + kaynak dosya adi
+            # pipeline'a tasinir (order_id flatten'da enjekte edilir).
+            "geo_imza": p.geo_imza, "kaynak_ad": p.kaynak_ad,
         }
         for p in res.instance.parts
     ]

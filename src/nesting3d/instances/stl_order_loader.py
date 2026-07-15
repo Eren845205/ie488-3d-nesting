@@ -41,7 +41,8 @@ from typing import NamedTuple, Optional, Union
 
 import trimesh
 
-from src.nesting3d.instances.format import ContainerSpec, NestingInstance, PartSpec
+from src.nesting3d.instances.format import (ContainerSpec, NestingInstance,
+                                             PartSpec, geo_imza_of_bytes)
 
 logger = logging.getLogger(__name__)
 
@@ -279,6 +280,10 @@ def build_instance_from_order(
                     height_mm=h,
                     wall_mm=wall_mm,
                     true_fill=true_fill,
+                    # P0 kimlik: icerik imzasi dogrudan STL byte'larindan
+                    # (kimlik ada guvenmez); kaynak_ad = orijinal dosya adi.
+                    geo_imza=geo_imza_of_bytes(stl_bytes),
+                    kaynak_ad=name,
                 )
             )
 

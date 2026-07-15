@@ -379,9 +379,10 @@ def check_separability_rot(placements: Sequence[object],
         return None
 
     while alive:
-        # 1) ucuz duz peel (5dir ile ozdes)
+        # 1) ucuz duz peel (5dir ile ozdes; P1: sorted-alive determinizmi —
+        # sira persist edildigi icin tur-ici sira garanti, n_locked degismez)
         freed = []
-        for i in alive:
+        for i in sorted(alive):
             for yon in _YON_5:
                 if sayac[yon][i] == 0:
                     freed.append(i)

@@ -207,12 +207,14 @@ def apply_dz(meshes: Sequence, dz) -> List:
     return out
 
 
-def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
-    """Mesh listesinde 5-yon kilit sayisi (margin-0, @pitch re-voxelize, slice).
+def rapor_5yon_meshes(meshes: Sequence, pitch: float = 1.0):
+    """Mesh listesinde 5-yon sokum RAPORU (margin-0, @pitch re-voxelize, slice).
 
-    R11 uretim kapisinin uyesi (K-50 metrigi ile AYNI): pozisyon kafese
-    yuvarlanir (<=pitch/2), pre/post ayni metrik -> delta durust. slice
-    yontemi zorunlu (K-49a: subdivide yuksek-yuzlu STL'de 52M ucgen MemErr)."""
+    P1 (Sokum Konsolu): kilit_5yon_meshes'in rapor-donduren esi — TEK dogruluk
+    kaynagi (kilit_5yon_meshes bunun .n_locked'ina indirger; davranis
+    bit-ozdes). AccessibilityReport.removable_order pid'leri "m{i}" = meshes
+    listesi sirasi. slice yontemi zorunlu (K-49a: subdivide yuksek-yuzlu
+    STL'de 52M ucgen MemErr)."""
     import numpy as _np
     from types import SimpleNamespace as _NS
     from src.nesting3d.accessibility import check_separability_5dir
@@ -229,7 +231,15 @@ def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
                        x=int(round(org[0] / pitch)),
                        y=int(round(org[1] / pitch)),
                        z=int(round(org[2] / pitch))))
-    return int(check_separability_5dir(pls, parts).n_locked)
+    return check_separability_5dir(pls, parts)
+
+
+def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
+    """Mesh listesinde 5-yon kilit sayisi (rapor_5yon_meshes indirgemesi).
+
+    R11 uretim kapisinin uyesi (K-50 metrigi ile AYNI): pozisyon kafese
+    yuvarlanir (<=pitch/2), pre/post ayni metrik -> delta durust."""
+    return int(rapor_5yon_meshes(meshes, pitch).n_locked)
 
 
 def kilit_rot_meshes(meshes: Sequence, pitch: float = 1.0,

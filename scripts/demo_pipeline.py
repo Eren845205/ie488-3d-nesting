@@ -543,6 +543,11 @@ def _build_nesting_instance(
                 wall_mm=p.get("wall_mm"),
                 true_fill=p.get("true_fill"),
                 family=p.get("family"),
+                # P0 kunye: order izi + icerik imzasi (varsa) — to_voxel_parts
+                # kopya-sayimi atamasini bunlardan yapar (kimlik ada guvenmez).
+                order_id=p.get("order_id"),
+                geo_imza=p.get("geo_imza"),
+                kaynak_ad=p.get("kaynak_ad"),
             )
         )
 
@@ -820,7 +825,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             _dec = predict_nfv_benefit(instance,
                                        family_routing=auto_family_routing,
                                        mode_model=_mm,
-                                       rot_sokum=rot_sokum_routing)
+                                       rot_sokum=rot_sokum_routing,
+                                       # tilt-zorunlu fizibilite kapisi
+                                       # (plan1 dersi K-40): no-go'yu bilerek
+                                       # karar verir
+                                       no_go_bounds=no_go_bounds)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
             # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
@@ -1267,6 +1276,84 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             _norm.append(_e)
         _sokum_plani = _norm
 
+    # P0 parca kimlik kaydi (registry) — UI'nin TEK kimlik kaynagi: tikla-tani/
+    # renk/rehberli sokum part_id -> registry uzerinden cozer, ada asla guvenmez.
+    # placements/voxel_parts detay JSON'a inmedigi (_AGIR) icin persist ONCESI
+    # kurulur (r11_dz/sokum_plani deseni). Tek-tarafli: uretilemezse alan yok.
+    _parca_kimlik: Dict[str, Any] = {}
+    _siparis_ozeti: List[Dict[str, Any]] = []
+    try:
+        _vps = voxel_parts_3d or {}
+        for _vp in (_vps.values() if hasattr(_vps, "values") else _vps):
+            if getattr(_vp, "geo_imza", None) is None:
+                continue  # kunyesiz eski yol — kayit yazilmaz
+            _parca_kimlik[_vp.id] = {
+                "parca_uid": _vp.parca_uid, "order_id": _vp.order_id,
+                "geo_imza": _vp.geo_imza, "kaynak_ad": _vp.kaynak_ad,
+                "ad": _vp.name, "kopya_no": int(_vp.kopya_no)}
+        if _parca_kimlik:
+            _sm = payload.get("siparis_musteri") or {}
+            _n_sokum: Dict[Any, int] = {}
+            for _e in (_sokum_plani or []):
+                _pid = _e.get("part_id")
+                _oid = (_parca_kimlik.get(_pid) or {}).get("order_id")
+                if _oid is not None:
+                    _n_sokum[_oid] = _n_sokum.get(_oid, 0) + 1
+            _sayim: Dict[Any, int] = {}
+            for _k in _parca_kimlik.values():
+                _sayim[_k["order_id"]] = _sayim.get(_k["order_id"], 0) + 1
+            _siparis_ozeti = [
+                {"order_id": _oid, "musteri": _sm.get(_oid),
+                 "n_parca": _n, "n_sokum_planli": _n_sokum.get(_oid, 0)}
+                for _oid, _n in sorted(
+                    _sayim.items(), key=lambda x: (x[0] is None, str(x[0])))]
+    except Exception as _pk_exc:  # kimlik kaydi cozumu ASLA dusuremez
+        logger.warning("parca_kimlik kurulamadi (uretim etkilenmez): %s",
+                       _pk_exc)
+        _parca_kimlik, _siparis_ozeti = {}, []
+
+    # P1 genel sokum sirasi: HER plakada TUM parcalarin cikarma sirasi.
+    # Rot-kabul yolundan geldiyse (birlesik peel+rot sirasi) onu kullan;
+    # yoksa uret — dz varsa dz-KAYMIS mesh sahnesinde (musteri STL'iyle ayni
+    # gercek sahne, rapor_5yon_meshes @1.0), yoksa voxel placements'ta
+    # (check_separability_5dir; K-52 kaniti: +Z ~1sn/588p, 5-yon birkac sn).
+    # TEK-TARAFLI: uretilemezse alan yok, cozum asla etkilenmez. Sure loglanir
+    # (A4 olc-once izi — uretim bandi suresi telemetriden dogrulanir).
+    _sokum_sirasi = (_nfvk.get("rot_kabul", {}) or {}).get("sokum_sirasi")
+    if not _sokum_sirasi and n_placed:
+        try:
+            _t_ss = _time.perf_counter()
+            _r11i = (_instr.get("nfv_kalite", {}).get("r11", {}) or {})
+            _r11_dz_l = _r11i.get("dz") if _r11i.get("uygulandi") else None
+            if _r11_dz_l and _c2f_result is not None:
+                from src.nesting3d.continuous_settle import rapor_5yon_meshes
+                from src.nesting3d.export_stl import placed_meshes as _pm_ss
+                _mshs = _pm_ss(list(winner_result.placements), voxel_parts_3d,
+                               float(_c2f_result.fine_pitch), dz=_r11_dz_l)
+                _rap_ss = rapor_5yon_meshes(_mshs, 1.0)
+                _plsw = list(winner_result.placements)
+                _sokum_sirasi = []
+                for _sp in _rap_ss.removable_order:
+                    _s = str(_sp)
+                    _i2 = (int(_s[1:]) if _s.startswith("m")
+                           and _s[1:].isdigit() else None)
+                    _sokum_sirasi.append(
+                        getattr(_plsw[_i2], "part_id", _s)
+                        if _i2 is not None and _i2 < len(_plsw) else _s)
+            else:
+                from src.nesting3d.accessibility import (
+                    check_separability_5dir as _c5_ss)
+                _rap_ss = _c5_ss(list(winner_result.placements),
+                                 voxel_parts_3d)
+                _sokum_sirasi = list(_rap_ss.removable_order)
+            logger.info("nesting[%s]: sokum_sirasi %d/%d parca (%.2fs)",
+                        batch_id, len(_sokum_sirasi), n_placed,
+                        _time.perf_counter() - _t_ss)
+        except Exception as _ss_exc:
+            logger.warning("sokum_sirasi uretilemedi (cozum etkilenmez): %s",
+                           _ss_exc)
+            _sokum_sirasi = None
+
     nesting = {
         "height_mm": height_mm,
         "density": density,
@@ -1302,6 +1389,12 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
            .get("uygulandi") else {}),
         # Operator-yuzu sokum talimatlari (K-52): UI "Sokum Plani" bolumu okur
         **({"sokum_plani": _sokum_plani} if _sokum_plani else {}),
+        # P0 kimlik kaydi + siparis ozeti (tek-tarafli; detay JSON'a otomatik
+        # akar — nesting_results alanlari persist edilir, sokum_plani kaniti)
+        **({"parca_kimlik": _parca_kimlik} if _parca_kimlik else {}),
+        **({"siparis_ozeti": _siparis_ozeti} if _siparis_ozeti else {}),
+        # P1 genel sokum sirasi (operator konsolu rehberli-sokum girdisi)
+        **({"sokum_sirasi": _sokum_sirasi} if _sokum_sirasi else {}),
     }
 
     pricing_inputs = _build_pricing_inputs(
@@ -1641,9 +1734,15 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     payloads: List[Dict[str, Any]] = []
     for batch in batches:
         all_parts: List[Dict[str, Any]] = []
+        # P0 siparis izi: dulzestirme parca dict'ine order_id enjekte eder
+        # (Kopus-A kapanisi) — kopya-sayimi atamasi to_voxel_parts'ta.
         for order in batch.orders:
-            all_parts.extend(order_parts_map[order.order_id])
+            all_parts.extend(
+                {**p, "order_id": order.order_id}
+                for p in order_parts_map[order.order_id])
         payloads.append({
+            # P0 ozet icin siparis->musteri haritasi (parti-yerel, picklable)
+            "siparis_musteri": {o.order_id: o.customer for o in batch.orders},
             "batch_id": batch.batch_id,
             "all_parts": all_parts,
             "batch_volume_cm3": batch.total_volume_cm3,

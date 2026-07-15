@@ -463,9 +463,24 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                          "aci_deg": float(getattr(cert, "aci_deg", 0.0) or 0.0),
                          "yon": getattr(cert, "yon", None),
                          "lift_vox": int(getattr(cert, "lift_vox", 0) or 0)})
+        # P1: birlesik TAM cikis sirasi (peel + rot, ciktiklari anda) da
+        # tasinir — rapor.removable_order "m{i}" -> instance part_id.
+        sira = []
+        for spid in getattr(rapor, "removable_order", None) or []:
+            s2 = str(spid)
+            hedef = s2
+            if s2.startswith("m"):
+                try:
+                    idx2 = int(s2[1:])
+                except ValueError:
+                    idx2 = None
+                if idx2 is not None and 0 <= idx2 < len(pls):
+                    hedef = getattr(pls[idx2], "part_id", None) or s2
+            sira.append(hedef)
         tel["rot_kabul"] = {"uygulandi": True, "rot_kilit": 0,
                             "cert": len(rapor.certificates),
-                            "sokum_plani": plan}
+                            "sokum_plani": plan,
+                            **({"sokum_sirasi": sira} if sira else {})}
         return True
 
     ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,

@@ -388,7 +388,11 @@ def check_separability_5dir(placements: Sequence[object],
     removable_order: List[str] = []
     while alive:
         freed = []
-        for i in alive:
+        # P1 determinizm sertlestirmesi (2026-07-15): sorted(alive) — set
+        # iterasyonu pratikte sabit ama dil garantisi degil; sira artik
+        # persist edildigi (sokum_sirasi) icin tur-ici sira GARANTI edilir.
+        # n_locked/locked_groups degismez (turda serbest kume ayni).
+        for i in sorted(alive):
             for yon in _YON_5:
                 if sayac[yon][i] == 0:
                     freed.append((i, yon))

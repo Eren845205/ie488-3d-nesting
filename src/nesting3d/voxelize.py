@@ -164,6 +164,16 @@ class VoxelPart:
     display_mesh: Optional[trimesh.Trimesh] = None  # decimated kopya — SADECE render
     extra: dict = field(default_factory=dict)
 
+    # P0 instance kunyesi (Sokum Konsolu; Eren ilkesi 2026-07-15: kimlik ada
+    # guvenmez). Opsiyonel — eski cagiranlar None ile bit-ozdes. parca_uid =
+    # {geo_imza[:8]}-{order_id}-{kopya_no}: icerik + koken + kopya; sistem
+    # uretimi, insan-okur, deterministik; cakismasi yapisal olarak imkansiz.
+    order_id: Optional[str] = None
+    geo_imza: Optional[str] = None
+    kaynak_ad: Optional[str] = None
+    parca_uid: Optional[str] = None
+    kopya_no: int = 0
+
 
 def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     """YATAY (x, y) binary dilation, `times` voxel parça arası yan boşluk.
@@ -528,6 +538,7 @@ def expand_quantities(
     z_dilate: int = 0,
     method: str = "subdivide",
     orientation_overrides: Optional[dict] = None,
+    kimlik_map: Optional[dict] = None,
 ) -> List[VoxelPart]:
     """Voxelize each model ONCE, then expand to qty part instances.
 
@@ -539,6 +550,13 @@ def expand_quantities(
 
     orientation_overrides: {model adı -> 8-poz master sete indeks tuple'ı};
     eşleşmeyen modeller n_orientations default setini kullanır.
+
+    kimlik_map (P0, opsiyonel): {model adı -> {"geo_imza", "kaynak_ad",
+    "kovalar": [(order_id, qty), ...]}}. Verilirse kopya k'lar deterministik
+    sırayla sipariş kovalarından tüketilir (özdeş kopyalar fiziksel olarak
+    değiştirilebilir — geometri/id/sıra DEĞİŞMEZ, yalnız künye atanır) ve
+    her instance parca_uid = {geo_imza[:8]}-{order_id}-{k} alır. None =
+    künyesiz eski davranış bit-özdeş.
 
     Otomatik-eşikli paralellik:
       - İş yükü küçükse (tip sayısı < PARALLEL_MIN_TYPES veya tahmini
@@ -577,10 +595,21 @@ def expand_quantities(
         templates = [_voxelize_entry(e) for e in entries]
 
     # Qty genişletme — sıra korunur, oryantasyon verisi paylaşılır.
+    kimlik_map = kimlik_map or {}
     parts: List[VoxelPart] = []
     for template, (name, _mesh, qty, _display) in zip(templates, entries):
         width = max(2, len(str(qty)))
+        kimlik = kimlik_map.get(name)
+        # P0 kopya-sayımı: kovalar [(order_id, qty), ...] PartSpec sırasında;
+        # kopya k sıradaki kovadan tüketilir (deterministik).
+        kova_sirasi: List = []
+        if kimlik:
+            for oid, oq in kimlik.get("kovalar", []):
+                kova_sirasi.extend([oid] * int(oq))
         for k in range(1, qty + 1):
+            oid = (kova_sirasi[k - 1]
+                   if kimlik and k - 1 < len(kova_sirasi) else None)
+            imza = kimlik.get("geo_imza") if kimlik else None
             parts.append(
                 VoxelPart(
                     id=f"{name}_{k:0{width}d}",
@@ -590,6 +619,12 @@ def expand_quantities(
                     volume_voxels=template.volume_voxels,
                     qty_of_model=qty,
                     display_mesh=template.display_mesh,
+                    order_id=oid,
+                    geo_imza=imza,
+                    kaynak_ad=kimlik.get("kaynak_ad") if kimlik else None,
+                    parca_uid=(f"{imza[:8]}-{oid if oid is not None else 'NA'}"
+                               f"-{k}") if imza else None,
+                    kopya_no=k if kimlik else 0,
                 )
             )
     return parts

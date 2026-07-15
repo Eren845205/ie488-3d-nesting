@@ -37,13 +37,41 @@ ve kaynak'a özgü boyut/yol alanları.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Union
 
 import numpy as np
 import trimesh
+
+_LOG = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# P0 geo_imza — icerik-tabanli parca kimligi (Eren ilkesi 2026-07-15:
+# kimlik ada guvenmez; ayni geometri her kosuda ayni imzayi alir)
+# ---------------------------------------------------------------------------
+
+def geo_imza_of_bytes(data: bytes) -> str:
+    """Ham dosya iceriginden (orn. STL byte'lari) deterministik imza."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def geo_imza_of_mesh(mesh: "trimesh.Trimesh") -> str:
+    """Kanonik mesh imzasi: orijine tasinmis, yuvarlanmis vertex/face dizileri.
+
+    Konum-bagimsiz (orijine kok), float gurultusune dayanikli (1e-6 mm
+    yuvarlama). Ayni geometri -> ayni imza; farkli geometri -> farkli.
+    """
+    v = np.asarray(mesh.vertices, dtype=np.float64)
+    kok = v - v.min(axis=0) if len(v) else v
+    h = hashlib.sha256()
+    h.update(np.round(kok, 6).tobytes())
+    h.update(np.asarray(mesh.faces, dtype=np.int64).tobytes())
+    return h.hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +132,14 @@ class PartSpec:
     family: Optional[str] = None         # per-parca aile etiketi (family.py)
     true_fill: Optional[float] = None    # gercek doluluk V/bbox_vol (watertight)
 
+    # P0 parca kimligi (Sokum Konsolu, Eren ilkesi 2026-07-15: kimlik ada
+    # guvenmez) — opsiyonel kunye alanlari (wall_mm/family deseni, geriye uyum).
+    order_id: Optional[str] = None       # parcanin geldigi siparis
+    geo_imza: Optional[str] = None       # icerik hash'i (STL byte sha256 /
+    #                                      kanonik mesh-hash); loader doldurur,
+    #                                      yoksa to_voxel_parts mesh'ten uretir
+    kaynak_ad: Optional[str] = None      # orijinal STL/dosya adi
+
     def to_dict(self) -> dict:
         d: dict = {
             "id": self.id,
@@ -124,6 +160,12 @@ class PartSpec:
             d["family"] = self.family
         if self.true_fill is not None:
             d["true_fill"] = self.true_fill
+        if self.order_id is not None:
+            d["order_id"] = self.order_id
+        if self.geo_imza is not None:
+            d["geo_imza"] = self.geo_imza
+        if self.kaynak_ad is not None:
+            d["kaynak_ad"] = self.kaynak_ad
         return d
 
     @classmethod
@@ -147,6 +189,9 @@ class PartSpec:
             wall_mm=float(d["wall_mm"]) if d.get("wall_mm") is not None else None,
             family=d.get("family"),
             true_fill=float(d["true_fill"]) if d.get("true_fill") is not None else None,
+            order_id=d.get("order_id"),
+            geo_imza=d.get("geo_imza"),
+            kaynak_ad=d.get("kaynak_ad"),
         )
 
 
@@ -251,20 +296,54 @@ def to_voxel_parts(
     """
     from src.nesting3d.voxelize import expand_quantities
 
-    # Aynı name'in birden fazla PartSpec'i varsa qty'leri birleştir
-    name_to_qty: dict = {}
-    name_to_mesh: dict = {}
+    # P0 gruplama (Eren ilkesi 2026-07-15: kimlik ada guvenmez): anahtar
+    # (name, geo_imza). Imza yalniz bugunku YANLIS birlesmeleri AYIRIR
+    # (ayni ad + FARKLI geometri iki siparisten gelirse eskiden ilk mesh
+    # kazanir, digeri sessizce yanlis geometriyle basilirdi); ayni-geometri
+    # gruplari birlestirmeye devam eder -> id'ler/solver girdisi BIT-OZDES.
+    # Ayrisan gruplar gorunen adda ayrisir (name, name~2, ...) + ASCII log.
+    mesh_cache: dict = {}   # icerik anahtari -> mesh (STL tek kez yuklenir)
+    groups: dict = {}       # (name, imza) -> {mesh, qty, display, kovalar}
+    name_sayac: dict = {}   # name -> kac farkli imza grubu goruldu
+
     for p in instance.parts:
-        if p.name not in name_to_mesh:
-            name_to_mesh[p.name] = _make_mesh(p)
-        name_to_qty[p.name] = name_to_qty.get(p.name, 0) + p.qty
+        if p.source == "box":
+            icerik_key = ("box", p.width_mm, p.depth_mm, p.height_mm)
+        else:
+            icerik_key = ("stl", p.stl_path)
+        if icerik_key not in mesh_cache:
+            mesh_cache[icerik_key] = _make_mesh(p)
+        mesh = mesh_cache[icerik_key]
+        imza = p.geo_imza or geo_imza_of_mesh(mesh)
 
-    combined = [
-        (name, name_to_mesh[name], name_to_qty[name])
-        for name in name_to_mesh
-    ]
+        key = (p.name, imza)
+        if key not in groups:
+            n = name_sayac.get(p.name, 0) + 1
+            name_sayac[p.name] = n
+            display = p.name if n == 1 else f"{p.name}~{n}"
+            if n > 1:
+                _LOG.warning(
+                    "to_voxel_parts: ayni ad '%s' FARKLI geometriyle geldi "
+                    "(imza %s...) -> grup '%s' olarak ayristirildi "
+                    "(yanlis-geometri birlesme guard'i)",
+                    p.name, imza[:8], display)
+            groups[key] = {"mesh": mesh, "display": display, "qty": 0,
+                           "imza": imza, "kaynak_ad": p.kaynak_ad,
+                           "kovalar": []}
+        g = groups[key]
+        g["qty"] += p.qty
+        g["kovalar"].append((p.order_id, int(p.qty)))
+        if g["kaynak_ad"] is None and p.kaynak_ad is not None:
+            g["kaynak_ad"] = p.kaynak_ad
 
-    overrides = ({name: allowed_orientations for name in name_to_mesh}
+    combined = [(g["display"], g["mesh"], g["qty"]) for g in groups.values()]
+    kimlik_map = {
+        g["display"]: {"geo_imza": g["imza"], "kaynak_ad": g["kaynak_ad"],
+                       "kovalar": g["kovalar"]}
+        for g in groups.values()
+    }
+
+    overrides = ({g["display"]: allowed_orientations for g in groups.values()}
                  if allowed_orientations is not None else None)
     return expand_quantities(
         combined,
@@ -274,6 +353,7 @@ def to_voxel_parts(
         z_dilate=z_dilate,
         method=method,
         orientation_overrides=overrides,
+        kimlik_map=kimlik_map,
     )
 
 
