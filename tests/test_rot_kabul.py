@@ -24,7 +24,8 @@ import pytest
 import trimesh
 
 from src.nesting3d.continuous_settle import kilit_rot_meshes, uretim_r11
-from src.nesting3d.nfv_solve import R11_AUTO_PARCA_TAVANI, solve_nfv_kalite
+from src.nesting3d.nfv_solve import (
+    R11_AUTO_PARCA_TAVANI, ROT_KABUL_AUTO_PARCA_TAVANI, solve_nfv_kalite)
 from src.nesting3d.rotation_extract import (RotSeparabilityReport,
                                             check_separability_rot)
 
@@ -164,7 +165,12 @@ def test_kalite_rot_kilitli_guard_kosulur():
 
 
 def test_kalite_rot_auto_parca_tavani():
-    ham = _ham(n=R11_AUTO_PARCA_TAVANI + 1)
+    """rot_kabul tavani KENDI sabiti (600) — R11 tavanindan (150) AYRI.
+
+    d4 routing karari (Eren 2026-07-15): rot denetimi 588p @1.0 = 1.4dk
+    (K-52; K-42'nin 'saatler'i eski parametre setiydi) — asil sigorta
+    rot_butce_s. Tavan ustunde eski RED davranisi."""
+    ham = _ham(n=ROT_KABUL_AUTO_PARCA_TAVANI + 1)
 
     def solve(inst, **kw):
         return ham
@@ -176,6 +182,25 @@ def test_kalite_rot_auto_parca_tavani():
     assert tel["rot_kabul"]["uygulandi"] is False
     assert tel["rot_kabul"]["neden"] == "parca_tavani"
     assert tel["guard_kosuldu"] is True
+
+
+def test_kalite_rot_auto_588_parca_kosar():
+    """d4 senaryosu (588p): R11 tavani ustunde ama ROT tavani altinda ->
+    rot denetimi KOSAR, sokum-planli kabul mumkun."""
+    assert R11_AUTO_PARCA_TAVANI < 588 <= ROT_KABUL_AUTO_PARCA_TAVANI
+    ham = _ham(n=588)
+
+    def solve(inst, **kw):
+        return ham
+
+    res, tel = solve_nfv_kalite(
+        None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
+        rot_kabul="auto", _solve=solve,
+        _check_5dir=lambda p, v: NS(n_locked=3),
+        _check_rot=lambda r: NS(n_locked=0, certificates={}))
+    assert res is ham
+    assert tel["rot_kabul"]["uygulandi"] is True
+    assert tel["guard_kosuldu"] is False
 
 
 def test_kalite_rot_false_bit_ozdes():
@@ -341,9 +366,10 @@ def test_hd0_r11_rot_kabul_passthrough(monkeypatch):
 
 def test_hd0_rot_kabul_auto_tavani_r11_icinde(monkeypatch):
     """r11=True buyuk seti zorlarken rot_kabul='auto' tavani asilirsa
-    R11-rot KAPALI gecmeli (auto semantigi uretim_r11'e tasinmaz, cozulur)."""
+    R11-rot KAPALI gecmeli (auto semantigi uretim_r11'e tasinmaz, cozulur).
+    Tavan = ROT_KABUL_AUTO_PARCA_TAVANI (rot tavani; R11 tavanindan ayri)."""
     yakalanan = _r11_passthrough_kur(monkeypatch)
-    ham = _ham(n=R11_AUTO_PARCA_TAVANI + 1)
+    ham = _ham(n=ROT_KABUL_AUTO_PARCA_TAVANI + 1)
 
     def solve(inst, **kw):
         return ham
@@ -352,6 +378,21 @@ def test_hd0_rot_kabul_auto_tavani_r11_icinde(monkeypatch):
                      r11=True, rot_kabul="auto",
                      _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
     assert yakalanan.get("rot_kabul") is False
+
+
+def test_hd0_rot_kabul_auto_rot_tavani_altinda_acik(monkeypatch):
+    """r11=True + rot_kabul='auto' + n rot-tavani ALTINDA (R11 tavani ustunde
+    olsa bile) -> R11-rot ACIK gecer (d4 588p senaryosunun R11 karsiligi)."""
+    yakalanan = _r11_passthrough_kur(monkeypatch)
+    ham = _ham(n=R11_AUTO_PARCA_TAVANI + 1)  # 151: rot tavani (600) altinda
+
+    def solve(inst, **kw):
+        return ham
+
+    solve_nfv_kalite(None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
+                     r11=True, rot_kabul="auto",
+                     _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
+    assert yakalanan.get("rot_kabul") is True
 
 
 def test_gecmis_detay_sokum_plani_render():

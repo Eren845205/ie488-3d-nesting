@@ -318,6 +318,13 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
 # rekor/deney kosulari r11=True ile acikca zorlayabilir.
 R11_AUTO_PARCA_TAVANI = 150
 
+# rot_kabul="auto" tavani R11'den AYRI (Eren karari 2026-07-15, d4 routing):
+# rot DENETIMI ucuz — K-52 kaniti 588p @1.0 = 1.4dk (K-42'nin "2-4 saat"i eski
+# parametre setiydi; YONTEM §3); asil sigorta sure butcesi (rot_butce_s,
+# butce dolarsa kilitli sayilir = konservatif). R11 KOMPAKSIYONU ise gercekten
+# pahali (K-50: 588p = 375dk) — 150 tavani orada kalir.
+ROT_KABUL_AUTO_PARCA_TAVANI = 600
+
 
 def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                      no_go_bounds=None, seed=42, quality="max",
@@ -354,8 +361,9 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     kilit=0 ise ham SOKUM-PLANLI kabul edilir, guard HIC kosulmaz (vergi
     aile-bagimli p2+12.5/p3+66 idi). rot kilit>0 / hata / kilit-bilinmiyor ->
     eski akis (guard). False (default, BIT-OZDES) | True | "auto" (yalniz
-    n_placed <= R11_AUTO_PARCA_TAVANI; rot denetimi @1.0 re-voxelize pahali,
-    K-42: 226 parcada saatler — butce rot_butce_s ile sinirli). tel["rot_kabul"]
+    n_placed <= ROT_KABUL_AUTO_PARCA_TAVANI=600 — rot denetimi UCUZ, K-52:
+    588p @1.0 = 1.4dk; K-42'nin "saatler"i eski parametre setiydi; asil
+    sigorta rot_butce_s, butce dolarsa kilitli sayilir). tel["rot_kabul"]
     yalniz denendiginde yazilir. _check_rot test enjeksiyonu (res -> rapor).
     """
     from src.nesting3d.accessibility import check_separability_5dir
@@ -378,8 +386,9 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                                    float(res.fine_pitch))
             # HD-0 (plan 2026-07-15): rot-kabul R11 kapisina da akar — K-52
             # kaniti (R11'in yarattigi kilidin rot'la aklanmasi, d4 +8.64mm).
-            # "auto" tavani BURADA cozulur (uretim_r11 n_placed bilmez).
-            rot_izin = ((n <= R11_AUTO_PARCA_TAVANI)
+            # "auto" tavani BURADA cozulur (uretim_r11 n_placed bilmez);
+            # tavan ROT tavanidir (rot denetimi ucuz, K-52) — R11 degil.
+            rot_izin = ((n <= ROT_KABUL_AUTO_PARCA_TAVANI)
                         if rot_kabul == "auto" else bool(rot_kabul))
             sonuc = uretim_r11(meshes, clearance_mm=float(clearance_mm),
                                no_go_bounds=no_go_bounds,
@@ -406,9 +415,10 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
         if not rot_kabul:
             return False
         n = int(res.n_placed)
-        if rot_kabul == "auto" and n > R11_AUTO_PARCA_TAVANI:
+        if rot_kabul == "auto" and n > ROT_KABUL_AUTO_PARCA_TAVANI:
             tel["rot_kabul"] = {"uygulandi": False, "neden": "parca_tavani",
-                                "n_placed": n, "tavan": R11_AUTO_PARCA_TAVANI}
+                                "n_placed": n,
+                                "tavan": ROT_KABUL_AUTO_PARCA_TAVANI}
             return False
         try:
             if _check_rot is not None:

@@ -104,6 +104,56 @@ def test_tube_ailesi_heightmap_wall_aware():
     assert "kabuk" in dec.reason.lower()
 
 
+# ---------------------------------------------------------------------------
+# rot-sokum dunyasi (Eren karari 2026-07-15; kanit K-46/K-52): thin_shell
+# kabuk hukmu TERSINE — d4 NFV ham 231.5 (b+c)-legal + rot-kabul 220.69.
+# rot_sokum=True + family_routing=True iken thin_shell NFV'ye gider (rot
+# kabul zinciri asagida cozer); tube kanitsiz -> eski yol. Default False
+# = BIT-OZDES eski davranis.
+# ---------------------------------------------------------------------------
+
+def test_rot_sokum_thin_shell_nfv():
+    """d4 senaryosu: rot-sokum dunyasinda thin_shell NFV+rot yoluna gider."""
+    dec = predict_nfv_benefit(_inst([_shell("sh", 100, 100, 80)]),
+                              family_routing=True, rot_sokum=True)
+    assert dec.mode == "nfv"
+    assert dec.wall_aware is False  # NFV yolu cidar-pitch kullanmaz
+    assert "rot-sokum" in dec.reason.lower()
+
+
+def test_rot_sokum_tube_eski_yol():
+    """tube icin rot-dunyasi kaniti YOK -> heightmap+wall_aware aynen."""
+    dec = predict_nfv_benefit(_inst([_shell("tb", 300, 50, 50)]),
+                              family_routing=True, rot_sokum=True)
+    assert dec.mode == "heightmap" and dec.wall_aware is True
+
+
+def test_rot_sokum_default_false_bit_ozdes():
+    """rot_sokum verilmezse kabuk karari eski davranisla birebir."""
+    shell = _inst([_shell("sh", 100, 100, 80)])
+    d_eski = predict_nfv_benefit(shell, family_routing=True)
+    d_acik = predict_nfv_benefit(shell, family_routing=True, rot_sokum=False)
+    assert d_eski.mode == d_acik.mode == "heightmap"
+    assert d_eski.reason == d_acik.reason
+    assert d_eski.wall_aware is d_acik.wall_aware is True
+
+
+def test_rot_sokum_family_routing_kapaliyken_etkisiz():
+    """rot_sokum yalniz aile katmaninda anlamli; katman kapaliyken v1 kural."""
+    dec = predict_nfv_benefit(_inst([_shell("sh", 100, 100, 80)]),
+                              rot_sokum=True)  # family_routing default False
+    assert dec.mode == "heightmap"
+    assert "net-kutu" in dec.reason.lower()
+
+
+def test_rot_sokum_dusuk_guven_tetiklemez():
+    """Dusuk guvenli kabukta aile katmani (dolayisiyla rot flip) tetiklemez."""
+    dec = predict_nfv_benefit(_inst([_shell("lo", 100, 100, 80, true_fill=0.45)]),
+                              family_routing=True, rot_sokum=True)
+    assert "kabuk ailesi" not in dec.reason.lower()
+    assert dec.wall_aware is False
+
+
 def test_family_routing_false_v1_bit_ozdes():
     """OPT-IN kapısı: yüksek-güvenli kabuk fixture'ı bile family_routing=False (DEFAULT) → v1.
 

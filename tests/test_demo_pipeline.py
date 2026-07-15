@@ -292,6 +292,10 @@ def _shell_scenario(auto_family_routing=None):
         "n_orientations": 2,
         "portfolio_budget": 10,
         "nesting_mode": "auto",
+        # Bu fixture kabuk->heightmap+wall_aware (F5/H15p) YOLUNU test eder;
+        # uretim default'u rot_sokum_routing=True thin_shell'i NFV'ye cevirir
+        # (Eren karari 2026-07-15) — o yol ayri testte (rot_sokum testleri).
+        "rot_sokum_routing": False,
         "orders": [{
             "order_id": "SHELL-A", "customer": "KabukCo",
             "deadline": "2026-07-01", "priority_class": 1, "parts": parts,
@@ -347,6 +351,30 @@ class TestF5AutoFamilyRouting:
                 f"F5 opt-in wall_aware açılmadı: {nr.get('auto_mode_reason')}"
             # Aile katmanı gerekçesi şeffaf: 'kabuk' geçmeli (auto->heightmap: kabuk...)
             assert "kabuk" in (nr.get("auto_mode_reason") or "").lower()
+
+    def test_rot_sokum_default_kabuk_nfv_yolu(self):
+        """URETIM DEFAULT'U (Eren karari 2026-07-15): rot_sokum_routing
+        verilmedi (default True) + aile katmani + thin_shell -> NFV+rot yolu.
+
+        Kanit K-46/K-52: d4 kabuk hukmu rot-sokum dunyasinda TERSINE (NFV ham
+        231.5 legal + rot-kabul 220.69 < heightmap 287.0)."""
+        sc = _shell_scenario(auto_family_routing=True)
+        sc.pop("rot_sokum_routing")  # default'a birak (True)
+        result = run_pipeline(sc)
+        rows = self._nesting_rows(result)
+        assert rows, "kabuk partisi cozulmedi"
+        for nr in rows:
+            reason = (nr.get("auto_mode_reason") or "").lower()
+            assert reason.startswith("auto->nfv"), reason
+            assert "rot-sokum" in reason
+            assert nr.get("wall_aware_pitch") is False
+
+    def test_rot_sokum_kapali_eski_yol(self):
+        """rot_sokum_routing=False -> kabuk eski heightmap+wall_aware yolunda
+        (fixture default'u; kapatma anahtari calisiyor)."""
+        result = run_pipeline(_shell_scenario(auto_family_routing=True))
+        for nr in self._nesting_rows(result):
+            assert nr.get("wall_aware_pitch") is True
 
     def test_kutu_flag_acik_bile_wall_aware_kapali(self):
         """Katı kutu (kabuk sinyali yok) + bayrak True → wall_aware_pitch yine False.

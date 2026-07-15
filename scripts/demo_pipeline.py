@@ -730,6 +730,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
     wall_aware_pitch = bool(payload.get("wall_aware_pitch", False))  # K-19 OPT-IN; False=davranis birebir
     auto_family_routing = bool(payload.get("auto_family_routing", False))  # F5 OPT-IN; False=davranis birebir
+    # d4 routing (Eren karari 2026-07-15): rot-sokum dunyasi DEFAULT ACIK —
+    # aile katmani thin_shell'i NFV+rot yoluna cevirir (K-46/K-52: 220.69 <
+    # 287.0; kilit rot-kabul zinciriyle aklanir). Yalniz family_routing ile
+    # birlikte anlamli; False = eski kabuk->heightmap+wall_aware yolu.
+    rot_sokum_routing = bool(payload.get("rot_sokum_routing", True))
     # NO-GO (yasak bolge) plaka ozelligi: ((x1,y1),(x2,y2)) mm veya None.
     # run_pipeline scenario/plate-config'ten cozer (K-45 kablosu, 2026-07-11);
     # None = mevcut davranis BIREBIR (maske hic kurulmaz).
@@ -814,7 +819,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             _mm = load_mode_model(_ROOT / MODE_MODEL_PATH)
             _dec = predict_nfv_benefit(instance,
                                        family_routing=auto_family_routing,
-                                       mode_model=_mm)
+                                       mode_model=_mm,
+                                       rot_sokum=rot_sokum_routing)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
             # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
@@ -1661,6 +1667,11 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # webapp/gozcu kablosu F5 asama-2 rollout 2026-07-05'te baglandi
             # (poller/manuel/otonom/adet-gir hepsi auto_family_routing=True gecer).
             "auto_family_routing": bool(scenario.get("auto_family_routing", False)),
+            # d4 routing (Eren 2026-07-15): DEFAULT True = rot-sokum dunyasi;
+            # thin_shell aile katmaninda NFV+rot'a gider (yalniz
+            # auto_family_routing=True iken etkili). False = eski yol
+            # (kabuk->heightmap+wall_aware) — test/acil kapatma anahtari.
+            "rot_sokum_routing": bool(scenario.get("rot_sokum_routing", True)),
         })
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5

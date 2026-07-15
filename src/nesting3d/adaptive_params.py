@@ -139,6 +139,7 @@ def predict_nfv_benefit(
     thin_plate_thr: float = THIN_PLATE_THR,
     wall_aware_conf_thr: float | None = None,
     mode_model=None,
+    rot_sokum: bool = False,
 ) -> ModeDecision:
     """Instance'a NFV cavity mi heightmap mi uygun — veri-odaklı, açıklanabilir, kalite-güvenli.
 
@@ -149,6 +150,9 @@ def predict_nfv_benefit(
          (NFV>=heightmap) KIRILIR (K-19: NFV-max@kaba 386.4 > heightmap@cidar-pitch 282.0);
          doğru yol cidar-duyarlı pitch. `family_routing=True` iken Deneme4 ince-kabuk "net-kutu"
          DEĞİL "kabuk" gerekçesiyle heightmap'e gider.
+         `rot_sokum=True` (Eren kararı 2026-07-15; K-46/K-52): rot-söküm dünyasında
+         thin_shell hükmü TERSİNE — NFV+rot yoluna gider (kilit rot-kabul zinciriyle
+         aklanır; d4 220.69 < 287.0). tube kanıtsız → eski yol. Default False = bit-özdeş.
       1) NET-KUTU: mean_aspect_z < box_aspect_thr → heightmap (cavity yok).
       2) İNCE-PLAKA: thin_plate_ratio > thin_plate_thr → heightmap (düz zaten optimal).
       3) Aksi → nfv (kalite-güvenli).
@@ -211,6 +215,19 @@ def predict_nfv_benefit(
             _thr = _WA_THR if wall_aware_conf_thr is None else float(wall_aware_conf_thr)
             _fam, _conf = classify_prelim(instance)
             if _fam in _WA_FAMS and _conf >= _thr:
+                # rot-sokum dunyasi (Eren karari 2026-07-15; kanit K-46/K-52):
+                # thin_shell'de kabuk hukmu TERSINE — d4 NFV ham 231.5
+                # (b+c)-legal + rot-kabul 220.69 < heightmap+wall_aware 287.0.
+                # Kilit korkusu rot-kabul zinciriyle (solve_nfv_kalite
+                # rot_kabul) cozulur. tube icin rot-dunyasi kaniti YOK ->
+                # eski yol. rot_sokum default False = BIT-OZDES eski davranis.
+                if rot_sokum and _fam == "thin_shell":
+                    return ModeDecision(
+                        "nfv",
+                        f"kabuk ailesi ({_fam}, guven={_conf:.2f}) + rot-sokum "
+                        f"dunyasi: NFV+rot yolu (K-46/K-52; kilit rot-kabul "
+                        f"zinciriyle aklanir)",
+                    )
                 return ModeDecision(
                     "heightmap",
                     f"kabuk ailesi ({_fam}, guven={_conf:.2f} >= {_thr:.2f}): cidar-pitch "
