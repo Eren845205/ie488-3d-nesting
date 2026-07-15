@@ -874,6 +874,44 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > raporlanamadi. SIRADAKI ADAY: k51c = ayni sozlesme + rot-sokum denetimli
 > kilit metrigi (Eren onayiyla) veya quality=max baseline.
 
+> **2026-07-15 — EREN KARARLARI ISLENDI: A2 ROT-SOKUM KATMANI + d4 ROUTING
+> NFV+rot (kod canli, k51c bekliyor):** (a) **A2 katmani** (ANAYASA A2
+> guncelleme-2): eval_gate 5-yon kilit>0'i tek basina RED saymaz —
+> `kilit_rot_meshes` (K-52 tabani @1.0, butce 1200s) yeniden yargilar; rot
+> kilit=0 -> SOKUM-PLANLI legal (`sokum_planli`+cert raporda); hata/butce
+> konservatif eski RED; kilitsizde HIC kosmaz (K-42 maliyet dersi).
+> (b) **d4 routing**: predict_nfv_benefit `rot_sokum` parametresi —
+> family katmaninda thin_shell artik NFV+rot yoluna (K-46/K-52: 220.69 <
+> 287.0); tube kanitsiz -> eski yol. Pipeline default ACIK
+> (`rot_sokum_routing`, senaryo anahtariyla kapatilabilir); eval ayni
+> routing'le kosar. (c) **rot_kabul "auto" tavani R11'den AYRISTI**:
+> `ROT_KABUL_AUTO_PARCA_TAVANI=600` (rot denetimi ucuz — K-52 588p=1.4dk;
+> asil sigorta sure butcesi) — R11 kompaksiyon tavani 150 kalir (K-50:
+> 588p=375dk). (d) **eval uretim paritesi tamamlandi**: kapi NFV dalinda
+> r11="auto"+rot_kabul="auto" kosar ve r11 uygulanirsa dz-KAYMIS sahneyi
+> olcer (yukseklik r11-sonrasi, kilit dz'li meshlerde kilit_5yon_meshes;
+> musteri STL paritesi `7add014`) — eski r11=False karari dz'nin height'a
+> yansimadigi doneme aitti. TDD: test_eval_gate 29 / test_adaptive_params
+> +5 / test_rot_kabul +3 / test_demo_pipeline +2. ACIK KALAN: fast-vs-max
+> ucurumu (gozcu quality=max kosuyor, sozlesme fast — Eren karari) +
+> plan1'in NFV'ye routing'i (kural canli-hatasi, model allowlist disi).
+> SIRADA: A9 tam suite -> k51c (`scripts/k51c_baseline_kilit.py`).
+
+> **2026-07-15 — /run(rich) ~50s YAVASLAMA KOK TESHISI (A4 ucuz teshis,
+> kosusuz):** kok = C4 mode_model promote (`94283b9`): rich senaryonun 3
+> partisi de aile=solid_bulk (guven 0.79) + allowlist + conformal-tekil ->
+> model KURALI EZIP heightmap yerine NFV secior (kural net-kutu diyordu,
+> dogruydu — rich parcalari saf kutu, cavity yok). NFV yanlis-pozitifi
+> kalite-guvenli AMA hiz vergisi buyuk (K-12: kutuda kazanc 0; pitch=2.0
+> kalite recetesi + r11="auto" mesh-settle de NFV dalinda biniyor).
+> 3 parti x (solve_nfv_kalite fast + r11 settle) ~= 50s olcegiyle ortusuyor.
+> ACIK KARAR (Eren): (a) kabul (demo endpoint'i yavas ama kalite-guvenli),
+> (b) mode_model katmanina net-kutu hiz-guard'i (mean_aspect_z<4 ->
+> model atlanir; modelin allowlist ailesini kismen korler — A6 geregi
+> otomatik yapilmadi), (c) rich demo senaryosuna nesting_mode="heightmap"
+> sabitleme (yalniz demo'yu hizlandirir, uretimi degistirmez).
+> Kalan olcum: parti basina solve-vs-r11 sure dagilimi (suite bosalinca).
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)

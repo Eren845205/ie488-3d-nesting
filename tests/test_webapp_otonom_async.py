@@ -42,8 +42,14 @@ def client_no_llm(app_no_llm):
     return app_no_llm.test_client()
 
 
-def _poll_until_done(client, job_id, timeout_s=30.0):
-    """Durum 'calisiyor' olmaktan cikana kadar yokla; son snapshot'i don."""
+def _poll_until_done(client, job_id, timeout_s=90.0):
+    """Durum 'calisiyor' olmaktan cikana kadar yokla; son snapshot'i don.
+
+    Tavan 30->90s (2026-07-15): otonom is mode_model promote'undan beri
+    NFV@2.0'a gidiyor (nominal ~19s, /run-rich yavaslama teshisiyle ayni kok);
+    tam-suite RAM baskisi altinda 30s asilip yalanci-kirmizi verdi (izole
+    36.8s FAIL vs sonra ayni kodla 19.0s PASS). E2E kapsam korunur, stub yok.
+    """
     deadline = time.time() + timeout_s
     snap = None
     while time.time() < deadline:
