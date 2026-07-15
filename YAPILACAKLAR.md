@@ -4,6 +4,31 @@
 > işaretlenir, silinmez. Kaynak: hoca geri bildirimleri 2026-07-06 akşam
 > [[project-hoca-feedback-2026-07-06-aksam]] + oturum bulguları (EVAL-1, K-24).
 
+## 🧰 OPERATÖR SÖKÜM KONSOLU — Faz 2 (2026-07-15, Eren fikri; K-52 rot-kabul üstüne)
+
+Gerekçe: hoca ekibi bugün parça→sipariş eşlemesini ve çıkarma yöntemini plaka
+başında GÖZLE, tek tek yapıyor (Eren'e bizzat söyledi). 588 parçalık plakada bu
+yavaş + hata açık (yanlış siparişe yanlış parça). Faz 1 verisi hazır: söküm
+talimatları (eksen/açı/yön/lift) uçtan uca taşınıyor (`sokum_plani`,
+gecmis_detay "Sokum Plani" bölümü). Magics'te karşılığı YOK — ürün farklılaştırıcısı.
+
+- **Önkoşul (ilk iş):** placements `part_id` → `order_id` izinin uçtan uca
+  taşındığını doğrula/kablola (sipariş-bazlı kayıtlar parti↔sipariş bağını
+  tutuyor; parça-düzeyi eşleme detay JSON'a inmeli — placements _AGIR'da
+  düşürüldüğü için eşleme persist ÖNCESİ yapılmalı, dz/sokum_plani deseni gibi).
+- **F2-a Siparişe-göre-renk (viewer):** GLB düğümlerine order_id metadata +
+  viewer'da "renk: parça tipi / sipariş" anahtarı.
+- **F2-b Tıkla-tanı:** parçaya tıkla → yan panel kimlik kartı: parça adı +
+  sipariş/müşteri + varsa söküm talimatı.
+- **F2-c Rehberli söküm sırası:** `removable_order` (rot denetimi zaten
+  üretiyor) adım-adım moda bağlanır: sıradaki parça vurgulanır + talimat +
+  "kutusu: Sipariş X". Operatör identify ETMEZ, takip eder.
+- **F2-d Sipariş özet kartı:** sipariş başına parça sayısı / kaçı söküm-planlı
+  (toplama-paketleme kontrol listesi).
+- **F2-e sonuc.html paritesi:** "Sokum Plani" bölümü anlık sonuç ekranına da.
+- İlgili hoca isteği (2026-07-06): STL içine adet/parça adı (ASCII multi-solid)
+  — aynı tema, birlikte planlanabilir.
+
 ## 🎯 KALİTE YOL HARİTASI (2026-07-07 — kullanıcı kararı: "rotasyona suç atmadan önce eksen-hizalı tavanı ölç")
 
 Kanıt tabanı: d4 çekirdek Magics-parite (250.5 vs 250.24) → istif kalitesi sınıfında

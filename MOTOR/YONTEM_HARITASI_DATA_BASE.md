@@ -831,6 +831,30 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > Eren'e sunuldu):** oneri = regret_logistic + guvenli_aileler allowlist
 > {long_rod, solid_bulk} ile C4 challenger'a baglamak (Sprint 3).
 
+> **2026-07-15 — K-52 D4 ROT-KABUL = GO 🏆🏆 (YENI d4 SAMPIYONU 220.69; hoca
+> 2026-07-14 sokum-toleransi kriteri ilk kez uygulandi):** K-50'nin kilit
+> kapisinin reddettigi R11v4 adayi (220.69, kilit 11->12) hoca cercevesiyle
+> yeniden yargilandi (scripts/k52_d4_rot_kabul.py, log scripts/
+> k52_d4_rot_kabul.log): replay 588/588 (18.4dk) -> R11v4 229.33->220.69
+> clear=2.006 (393dk; K-50 beklentisiyle BIREBIR — determinizm kaniti) ->
+> ROT denetimi (margin-0 @1.0 re-voxelize + check_separability_rot, butce
+> 1200s, erode (2,2)): **kilit=0/588, 5 rotasyon sertifikasi, 1.4dk** ->
+> SOKUM-PLANLI KABUL. **Manuel 250.24 -> -%11.8** (onceki sampiyon 229.33
+> -%8.4 idi; +8.64mm). STL results/deneme4_r11v4_rot_220.7mm.stl; telemetri
+> v2 kosu_id=K-52/rot-kabul. DERSLER: (1) 5-yon metriginin "kilitli" dedigi
+> 12 parca rot'ta TAMAMEN acildi -> 5-yon d4 ailesinde gereginden sert,
+> hoca cevabinin cikarimi olculdu-dogrulandi; (2) rot denetimi korkulandan
+> COK ucuz: 588p @1.0 = 1.4dk (K-42'nin 2-4 saati eski parametre setiydi;
+> max_grid_vox=800 + erode (2,2) ile sertifika araması kisa) -> rot-kabul
+> kapisinin uretim maliyeti ihmal edilebilir; (3) surec: ilk kosu
+> erode_clearance_vox=2 (int) TypeError bombasi tasiyordu (lazy unpack —
+> 6.5 saat sonra patlayacakti); statik incelemeyle yakalandi, restart
+> maliyeti ~35dk; dz-sigorta (settle sonrasi npz snapshot) artik standart
+> pratik. KABLO DURUMU: rot-kabul kapilari kodda hazir (`1fab9e0`, her yerde
+> default KAPALI) + dz export kablosu canli (`7add014` — R11/rot kazanci
+> artik musteri STL/GLB'sine yansiyor) -> **pipeline'da rot_kabul="auto"
+> acilmasi EREN KARARI bekliyor.** SIRADA: tam suite -> k51b.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
