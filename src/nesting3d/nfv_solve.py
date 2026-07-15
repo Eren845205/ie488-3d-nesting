@@ -376,9 +376,15 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
             from src.nesting3d.export_stl import placed_meshes
             meshes = placed_meshes(list(res.placements), res.fine_voxel_parts,
                                    float(res.fine_pitch))
+            # HD-0 (plan 2026-07-15): rot-kabul R11 kapisina da akar — K-52
+            # kaniti (R11'in yarattigi kilidin rot'la aklanmasi, d4 +8.64mm).
+            # "auto" tavani BURADA cozulur (uretim_r11 n_placed bilmez).
+            rot_izin = ((n <= R11_AUTO_PARCA_TAVANI)
+                        if rot_kabul == "auto" else bool(rot_kabul))
             sonuc = uretim_r11(meshes, clearance_mm=float(clearance_mm),
                                no_go_bounds=no_go_bounds,
-                               samples_kompakt=int(r11_samples))
+                               samples_kompakt=int(r11_samples),
+                               rot_kabul=rot_izin, rot_butce_s=rot_butce_s)
         except Exception as e:  # R11 hicbir kosulda cozumu dusuremez
             tel["r11"] = {"uygulandi": False, "neden": f"hata:{type(e).__name__}"}
             return
@@ -423,8 +429,33 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
             tel["rot_kabul"] = {"uygulandi": False, "neden": "rot_kilitli",
                                 "rot_kilit": rk}
             return False
+        # K-52 musteri-yuzu: sokum talimatlari parca kimligiyle eslenir
+        # (kilit_rot_meshes pid'i "m{i}" = res.placements sirasi).
+        pls = list(res.placements)
+        plan = []
+        for pid, cert in rapor.certificates.items():
+            s = str(pid)
+            parca = None
+            part_id = None  # HD-1: instance kimligi — UI join'i bununla yapar
+            if s.startswith("m"):
+                try:
+                    idx = int(s[1:])
+                except ValueError:
+                    idx = None
+                if idx is not None and 0 <= idx < len(pls):
+                    pl = pls[idx]
+                    part_id = getattr(pl, "part_id", None)
+                    parca = (getattr(pl, "name", None)
+                             or part_id or str(pl))
+            plan.append({"parca": parca if parca is not None else s,
+                         "part_id": part_id,
+                         "eksen": getattr(cert, "eksen", None),
+                         "aci_deg": float(getattr(cert, "aci_deg", 0.0) or 0.0),
+                         "yon": getattr(cert, "yon", None),
+                         "lift_vox": int(getattr(cert, "lift_vox", 0) or 0)})
         tel["rot_kabul"] = {"uygulandi": True, "rot_kilit": 0,
-                            "cert": len(rapor.certificates)}
+                            "cert": len(rapor.certificates),
+                            "sokum_plani": plan}
         return True
 
     ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,

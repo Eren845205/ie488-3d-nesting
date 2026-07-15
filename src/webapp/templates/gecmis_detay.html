@@ -287,6 +287,31 @@
     </div>
     {% endif %}
 
+    {# --- Sokum plani (K-52 rot-kabul): operator talimatlari --- #}
+    {% set sp = nr.get('sokum_plani') %}
+    {% if sp %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Sokum Plani</strong>
+            <span class="badge badge-yellow">{{ sp | length }} parca ozel islem ister</span>
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+            Bu yerlesim "sokum-planli" kabul edildi: asagidaki parcalar duz cekmeyle degil,
+            kucuk bir dondurmeyle cikar. Diger tum parcalar normal sirayla duz cekilir.
+        </div>
+        <ul style="font-size:13px; margin:0; padding-left:18px;">
+            {% for e in sp %}
+            <li style="margin-bottom:4px;">
+                <strong>{{ e.get('parca', '?') }}</strong>:
+                {% if (e.get('lift_vox', 0) | int) > 0 %}once ~{{ e.get('lift_vox') }} mm yukari kaldir, {% endif %}
+                {{ e.get('eksen', '?') }} ekseninde {{ "%.0f"|format(e.get('aci_deg', 0.0) | float) }}&deg; dondur,
+                sonra {{ e.get('yon', '?') }} yonunden cek
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     {# --- Tuner konfig yarisi / portfoy karsilastirma --- #}
     {% set tuner_data = nr.get('tuner') %}
     {% set port = nr.get('portfolio') %}

@@ -67,7 +67,8 @@ def test_r11_kilit_artisi_rot_kapali_none():
 
 
 def test_r11_rot_kabul_go_sokum_planli():
-    rot = NS(n_locked=0, certificates={"m1": "sert"})
+    cert = NS(eksen="Z", aci_deg=15.0, yon="+X", lift_vox=1)
+    rot = NS(n_locked=0, certificates={"m1": cert})
     r = uretim_r11(_kule(), clearance_mm=2.0, samples_kompakt=3000,
                    samples_dogrula=3000, rot_kabul=True,
                    _kilit_fn=_kilit_artar(), _rot_fn=lambda ms: rot)
@@ -78,6 +79,10 @@ def test_r11_rot_kabul_go_sokum_planli():
     assert r["kilit_pre"] == 0 and r["kilit_post"] == 1
     assert r["kazanc_mm"] > 0.5
     assert r["min_clearance_mm"] >= 2.0
+    # K-52 musteri-yuzu: sokum talimati KAYBOLMAZ (mesh_idx m1 -> 1)
+    assert r["sokum_plani"] == [{"mesh_idx": 1, "eksen": "Z",
+                                 "aci_deg": 15.0, "yon": "+X",
+                                 "lift_vox": 1}]
 
 
 def test_r11_rot_kilitli_none():
@@ -109,7 +114,9 @@ def test_r11_kilit_artmadiysa_rot_cagrilmaz():
 # ---------- solve_nfv_kalite katmani ----------
 
 def _ham(h=100.0, n=4):
-    return NS(height_mm=h, n_placed=n, placements=list(range(n)),
+    return NS(height_mm=h, n_placed=n,
+              placements=[NS(part_id=f"k_{i:02d}", name="k")
+                          for i in range(n)],
               fine_voxel_parts={}, fine_pitch=2.0)
 
 
@@ -120,16 +127,22 @@ def test_kalite_rot_kabul_go_guard_atlanir():
         assert "exit_guard" not in kw, "guard kosulmamaliydi"
         return ham
 
+    cert = NS(eksen="Y", aci_deg=-30.0, yon="+Z", lift_vox=0)
     res, tel = solve_nfv_kalite(
         None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
         rot_kabul=True, _solve=solve,
         _check_5dir=lambda p, v: NS(n_locked=3),
-        _check_rot=lambda r: NS(n_locked=0, certificates={"a": 1, "b": 2}))
+        _check_rot=lambda r: NS(n_locked=0, certificates={"m2": cert}))
     assert res is ham
     assert tel["secilen"] == "ham"
     assert tel["guard_kosuldu"] is False
     assert tel["ham_n_locked"] == 3
-    assert tel["rot_kabul"] == {"uygulandi": True, "rot_kilit": 0, "cert": 2}
+    rk = tel["rot_kabul"]
+    assert rk["uygulandi"] is True and rk["rot_kilit"] == 0 and rk["cert"] == 1
+    # HD-1: plan hem gorunen adi hem INSTANCE kimligini (part_id) tasir
+    assert rk["sokum_plani"] == [{"parca": "k", "part_id": "k_02",
+                                  "eksen": "Y", "aci_deg": -30.0,
+                                  "yon": "+Z", "lift_vox": 0}]
 
 
 def test_kalite_rot_kilitli_guard_kosulur():
@@ -246,3 +259,118 @@ def test_kilit_rot_meshes_serbest_sahne_deterministik():
     r2 = kilit_rot_meshes(sahne)
     assert r1.n_locked == r2.n_locked == 0
     assert r1.n_parts == 2
+
+
+# ---------- pipeline kablosu (K-52 GO sonrasi, Eren onayi 2026-07-15) ----------
+
+def test_pipeline_rot_kabul_auto_kablosu(monkeypatch):
+    """Uretim pipeline'i solve_nfv_kalite'ye rot_kabul="auto" gecirmeli."""
+    import src.nesting3d.nfv_solve as nfv
+    from scripts.demo_pipeline import run_pipeline
+    from tests.test_demo_pipeline import SMOKE_SCENARIO
+
+    yakalanan = {}
+    orijinal = nfv.solve_nfv_kalite
+
+    def sarmal(*a, **kw):
+        yakalanan.update(kw)
+        return orijinal(*a, **kw)
+
+    monkeypatch.setattr(nfv, "solve_nfv_kalite", sarmal)
+    run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "nfv"})
+    assert yakalanan.get("rot_kabul") == "auto"
+    assert yakalanan.get("r11") == "auto"  # mevcut kablo bozulmadi
+
+
+def test_pipeline_sokum_plani_kablosu(monkeypatch):
+    """r11-rot yolundan gelen mesh_idx'li plan pipeline'da parca adina eslenir
+    ve nesting_results'a yazilir (detay JSON'da kalicilasir — Faz-2 UI kaynagi)."""
+    import src.nesting3d.continuous_settle as cs
+    from scripts.demo_pipeline import run_pipeline
+    from tests.test_demo_pipeline import SMOKE_SCENARIO
+
+    def fake_r11(meshes, **kw):
+        return {"dz": [0.1] * len(meshes), "height_mm": 1.0,
+                "height_before_mm": 1.1, "kazanc_mm": 0.1,
+                "min_clearance_mm": 2.5, "kilit_pre": 0, "kilit_post": 1,
+                "rafine_tur": 1, "sokum_planli": True, "rot_kilit": 0,
+                "rot_cert": 1,
+                "sokum_plani": [{"mesh_idx": 0, "eksen": "Z", "aci_deg": 15.0,
+                                 "yon": "+X", "lift_vox": 0}]}
+
+    monkeypatch.setattr(cs, "uretim_r11", fake_r11)
+    result = run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "nfv"})
+    planli = [nr for nr in result["nesting_results"].values()
+              if nr.get("sokum_plani")]
+    assert planli, "sokum_plani hicbir partiye yazilmadi — kablo kopuk"
+    e = planli[0]["sokum_plani"][0]
+    assert e.get("parca"), "mesh_idx parca adina eslenmedi"
+    assert e["eksen"] == "Z" and e["yon"] == "+X" and e["aci_deg"] == 15.0
+
+
+def _r11_passthrough_kur(monkeypatch):
+    """HD-0: uretim_r11 + placed_meshes kaydediciyle degistirilir."""
+    import src.nesting3d.continuous_settle as cs
+    import src.nesting3d.export_stl as es
+    yakalanan = {}
+
+    def fake_uretim_r11(meshes, **kw):
+        yakalanan.update(kw)
+        return None  # kapilar gecilemedi say — sonuc aynen korunur
+
+    monkeypatch.setattr(cs, "uretim_r11", fake_uretim_r11)
+    monkeypatch.setattr(es, "placed_meshes", lambda p, v, px, dz=None: [])
+    return yakalanan
+
+
+def test_hd0_r11_rot_kabul_passthrough(monkeypatch):
+    """HD-0 (plan 2026-07-15): rot-kabul R11 kapisina da akmali — K-52'nin
+    kanitladigi yol (R11'in yarattigi kilidin rot'la aklanmasi)."""
+    yakalanan = _r11_passthrough_kur(monkeypatch)
+    ham = _ham()
+
+    def solve(inst, **kw):
+        return ham
+
+    solve_nfv_kalite(None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
+                     r11=True, rot_kabul=True, rot_butce_s=777.0,
+                     _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
+    assert yakalanan.get("rot_kabul") is True
+    assert yakalanan.get("rot_butce_s") == 777.0
+
+
+def test_hd0_rot_kabul_auto_tavani_r11_icinde(monkeypatch):
+    """r11=True buyuk seti zorlarken rot_kabul='auto' tavani asilirsa
+    R11-rot KAPALI gecmeli (auto semantigi uretim_r11'e tasinmaz, cozulur)."""
+    yakalanan = _r11_passthrough_kur(monkeypatch)
+    ham = _ham(n=R11_AUTO_PARCA_TAVANI + 1)
+
+    def solve(inst, **kw):
+        return ham
+
+    solve_nfv_kalite(None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
+                     r11=True, rot_kabul="auto",
+                     _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
+    assert yakalanan.get("rot_kabul") is False
+
+
+def test_gecmis_detay_sokum_plani_render():
+    """Detay sayfasi sokum planini operator talimati olarak gosterir."""
+    from tests.test_gecmis_detay_tam import _make_provider_with_teklif
+    from src.webapp.app import create_app
+
+    app = create_app(testing=True,
+                     llm_provider_override=_make_provider_with_teklif())
+    fn = app.config["GECMIS_KAYDET_FN"]
+    nr = {"height_mm": 42.0, "density": 0.5, "n_parts": 3, "pitch_mm": 2.0,
+          "sokum_plani": [{"parca": "kanat_sol", "eksen": "Z",
+                           "aci_deg": 15.0, "yon": "+X", "lift_vox": 1}]}
+    kayit = fn({"ranked_orders": [], "batches": [],
+                "nesting_results": {"B001": nr},
+                "pricing_results": {}, "elapsed_sec": 0.0},
+               mod="auto", kaynak="manuel")[0]
+    html = app.test_client().get(f"/gecmis/{kayit['id']}").data.decode("utf-8")
+    assert "Sokum Plani" in html
+    assert "kanat_sol" in html
+    assert "Z ekseninde 15" in html
+    assert "+X yonunden cek" in html

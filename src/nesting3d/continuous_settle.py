@@ -328,8 +328,23 @@ def uretim_r11(
             return None  # rot denetimi kurulamadi -> kabul tarafina sizamaz
         if int(rot.n_locked) > 0:
             return None
+        # K-52 musteri-yuzu: sokum talimatlari (eksen/aci/yon/lift) atilmaz —
+        # mesh_idx cagiran katmanda parca adina eslenir (pid = "m{i}").
+        plan = []
+        for pid, cert in rot.certificates.items():
+            s = str(pid)
+            try:
+                idx = int(s[1:]) if s.startswith("m") else None
+            except ValueError:
+                idx = None
+            plan.append({"mesh_idx": idx,
+                         "eksen": getattr(cert, "eksen", None),
+                         "aci_deg": float(getattr(cert, "aci_deg", 0.0) or 0.0),
+                         "yon": getattr(cert, "yon", None),
+                         "lift_vox": int(getattr(cert, "lift_vox", 0) or 0)})
         rot_bilgi = {"sokum_planli": True, "rot_kilit": 0,
-                     "rot_cert": len(rot.certificates)}
+                     "rot_cert": len(rot.certificates),
+                     "sokum_plani": plan}
     out = {
         "dz": [float(d) for d in dz4],
         "height_mm": h4,

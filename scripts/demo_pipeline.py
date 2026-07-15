@@ -957,6 +957,12 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 r11="auto",  # K-50 kablosu: kucuk/orta sette mesh-duzeyi son
                              # dusme (tek-tarafli; kapilar gecemezse sonuc AYNEN;
                              # parca tavani ustunde atlar + iz birakir)
+                rot_kabul="auto",  # K-52 kablosu (Eren onayi 2026-07-15):
+                             # kilit ciktiginda reddetme/guard-vergisi yerine
+                             # rot-sokum denetimine sor; rot kilit=0 ->
+                             # sokum-planli kabul (K-52 kaniti: d4 588p'de
+                             # rot denetimi 1.4dk, 12 kilitin 12'si acildi).
+                             # Ayni tavan (<=150) + butce 1200s; tek-tarafli.
             )
             _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim + r11)
             tune_result = _c2f_result.tune_result
@@ -1233,6 +1239,28 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as _tv2_exc:
         logger.warning("telemetri v2 yazilamadi (uretim etkilenmez): %s", _tv2_exc)
 
+    # K-52 musteri-yuzu: sokum plani (rot-kabul ham-kabul yolu VEYA r11-rot
+    # yolu). r11 yolundan mesh_idx gelir -> burada parca adina eslenir; detay
+    # JSON placements'i dusurdugu icin esleme persist ONCESI yapilmak zorunda.
+    _nfvk = _instr.get("nfv_kalite", {}) or {}
+    _sokum_plani = ((_nfvk.get("rot_kabul", {}) or {}).get("sokum_plani")
+                    or (_nfvk.get("r11", {}) or {}).get("sokum_plani"))
+    if _sokum_plani:
+        _pls_w = list(winner_result.placements)
+        _norm = []
+        for _e in _sokum_plani:
+            _e = dict(_e)
+            _mi = _e.get("mesh_idx")
+            if _mi is not None and 0 <= int(_mi) < len(_pls_w):
+                _pw = _pls_w[int(_mi)]
+                if not _e.get("parca"):
+                    _e["parca"] = (getattr(_pw, "name", None)
+                                   or getattr(_pw, "part_id", None) or str(_pw))
+                if not _e.get("part_id"):  # HD-1: instance kimligi
+                    _e["part_id"] = getattr(_pw, "part_id", None)
+            _norm.append(_e)
+        _sokum_plani = _norm
+
     nesting = {
         "height_mm": height_mm,
         "density": density,
@@ -1266,6 +1294,8 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                        _instr["nfv_kalite"]["r11"]["dz"]]}
            if (_instr.get("nfv_kalite", {}).get("r11", {}) or {})
            .get("uygulandi") else {}),
+        # Operator-yuzu sokum talimatlari (K-52): UI "Sokum Plani" bolumu okur
+        **({"sokum_plani": _sokum_plani} if _sokum_plani else {}),
     }
 
     pricing_inputs = _build_pricing_inputs(
