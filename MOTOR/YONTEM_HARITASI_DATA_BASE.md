@@ -855,6 +855,25 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > artik musteri STL/GLB'sine yansiyor) -> **pipeline'da rot_kabul="auto"
 > acilmasi EREN KARARI bekliyor.** SIRADA: tam suite -> k51b.
 
+> **2026-07-15 — K-51b BASELINE KILIDI = KURULAMADI (exit 4, dogru guard;
+> BULGU-DOLU NO-GO):** eval_gate v2 sozlesmesi (335+nogo/2mm/NFV-fast/6000)
+> dev-set baseline'i kilitleyemedi cunku URETIM-DEFAULT yolu 3 sette INVALID:
+> **plan1 INV (111/112 + 87 kilit; routing hala NFV'ye yolluyor — Sprint-1
+> canli-hata teyidi) · plan2 INV (59 kilit, ham 706.5; rekor 544.5 quality=max
+> idi) · plan3 INV (63 kilit, ham 754.5; rekor 577.6) · deneme4 287.0 LEGAL
+> (kilit 0, clear 2.016; ama routing hala heightmap/wall_aware@0.5 — sampiyon
+> 220.69 NFV+rot yolu DEGIL).** Kanit: results/eval_gate_last.json; log
+> %TEMP%/detach_k51_baseline_kilit.out. DERSLER/ACIK KARARLAR: (1) fast-vs-max
+> ucurumu buyuk (%25-30 + kilit patlamasi) — "uretim yolu fast" sozlesme
+> tercihi baseline'i INVALID'e dusuruyor; (2) **eval sozlesmesi hoca-kabul
+> kriterinden SERT kaldi**: 5-yon kilit=0 sarti rot-sokum kabulunu (hoca
+> 2026-07-14; K-52 12/12 acildi; maliyet 1.4dk/588p) gormuyor — A2'ye
+> rot-sokum katmani eklenmesi EREN KARARI (eklenirse plan2/3 kilitleri
+> yeniden yargilanir, baseline kurulabilir); (3) d4 routing guncellemesi
+> (heightmap->NFV+rot) ayri karar; (4) challenger kiyasi baseline olmadan
+> raporlanamadi. SIRADAKI ADAY: k51c = ayni sozlesme + rot-sokum denetimli
+> kilit metrigi (Eren onayiyla) veya quality=max baseline.
+
 ---
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
