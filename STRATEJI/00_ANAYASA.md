@@ -29,6 +29,18 @@ metrik şişer.
 > modellenene dek 5-yön = KONSERVATİF taraf. Raporlar hangi kriterle legal
 > olunduğunu belirtmeye devam eder. Eski +Z metriği telemetri olarak kalır.
 
+> **A2 GÜNCELLEMESİ-2 (2026-07-15, Eren kararı — K-51b bulgusu + hoca kabulü
+> 2026-07-14):** (iii) kilit tanımına **rot-söküm katmanı** eklendi: 5-yön
+> kilit>0 tek başına INVALID sebebi DEĞİLDİR — rot-söküm denetimi
+> (`kilit_rot_meshes`, K-52 tabanı @1.0, bütçe 1200s) kilitleri yeniden
+> yargılar; rot kilit=0 → **SÖKÜM-PLANLI LEGAL** (raporda `sokum_planli` +
+> cert sayısı belirtilir). Gerekçe: hoca 2026-07-14 "az zor-söküm ihmal
+> edilebilir" + K-52 (12/12 kilit rot'la açıldı, maliyet 1.4dk/588p) — 5-yön=0
+> şartı hoca kriterinden SERTTİ (K-51b'de baseline'ı INVALID'e düşürdü).
+> Konservatif taraf korunur: rot denetimi hata/bütçe-aşımı → eski RED; rot
+> kabulü yalnız kilit koşulunu aklar (clearance/yerleşim aklanmaz); denetim
+> yalnız kilit>0 iken koşar (K-42 maliyet dersi).
+
 **A3 — Held-out dokunulmazdır.** Held-out ilan edilen veri tuning/geliştirme
 döngüsüne GİRMEZ; yalnız final doğrulamada koşulur ve her bakış
 `01_VERI.md` registry'sine tarihle loglanır. Bir kez tuning'e giren set sonsuza

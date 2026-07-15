@@ -3,7 +3,9 @@
 
 Amac (STRATEJI/02_EVAL_KAPISI.md §2, §5 Faz-0): her "iyilestirme iddiasi"
 sonrasi TUM dev-set'leri URETIM sampiyonu yollarindan kosar, DURUST metrigi
-(legal_height: yerlesen==N ve min_clearance>=1mm ve 0 kilit) olcer, baseline
+(legal_height: yerlesen==N ve min_clearance>=2mm ve 0 kilit — 5-yon kilit>0
+ise rot-sokum denetimi kilitleri yeniden yargilar, rot kilit=0 -> SOKUM-PLANLI
+legal; A2 katmani Eren karari 2026-07-15) olcer, baseline
 ile kiyaslar, ANAYASA B2 esikleriyle verdict basar. Yeni algoritma YOK —
 mevcut parcalarin konsolidasyonu (c3_generality DATASETS + clearance.
 min_clearance + accessibility.check_placements + uretim solve yollari).
@@ -18,19 +20,17 @@ Esikler (00_ANAYASA B2): herhangi bir set >%2 kotu veya INVALID -> FAIL;
 +-%0.5 gurultu bandi; hicbiri kotulesmeden >=1 set iyilesme -> PASS; arasi
 -> INSAN KARARI. Held-out setler --heldout-final bayragi olmadan REDDEDILIR.
 
-Sampiyon yollar (uretim paritesi = URETIM DEFAULT'U):
-  plan1/plan2/plan3 : solve_coarse_to_fine default heightmap yolu
-                      (clearance_mm=1.0, a274628 kablosu) — uretim default'u.
-                      NOT: NFV kalite modu (opt-in) SAMPIYON DEGIL — ilk kapi
-                      kosusu (2026-07-06) NFV'yi plan ailesinde A2 ile INVALID
-                      olctu: clearance 0.083/0.055mm (HIGH-3 olculdu) +
-                      plan1 81 / plan3 87 KILIT (K-21'in plan karsiligi).
-                      NFV ancak legallik isi (F2-v2 + NFV-clearance) gecince
-                      sampiyonluga aday olur; o degisiklik de bu kapidan gecer.
-  deneme4           : solve_coarse_to_fine wall_aware 264-config (plate 325,
-                      fine 0.5, dblf_only, skip_fine_angle, drop_cache,
-                      clearance_mm=1.0) — beklenen anchor 264.0mm
-  boxy (held-out)   : ayni heightmap yolu, auto-plaka, clearance 1.0
+Sampiyon yollar (uretim paritesi = URETIM DEFAULT'U — routing karari
+predict_nfv_benefit(family_routing=True, mode_model, rot_sokum=True) ile
+her set icin CANLI cozulur; elle yol listesi tutulmaz):
+  NFV'ye dusen setler   : solve_nfv_kalite (fast/2mm/nogo/r11-auto/rot-auto)
+                          — 2026-07-15 itibariyle deneme4 de burada (rot-sokum
+                          dunyasi, K-46/K-52; eski "d4 NFV kapali" hukmu
+                          TERSINE). r11 uygulanirsa kapi dz-kaymis sahneyi
+                          olcer (musteri STL paritesi, 7add014).
+  heightmap'e dusenler  : solve_coarse_to_fine (wall_aware onerisiyle) —
+                          kabuk-tube + net-kutu/ince-plaka aileleri.
+  boxy (held-out)       : auto-plaka, ayni routing.
 
 Cikti: ASCII tablo + results/eval_gate_last.json (+ --save-baseline ile
 results/eval_gate_baseline.json). Stdout SAF ASCII (cp1254).
@@ -130,7 +130,11 @@ def _load_instance(name):
 
 
 def _run_champion(name, inst, seed, budget=None, n_orientations=None):
-    """Set'in URETIM DEFAULT yolunu kosar -> result (placements/fine_voxel_parts/height).
+    """Set'in URETIM DEFAULT yolunu kosar -> (result, nfv_tel | None).
+
+    nfv_tel yalniz NFV dalinda doner (solve_nfv_kalite telemetrisi) — kapi
+    r11 dz'sini dz-kaymis sahne olcumu icin kullanir (uretim paritesi:
+    musteri STL'i dz'li, 7add014).
 
     Uretim paritesi demo_pipeline zinciriyle BIREBIR (elle config YOK):
       wall_aware = predict_nfv_benefit(family_routing=True).wall_aware  (F5)
@@ -153,17 +157,24 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
     from src.nesting3d.selection.mode_model_io import (
         MODE_MODEL_PATH, load_mode_model)
     _mm = load_mode_model(_ROOT / MODE_MODEL_PATH)
-    dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm)
+    # d4 routing (Eren 2026-07-15): uretim default'u rot-sokum dunyasi
+    # (demo_pipeline rot_sokum_routing=True) — kapi ayni routing'le kosar.
+    dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm,
+                              rot_sokum=True)
     if getattr(dec, "mode", "heightmap") == "nfv":
         from src.nesting3d.nfv_solve import solve_nfv_kalite
-        print(f"    [{name}] routing: NFV kalite (uretim default: fast/2mm/nogo)",
-              flush=True)
+        print(f"    [{name}] routing: NFV kalite (uretim default: "
+              f"fast/2mm/nogo/r11-auto/rot-auto)", flush=True)
+        # Uretim paritesi (2026-07-15): pipeline r11="auto" + rot_kabul="auto"
+        # kosuyor ve dz-export (7add014) r11 kazancini musteri STL/GLB'sine
+        # yansitiyor — kapi da AYNI default'larla olcer. (Eski r11=False
+        # karari dz'nin height'a yansimadigi Sprint-3 donemine aitti.)
         res, _tel = solve_nfv_kalite(
             inst, plate_w_mm=pw, plate_d_mm=pd,
             clearance_mm=WEB_MIN_CLEARANCE_MM, no_go_bounds=NOGO_STD,
             quality="fast", seed=seed,
-            n_orientations=n_orientations, r11=False)
-        return res
+            n_orientations=n_orientations, r11="auto", rot_kabul="auto")
+        return res, _tel
     wall = bool(getattr(dec, "wall_aware", False))
     pitch = suggest_pitch(inst, wall_aware=wall)
     kw = dict(coarse_pitch=None, fine_pitch=pitch,
@@ -176,7 +187,7 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
     if wall:
         kw["menu"] = {"dblf_only": build_menu()["dblf_only"]}
     print(f"    [{name}] routing: wall_aware={wall}  pitch={pitch}", flush=True)
-    return solve_coarse_to_fine(inst, plate_w_mm=pw, plate_d_mm=pd, **kw)
+    return solve_coarse_to_fine(inst, plate_w_mm=pw, plate_d_mm=pd, **kw), None
 
 
 # ---------------------------------------------------------------------------
@@ -184,11 +195,17 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
 # ---------------------------------------------------------------------------
 
 def legal_of(height_mm, n_placed, n_total, min_clear_mm, n_locked,
-             clearance_req=CLEARANCE_REQ_MM):
+             clearance_req=CLEARANCE_REQ_MM, n_locked_rot=None):
     """(legal_height | None, invalid_reason | None) — ANAYASA A2 tanimi.
 
     min_clear_mm None = olculemedi -> INVALID (kanitsizlik gecer not verilmez);
     --skip-clearance ile bilerek atlanirsa cagiran bunu isaretler.
+
+    n_locked_rot (A2 rot-sokum katmani, Eren karari 2026-07-15; hoca kabulu
+    2026-07-14): 5-yon kilit>0 tek basina RED degil — rot-sokum denetimi
+    kilitleri yeniden yargilar. rot kilit=0 -> SOKUM-PLANLI legal (kilit
+    kosulu aklanir; diger kosullar aklanmaz). None = denetim yok/olculmedi ->
+    eski davranis bit-ozdes.
     """
     reasons = []
     if n_placed != n_total:
@@ -200,7 +217,11 @@ def legal_of(height_mm, n_placed, n_total, min_clear_mm, n_locked,
     if n_locked is None:
         reasons.append("erisilebilirlik olculemedi")
     elif n_locked > 0:
-        reasons.append(f"{n_locked} kilit")
+        if n_locked_rot is None:
+            reasons.append(f"{n_locked} kilit")
+        elif n_locked_rot > 0:
+            reasons.append(f"{n_locked} kilit (rot-sokum {n_locked_rot} kilit)")
+        # n_locked_rot == 0 -> sokum-planli LEGAL: kilit sebebi yazilmaz
     if reasons:
         return None, "; ".join(reasons)
     return float(height_mm), None
@@ -251,31 +272,75 @@ def compare_verdict(cur, base, fail_pct=FAIL_PCT, noise_pct=NOISE_PCT):
 # ---------------------------------------------------------------------------
 
 def evaluate_set(name, seed, skip_clearance=False, budget=None,
-                 n_orientations=None):
+                 n_orientations=None, _rot_fn=None, _kilit5_fn=None):
     t0 = time.perf_counter()
     inst = _load_instance(name)
     n_total = sum(int(p.qty) for p in inst.parts)
-    r = _run_champion(name, inst, seed, budget=budget,
-                      n_orientations=n_orientations)
+    r, nfv_tel = _run_champion(name, inst, seed, budget=budget,
+                               n_orientations=n_orientations)
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
     height = float(r.height_mm)
 
+    # r11 dz (uretim paritesi, 2026-07-15): r11 uygulandiysa musteri STL'i
+    # dz-kaymis (7add014) — kapi da AYNI sahneyi olcer: yukseklik r11-sonrasi,
+    # meshes dz'li, kilit dz'li meshlerde K-50 metrigi (kilit_5yon_meshes;
+    # voxel placements dz'yi bilmez, bayat olurdu). r11 yoksa eski yol
+    # BIT-OZDES. _kilit5_fn test enjeksiyonu (meshes -> kilit sayisi).
+    _r11 = ((nfv_tel or {}).get("r11") or {})
+    r11_dz = _r11.get("dz") if _r11.get("uygulandi") else None
+    if r11_dz is not None:
+        height = float(_r11.get("height_mm", height))
+
     min_clear = None
+    meshes = None
     if not skip_clearance:
         pitch = float(getattr(r, "fine_pitch"))
-        meshes = placed_meshes(r.placements, r.fine_voxel_parts, pitch)
+        meshes = placed_meshes(r.placements, r.fine_voxel_parts, pitch,
+                               dz=r11_dz)
         rep = min_clearance(meshes, samples_per_mesh=6000)  # d4 dersi: 3000 iyimser
         min_clear = float(rep.min_mm)
 
-    n_locked = int(check_placements(r.placements, r.fine_voxel_parts).n_locked)
+    if r11_dz is not None and meshes is not None:
+        try:
+            from src.nesting3d.continuous_settle import kilit_5yon_meshes
+            n_locked = int((_kilit5_fn or kilit_5yon_meshes)(meshes))
+        except Exception:
+            n_locked = None  # olculemedi -> INVALID (kanitsizlik gecer not degil)
+    else:
+        n_locked = int(check_placements(r.placements, r.fine_voxel_parts).n_locked)
 
-    legal, reason = legal_of(height, n_placed, n_total, min_clear, n_locked)
+    # A2 rot-sokum katmani (Eren karari 2026-07-15; hoca kabulu 2026-07-14):
+    # 5-yon kilit>0 tek basina RED degil — kilit_rot_meshes (K-52 tabani,
+    # @1.0 re-voxelize) kilitleri yeniden yargilar; rot kilit=0 -> SOKUM-PLANLI
+    # legal. Yalniz kilit varken kosar (K-42 maliyet dersi: kilitsizde HIC);
+    # hata/butce-asimi konservatif -> eski RED. _rot_fn test enjeksiyonu
+    # (A9: imza gercekle ayni, meshes -> RotSeparabilityReport).
+    n_locked_rot = None
+    rot_cert = None
+    rot_hata = None
+    if n_locked > 0 and meshes is not None:
+        try:
+            from src.nesting3d.continuous_settle import kilit_rot_meshes
+            rot_rep = (_rot_fn or kilit_rot_meshes)(meshes)
+            n_locked_rot = int(rot_rep.n_locked)
+            rot_cert = len(getattr(rot_rep, "certificates", None) or [])
+        except Exception as exc:
+            rot_hata = f"{type(exc).__name__}: {exc}"
+
+    legal, reason = legal_of(height, n_placed, n_total, min_clear, n_locked,
+                             n_locked_rot=n_locked_rot)
+    sokum_planli = bool(legal is not None and n_locked > 0
+                        and n_locked_rot == 0)
     if skip_clearance and reason == "clearance olculemedi":
         reason += " (--skip-clearance)"
     return {
         "legal_height_mm": legal, "invalid_reason": reason,
         "height_mm": height, "n_placed": n_placed, "n_total": n_total,
         "min_clearance_mm": min_clear, "n_locked": n_locked,
+        "n_locked_rot": n_locked_rot, "rot_cert": rot_cert,
+        "rot_hata": rot_hata, "sokum_planli": sokum_planli,
+        "r11_uygulandi": bool(_r11.get("uygulandi")),
+        "r11_kazanc_mm": _r11.get("kazanc_mm"),
         "duration_s": round(time.perf_counter() - t0, 1),
     }
 
@@ -326,13 +391,21 @@ def main():
             results[name] = {
                 "legal_height_mm": None, "invalid_reason": f"EXCEPTION: {e}",
                 "height_mm": None, "n_placed": None, "n_total": None,
-                "min_clearance_mm": None, "n_locked": None, "duration_s": None,
+                "min_clearance_mm": None, "n_locked": None,
+                "n_locked_rot": None, "rot_cert": None, "rot_hata": None,
+                "sokum_planli": False, "r11_uygulandi": False,
+                "r11_kazanc_mm": None, "duration_s": None,
             }
         r = results[name]
         lh = r["legal_height_mm"]
         lh_s = f"{lh:.1f}mm" if lh is not None else f"INVALID({r['invalid_reason']})"
+        rot_s = ""
+        if r.get("n_locked_rot") is not None:
+            rot_s = f"  rot_kilit={r['n_locked_rot']}"
+            if r.get("sokum_planli"):
+                rot_s += f" SOKUM-PLANLI ({r.get('rot_cert')} cert)"
         print(f"[{name}] legal_height={lh_s}  ham={r['height_mm']}  "
-              f"clear={r['min_clearance_mm']}  kilit={r['n_locked']}  "
+              f"clear={r['min_clearance_mm']}  kilit={r['n_locked']}{rot_s}  "
               f"({r['duration_s']}s)", flush=True)
 
     # --- kiyas ---------------------------------------------------------------

@@ -73,7 +73,7 @@ def main():
     sonuc = {}
     for n in (8, 24):
         t = time.perf_counter()
-        r = _run_champion("boxy", inst, seed=42, n_orientations=n)
+        r, _ = _run_champion("boxy", inst, seed=42, n_orientations=n)
         log(f"[boxy_n{n}] sure={(time.perf_counter() - t) / 60:.1f} dk")
         sonuc[n] = _olc(r, n_total, f"boxy_n{n}")
 

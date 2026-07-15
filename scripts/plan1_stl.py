@@ -13,7 +13,7 @@ from scripts.eval_gate import _load_instance, _run_champion, legal_of
 t = time.perf_counter()
 inst = _load_instance("plan1")
 n_total = sum(int(p.qty) for p in inst.parts)
-r = _run_champion("plan1", inst, seed=42)
+r, _ = _run_champion("plan1", inst, seed=42)
 meshes = placed_meshes(r.placements, r.fine_voxel_parts, float(r.fine_pitch))
 rep = min_clearance(meshes)
 acc = check_placements(r.placements, r.fine_voxel_parts)

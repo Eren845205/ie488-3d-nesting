@@ -116,7 +116,7 @@ def main():
                         time_budget_sec=ARM_BUDGET_S, r11=False)
                 else:
                     from scripts.eval_gate import _run_champion
-                    res = _run_champion(iid, inst, 42)
+                    res, _ = _run_champion(iid, inst, 42)
                 _olc_ve_kaydet(iid, inst, arm, res,
                                time.perf_counter() - t)
                 n_yeni += 1
