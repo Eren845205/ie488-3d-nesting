@@ -914,6 +914,51 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > SIRADAKI: k51d = ayni sozlesme + tilt-zorunlu kapili routing (plan1 ->
 > heightmap-fast) -> 4 set legal ise BASELINE ILK KEZ KURULUR.
 
+> **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
+> uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
+> sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
+> korunur + instanceId->part_id haritasi, pick, renk/vurgu API'leri; sonuc
+> sayfasi instancing+tam-ekrani bedava kazandi). P3 siparis-rengi modu
+> (12'lik palet, lejant cipleri) + siparis ozet kartlari. P4 tikla-tani
+> (Raycaster; kimlik karti part_id->parca_kimlik registry'den — ada asla
+> guvenmez; kopya/siparis/musteri/uid/sira/talimat). P5 rehberli sokum HUD
+> (sol-alt kompakt; siradaki parca turuncu vurgulu digerleri soluk; buyuk
+> adim sayaci + ilerleme + klavye oklari; kutu etiketi "X kutusuna").
+> P6 sonuc.html paritesi (Sokum Plani bolumu + sira rozetleri) + eski
+> kayitlarda tum yeni bolumler gizli (testli). `static/sokum_konsol.js`
+> XSS-hijyenik (yalniz createElement/textContent — siparis/musteri adlari
+> guvensiz veri). Dogrulama: test_sokum_konsolu 4 render testi + Playwright
+> canli dogrulama (renk toggle/lejant/tikla-tani/rehber adimlama ekran
+> goruntuleriyle Eren'e iletildi). Estetik: NESTING.FORGE endustriyel
+> kimligi (Archivo + IBM Plex Mono, amber aksan) uzerine operator HUD'u.
+
+> **2026-07-15 — K-51d ARA BULGU: PLAN1 HEIGHTMAP YOLU DA DUSUYOR (yeni
+> acik is, K-54 adayi):** tilt-zorunlu kapi plan1'i dogru sekilde
+> heightmap'e yonlendirdi AMA solve_coarse_to_fine yolu voxelize'da
+> EXCEPTION: "baseplate_v2 hicbir oryantasyonda plakaya sigmiyor" —
+> clearance margin dilation'i (pitch'e bagli >=1 voxel) 330.2mm parcayi
+> 335mm plakadan tasiriyor. demo_pipeline web yolunda GRACEFUL
+> clearance-cap var (margin kisilir, 2026-07-06); c2f/eval yolunda YOK.
+> Yani plan1 su an HICBIR uretim yolundan 335+nogo+2mm sozlesmesinde
+> cozulmuyor (129s rekoru OZEL egik-plaka SA deneyiydi, uretim yolu degil).
+> COZUM ADAYI (K-54): graceful clearance-cap'in c2f'e tasinmasi + buyuk
+> parcada margin=0 istisnasi (parca-plaka temas kuralini Eren'le netlestir).
+> k51d yine exit 4 verecek; plan2 542.5 DETERMINISTIK dogrulandi (k51c ile
+> birebir ayni deger, ikinci kosu).
+
+> **2026-07-15 — K-53 PLANI: FAST'I MAX'A YAKLASTIR (Eren yonu: "fastleri
+> gelistirelim, olmadi max'i opsiyon sunariz"):** Teshis — quality yalniz POZ
+> SAYISINI kontrol eder (fast=8, max=AX24; decode ~3-4x). Ucurum dagilimi
+> poz-duyarliligi dogruluyor: plan2 +%0.2 (8 yetiyor) / plan3 +%4.2 /
+> d4 +%19 (kavite aileleri; d4'te ayrica R11'in 588p'de auto-tavan disi
+> kalmasi). DENEY PLANI (k51d baseline kurulduktan SONRA, kapiya karsi):
+> (a) K-53a plan3 @fast n_orientations {12,16,24} taramasi — kazanc/sure
+> egrisi; (b) K-53b d4 ayni tarama; (c) kazanan konfig eval_gate 4-set
+> PASS ise uretim default guncelle (aile-kosullu poz seti adayi: kavite
+> ailelerinde 12-16, kutu/plaka'da 8 — sure yalniz kazanan yerde artar).
+> Fallback: tarama kazandirmazsa quality=max UI opsiyonu onerilir.
+> NOT: evaluate_set(n_orientations=...) override zaten var (tune_bo kablosu).
+
 > **2026-07-15 — PLAN1 ROUTING CANLI-HATASI KAPANDI: TILT-ZORUNLU FIZIBILITE
 > KAPISI (Eren istegi "plan1'i hallet"):** kok mekanizma GEOMETRIK KESIN
 > bulundu: baseplate_v2 330.2x302 @335x335 plaka + no-go kolonu
