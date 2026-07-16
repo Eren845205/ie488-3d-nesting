@@ -576,7 +576,7 @@ class TestRichScenario:
                 assert len(port["rows"]) >= 1
                 assert isinstance(port["winner"], str)
 
-    def test_coarse_path_unchanged_after_double_voxelize_removal(self):
+    def test_coarse_path_unchanged_after_double_voxelize_removal(self, monkeypatch):
         """coarse_to_fine yolu deterministik + clearance-zorunlu referansı korur.
 
         45 box parça (>C2F_THRESHOLD=40) → coarse_to_fine yolu (solve_coarse_to_fine
@@ -590,7 +590,16 @@ class TestRichScenario:
         parça-çifti arasına >= 1 voxel boşluk koyar (bu instance'ın kaba pitch'inde
         1 voxel > 1mm; dürüst clearance maliyeti) -> yeni dürüst referans 86.4mm.
         36.0 sayısı ARTIK GEÇERSİZ (0-boşluk, üretilemez).
+
+        İZOLASYON (2026-07-16 bulgusu): senaryo no_go_bounds GEÇİRMEZ ->
+        run_pipeline geliştirici-lokal configs/plate.local.json'un no_go'sunu
+        çözer ve sentetik 250x250 plakaya hocanın no-go kolonu sızar (86.4
+        referansı no-go'suz dünyadan; no-go'lu SA 79.2'ye sapıyordu = makine-yerel
+        FAIL). resolve_no_go None'a sabitlenir — referansın tanımlı olduğu
+        koşul (test_ingest_zip_stl izolasyon deseninin no-go karşılığı).
         """
+        import src.runtime.plate_config as plate_cfg
+        monkeypatch.setattr(plate_cfg, "resolve_no_go", lambda root: None)
         parts = [{"id": f"b{i}", "name": f"box{i}", "qty": 1, "source": "box",
                   "width_mm": 30.0 + (i % 12), "depth_mm": 25.0 + (i % 7),
                   "height_mm": 18.0 + (i % 5)} for i in range(45)]
@@ -997,3 +1006,41 @@ class TestClearanceGate:
         note = dp._clearance_gate(["p1", "p2"], {}, 0.5, instr)
         assert note == ""  # gate hatasi nest'i BOZMAZ (fail-open)
         assert "devox patladi" in instr.get("clearance_check_error", "")
+
+
+# ---------------------------------------------------------------------------
+# K-53c (2026-07-16): aile poz-seti onerisi kablosu — rot-sokum thin_shell
+# NFV yolunda nfv_quality verilmemisse "max" (AX24) dolar; acik deger ezer.
+# ---------------------------------------------------------------------------
+
+def _kalite_sarici(monkeypatch):
+    """solve_nfv_kalite'yi sarip cagri kwargs'ini yakalar (gercek solve kosar)."""
+    import src.nesting3d.nfv_solve as nfv_mod
+    orijinal = nfv_mod.solve_nfv_kalite
+    yakalanan = {}
+
+    def sarici(inst, **kw):
+        yakalanan.update(kw)
+        return orijinal(inst, **kw)
+
+    monkeypatch.setattr(nfv_mod, "solve_nfv_kalite", sarici)
+    return yakalanan
+
+
+def test_rot_sokum_kabukta_nfv_quality_max_dolar(monkeypatch):
+    """nfv_quality verilmedi + rot-sokum thin_shell -> quality='max' (K-53c)."""
+    yakalanan = _kalite_sarici(monkeypatch)
+    sc = _shell_scenario(auto_family_routing=True)
+    sc.pop("rot_sokum_routing")  # uretim default'u (True)
+    run_pipeline(sc)
+    assert yakalanan.get("quality") == "max", yakalanan
+
+
+def test_acik_nfv_quality_aile_onerisini_ezer(monkeypatch):
+    """Senaryo acikca nfv_quality='fast' derse oneri EZILMEZ degil EZER."""
+    yakalanan = _kalite_sarici(monkeypatch)
+    sc = _shell_scenario(auto_family_routing=True)
+    sc.pop("rot_sokum_routing")
+    sc["nfv_quality"] = "fast"
+    run_pipeline(sc)
+    assert yakalanan.get("quality") == "fast", yakalanan
