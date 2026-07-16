@@ -914,6 +914,34 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > SIRADAKI: k51d = ayni sozlesme + tilt-zorunlu kapili routing (plan1 ->
 > heightmap-fast) -> 4 set legal ise BASELINE ILK KEZ KURULUR.
 
+> **2026-07-16 — K-53 POZ TARAMASI TAMAM (AILE-BAGIMLI karisik hukum; kanit
+> results/k53_poz_taramasi.json + scripts/k53_poz_taramasi.log):**
+> **d4 (kabuk-kavite): GO-egilimli** — n=8 276.5 / n=12 276.5 (kazanc 0!)
+> / n=16 261.0 (-%5.6, 25dk) / n=24 250.0 (-%9.6, 38dk; hepsi sokum-planli
+> legal, kilit 369-555 rot'la 0). **plan3 (duvar-kavite): NO-GO** — n=12
+> 622.0 (+%3.3 KOTU) / n=16 627.0 (+%4.2 KOTU) vs n=8 601.9; ilk-N master
+> pozlar (egikler dahil) plan3 duvar-istif dengesini BOZUYOR. DERSLER:
+> (1) poz kaldiraci yalniz d4-ailesinde ve 16'dan sonra aciliyor (12 bosa);
+> (2) "kac poz"dan cok "HANGI pozlar" — tarihsel kiyas: d4 AX24-max ham
+> 231.5 (K-46) < ilk-24 250.0 -> AX24 eksen-hizali seti ilk-N master'dan
+> ~18mm iyi; plan3'te fast n=8 601.9 zaten K-36 AX24-ham 598.5 PARITESINDE
+> -> plan3'un rekor farki (577.6) POZ DEGIL R11 farki. SONUC/ADAYLAR:
+> (a) d4-benzeri ailede oneri = AX24 setine gecis (fiilen quality=max poz
+> seti; eval kapisiyla), plan3'te poz isi YOK; (b) 220 hedefi icin asil
+> kaldirac R11'in hizlandirilmasi (K-55: settle/clearance orneklemesi saf
+> CPU — paralel/GPU ile ayni matematik, bit-ozdes sonuc) + R11'li "kalite
+> modu" opsiyonu; (c) genelleme aile-kosullu kalir (A5), kor-test held-out
+> sinavi bekliyor.
+
+> **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
+> plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
+> birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV
+> plan3 yavasligi K-53/K-55 konusu) · d4 276.5 (2. kez birebir; 548.8s) ·
+> plan1 INVALID (heightmap-c2f voxelize EXCEPTION — K-54 graceful
+> clearance-cap isi; pitch 1.016 @wall_aware=False). BASELINE kilidi K-54
+> cozulunce k51e ile denenir. Kanit: results/eval_gate_last.json;
+> scripts/k51d_baseline_kilit.log.
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
