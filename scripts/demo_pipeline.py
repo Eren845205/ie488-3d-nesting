@@ -731,7 +731,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     n_orient = payload["n_orient"]
     seed = payload["seed"]
     nesting_mode = payload.get("nesting_mode", "auto")  # akıllı default: veri-odaklı NFV/heightmap
-    nfv_quality = payload.get("nfv_quality", "fast")  # NFV: "fast" (n=8) | "max" (donanım-tavanı)
+    # NFV: "fast" (n=8) | "max" (AX24, donanım-tavanı). None (verilmedi) ->
+    # auto modda aile ONERISI doldurur (K-53c: rot-sokum thin_shell -> max);
+    # oneri yoksa "fast". Acik deger HER ZAMAN kazanir.
+    nfv_quality = payload.get("nfv_quality")
     time_budget_sec = payload.get("time_budget_sec")  # #22: opsiyonel; None = bugünkü davranış BİREBİR
     wall_aware_pitch = bool(payload.get("wall_aware_pitch", False))  # K-19 OPT-IN; False=davranis birebir
     auto_family_routing = bool(payload.get("auto_family_routing", False))  # F5 OPT-IN; False=davranis birebir
@@ -832,6 +835,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                                        no_go_bounds=no_go_bounds)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
+            # K-53c: aile poz-seti onerisi yalniz ACIK deger YOKKEN dolar
+            # (payload nfv_quality=None); eski davranis "fast" korunur.
+            if nfv_quality is None:
+                nfv_quality = getattr(_dec, "nfv_quality", "fast")
             # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
             # ac. Bayrak False iken wall_aware zaten hic uretilmez. Guvenli getattr okuma.
             if auto_family_routing and getattr(_dec, "wall_aware", False):
@@ -966,7 +973,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 clearance_mm=WEB_MIN_CLEARANCE_MM,
                 no_go_bounds=no_go_bounds,
                 n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
-                quality=nfv_quality,
+                quality=(nfv_quality or "fast"),  # None = oneri dolmadi (explicit "nfv" modu)
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
                 r11="auto",  # K-50 kablosu: kucuk/orta sette mesh-duzeyi son
@@ -1752,7 +1759,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "seed": seed,
             "pricing_rules": scenario["pricing_rules"],
             "nesting_mode": scenario.get("nesting_mode", "auto"),
-            "nfv_quality": scenario.get("nfv_quality", "fast"),
+            "nfv_quality": scenario.get("nfv_quality"),  # None -> aile onerisi (K-53c)
             "no_go_bounds": no_go_bounds,  # K-45: yasak bolge (plaka ozelligi)
             "time_budget_sec": scenario.get("time_budget_sec"),  # #22: None = bugünkü davranış
             # K-19 OPT-IN cidar-duyarli pitch. Yoksa False = gozcu/default davranis

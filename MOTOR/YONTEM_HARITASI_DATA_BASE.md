@@ -933,6 +933,56 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > modu" opsiyonu; (c) genelleme aile-kosullu kalir (A5), kor-test held-out
 > sinavi bekliyor.
 
+> **2026-07-16 — K-53c: d4 @ AX24 POZ SETI = GO (Eren karari (a); kanit
+> results/k53c_ax24_d4.json + scripts/k53c_ax24_d4.log):** eval sozlesmesi
+> (335+nogo+2mm+rot-kabul, seed=42) altinda deneme4 n_orientations="ax24"
+> -> **231.5mm SOKUM-PLANLI LEGAL** (588/588, clearance 2.018, 553 kilit
+> -> rot 0, 5 cert; 1742s=29dk). Kiyas: n=8 276.5'ten **-45.0mm (-%16.3)**;
+> ilk-24 250.0'dan -18.5mm — "HANGI pozlar" dersi OLCUMLE dogrulandi (AX24
+> egiksiz seti, egikli ilk-N master'i ezer); K-46 max ham 231.5 ile BIREBIR
+> PARITE (fast sampiyon yolunda AX24 = max kalitesi, r11 auto-tavan disi
+> 588p>150). Sure de LEHTE: 1742s < ilk-24 2272s (egik pozlarin decode'u
+> bosa masrafmis). Sampiyonla (220.69 = max+R11) kalan fark 10.8mm = SAF
+> R11 -> K-55 hizlandirmanin degeri netlesti. MEKANIZMA: evaluate_set /
+> _run_champion artik n_orientations="ax24" kabul eder (_poz_seti_cevir:
+> "ax24" -> quality="max" cevirisi, NFV dali; heightmap dalinda acik red;
+> int/None bit-ozdes; +5 test). SIRADAKI: aile-kosullu uretim default'u
+> (d4-benzeri kabuk-kavite ailesinde AX24, digerlerinde n=8) — 4-set
+> eval_gate PASS kapisiyla kablolanir; plan3'te poz isi YOK (K-53).
+
+> **2026-07-16 — K-53d: AILE-KOSULLU AX24 DEFAULT KABLOLANDI + 4-SET EVAL
+> DOGRULADI (kanit scripts/k53d_ax24_default_eval.log +
+> results/eval_gate_last.json):** MEKANIZMA: `ModeDecision.nfv_quality`
+> alani (default "fast" = geriye uyum) — rot-sokum thin_shell dalinda
+> "max" (AX24) onerilir; demo_pipeline (payload nfv_quality=None ->
+> oneri dolar, acik deger EZER) + eval_gate (_run_champion, override yoksa
+> dec.nfv_quality) ayni default'u okur = uretim paritesi. 4-SET SONUC:
+> **d4 231.5 SOKUM-PLANLI (553 kilit->rot 0, 5 cert; 1990s) = K-53c
+> BIREBIR — fast default'u 276.5'ten -%16.3 iyilesti** · plan2 542.5
+> (4. kez birebir) · plan3 601.9 (3. kez birebir; 5835s) — thin_shell
+> disi aileler BIT-OZDES = kablolama regresyonsuz · plan1 INVALID (K-54
+> bilinen bloker, bu isten bagimsiz) -> exit 4, baseline yine kilitlenmedi
+> (K-54'e bagli). TDD: test_adaptive_params +2 / test_eval_gate +2 /
+> test_demo_pipeline +2 (sarici desenle gercek solve); suitler yesil
+> (28+36+58). d4 sampiyon zinciri artik: fast-default 231.5 -> +R11
+> "kalite modu" 220.69 (fark 10.8mm = saf R11; K-55 hizlandirma adayi).
+
+> **2026-07-16 — SUREC BULGUSU: TestRichScenario determinizm testi
+> gelistirici-lokal plate.local.json'a ACIKTI (tam suite 2841/2842'de tek
+> kirmizi; K-53c+d diff'inden BAGIMSIZ — stash-bisect'le kanitli):**
+> test_coarse_path_unchanged... senaryosu no_go_bounds GECIRMIYOR ->
+> run_pipeline configs/plate.local.json'un no_go'sunu cozup sentetik
+> 250x250 plakaya hocanin no-go kolonunu uyguluyordu; 86.4 referansi
+> no-go'suz dunyadan (a274628, 2026-07-06 — plate.local'e no_go 07-11'de
+> K-45 ile girdi), no-go'lu SA 79.2'ye sapiyor (ilginc: kisit ALTINDA
+> daha iyi lokal optimum = 86.4 referansi zayif optimum sinyali).
+> FIX: resolve_no_go teste monkeypatch'le None (test_ingest_zip_stl
+> izolasyon deseninin no-go karsiligi); 86.4 izole yesil. NOT:
+> test_plaka_ayar_post gercek configs/ dosyasina yazip finally'de geri
+> yukluyor (mtime yeniler, icerik korunur) — xdist/paralel kosuda yaris
+> riski acik yon. DERS: "deterministik referans" testleri ortam-lokal
+> config'leri (plate.local.json ailesi) SIFIRLAMADAN kosulmamali.
+
 > **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
 > birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV

@@ -328,3 +328,29 @@ def test_mode_decision_geriye_uyum():
     assert getattr(d, "wall_aware", None) is False
     d2 = ModeDecision("heightmap", "kabuk", wall_aware=True)
     assert d2.wall_aware is True
+
+# ---------------------------------------------------------------------------
+# K-53c (2026-07-16): rot-sokum thin_shell dalinda poz-seti onerisi AX24
+# (nfv_quality="max"; d4 eval 231.5 vs n=8 276.5). Diger tum yollarda
+# default "fast" = geriye uyum.
+# ---------------------------------------------------------------------------
+
+def test_rot_sokum_thin_shell_ax24_onerisi():
+    """d4-benzeri aile: NFV+rot yolu poz setini AX24 (max) onerir (K-53c)."""
+    dec = predict_nfv_benefit(_inst([_shell("sh", 100, 100, 80)]),
+                              family_routing=True, rot_sokum=True)
+    assert dec.mode == "nfv"
+    assert dec.nfv_quality == "max"
+    assert "ax24" in dec.reason.lower()
+
+
+def test_nfv_quality_diger_yollarda_fast():
+    """Oneri yalniz rot-sokum thin_shell'de: kutu/plaka/cavity-aday 'fast'."""
+    kutu = predict_nfv_benefit(_inst([_box("a", 40, 40, 40, 5)]))
+    cavity = predict_nfv_benefit(
+        _inst([_box("c", 120, 40, 18, 3), _box("d", 90, 30, 22, 3)]))
+    kabuk_eski = predict_nfv_benefit(_inst([_shell("sh", 100, 100, 80)]),
+                                     family_routing=True, rot_sokum=False)
+    assert kutu.nfv_quality == "fast"
+    assert cavity.nfv_quality == "fast"
+    assert kabuk_eski.nfv_quality == "fast"

@@ -162,6 +162,12 @@ class ModeDecision:
     mode: str       # "nfv" | "heightmap"
     reason: str
     wall_aware: bool = False
+    # NFV dali icin poz-seti ONERISI (K-53c, 2026-07-16): "fast" (n=8) |
+    # "max" (AX24). Yalniz rot-sokum thin_shell dalinda "max" uretilir
+    # (d4@AX24 231.5 = -%16.3 vs n=8 276.5, max-parite, sure LEHTE).
+    # DEFAULT "fast" = geriye uyum; tuketici acik nfv_quality/n_orientations
+    # verdiyse o KAZANIR (oneri yalniz default'u doldurur).
+    nfv_quality: str = "fast"
 
 
 def predict_nfv_benefit(
@@ -274,11 +280,16 @@ def predict_nfv_benefit(
                 # rot_kabul) cozulur. tube icin rot-dunyasi kaniti YOK ->
                 # eski yol. rot_sokum default False = BIT-OZDES eski davranis.
                 if rot_sokum and _fam == "thin_shell":
+                    # K-53c (2026-07-16): bu ailede poz seti AX24 (quality=max)
+                    # onerilir — d4 eval 231.5 vs n=8 276.5 (-%16.3), K-46
+                    # max-parite, sure ilk-24'ten de kisa. Oneri yalniz
+                    # default'u doldurur (acik quality/n_orientations ezer).
                     return ModeDecision(
                         "nfv",
                         f"kabuk ailesi ({_fam}, guven={_conf:.2f}) + rot-sokum "
                         f"dunyasi: NFV+rot yolu (K-46/K-52; kilit rot-kabul "
-                        f"zinciriyle aklanir)",
+                        f"zinciriyle aklanir; poz seti AX24, K-53c)",
+                        nfv_quality="max",
                     )
                 return ModeDecision(
                     "heightmap",

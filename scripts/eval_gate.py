@@ -129,6 +129,21 @@ def _load_instance(name):
     return res.instance
 
 
+def _poz_seti_cevir(n_orientations):
+    """K-53c: n_orientations="ax24" -> (quality, n_orientations) cifti.
+
+    K-53 dersi (2026-07-16): "kac poz" degil "HANGI pozlar" — ilk-N master
+    seti (egik 8..11 dahil) d4'te AX24'ten ~18mm geri (250.0 vs ham 231.5).
+    "ax24" = quality=max poz seti (24 eksen-hizali, egiksiz; RAM freni
+    nfv_solve icinde). int/None birebir eski davranis (fast).
+    """
+    if isinstance(n_orientations, str):
+        if n_orientations.lower() != "ax24":
+            raise ValueError(f"bilinmeyen poz seti: {n_orientations!r}")
+        return "max", None
+    return "fast", n_orientations
+
+
 def _run_champion(name, inst, seed, budget=None, n_orientations=None):
     """Set'in URETIM DEFAULT yolunu kosar -> (result, nfv_tel | None).
 
@@ -169,12 +184,22 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None):
         # kosuyor ve dz-export (7add014) r11 kazancini musteri STL/GLB'sine
         # yansitiyor — kapi da AYNI default'larla olcer. (Eski r11=False
         # karari dz'nin height'a yansimadigi Sprint-3 donemine aitti.)
+        _quality, _n_or = _poz_seti_cevir(n_orientations)
+        # K-53c uretim paritesi: acik override YOKSA aile poz-seti onerisi
+        # (rot-sokum thin_shell -> "max"/AX24) kapida da gecerli — pipeline
+        # ile ayni default'la olculur. Override (int/"ax24") HER ZAMAN ezer.
+        if n_orientations is None:
+            _quality = getattr(dec, "nfv_quality", "fast")
         res, _tel = solve_nfv_kalite(
             inst, plate_w_mm=pw, plate_d_mm=pd,
             clearance_mm=WEB_MIN_CLEARANCE_MM, no_go_bounds=NOGO_STD,
-            quality="fast", seed=seed,
-            n_orientations=n_orientations, r11="auto", rot_kabul="auto")
+            quality=_quality, seed=seed,
+            n_orientations=_n_or, r11="auto", rot_kabul="auto")
         return res, _tel
+    if isinstance(n_orientations, str):
+        raise ValueError(
+            f"poz seti adi ({n_orientations!r}) yalniz NFV dalinda gecerli; "
+            f"{name} heightmap'e yonlendi")
     wall = bool(getattr(dec, "wall_aware", False))
     pitch = suggest_pitch(inst, wall_aware=wall)
     kw = dict(coarse_pitch=None, fine_pitch=pitch,

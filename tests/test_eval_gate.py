@@ -337,3 +337,107 @@ def test_run_champion_heightmap_dali_nogo_tasir(monkeypatch):
     assert tel is None  # heightmap dalinda nfv telemetrisi yok
     assert yakalanan["no_go_bounds"] == eg.NOGO_STD
     assert yakalanan["clearance_mm"] == 2.0
+
+
+# ---------------------------------------------------------------------------
+# K-53c: n_orientations="ax24" poz seti (quality=max cevirisi)
+# ---------------------------------------------------------------------------
+
+def test_poz_seti_cevir_none_ve_int_birebir():
+    from scripts.eval_gate import _poz_seti_cevir
+    assert _poz_seti_cevir(None) == ("fast", None)
+    assert _poz_seti_cevir(12) == ("fast", 12)
+
+
+def test_poz_seti_cevir_ax24_max():
+    from scripts.eval_gate import _poz_seti_cevir
+    assert _poz_seti_cevir("ax24") == ("max", None)
+    assert _poz_seti_cevir("AX24") == ("max", None)  # buyuk/kucuk duyarsiz
+
+
+def test_poz_seti_cevir_bilinmeyen_reddedilir():
+    import pytest
+    from scripts.eval_gate import _poz_seti_cevir
+    with pytest.raises(ValueError, match="bilinmeyen poz seti"):
+        _poz_seti_cevir("egik24")
+
+
+def test_run_champion_ax24_nfv_dalinda_max(monkeypatch):
+    import scripts.eval_gate as eg
+    yakalanan = {}
+
+    def sahte_kalite(inst, **kw):
+        yakalanan.update(kw)
+        return "NFV_SONUC", None
+
+    class _Dec:
+        mode = "nfv"
+        wall_aware = False
+
+    import src.nesting3d.nfv_solve as nfv_mod
+    import src.nesting3d.adaptive_params as ap_mod
+    monkeypatch.setattr(nfv_mod, "solve_nfv_kalite", sahte_kalite)
+    monkeypatch.setattr(ap_mod, "predict_nfv_benefit", lambda inst, **k: _Dec())
+    r, _ = eg._run_champion("t", _mini_inst(), 42, n_orientations="ax24")
+    assert r == "NFV_SONUC"
+    assert yakalanan["quality"] == "max"          # AX24 = max poz seti
+    assert yakalanan["n_orientations"] is None    # ilk-N override DEVRE DISI
+
+
+def test_run_champion_ax24_heightmap_dalinda_reddedilir(monkeypatch):
+    import pytest
+    import scripts.eval_gate as eg
+
+    class _Dec:
+        mode = "heightmap"
+        wall_aware = False
+
+    import src.nesting3d.adaptive_params as ap_mod
+    monkeypatch.setattr(ap_mod, "predict_nfv_benefit", lambda inst, **k: _Dec())
+    with pytest.raises(ValueError, match="yalniz NFV dalinda"):
+        eg._run_champion("t", _mini_inst(), 42, n_orientations="ax24")
+
+
+def test_run_champion_aile_onerisi_max_kullanilir(monkeypatch):
+    """K-53c: acik override yokken dec.nfv_quality='max' kapida da gecerli."""
+    import scripts.eval_gate as eg
+    yakalanan = {}
+
+    def sahte_kalite(inst, **kw):
+        yakalanan.update(kw)
+        return "NFV_SONUC", None
+
+    class _Dec:
+        mode = "nfv"
+        wall_aware = False
+        nfv_quality = "max"
+
+    import src.nesting3d.nfv_solve as nfv_mod
+    import src.nesting3d.adaptive_params as ap_mod
+    monkeypatch.setattr(nfv_mod, "solve_nfv_kalite", sahte_kalite)
+    monkeypatch.setattr(ap_mod, "predict_nfv_benefit", lambda inst, **k: _Dec())
+    eg._run_champion("t", _mini_inst(), 42)
+    assert yakalanan["quality"] == "max"
+
+
+def test_run_champion_int_override_aile_onerisini_ezer(monkeypatch):
+    """Acik n_orientations=12 verilirse aile onerisi ('max') EZILIR (fast+12)."""
+    import scripts.eval_gate as eg
+    yakalanan = {}
+
+    def sahte_kalite(inst, **kw):
+        yakalanan.update(kw)
+        return "NFV_SONUC", None
+
+    class _Dec:
+        mode = "nfv"
+        wall_aware = False
+        nfv_quality = "max"
+
+    import src.nesting3d.nfv_solve as nfv_mod
+    import src.nesting3d.adaptive_params as ap_mod
+    monkeypatch.setattr(nfv_mod, "solve_nfv_kalite", sahte_kalite)
+    monkeypatch.setattr(ap_mod, "predict_nfv_benefit", lambda inst, **k: _Dec())
+    eg._run_champion("t", _mini_inst(), 42, n_orientations=12)
+    assert yakalanan["quality"] == "fast"
+    assert yakalanan["n_orientations"] == 12
