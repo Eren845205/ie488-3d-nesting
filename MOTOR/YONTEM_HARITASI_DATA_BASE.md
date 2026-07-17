@@ -967,7 +967,29 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > (28+36+58). d4 sampiyon zinciri artik: fast-default 231.5 -> +R11
 > "kalite modu" 220.69 (fark 10.8mm = saf R11; K-55 hizlandirma adayi).
 
-> **2026-07-16 — SUREC BULGUSU: TestRichScenario determinizm testi
+> **2026-07-17 — K-55: R11/CLEARANCE HIZLANDIRMA = GO (bit-ozdes, d4
+> uretim-olcegi ~9x; kanit scripts/k55_d4_hiz_paritesi.log +
+> scripts/k55_bench_settle.py):** MEKANIZMA (karar DEGISTIRMEZ, yalniz hiz;
+> veri-tipine bakan dal YOK — Eren overfit sorusu 2026-07-16): (1) cKDTree
+> .query cok-cekirdek `workers` — kesin NN mesafeleri worker'dan bagimsiz;
+> OLCUM 16-cekirdek 48p@12000: w=4 30.8s / **w=6 21.0s optimum** / w=8 24.7
+> / w=-1 35.9 (asiri-abonelik ZARAR) -> politika min(6, cores) + R11_WORKERS
+> env, TEK KAYNAK clearance.py; (2) `_uygun` icin distance_upper_bound
+> budamasi — KESIN esdeger (sonlu donen d kesin; min<esik <=> (d<esik).any();
+> sinir d==esik iki yolda False; en kotu durumda tam sorgu maliyeti =
+> asla yavaslatmaz); (3) en-dar-esik-once komsu siralamasi (AND
+> sira-bagimsiz). SENTETIK: 97.1s -> 21.0s (4.6x), dz_md5 BIREBIR.
+> URETIM KANITI (K-52 akisi birebir replay): h 229.33 -> **220.69 BIREBIR**
+> · clear **2.006 BIREBIR** · rot kilit **0/588** (5 cert; 2.7dk) · settle+
+> rafine **393dk -> 43.5dk (~9.0x)** — es-zamanli webapp suiti yukune ragmen;
+> gercek veride budama sentetikten COK kazandirdi. NOT: replay (solve_nfv
+> max) 75.3dk (K-52 18.4dk — CPU cekismesi; R11 disinda, K-55 kapsami degil).
+> TDD: test_r11_continuous_settle +4 (workers esitligi / scipy sozlesme /
+> min_clearance workers / env siniri). ETKI: R11 "kalite modu" opsiyonunun
+> onundeki sure engeli kalkti (d4 zinciri fast 231.5 -> +R11 220.69 artik
+> ~45dk); R11 auto-tavani (150) yeniden degerlendirilebilir (ADAY).
+> ACIK: hizlanma CARPANI aile-bagimli olabilir (sikisiklik/bulut boyutu) —
+> k55b adayi: d5/p2 R11 replay hiz+parite olcumu.
 > gelistirici-lokal plate.local.json'a ACIKTI (tam suite 2841/2842'de tek
 > kirmizi; K-53c+d diff'inden BAGIMSIZ — stash-bisect'le kanitli):**
 > test_coarse_path_unchanged... senaryosu no_go_bounds GECIRMIYOR ->

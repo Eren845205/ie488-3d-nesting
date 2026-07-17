@@ -40,6 +40,15 @@ MAX_SWEEPS = 8
 _EPS_KORU = 1e-3              # "mevcut mesafeyi koru" toleransi
 _DUR_EPS_MM = 0.01            # sweep toplam hareketi bunun altindaysa yakinsadi
 
+# K-55 (2026-07-16): cKDTree.query cok-cekirdek. AYNI matematik — kesin NN
+# mesafeleri worker sayisindan bagimsiz, min indirgemesi sira-bagimsiz ->
+# dz BIT-OZDES (kanit: k55_bench_settle dz_md5 + d4 K-52 replay paritesi).
+# OLCUM (16-cekirdek, 48p@12000): orijinal 97.1s -> w=4 30.8 / w=6 21.0 /
+# w=8 24.7 / w=-1 35.9 (asiri-abonelik ZARAR) -> tavan 6. Worker sayisi
+# SONUCU degistirmez (yalniz hiz) — determinizm sozlesmesi bozulmaz.
+# Politika TEK KAYNAK clearance.py'de (R11_WORKERS env + min(6, cores)).
+from src.nesting3d.clearance import DEFAULT_WORKERS, _default_workers  # noqa: F401
+
 
 @dataclass
 class ContinuousSettleResult:
@@ -93,6 +102,7 @@ def continuous_z_settle(
     kaba_adim_mm: float = KABA_ADIM_MM,
     ince_adim_mm: float = INCE_ADIM_MM,
     max_sweeps: int = MAX_SWEEPS,
+    workers: int = DEFAULT_WORKERS,
 ) -> ContinuousSettleResult:
     """Yerlesik mesh listesini surekli z'de oturt. Mesh'ler DEGISTIRILMEZ;
     donen dz uygulanacak dusmelerdir (m.apply_translation([0,0,-dz[i]]))."""
@@ -116,8 +126,21 @@ def continuous_z_settle(
         """i (dzi kadar dusmus) ile j (mevcut dz[j]) arasi min mesafe.
         Bulutlar ORIJINAL koordinatta; goreli kaydirma sorguya verilir."""
         goreli = dzi - dz[j]
-        d, _ = trees[j].query(clouds[i] - np.array([0.0, 0.0, goreli]), k=1)
+        d, _ = trees[j].query(clouds[i] - np.array([0.0, 0.0, goreli]), k=1,
+                              workers=workers)
         return float(np.min(d))
+
+    def _esik_alti(i: int, j: int, dzi: float, esik: float) -> bool:
+        """min_mesafe(i,j) < esik testi — distance_upper_bound=esik budamali.
+
+        KESIN esdeger (K-55): bound disindaki noktalar inf doner; sonlu donen
+        her d kesin mesafedir. min(d)<esik <=> (d<esik).any() — strict
+        karsilastirma oldugundan sinirdaki (d==esik) nokta iki yolda da False.
+        Karar bit-ozdes, sorgu agaci erken budandigi icin cok daha ucuz."""
+        goreli = dzi - dz[j]
+        d, _ = trees[j].query(clouds[i] - np.array([0.0, 0.0, goreli]), k=1,
+                              distance_upper_bound=esik, workers=workers)
+        return bool((d < esik).any())
 
     def _komsular(i: int) -> List[int]:
         bi = bounds[i]
@@ -150,6 +173,10 @@ def continuous_z_settle(
             for j in komsu:
                 d0 = _pair_min(i, j, dz[i])
                 esikler[j] = min(req, d0) - _EPS_KORU
+            # K-55: en dar esik once — _uygun AND'inde red en cok oradan
+            # gelir, erken cikis sorgu sayisini dusurur. Karar AND uzerinden
+            # sira-bagimsiz -> dz BIT-OZDES; tie-break j (deterministik).
+            komsu = sorted(komsu, key=lambda j: (esikler[j], j))
             # NOT: yasak-bolge kolonu TAM yukseklik boyunca yasak oldugundan
             # xy-mesafesi z-dusmesiyle DEGISMEZ — baslangicta legal olan layout
             # dusmeyle ihlale giremez; kolon icin ek kontrol gerekmez (ngo
@@ -157,7 +184,7 @@ def continuous_z_settle(
 
             def _uygun(dzi: float) -> bool:
                 for j in komsu:
-                    if _pair_min(i, j, dzi) < esikler[j]:
+                    if _esik_alti(i, j, dzi, esikler[j]):
                         return False
                 return True
 

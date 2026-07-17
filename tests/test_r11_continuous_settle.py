@@ -95,3 +95,76 @@ def test_result_fields():
     assert r.dz.shape == (1,)
     assert r.sweeps_used >= 1
     assert r.telemetri["req_mm"] == pytest.approx(2.1)
+
+
+# ---------------------------------------------------------------------------
+# K-55 (2026-07-16): cok-cekirdek + distance_upper_bound budamasi BIT-OZDES
+# ---------------------------------------------------------------------------
+
+def _k55_sahne(n=10, seed=3):
+    import numpy as np
+    import trimesh
+    rng = np.random.default_rng(seed)
+    meshes = []
+    z_top = [0.0, 0.0]
+    for i in range(n):
+        k = i % 2
+        w, d, h = rng.uniform(15, 25, 3)
+        gap = float(rng.uniform(3.0, 8.0))
+        m = trimesh.creation.box(extents=[w, d, h])
+        m.apply_translation([k * 35 + w / 2, w / 2, z_top[k] + gap + h / 2])
+        z_top[k] += gap + h
+        meshes.append(m)
+    return meshes
+
+
+def test_k55_workers_dz_bit_ozdes():
+    """worker sayisi SONUCU degistirmez: w=1 ve w=4 dz vektoru birebir."""
+    import numpy as np
+    from src.nesting3d.continuous_settle import continuous_z_settle
+    meshes = _k55_sahne()
+    r1 = continuous_z_settle(meshes, clearance_mm=2.0,
+                             samples_per_mesh=800, workers=1)
+    r4 = continuous_z_settle(meshes, clearance_mm=2.0,
+                             samples_per_mesh=800, workers=4)
+    assert np.array_equal(r1.dz, r4.dz)
+    assert r1.height_mm == r4.height_mm
+
+
+def test_k55_esik_budamasi_kesin_esdeger():
+    """Dayandigimiz scipy sozlesmesi: query(distance_upper_bound=esik) ile
+    'herhangi d < esik' testi, tam min(d) < esik ile AYNI karari verir
+    (sonlu donen d'ler kesin mesafe; sinirdaki d==esik iki yolda da False)."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+    rng = np.random.default_rng(11)
+    a = rng.uniform(0, 50, (400, 3))
+    b = rng.uniform(20, 70, (400, 3))
+    tree = cKDTree(b)
+    d_tam, _ = tree.query(a, k=1)
+    tam_min = float(np.min(d_tam))
+    for esik in (0.5, 1.0, float(tam_min), tam_min + 1e-9, 5.0, 30.0):
+        d_bud, _ = tree.query(a, k=1, distance_upper_bound=esik)
+        assert bool((d_bud < esik).any()) == (tam_min < esik), esik
+
+
+def test_k55_min_clearance_workers_bit_ozdes():
+    """min_clearance workers=1 / workers=-1 ayni raporu verir."""
+    from src.nesting3d.clearance import min_clearance
+    meshes = _k55_sahne(n=6)
+    r1 = min_clearance(meshes, samples_per_mesh=500, workers=1)
+    r2 = min_clearance(meshes, samples_per_mesh=500, workers=-1)
+    assert r1.min_mm == r2.min_mm
+    assert r1.worst_pair == r2.worst_pair
+    assert r1.n_pairs_checked == r2.n_pairs_checked
+
+
+def test_k55_default_workers_sinirlari(monkeypatch):
+    """R11_WORKERS env override + tavan-6/taban-1 kurali."""
+    from src.nesting3d.continuous_settle import _default_workers
+    monkeypatch.setenv("R11_WORKERS", "3")
+    assert _default_workers() == 3
+    monkeypatch.setenv("R11_WORKERS", "bozuk")
+    assert 1 <= _default_workers() <= 6
+    monkeypatch.delenv("R11_WORKERS")
+    assert 1 <= _default_workers() <= 6

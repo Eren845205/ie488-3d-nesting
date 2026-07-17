@@ -20,6 +20,25 @@ import trimesh
 from scipy.spatial import cKDTree
 
 
+# K-55 (2026-07-16): cKDTree.query cok-cekirdek — kesin NN mesafeleri worker
+# sayisindan bagimsiz (rapor BIT-OZDES, yalniz hiz). OLCUM (16-cekirdek,
+# 48p@12000, continuous_settle bench): w=6 optimum, w=-1 asiri-abonelik ZARAR
+# -> tavan 6 + R11_WORKERS env override (tek politika; continuous_settle
+# ayni sabiti import eder).
+def _default_workers() -> int:
+    import os
+    env = os.environ.get("R11_WORKERS")
+    if env:
+        try:
+            return int(env)
+        except ValueError:
+            pass
+    return max(1, min(6, os.cpu_count() or 1))
+
+
+DEFAULT_WORKERS = _default_workers()
+
+
 @dataclass
 class ClearanceReport:
     min_mm: float                    # ölçülen global minimum (inf = temas adayı yok)
@@ -42,6 +61,7 @@ def min_clearance(
     samples_per_mesh: int = 3000,
     aabb_pad_mm: float = 15.0,
     seed: int = 0,
+    workers: int = DEFAULT_WORKERS,
 ) -> ClearanceReport:
     """Yerleştirilmiş mesh listesi için parça-çifti minimum mesafe raporu.
 
@@ -72,7 +92,9 @@ def min_clearance(
             checked += 1
             pts_i, _ = _get(i)
             _, tree_j = _get(j)
-            d, _idx = tree_j.query(pts_i, k=1)
+            # K-55: cok-cekirdek sorgu — kesin NN mesafeleri worker sayisindan
+            # bagimsiz, d.min() sira-bagimsiz -> rapor BIT-OZDES.
+            d, _idx = tree_j.query(pts_i, k=1, workers=workers)
             pair_min = float(d.min())
             if pair_min < best:
                 best, worst_pair = pair_min, (i, j)
