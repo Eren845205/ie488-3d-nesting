@@ -1030,6 +1030,20 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > deneyi, kiyas tabani degil); tilt pozlari n=4 setinde yok — plan1 rekor
 > isi ayri aday (K-43 multistart / hedefli-tilt mirasi).
 
+> **2026-07-17 — K-51e TAMAM = BASELINE ILK KEZ KILITLENDI (exit 0; kanit
+> results/eval_gate_baseline.json created 2026-07-17T17:05 + k51_baseline_kilit.log):**
+> 4/4 set LEGAL — plan1 **302.8** (112/112, kilit 0, clear 2.042; 356s;
+> K-54 kanit kosusuyla bit-ozdes) · plan2 **542.5** (4. kez birebir; 1188s) ·
+> plan3 **601.9** (3. kez birebir; **1640s=27dk** — onceki 96-155dk YUK
+> altindaydi, munhasir-kosuda 3-5x fark = K-57(a) kaniti) · deneme4 **231.5**
+> (K-53d birebir; 553 kilit->rot 0, 5 cert; 2095s). Toplam ~88dk (sakin
+> makine). ETKI: tune_bo exit(2) on-sarti ACILDI; bundan sonra her motor
+> degisikligi B2 esikleriyle bu tabana kiyaslanir (A1/A8). Kosu C: agacindan
+> (`fc63f6a` commit-temiz; D:\ie488 agaci bayat — K-53d emsali). NOT:
+> baseline json results/ gitignore'unda IZLENMIYOR — degerler burada kayitli;
+> dosyanin `git add -f` ile dondurulmasi Eren karari. SIRADAKI ADAYLAR:
+> K-57 kapi hizlandirma (set-paralel; §5) + K-56 plan1 hedefli-tilt (§5).
+
 > **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
 > birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV
@@ -1176,6 +1190,8 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
 | ~~H-16w~~ | ~~H-16 dirty-cache üretime bağlama~~ → **KAPANDI 2026-07-05** (E2E 5/5: 282.0 BİREBİR + **205s** (H-15p 553s'den 2.7×, K-19 orijinali 6272s'den **31×**) + cache telemetri hit %90.3 + RAM 1.17GB; MEDIUM-2 thread-safety YAPISAL kapalı: cache'li Bin3D _run_fine-lokal, parallel_decode OccupancyBin3D; reviewer PASS 0 C/H/M) | 6GB | — | ÜRETİMDE (wall_aware tetiği, `drop_cache=wall_aware_pitch`) | Kabuk koşusu artık ~3.4dk. LOW notları: thread-isolation test docstring'i geniş; `drop_cache_cap_mb` operatör-ayarlanamaz (default 300, peak 43.6MB — zararsız). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
+| **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** (baseplate'e eğik pozlar: master set 8-11 [20-35°] ve/veya `voxelize.orientation_overrides` parça-bazlı hedefli açı; K-43 multistart + plan1_hedefli_tilt scriptleri miras) | 6GB | Orta | **YÜKSEK (plan1)** — 302.8'in ~tamamı baseplate'in dik dikilme cezası (dik=302.7); düz poz no-go+335'te GEOMETRİK imkânsız (tilt-zorunlu kapı kanıtı). Manuel ~110 / eğik-SA deneyi 129ş. İlk adım beklentisi ~150-200; 129-110 bandı ince açı taraması ister | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL (eksen-hizalı, eğik yok); NFV plan1'de K-40 sert no-go. Ön-şart: k51e baseline kilidi → kapıya karşı ölçüm. |
+| **K-57** | **Eval-kapısı hızlandırma paketi** (Eren isteği 2026-07-17 "baseline çok hızlı değil"): (a) **münhasır-koşu politikası** — plan3 fast-NFV sakin makinede 27dk vs yüklü 96-155dk = en büyük çarpan CPU çekişmesi, SIFIR kod; (b) **set-paralel orkestrasyon** — 4 set sıralı yerine ayrı süreçlerde (RAM/VRAM-akıllı eşleme: ucuz plan1+d4 birlikte), duvar-saati ≈ en yavaş set → kapı ~30-40dk; (c) kapıda GPU decode yolunun gerçekten seçildiğinin telemetri teyidi (P3 ~2× kanıtlı); (d) kalıcı voxel önbelleği (STL-hash, pitch, poz-seti anahtarlı — ileri aday) | 6GB | (a) sıfır · (b) orta · (c) düşük · (d) orta | **YÜKSEK (iterasyon hızı)** — kapı 1-2.5h → hedef ~30-45dk; her motor değişikliğinin doğrulama maliyetini düşürür | Kanıt: k51e 2026-07-17 (sakin makine: p1 356s · p2 1188s · p3 1640s). Birebirlik kapısı geçerli: paralelleştirme sonuç SAYILARINI değiştirmemeli (süreç-izolasyonu bunu doğal sağlar; yine de 4-set parite koşusuyla kanıtlanır). |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
 ilerleme = **SÜPER BİLGİSAYAR** (A1 sürekli rotasyon + ince-pitch için bol VRAM). Erişim konteyner-app

@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "created": "2026-07-17T17:05:41",
+  "seed": 42,
+  "clearance_req_mm": 2.0,
+  "sets": {
+    "plan1": {
+      "legal_height_mm": 302.76901855468753,
+      "invalid_reason": null,
+      "height_mm": 302.76901855468753,
+      "n_placed": 112,
+      "n_total": 112,
+      "min_clearance_mm": 2.0419324949989246,
+      "n_locked": 0,
+      "n_locked_rot": null,
+      "rot_cert": null,
+      "rot_hata": null,
+      "sokum_planli": false,
+      "r11_uygulandi": false,
+      "r11_kazanc_mm": null,
+      "duration_s": 355.7
+    },
+    "plan2": {
+      "legal_height_mm": 542.5,
+      "invalid_reason": null,
+      "height_mm": 542.5,
+      "n_placed": 226,
+      "n_total": 226,
+      "min_clearance_mm": 2.072488432159538,
+      "n_locked": 219,
+      "n_locked_rot": 0,
+      "rot_cert": 4,
+      "rot_hata": null,
+      "sokum_planli": true,
+      "r11_uygulandi": false,
+      "r11_kazanc_mm": null,
+      "duration_s": 1187.5
+    },
+    "plan3": {
+      "legal_height_mm": 601.92,
+      "invalid_reason": null,
+      "height_mm": 601.92,
+      "n_placed": 109,
+      "n_total": 109,
+      "min_clearance_mm": 2.004208579295755,
+      "n_locked": 3,
+      "n_locked_rot": 0,
+      "rot_cert": 1,
+      "rot_hata": null,
+      "sokum_planli": true,
+      "r11_uygulandi": true,
+      "r11_kazanc_mm": 19.58,
+      "duration_s": 1639.5
+    },
+    "deneme4": {
+      "legal_height_mm": 231.5,
+      "invalid_reason": null,
+      "height_mm": 231.5,
+      "n_placed": 588,
+      "n_total": 588,
+      "min_clearance_mm": 2.0183675695425993,
+      "n_locked": 553,
+      "n_locked_rot": 0,
+      "rot_cert": 5,
+      "rot_hata": null,
+      "sokum_planli": true,
+      "r11_uygulandi": false,
+      "r11_kazanc_mm": null,
+      "duration_s": 2094.5
+    }
+  },
+  "verdict": "BASELINE-YOK"
+}
