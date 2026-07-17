@@ -395,8 +395,23 @@ def _bos_exception_sonucu(hata):
     }
 
 
+def _cocuk_env(fft_budget_mb=None):
+    """K-57c: paralel cocuk surecin ortami. fft_budget_mb verilirse
+    NFV_FFT_BUDGET_MB set edilir -> FFT dilimlemeye zorlanir (H-17, BIT-OZDES;
+    dilimli konvolusyon = ayni matematik) -> her cocugun RAM tepesi duser ->
+    es-zamanli NFV'ler OOM olmadan sigar. None (default) -> ustteki ortam
+    AYNEN korunur = bugunku davranis bit-ozdes. Acik cap ustteki env'i ezer
+    (paralel karari tekildir)."""
+    import os
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    if fft_budget_mb is not None:
+        env["NFV_FFT_BUDGET_MB"] = str(fft_budget_mb)
+    return env
+
+
 def _run_sets_parallel(sets, seed, skip_clearance, n_proc,
-                       heldout_final=False, reason=None, _spawn=None):
+                       heldout_final=False, reason=None, fft_budget_mb=None,
+                       _spawn=None):
     """K-57b: her seti AYRI python surecinde kos, sonuclari birlestir.
 
     Duvar-saati ~ en yavas set (siralida toplamlarin toplami; k51e olcumu:
@@ -416,7 +431,6 @@ def _run_sets_parallel(sets, seed, skip_clearance, n_proc,
     tmpdir = Path(tempfile.mkdtemp(prefix="eval_gate_k57_"))
 
     def _gercek_spawn(name, out_path):
-        import os
         cmd = [sys.executable, "-m", "scripts.eval_gate", "--sets", name,
                "--seed", str(seed), "--json-out", str(out_path)]
         if skip_clearance:
@@ -425,7 +439,7 @@ def _run_sets_parallel(sets, seed, skip_clearance, n_proc,
             cmd.append("--heldout-final")
             if reason:
                 cmd += ["--reason", reason]
-        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        env = _cocuk_env(fft_budget_mb)
         return subprocess.Popen(
             cmd, cwd=str(_ROOT), env=env, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, encoding="utf-8",
@@ -504,6 +518,11 @@ def main():
     ap.add_argument("--json-out", type=Path, default=None,
                     help="cocuk modu (K-57b ic kullanim): sonuclari bu dosyaya "
                          "yaz; LAST/kiyas/baseline ATLANIR")
+    ap.add_argument("--fft-budget-mb", type=float, default=None,
+                    help="K-57c: --parallel cocuklarina NFV_FFT_BUDGET_MB cap'i "
+                         "gecir (FFT dilimleme, H-17 bit-ozdes; es-zamanli NFV "
+                         "RAM tepesini dusurur -> OOM'suz gercek paralellik). "
+                         "Ornek: 350. Yalniz --parallel ile anlamli.")
     args = ap.parse_args()
 
     sets = [s.strip() for s in args.sets.split(",") if s.strip()]
@@ -534,7 +553,8 @@ def main():
         # K-57b: setler ayri sureclerde — duvar-saati ~ en yavas set.
         results = _run_sets_parallel(
             sets, args.seed, args.skip_clearance, args.parallel,
-            heldout_final=args.heldout_final, reason=args.reason)
+            heldout_final=args.heldout_final, reason=args.reason,
+            fft_budget_mb=args.fft_budget_mb)
         for name in sets:
             _print_set_ozeti(name, results[name])
     else:

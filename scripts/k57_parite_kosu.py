@@ -39,10 +39,23 @@ class _TeeLog:
 def main():
     LOG.write_text("", encoding="utf-8")
     sys.stdout = _TeeLog(sys.stdout)
-    print("K-57b PARITE + WALL OLCUMU — eval_gate --parallel 2 (4 set)")
+    # K-57c: FFT_BUDGET_MB env (opsiyonel) verilirse cocuklara cap gecer ->
+    # dilimleme (H-17 bit-ozdes) -> OOM'suz gercek paralellik. Yoksa K-57b
+    # ciplak paralel (bugunku parite kosusu). Ornek:
+    #   NFV_FFT_BUDGET_MB=350 python -m scripts.detach_run k57_parite_kosu
+    import os
+    cap = os.environ.get("NFV_FFT_BUDGET_MB")
+    argv = ["eval_gate", "--parallel", "2"]
+    if cap:
+        argv += ["--fft-budget-mb", cap]
+        # runner kendi ortamindaki env'i cocuklara MIRAS BIRAKMASIN (cocuk
+        # cap'i --fft-budget-mb'den alsin; aksi halde runner-NFV de kisitli
+        # kosardi — burada solve yok ama netlik icin temizle).
+        os.environ.pop("NFV_FFT_BUDGET_MB", None)
+    print(f"K-57 PARITE + WALL OLCUMU — eval_gate {' '.join(argv[1:])} (4 set)")
     t0 = time.perf_counter()
     from scripts import eval_gate
-    sys.argv = ["eval_gate", "--parallel", "2"]
+    sys.argv = argv
     kod = 0
     try:
         eval_gate.main()

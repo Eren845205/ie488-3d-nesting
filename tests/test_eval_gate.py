@@ -613,3 +613,30 @@ def test_k57_normal_invalid_yeniden_denenmez(tmp_path):
     res = eg._run_sets_parallel(["plan1"], 42, False, 1, _spawn=fake_spawn)
     assert cagri["plan1"] == 1
     assert res["plan1"]["invalid_reason"] == "219 kilit"
+
+
+# ---------------------------------------------------------------------------
+# K-57c: paralel cocuklara FFT-budget cap gecir (RAM tepesi dusur -> OOM'suz
+# gercek paralellik). Env dilimlemeyi tetikler; H-17 dilimli konvolusyon
+# bit-ozdes -> parite korunur (ayrica plan3 dusuk-budget kosusuyla kanitlanir).
+# ---------------------------------------------------------------------------
+
+def test_k57c_cocuk_env_fft_budget_gecer():
+    import scripts.eval_gate as eg
+    env = eg._cocuk_env(fft_budget_mb=350.0)
+    assert env["NFV_FFT_BUDGET_MB"] == "350.0"
+    assert env["PYTHONIOENCODING"] == "utf-8"
+
+
+def test_k57c_cocuk_env_budget_yoksa_dokunmaz(monkeypatch):
+    import scripts.eval_gate as eg
+    monkeypatch.delenv("NFV_FFT_BUDGET_MB", raising=False)
+    env = eg._cocuk_env(fft_budget_mb=None)
+    assert "NFV_FFT_BUDGET_MB" not in env  # default = bugunku davranis bit-ozdes
+
+
+def test_k57c_cocuk_env_ustteki_budgeti_ezer(monkeypatch):
+    import scripts.eval_gate as eg
+    monkeypatch.setenv("NFV_FFT_BUDGET_MB", "9999")
+    env = eg._cocuk_env(fft_budget_mb=300.0)
+    assert env["NFV_FFT_BUDGET_MB"] == "300.0"  # acik cap ustteki env'i ezer
