@@ -425,6 +425,7 @@ def create_app(
     llm_enabled: bool = True,
     orders_path: Optional[str] = None,
     load_env: bool = True,
+    plate_root: Optional[str] = None,
 ) -> Flask:
     """Flask uygulama factory.
 
@@ -439,6 +440,12 @@ def create_app(
     orders_path          : str | None
         Siparis havuzu JSON dosya yolu. None ise varsayilan (data/orders.json).
         Test izolasyonu icin tmp_path gecirilebilir.
+    plate_root           : str | None
+        Plaka config koku (configs/plate.local.json bunun altinda cozulur/
+        yazilir). None = proje koku. Test izolasyonu icin tmp_path gecirilir —
+        /plaka-ayar POST'u gercek gelistirici dosyasina ASLA dokunmasin
+        (2026-07-16 bulgusu: eski test gercek dosyaya yazip geri yukluyordu;
+        paralel kosuda yaris riski).
     """
     from pathlib import Path as _Path
 
@@ -460,6 +467,9 @@ def create_app(
     )
     app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
     app.config["TESTING"] = testing
+    # Plaka config koku (test izolasyonu icin enjekte edilebilir; None = _ROOT).
+    # Rotalar _register_routes'ta yasadigi icin app.config uzerinden tasinir.
+    app.config["PLATE_ROOT"] = _Path(plate_root) if plate_root else _ROOT
 
     # Yuklem buyuklugu siniri — yükleme DoS'a karsi (Bulgu 1)
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
@@ -520,6 +530,9 @@ def _register_routes(
     limiter: Any = None,
 ) -> None:
     """Tum rotalari app'e kaydeder."""
+
+    # Plaka config koku — create_app enjeksiyonu (test izolasyonu; None = _ROOT)
+    _plate_root = app.config.get("PLATE_ROOT") or _ROOT
 
     # Rate-limit dekorator yardimcisi — limiter None ise gecmis decorator doner
     def _limit(limit_string: str, **limiter_kwargs):
@@ -2236,7 +2249,7 @@ def _register_routes(
         #   3. Hicbiri yok -> None -> run_pipeline parcalardan otomatik turetir.
         # Demo container'i gercek STL siparisine ASLA dayatilmaz.
         from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
-        _pw, _pd, _ph = _resolve_plate_ui(_ROOT)
+        _pw, _pd, _ph = _resolve_plate_ui(_plate_root)
         if _pw and _pd:
             _container = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
         else:
@@ -3049,14 +3062,14 @@ def _register_routes(
     # -----------------------------------------------------------------------
 
     def _plate_cfg_path():
-        return _ROOT / "configs" / "plate.local.json"
+        return _plate_root / "configs" / "plate.local.json"
 
     @app.route("/plaka-ayar", methods=["GET"])
     def plaka_ayar():
         """Plaka ayar formunu goster (mevcut config'i doldurur)."""
         from src.runtime.plate_config import resolve_plate, resolve_no_go
-        w, d, h = resolve_plate(_ROOT)
-        ng = resolve_no_go(_ROOT)  # K-45: yasak bolge plaka ozelligi
+        w, d, h = resolve_plate(_plate_root)
+        ng = resolve_no_go(_plate_root)  # K-45: yasak bolge plaka ozelligi
         return render_template(
             "plaka_ayar.html",
             aktif_w=("" if w is None else w),
@@ -3182,7 +3195,7 @@ def _register_routes(
 
         # Plaka politikasi (cekirdek) — UI plakasi > siparis container > otomatik.
         from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
-        _pw, _pd, _ph = _resolve_plate_ui(_ROOT)
+        _pw, _pd, _ph = _resolve_plate_ui(_plate_root)
         if not (_pw and _pd):
             _c = meta.get("container") or {}
             _pw, _pd, _ph = _c.get("width_mm"), _c.get("depth_mm"), _c.get("height_mm")
