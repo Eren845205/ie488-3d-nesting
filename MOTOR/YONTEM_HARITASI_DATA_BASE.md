@@ -1061,6 +1061,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > tam parite kosusu (4/4 + wall; sakin makinede) — sonra K-57 kapanir.
 > ADAY: NFV_FFT_BUDGET_MB cap'inin paralel cocuklara gecirilmesi (H-17
 > dilimli konvolusyon bit-ozdes — es-zamanli NFV RAM tepesini dusurur).
+>
+> **DUZELTME + TAM PARITE KOSUSU (2026-07-18, kurtarmali; kanit
+> scripts/k57_parite_kosu.log):** PARITE **4/4 BIT-OZDES DOGRULANDI** —
+> plan1 302.8 · plan2 542.5 · plan3 601.9 · d4 231.5 hepsi delta +0.00,
+> **VERDICT NOOP** (surec-izolasyon parite tezi KESIN). Seri kurtarma CANLI
+> calisti (plan3||d4 cakismasi plan3'u OOM'a dusurdu "1.89 MiB alloc fail" ->
+> d4 bitince plan3 tek basina yeniden kosuldu, 601.9 kurtarildi). **HIZ
+> BULGUSU (onceki −%33 IDDIASI GECERSIZ — o 59dk plan3 OOM'la FAIL vermisti,
+> yani 3 seti sayiyordu):** kurtarmali tam kosu WALL **87.4dk ≈ sirali 88dk =
+> hiz kazanci ~0 BU DONANIMDA.** Kok neden: plan2/plan3/d4 UCU DE RAM-agir
+> NFV; 16GB'de (~2GB bos) herhangi ikisi cakisinca OOM -> seri-retry o seti
+> sirali maliyete geri donduruyor + kullanici yuku sureleri sisirdi (d4
+> 2372s vs baseline 2095s). SONUC: K-57b'nin (a) PARITE altyapisi + (b) OOM
+> SAGLAMLIK'i URETIMDE ve kanitli; AMA (c) HIZ faydasi RAM-cap OLMADAN bu
+> makinede GERCEKLESMIYOR. **GERCEK HIZ ON-SARTI = NFV_FFT_BUDGET_MB cap'ini
+> cocuklara gecir** (H-17 dilimli-konvolusyon bit-ozdes; RAM tepesi duser ->
+> OOM'suz gercek paralellik) VEYA daha cok RAM / plan1+d4 gibi HAFIF ciftleri
+> esle. Munhasir-kosu politikasi (K-57a) hala gecerli (yuk sureleri sisiriyor).
 
 > **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
