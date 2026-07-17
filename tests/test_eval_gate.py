@@ -441,3 +441,175 @@ def test_run_champion_int_override_aile_onerisini_ezer(monkeypatch):
     eg._run_champion("t", _mini_inst(), 42, n_orientations=12)
     assert yakalanan["quality"] == "fast"
     assert yakalanan["n_orientations"] == 12
+
+
+# ---------------------------------------------------------------------------
+# K-57b: set-paralel orkestrasyon (--parallel) + cocuk modu (--json-out)
+# Duvar-saati ~ en yavas set; per-set sonuclar surec-izolasyonuyla bit-ozdes.
+# ---------------------------------------------------------------------------
+
+def _tam_sonuc(name, h=100.0):
+    return {
+        "legal_height_mm": h, "invalid_reason": None, "height_mm": h,
+        "n_placed": 5, "n_total": 5, "min_clearance_mm": 2.1, "n_locked": 0,
+        "n_locked_rot": None, "rot_cert": None, "rot_hata": None,
+        "sokum_planli": False, "r11_uygulandi": False, "r11_kazanc_mm": None,
+        "duration_s": 1.0,
+    }
+
+
+class _FakeProc:
+    def __init__(self, returncode=0, out="cocuk cikti\n"):
+        self.returncode = returncode
+        self._out = out
+
+    def communicate(self):
+        return (self._out, None)
+
+
+def test_k57_parallel_sonuclari_birlestirir(tmp_path):
+    import json as _json
+    import scripts.eval_gate as eg
+
+    def fake_spawn(name, out_path):
+        doc = {"schema": 1, "sets": {name: _tam_sonuc(name, h=float(len(name)))}}
+        out_path.write_text(_json.dumps(doc), encoding="utf-8")
+        return _FakeProc()
+
+    res = eg._run_sets_parallel(["plan1", "plan2"], 42, False, 2,
+                                _spawn=fake_spawn)
+    assert set(res) == {"plan1", "plan2"}
+    assert res["plan1"]["legal_height_mm"] == 5.0
+    assert res["plan2"]["legal_height_mm"] == 5.0
+
+
+def test_k57_parallel_cocuk_hatasi_digerlerini_engellemez(tmp_path):
+    import json as _json
+    import scripts.eval_gate as eg
+
+    def fake_spawn(name, out_path):
+        if name == "plan1":
+            return _FakeProc(returncode=1)  # json yazmadan oldu
+        doc = {"schema": 1, "sets": {name: _tam_sonuc(name)}}
+        out_path.write_text(_json.dumps(doc), encoding="utf-8")
+        return _FakeProc()
+
+    res = eg._run_sets_parallel(["plan1", "plan2"], 42, False, 2,
+                                _spawn=fake_spawn)
+    assert res["plan1"]["legal_height_mm"] is None
+    assert res["plan1"]["invalid_reason"].startswith("EXCEPTION")
+    assert res["plan2"]["legal_height_mm"] == 100.0
+
+
+def test_k57_json_out_cocuk_modu_last_ve_baseline_yazmaz(tmp_path, monkeypatch):
+    import json as _json
+    import pytest
+    import scripts.eval_gate as eg
+
+    out = tmp_path / "cocuk.json"
+    fake_last = tmp_path / "last.json"
+    monkeypatch.setattr(eg, "LAST", fake_last)
+    monkeypatch.setattr(eg, "evaluate_set",
+                        lambda name, seed, skip, **kw: _tam_sonuc(name))
+    monkeypatch.setattr("sys.argv",
+                        ["eval_gate", "--sets", "plan1", "--json-out", str(out)])
+    with pytest.raises(SystemExit) as e:
+        eg.main()
+    assert e.value.code == 0
+    doc = _json.loads(out.read_text(encoding="utf-8"))
+    assert doc["sets"]["plan1"]["legal_height_mm"] == 100.0
+    assert not fake_last.exists()  # cocuk LAST'a DOKUNMAZ (yaris onlenir)
+
+
+def test_k57_parallel_flagsiz_sekans_bit_ozdes(tmp_path, monkeypatch):
+    import pytest
+    import scripts.eval_gate as eg
+
+    cagri = []
+    monkeypatch.setattr(eg, "LAST", tmp_path / "last.json")
+    monkeypatch.setattr(eg, "evaluate_set",
+                        lambda name, seed, skip, **kw: (cagri.append(name),
+                                                        _tam_sonuc(name))[1])
+    monkeypatch.setattr(eg, "_run_sets_parallel",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("parallel yol cagrilmamali")))
+    monkeypatch.setattr("sys.argv",
+                        ["eval_gate", "--sets", "plan1,plan2",
+                         "--baseline", str(tmp_path / "yok.json")])
+    with pytest.raises(SystemExit) as e:
+        eg.main()
+    assert e.value.code == 0
+    assert cagri == ["plan1", "plan2"]  # sirali in-process yol AYNEN
+
+
+def test_k57_parallel_ana_akis_kiyas_ve_last(tmp_path, monkeypatch):
+    import json as _json
+    import pytest
+    import scripts.eval_gate as eg
+
+    fake_last = tmp_path / "last.json"
+    monkeypatch.setattr(eg, "LAST", fake_last)
+    monkeypatch.setattr(eg, "evaluate_set",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("parallel modda in-process evaluate yok")))
+    monkeypatch.setattr(
+        eg, "_run_sets_parallel",
+        lambda sets, seed, skip, n, **kw: {s: _tam_sonuc(s) for s in sets})
+    monkeypatch.setattr("sys.argv",
+                        ["eval_gate", "--sets", "plan1,plan2", "--parallel", "2",
+                         "--baseline", str(tmp_path / "yok.json")])
+    with pytest.raises(SystemExit) as e:
+        eg.main()
+    assert e.value.code == 0  # BASELINE-YOK
+    doc = _json.loads(fake_last.read_text(encoding="utf-8"))
+    assert set(doc["sets"]) == {"plan1", "plan2"}
+
+
+def test_k57_exception_seti_seri_yeniden_denenir(tmp_path):
+    """OOM/cocuk-cokusu iyimser-paralel kosuyu oldurmesin: EXCEPTION'li set
+    digerleri bitince TEK BASINA bir kez yeniden denenir (2026-07-17 olcum
+    kosusu bulgusu: plan2||plan3 cakismasi plan3'u OOM'a dusurdu)."""
+    import json as _json
+    import scripts.eval_gate as eg
+
+    cagri = {"plan1": 0}
+
+    def fake_spawn(name, out_path):
+        cagri[name] = cagri.get(name, 0) + 1
+        if name == "plan1" and cagri[name] == 1:
+            doc = {"sets": {name: dict(_tam_sonuc(name),
+                                       legal_height_mm=None,
+                                       invalid_reason="EXCEPTION: OOM")}}
+        elif name == "plan1":  # kurtarma denemesi
+            doc = {"sets": {name: _tam_sonuc(name, h=77.0)}}
+        else:
+            doc = {"sets": {name: _tam_sonuc(name)}}
+        out_path.write_text(_json.dumps(doc), encoding="utf-8")
+        return _FakeProc()
+
+    res = eg._run_sets_parallel(["plan1", "plan2"], 42, False, 2,
+                                _spawn=fake_spawn)
+    assert cagri["plan1"] == 2                       # bir kez yeniden denendi
+    assert res["plan1"]["legal_height_mm"] == 77.0   # kurtarildi
+    assert res["plan2"]["legal_height_mm"] == 100.0
+
+
+def test_k57_normal_invalid_yeniden_denenmez(tmp_path):
+    """EXCEPTION degil duz INVALID (or. kilit) -> yeniden deneme YOK
+    (deterministik olcum sonucu; tekrar ayni cikar, CPU israfi)."""
+    import json as _json
+    import scripts.eval_gate as eg
+
+    cagri = {}
+
+    def fake_spawn(name, out_path):
+        cagri[name] = cagri.get(name, 0) + 1
+        doc = {"sets": {name: dict(_tam_sonuc(name),
+                                   legal_height_mm=None,
+                                   invalid_reason="219 kilit")}}
+        out_path.write_text(_json.dumps(doc), encoding="utf-8")
+        return _FakeProc()
+
+    res = eg._run_sets_parallel(["plan1"], 42, False, 1, _spawn=fake_spawn)
+    assert cagri["plan1"] == 1
+    assert res["plan1"]["invalid_reason"] == "219 kilit"

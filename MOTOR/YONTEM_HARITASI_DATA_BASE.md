@@ -1044,6 +1044,24 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > dosyanin `git add -f` ile dondurulmasi Eren karari. SIRADAKI ADAYLAR:
 > K-57 kapi hizlandirma (set-paralel; §5) + K-56 plan1 hedefli-tilt (§5).
 
+> **2026-07-17 — K-57b UYGULANDI + ILK OLCUM (parite 3/4 kanitli; OOM dersi
+> + seri-kurtarma eklendi):** eval_gate'e `--parallel N` (pencere-N cocuk
+> surec; 0=KAPALI sirali yol BIREBIR, testli) + `--json-out` cocuk modu
+> (LAST/kiyas/baseline yalniz ebeveynde — dosya yarisi yok; held-out bakisi
+> ebeveynde TEK kayit A3). OLCUM (--parallel 2, kullanici makineyi aktif
+> kullanirken): **plan1 302.8 + plan2 542.5 + d4 231.5 baseline'la BIT-OZDES**
+> (surec-izolasyon parite tezi DOGRULANDI) · WALL 59dk (sirali 88dk, −%33) ·
+> plan3 OOM ("Unable to allocate 1.19 MiB" = RAM tukenmesi; plan2||plan3 iki
+> RAM-agir NFV cakisti + kullanici uygulamalari). FIX: iyimser-paralel +
+> SERI KURTARMA — EXCEPTION'li set digerleri bitince tek basina 1 kez
+> yeniden kosulur (duz INVALID denenMEZ — deterministik olcum); en kotu
+> durum o set icin sirali maliyet, parite bozulmaz. TDD toplam +7 test
+> (43/43). GPU teyidi (K-57c kismi): capabilities gpu=True/fp64=True, cocuk
+> cupy yukluyor; per-decode strateji telemetrisi ACIK YON. KALAN: kurtarmali
+> tam parite kosusu (4/4 + wall; sakin makinede) — sonra K-57 kapanir.
+> ADAY: NFV_FFT_BUDGET_MB cap'inin paralel cocuklara gecirilmesi (H-17
+> dilimli konvolusyon bit-ozdes — es-zamanli NFV RAM tepesini dusurur).
+
 > **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
 > birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV

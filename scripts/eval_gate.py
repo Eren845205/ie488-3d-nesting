@@ -370,6 +370,120 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
     }
 
 
+def _print_set_ozeti(name, r):
+    """Per-set tek satir ozet — sirali ve paralel yol AYNI formati kullanir."""
+    lh = r["legal_height_mm"]
+    lh_s = f"{lh:.1f}mm" if lh is not None else f"INVALID({r['invalid_reason']})"
+    rot_s = ""
+    if r.get("n_locked_rot") is not None:
+        rot_s = f"  rot_kilit={r['n_locked_rot']}"
+        if r.get("sokum_planli"):
+            rot_s += f" SOKUM-PLANLI ({r.get('rot_cert')} cert)"
+    print(f"[{name}] legal_height={lh_s}  ham={r['height_mm']}  "
+          f"clear={r['min_clearance_mm']}  kilit={r['n_locked']}{rot_s}  "
+          f"({r['duration_s']}s)", flush=True)
+
+
+def _bos_exception_sonucu(hata):
+    """Cocuk-surec/istisna durumunda sirali yolun EXCEPTION sekliyle AYNI dict."""
+    return {
+        "legal_height_mm": None, "invalid_reason": f"EXCEPTION: {hata}",
+        "height_mm": None, "n_placed": None, "n_total": None,
+        "min_clearance_mm": None, "n_locked": None, "n_locked_rot": None,
+        "rot_cert": None, "rot_hata": None, "sokum_planli": False,
+        "r11_uygulandi": False, "r11_kazanc_mm": None, "duration_s": None,
+    }
+
+
+def _run_sets_parallel(sets, seed, skip_clearance, n_proc,
+                       heldout_final=False, reason=None, _spawn=None):
+    """K-57b: her seti AYRI python surecinde kos, sonuclari birlestir.
+
+    Duvar-saati ~ en yavas set (siralida toplamlarin toplami; k51e olcumu:
+    sirali ~88dk, en yavas set 35dk). Per-set sonuclar surec-izolasyonu
+    sayesinde sirali kosuyla BIT-OZDES (ayni fonksiyonlar + ayni seed; yalniz
+    duration_s CPU-cekismesiyle degisebilir — sayilar degismez, k57 parite
+    kosusuyla kanitlanir). Cocuklar --json-out modunda kosar: LAST/baseline'a
+    DOKUNMAZLAR (dosya yarisi yok); kiyas + baseline karari yalniz ebeveynde.
+    Pencere: ayni anda en fazla n_proc cocuk; tamamlanma beklemesi gonderim
+    sirasiyla (pencere her tamamlanmada yeniden dolar).
+
+    _spawn test enjeksiyonu: (name, out_path) -> proc (communicate/returncode).
+    """
+    import subprocess
+    import tempfile
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="eval_gate_k57_"))
+
+    def _gercek_spawn(name, out_path):
+        import os
+        cmd = [sys.executable, "-m", "scripts.eval_gate", "--sets", name,
+               "--seed", str(seed), "--json-out", str(out_path)]
+        if skip_clearance:
+            cmd.append("--skip-clearance")
+        if heldout_final:
+            cmd.append("--heldout-final")
+            if reason:
+                cmd += ["--reason", reason]
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        return subprocess.Popen(
+            cmd, cwd=str(_ROOT), env=env, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+            errors="replace")
+
+    spawn = _spawn or _gercek_spawn
+    results = {}
+    bekleyen = list(sets)
+    kosan = []  # (name, proc, out_path)
+    while bekleyen or kosan:
+        while bekleyen and len(kosan) < max(1, int(n_proc)):
+            nm = bekleyen.pop(0)
+            op = tmpdir / f"{nm}.json"
+            print(f"[{nm}] paralel cocuk basladi", flush=True)
+            kosan.append((nm, spawn(nm, op), op))
+        nm, proc, op = kosan.pop(0)
+        out, _ = proc.communicate()
+        if out:
+            for ln in out.splitlines():
+                print(f"  [{nm}] {ln}", flush=True)
+        hata = None
+        if proc.returncode == 0 and op.exists():
+            try:
+                doc = json.loads(op.read_text(encoding="utf-8"))
+                results[nm] = doc["sets"][nm]
+            except Exception as e:
+                hata = f"cocuk json okunamadi: {e}"
+        else:
+            hata = f"cocuk surec exit={proc.returncode}"
+        if hata is not None:
+            results[nm] = _bos_exception_sonucu(hata)
+
+    # Iyimser paralel + SERI kurtarma (2026-07-17 olcum bulgusu: plan2||plan3
+    # cakismasi plan3'u OOM'a dusurdu — 1.19MiB alloc bile basarisiz = RAM
+    # tukenmesi). EXCEPTION'li setler (cocuk cokusu VEYA set-ici istisna)
+    # digerleri bitince TEK BASINA bir kez yeniden denenir: en kotu durumda o
+    # set icin sirali maliyete donulur, parite bozulmaz. Duz INVALID (kilit,
+    # clearance...) deterministik OLCUMDUR — yeniden denenMEZ.
+    yeniden = [s for s in sets
+               if (results[s].get("invalid_reason") or "").startswith("EXCEPTION")]
+    for nm in yeniden:
+        print(f"[{nm}] EXCEPTION — SERI kurtarma denemesi (tek basina)",
+              flush=True)
+        op = tmpdir / f"{nm}_retry.json"
+        proc = spawn(nm, op)
+        out, _ = proc.communicate()
+        if out:
+            for ln in out.splitlines():
+                print(f"  [{nm}|retry] {ln}", flush=True)
+        if proc.returncode == 0 and op.exists():
+            try:
+                doc = json.loads(op.read_text(encoding="utf-8"))
+                results[nm] = doc["sets"][nm]
+            except Exception:
+                pass  # ilk EXCEPTION sonucu kalir (kanit kaybolmaz)
+    return results
+
+
 def main():
     ap = argparse.ArgumentParser(description="STRATEJI Faz-0 eval kapisi")
     ap.add_argument("--sets", default=",".join(DEV_SETS),
@@ -384,6 +498,12 @@ def main():
     ap.add_argument("--skip-clearance", action="store_true",
                     help="clearance olcumunu atla (SONUC INVALID kalir; hizli debug)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--parallel", type=int, default=0,
+                    help="K-57b: setleri N ayri surecte paralel kos "
+                         "(0=KAPALI, sirali eski yol BIREBIR; oneri: set sayisi)")
+    ap.add_argument("--json-out", type=Path, default=None,
+                    help="cocuk modu (K-57b ic kullanim): sonuclari bu dosyaya "
+                         "yaz; LAST/kiyas/baseline ATLANIR")
     args = ap.parse_args()
 
     sets = [s.strip() for s in args.sets.split(",") if s.strip()]
@@ -397,7 +517,9 @@ def main():
         print(f"RED (ANAYASA A3): {heldout_istenen} HELD-OUT. Final dogrulama "
               f"icin --heldout-final (+--reason) ekle. Held-out ile TUNING YASAK.")
         sys.exit(3)
-    if heldout_istenen:
+    if heldout_istenen and args.json_out is None:
+        # K-57b: cocuk surecler (json-out modu) bakisi TEKRAR loglamaz —
+        # bakis ebeveynde bir kez kayda gecer (A3 tek-kayit).
         _log_heldout_bakis(heldout_istenen, args.reason)
         print(f"[registry] held-out bakisi loglandi: {heldout_istenen} "
               f"(sebep: {args.reason or 'belirtilmedi'})")
@@ -408,30 +530,36 @@ def main():
     print("=" * 78, flush=True)
 
     results = {}
-    for name in sets:
-        print(f"[{name}] kosuyor...", flush=True)
-        try:
-            results[name] = evaluate_set(name, args.seed, args.skip_clearance)
-        except Exception as e:  # bir setin cokusu digerlerini olcmeyi engellemesin
-            results[name] = {
-                "legal_height_mm": None, "invalid_reason": f"EXCEPTION: {e}",
-                "height_mm": None, "n_placed": None, "n_total": None,
-                "min_clearance_mm": None, "n_locked": None,
-                "n_locked_rot": None, "rot_cert": None, "rot_hata": None,
-                "sokum_planli": False, "r11_uygulandi": False,
-                "r11_kazanc_mm": None, "duration_s": None,
-            }
-        r = results[name]
-        lh = r["legal_height_mm"]
-        lh_s = f"{lh:.1f}mm" if lh is not None else f"INVALID({r['invalid_reason']})"
-        rot_s = ""
-        if r.get("n_locked_rot") is not None:
-            rot_s = f"  rot_kilit={r['n_locked_rot']}"
-            if r.get("sokum_planli"):
-                rot_s += f" SOKUM-PLANLI ({r.get('rot_cert')} cert)"
-        print(f"[{name}] legal_height={lh_s}  ham={r['height_mm']}  "
-              f"clear={r['min_clearance_mm']}  kilit={r['n_locked']}{rot_s}  "
-              f"({r['duration_s']}s)", flush=True)
+    if args.parallel and args.parallel > 0:
+        # K-57b: setler ayri sureclerde — duvar-saati ~ en yavas set.
+        results = _run_sets_parallel(
+            sets, args.seed, args.skip_clearance, args.parallel,
+            heldout_final=args.heldout_final, reason=args.reason)
+        for name in sets:
+            _print_set_ozeti(name, results[name])
+    else:
+        for name in sets:
+            print(f"[{name}] kosuyor...", flush=True)
+            try:
+                results[name] = evaluate_set(name, args.seed,
+                                             args.skip_clearance)
+            except Exception as e:  # bir setin cokusu digerlerini engellemesin
+                results[name] = _bos_exception_sonucu(e)
+            _print_set_ozeti(name, results[name])
+
+    # K-57b cocuk modu: sonuclari json-out'a yaz ve CIK — LAST/kiyas/baseline
+    # yalniz ebeveynde (dosya yarisi + cift-kayit onlenir).
+    if args.json_out is not None:
+        doc = {
+            "schema": 1, "created": datetime.now().isoformat(timespec="seconds"),
+            "seed": args.seed, "clearance_req_mm": CLEARANCE_REQ_MM,
+            "sets": results,
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(doc, indent=2, ensure_ascii=True),
+                                 encoding="utf-8")
+        print(f"json-out yazildi: {args.json_out}")
+        sys.exit(0)
 
     # --- kiyas ---------------------------------------------------------------
     base = None
