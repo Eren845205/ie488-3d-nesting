@@ -733,6 +733,13 @@ Cevaplar geldikçe `APP_SORULAR.md` C tablosuna işlenecek.
 
 ## 9. IP Koruma / Lisanslama (2026-06-18 — kullanıcı kaygısı, TESLİM ÖNCESİ alınacak önlem)
 
+> **GÜNCELLEME (2026-07-17): DETAYLI UYGULAMA PLANI HAZIR →
+> `docs/LISANS_UYGULAMA_PLANI.md`** (Ed25519 imzalı süreli offline lisans +
+> 5-bileşenli makine parmak izi 3-of-5 + salt-okunur süre-dolumu default'u
+> [Eren kararı] + Cython .pyd build hattı + EULA taslak başlıkları + test
+> planı). Eren kararı: implementasyon ürün tamamlanınca ve HER HALÜKÂRDA ilk
+> teslimattan ÖNCE — korumasız paket asla dışarı çıkmaz.
+
 > **Bağlam:** Ürün müşteriye on-prem `.exe`/paket olarak verilecek (SaaS/abonelik
 > yok, senin sunucunda çalışmıyor). **Risk:** müşteri kodu/dosyaları kopyalar,
 > kendi kullanır, başkalarına satar. Demo aşamasında önlem GEREKMEZ (kontrollü);
