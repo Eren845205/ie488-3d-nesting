@@ -782,3 +782,80 @@ def test_drop_cache_bit_identical_with_no_go():
             for p in acik.placements] == \
            [(p.part_id, p.x, p.y, p.z, p.orientation_idx)
             for p in kapali.placements]
+
+
+# ---------------------------------------------------------------------------
+# K-54: GRACEFUL clearance-cap c2f'e tasindi (web paritesi, K-51d bulgusu)
+# plan1 baseplate_v2 330.2mm @ coarse 3.05 + margin 1 -> dilated 111 > 109
+# voxel -> dblf acik-hatasi TUM cozumu olduruyordu. Web yolunda (demo_pipeline
+# 2026-07-06) ayni durumda margin plakaya sigacak degere kisilir; c2f'te yoktu.
+# ---------------------------------------------------------------------------
+
+def test_k54_cap_kucuk_parcada_tetiklenmez():
+    from src.nesting3d.coarse_to_fine import cap_margin_to_plate
+    inst = _make_instance()  # max boyut 30mm << plaka 100
+    m, capped = cap_margin_to_plate(2, 5.0, inst, PLATE_W, PLATE_D)
+    assert (m, capped) == (2, False)
+
+
+def test_k54_cap_plaka_boyu_parcada_kisilir():
+    from src.nesting3d.coarse_to_fine import cap_margin_to_plate
+    inst = _inst([(96.0, 60.0, 10.0)])
+    # web formul paritesi: fit = int((100 - 96) / (2*10)) = 0
+    m, capped = cap_margin_to_plate(1, 10.0, inst, PLATE_W, PLATE_D)
+    assert (m, capped) == (0, True)
+    # fine pitch 5: fit = int(4/10) = 0 < 2 -> yine 0'a kisilir
+    m, capped = cap_margin_to_plate(2, 5.0, inst, PLATE_W, PLATE_D)
+    assert (m, capped) == (0, True)
+
+
+def test_k54_cap_plakadan_buyuk_parca_sifira_kelepcelenir():
+    from src.nesting3d.coarse_to_fine import cap_margin_to_plate
+    inst = _inst([(120.0, 60.0, 10.0)])  # fit negatif olurdu
+    m, capped = cap_margin_to_plate(3, 5.0, inst, PLATE_W, PLATE_D)
+    assert (m, capped) == (0, True)
+
+
+def test_k54_cap_margin_sifir_veya_plaka_yoksa_dokunmaz():
+    from src.nesting3d.coarse_to_fine import cap_margin_to_plate
+    inst = _inst([(96.0, 60.0, 10.0)])
+    assert cap_margin_to_plate(0, 10.0, inst, PLATE_W, PLATE_D) == (0, False)
+    assert cap_margin_to_plate(2, 10.0, inst, None, None) == (2, False)
+
+
+def test_k54_plaka_boyu_parca_artik_cozuluyor():
+    """RED (fix oncesi): dilated 96mm parca 100mm plakada hicbir pozda sigmaz
+    -> dblf AssertionError. GREEN: cap margin'i kisar, cozum uretilir ve
+    telemetri (clearance_capped) kisintiyi raporlar."""
+    inst = _inst([(96.0, 60.0, 10.0)])
+    res = solve_coarse_to_fine(
+        inst,
+        plate_w_mm=PLATE_W,
+        plate_d_mm=PLATE_D,
+        coarse_pitch=COARSE_PITCH,
+        fine_pitch=FINE_PITCH,
+        budget=BUDGET,
+        menu=_fast_menu(),
+        clearance_mm=8.0,
+    )
+    assert res.n_placed == 1
+    assert res.height_mm > 0
+    # coarse: ceil(8/10)=1 -> 0'a; fine: ceil(8/5)=2 -> 0'a kisildi
+    assert res.clearance_capped == {"coarse_margin": 0, "fine_margin": 0}
+
+
+def test_k54_cap_tetiklenmeyince_telemetri_bos():
+    """Kucuk parcali instance'ta cap tetiklenmez -> clearance_capped None
+    (margin'ler clearance_to_voxels degerleriyle AYNI = bit-ozdes yol)."""
+    res = solve_coarse_to_fine(
+        _make_instance(),
+        plate_w_mm=PLATE_W,
+        plate_d_mm=PLATE_D,
+        coarse_pitch=COARSE_PITCH,
+        fine_pitch=FINE_PITCH,
+        budget=BUDGET,
+        menu=_fast_menu(),
+        clearance_mm=8.0,
+    )
+    assert res.n_placed == 4
+    assert res.clearance_capped is None

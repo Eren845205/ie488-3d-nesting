@@ -1005,6 +1005,31 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > riski acik yon. DERS: "deterministik referans" testleri ortam-lokal
 > config'leri (plate.local.json ailesi) SIFIRLAMADAN kosulmamali.
 
+> **2026-07-17 — K-54: GRACEFUL CLEARANCE-CAP C2F'E TASINDI = plan1 ILK KEZ
+> URETIM YOLUNDAN TAM-LEGAL (302.8mm; kanit results/eval_gate_last.json +
+> tests/test_coarse_to_fine.py k54 testleri):** TESHIS (tek-parca probe,
+> scratchpad k54_teshis.py): suclu COARSE asamasi — baseplate_v2 330.2mm @
+> coarse 3.048 + margin 1 dilation -> 111 > 109 voxel, 4 pozun 4'u de
+> tasiyor -> dblf acik-hatasi (dblf.py place_in_order assert) TUM cozumu
+> olduruyor; FINE @1.016 + margin 2 = 329<=329 TAM sigiyor; no-go suclu
+> DEGIL (margin=0'da poz3 yerlesiyor; NOGO_STD x[152.5,185.5]xy[0.2,45]
+> kose yamasi). FIX: web yolundaki M3 graceful cap (demo_pipeline
+> 2026-07-06) c2f'e tasindi — `cap_margin_to_plate` formul web'le BIREBIR:
+> fit=int((plate_min-max_part)/(2*pitch)), margin>fit ise fit'e kis (0'a
+> kadar); `_voxelize_with_fallback` (+adaptif dal) + fine margin ayni cap'i
+> uygular (plate dims verilmezse cap YOK = eski cagiranlar bit-ozdes);
+> telemetri `CoarseToFineResult.clearance_capped` (tetiklenmeyince None).
+> SONUC: plan1 **302.8mm LEGAL — 112/112 yerlesim, kilit 0(!), clear 2.042,
+> 283.4s** — coarse cap yalniz ARAMAYI etkiledi, fine margin=2 tam korundu
+> (fiziksel clearance kaybi YOK; min_clearance 2.042 kaniti). Onceki
+> durumlar: k51c 111/112 INVALID -> k51d/k53d EXCEPTION crash. TDD: +6 test
+> (cap birim + plaka-boyu-parca entegrasyon RED->GREEN + no-trigger
+> telemetri-bos); komsu 155 + demo_pipeline/tuner 75 yesil. ETKI: 4-set
+> BASELINE onundeki SON bloker kalkti -> k51e tam-baseline adayi. NOT:
+> 302.8 plan1'in ILK uretim-yolu sayisi (129 serhli = ozel egik-plaka SA
+> deneyi, kiyas tabani degil); tilt pozlari n=4 setinde yok — plan1 rekor
+> isi ayri aday (K-43 multistart / hedefli-tilt mirasi).
+
 > **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
 > birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV

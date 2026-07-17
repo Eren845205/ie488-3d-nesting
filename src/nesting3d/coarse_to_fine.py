@@ -70,6 +70,49 @@ def clearance_to_voxels(clearance_mm: float, pitch: float):
     return n, n
 
 
+def _max_part_dim_mm(instance: NestingInstance) -> float:
+    """Instance'taki EN BÜYÜK parça boyutu (mm; üç eksenin maksimumu).
+
+    K-54 graceful clearance-cap'in girdisi. Boyut metası yoksa 0.0 döner
+    (cap tetiklenmez -> davranış değişmez).
+    """
+    best = 0.0
+    for p in instance.parts:
+        for d in (p.width_mm, p.depth_mm, p.height_mm):
+            if d is not None and float(d) > best:
+                best = float(d)
+    return best
+
+
+def cap_margin_to_plate(margin: int, pitch: float, instance: NestingInstance,
+                        plate_w_mm, plate_d_mm):
+    """K-54 GRACEFUL clearance-cap — web yolu paritesi (demo_pipeline 2026-07-06).
+
+    En büyük parça + 2*margin*pitch dilation plaka MIN kenarını aşarsa margin
+    SIĞACAK değere kısılır (0'a kadar); aksi halde dilated parça hiçbir
+    oryantasyonda plakaya sığmaz ve dblf açık-hatası TÜM çözümü öldürür
+    (K-51d: plan1 baseplate_v2 330.2mm @ coarse 3.05 + margin 1 -> 111 > 109
+    voxel). Formül web yoluyla BİREBİR:
+        fit = int((plate_min - max_part) / (2*pitch))
+
+    Tetiklenmediği sürece margin AYNEN döner (bit-özdeş yol). Coarse'ta
+    kısıntı yalnız ARAMAYI etkiler; fine margin ayrı türetilir (plan1'de fine
+    cap'e takılmaz -> gerçek yerleşim tam clearance korur). Kısıntı olursa
+    gerçek boşluğu HIGH-2 min_clearance kapısı / eval metriği yargılar.
+    Döner: (margin, kısıldı_mı).
+    """
+    if margin <= 0 or pitch <= 0 or plate_w_mm is None or plate_d_mm is None:
+        return margin, False
+    plate_min = min(float(plate_w_mm), float(plate_d_mm))
+    max_part = _max_part_dim_mm(instance)
+    if max_part <= 0:
+        return margin, False
+    fit = int((plate_min - max_part) / (2.0 * pitch))
+    if fit < margin:
+        return max(0, fit), True
+    return margin, False
+
+
 def _min_feature_mm(instance: NestingInstance) -> float:
     """Instance'taki EN İNCE parçanın en küçük boyutu (mm).
 
@@ -87,7 +130,8 @@ def _min_feature_mm(instance: NestingInstance) -> float:
 
 def _voxelize_with_fallback(
     instance: NestingInstance, pitch: float, floor_pitch: float,
-    *, n_orientations: int = 4, clearance_mm: float = 0.0
+    *, n_orientations: int = 4, clearance_mm: float = 0.0,
+    plate_w_mm=None, plate_d_mm=None,
 ):
     """Voxelize; boş-grid hatasında pitch'i otomatik KIS (ince-duvar güvenliği).
 
@@ -98,11 +142,17 @@ def _voxelize_with_fallback(
     clearance_mm > 0 ise yatay margin GERÇEKTEN kullanılan pitch'ten türetilir
     (pitch küçülürse margin voxel sayısı artar -> mm-boşluk sabit kalır).
     clearance_mm == 0.0 -> margin=0 (mevcut davranış bit-özdeş).
+
+    plate_w_mm/plate_d_mm verilirse K-54 graceful clearance-cap uygulanır
+    (dilated en-büyük-parça plakaya sığmazsa margin kısılır); None = eski
+    davranış BİREBİR (cap yok).
     """
     cur = pitch
     while True:
         try:
             margin, _zc = clearance_to_voxels(clearance_mm, cur)
+            margin, _ = cap_margin_to_plate(margin, cur, instance,
+                                            plate_w_mm, plate_d_mm)
             return to_voxel_parts(instance, cur, n_orientations=n_orientations,
                                   margin=margin), cur
         except ValueError:
@@ -110,6 +160,8 @@ def _voxelize_with_fallback(
             if nxt <= floor_pitch:
                 # floor'a indik: son çare floor ile dene (patlarsa propagate)
                 margin, _zc = clearance_to_voxels(clearance_mm, floor_pitch)
+                margin, _ = cap_margin_to_plate(margin, floor_pitch, instance,
+                                                plate_w_mm, plate_d_mm)
                 return to_voxel_parts(instance, floor_pitch,
                                       n_orientations=n_orientations,
                                       margin=margin), floor_pitch
@@ -292,7 +344,8 @@ def _auto_select_n_orientations(
     for n in ladder:
         parts, used = _voxelize_with_fallback(
             instance, coarse_pitch, fine_pitch, n_orientations=n,
-            clearance_mm=clearance_mm)
+            clearance_mm=clearance_mm,
+            plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm)
         _margin, _zc = clearance_to_voxels(clearance_mm, used)
 
         def factory(_p=used, _z=_zc):
@@ -343,6 +396,11 @@ class CoarseToFineResult:
                       (H-16). drop_cache=False iken (uretim default) None;
                       acikken {hit_ratio, keys, peak_mb, fallbacks, ...}
                       (Bin3D.drop_cache_stats). Rapor-only telemetri.
+    clearance_capped: K-54 graceful clearance-cap telemetrisi. Cap hic
+                      tetiklenmediyse None (bit-ozdes yol). Tetiklendiyse
+                      {"coarse_margin": k} ve/veya {"fine_margin": k} —
+                      kisilmis margin degerleri (voxel). Gercek bosluk
+                      min_clearance metriginde gorunur.
     """
 
     placements: List[Placement3D]
@@ -362,6 +420,7 @@ class CoarseToFineResult:
     fine_angle_time_s: float = 0.0
     adaptive_reason: Optional[str] = None
     drop_cache_stats: Optional[Dict[str, object]] = None
+    clearance_capped: Optional[Dict[str, int]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -502,7 +561,14 @@ def solve_coarse_to_fine(
         coarse_parts, coarse_pitch = _voxelize_with_fallback(
             instance, coarse_pitch, fine_pitch, n_orientations=n_orientations,
             clearance_mm=clearance_mm,
+            plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
         )
+
+    # K-54 telemetri: coarse voxelize içinde uygulanan cap'i (varsa) yeniden
+    # türet (deterministik — aynı formül, kullanılan coarse_pitch ile).
+    _cm_raw, _ = clearance_to_voxels(clearance_mm, coarse_pitch)
+    _cm_eff, _coarse_capped = cap_margin_to_plate(
+        _cm_raw, coarse_pitch, instance, plate_w_mm, plate_d_mm)
 
     # Coarse Bin3D dikey boşluğu coarse pitch'ten türetilir (clearance_mm=0 ->
     # z_clearance=1, mevcut davranış bit-özdeş).
@@ -575,7 +641,11 @@ def solve_coarse_to_fine(
 
     # Fine (margin, z_clearance) fine pitch'ten türetilir. clearance_mm=0 ->
     # (0, 1) = mevcut davranış bit-özdeş (margin yok, tarihsel z_clearance=1).
+    # K-54: fine margin da plakaya sığmazsa kısılır (çökme yerine dürüst
+    # min_clearance metriğiyle çözüm; plan1'de fine cap'e takılmaz).
     _fine_margin, _fine_zc = clearance_to_voxels(clearance_mm, fine_pitch)
+    _fine_margin, _fine_capped = cap_margin_to_plate(
+        _fine_margin, fine_pitch, instance, plate_w_mm, plate_d_mm)
 
     # H-15p OPT-IN atlama: skip_fine_angle True iken rafine yolu HIC kosmaz
     # (window>0 / adaptive rafine acsa bile). Baz cozum kullanilir -> kalite
@@ -672,6 +742,13 @@ def solve_coarse_to_fine(
     # kapali yolda telemetri de eski (alan yok) kalsin -> birebir dokunulmazlik.
     _dc_stats = fine_bin.drop_cache_stats() if drop_cache else None
 
+    # K-54 telemetri: cap tetiklenmediyse None (bit-ozdes yol isareti).
+    _cap_note: Dict[str, int] = {}
+    if _coarse_capped:
+        _cap_note["coarse_margin"] = _cm_eff
+    if _fine_capped:
+        _cap_note["fine_margin"] = _fine_margin
+
     return CoarseToFineResult(
         placements=fine_placements,
         bin3d=fine_bin,
@@ -690,4 +767,5 @@ def solve_coarse_to_fine(
         fine_angle_time_s=fine_angle_time_s,
         adaptive_reason=adaptive_reason,
         drop_cache_stats=_dc_stats,
+        clearance_capped=(_cap_note or None),
     )
