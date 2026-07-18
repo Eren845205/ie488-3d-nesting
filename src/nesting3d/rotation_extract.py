@@ -223,6 +223,7 @@ def check_separability_rot(placements: Sequence[object],
                            max_grid_vox: int = 220,
                            sure_butcesi_s: Optional[float] = None,
                            erode_clearance_vox: Tuple[int, int] = (0, 0),
+                           _rot_memo: bool = True,
                            ) -> RotSeparabilityReport:
     """5-yon sirali sokum + rotasyon-fallback denetimi (A2 + (c) kriteri).
 
@@ -280,6 +281,15 @@ def check_separability_rot(placements: Sequence[object],
     # Peel sayaclari ((b) metrigi) ORIJINAL dilate'li grid'lerde kalir.
     egrids: Optional[List[np.ndarray]] = None
     esahneler: Optional[Dict[str, list]] = None
+
+    # K-57 rot-hizlandirma (profil kaniti 2026-07-18: nd_rotate %42 —
+    # tur tekrarlarinda AYNI (parca, lift-poz, eksen, aci) dondurmesi
+    # yeniden hesaplaniyordu). Deterministik memo: _dondur SAF fonksiyon,
+    # ayni girdi ayni cikti -> akis BIT-OZDES. Bellek tavani boyut-butceli;
+    # dolunca yeni eklenmez (ilk girisler tur-tekrarinda en cok isabet alir).
+    rot_cache: Dict[Tuple, Tuple[np.ndarray, Tuple[int, int, int]]] = {}
+    rot_cache_bytes = [0]
+    _ROT_CACHE_BUDGET = 64 * 2 ** 20  # 64MB
 
     def _ensure_eroded() -> None:
         nonlocal egrids, esahneler
@@ -352,7 +362,15 @@ def check_separability_rot(placements: Sequence[object],
                             tel.append("SURE-BUTCESI doldu")
                             fail_telemetri[pids[i]] = tel
                             return None
-                        rg, rpos = _dondur(g0, pl0, eksen, isaret * aci)
+                        _ck = (i, pl0, eksen, round(isaret * aci, 9))
+                        _cv = rot_cache.get(_ck) if _rot_memo else None
+                        if _cv is None:
+                            _cv = _dondur(g0, pl0, eksen, isaret * aci)
+                            if (_rot_memo
+                                    and rot_cache_bytes[0] < _ROT_CACHE_BUDGET):
+                                rot_cache[_ck] = _cv
+                                rot_cache_bytes[0] += _cv[0].nbytes
+                        rg, rpos = _cv
                         if rg.size == 0:
                             # NN yeniden-orneklemesi kucuk grid'i yuttu:
                             # bu rung KULLANILAMAZ (sertifika da carpisma

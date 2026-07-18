@@ -272,7 +272,7 @@ def kilit_5yon_meshes(meshes: Sequence, pitch: float = 1.0) -> int:
 def kilit_rot_meshes(meshes: Sequence, pitch: float = 1.0,
                      max_grid_vox: int = 800,
                      sure_butcesi_s: Optional[float] = 1200.0,
-                     erode_clearance_vox=(2, 2)):
+                     erode_clearance_vox=(2, 2), _rot_memo: bool = True):
     """Mesh listesinde rot-sokum denetimi (K-52 tabani; kilit_5yon_meshes ile
     AYNI re-voxelize: margin-0 @pitch, slice). RotSeparabilityReport doner.
 
@@ -298,7 +298,8 @@ def kilit_rot_meshes(meshes: Sequence, pitch: float = 1.0,
                        z=int(round(org[2] / pitch))))
     return check_separability_rot(pls, parts, max_grid_vox=max_grid_vox,
                                   sure_butcesi_s=sure_butcesi_s,
-                                  erode_clearance_vox=erode_clearance_vox)
+                                  erode_clearance_vox=erode_clearance_vox,
+                                  _rot_memo=_rot_memo)
 
 
 def uretim_r11(

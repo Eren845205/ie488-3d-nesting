@@ -1178,6 +1178,53 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > 569s — kilit_rot_meshes hizlandirma (K-55 R11 desenine benzer cKDTree/
 > budama olabilir). Voxelize %4.6 (K-57d NO-GO) ve olcum katmani %3 KAPALI.
 
+> **2026-07-18 — K-57 DECODE TESHISI = GPU 3/3 TEYIT (K-57(c) acik yonu
+> KAPANDI; kanit results/k57_decode_teshis.json):** izole voxelize+best_decode
+> (verbose) uc NFV setinde: plan2 decode 93.7s / plan3 279.9s / d4 1077.8s —
+> HEPSI **STRATEJI=gpu-resident** (sessiz CPU-fallback YOK; "GPU'ya tasi"
+> kaldiraci mevcut degil, zaten orada). AYRISTIRMA: anatomi 'ham' kalemi =
+> voxelize + decode + settle/replay -> p2: 59+94+~113 · p3: 94+280+~146 ·
+> d4: 81+1078+~0. NET: d4 AX24 decode'u (24 poz x 588 parca) GPU'DA BILE
+> 1078s = kapinin en buyuk tekil kalemi; hizlandirma ancak ALGORITMIK
+> (decode-ici profil ister; birebirlik riski yuksek alan — dikkat). Kalici
+> telemetri: evaluate_set sure_kirilim'a decode_strateji alani eklendi
+> (adaptive_reason'dan; kapida GPU/CPU izi artik her kosuda gorunur).
+
+> **2026-07-18 — K-57 ROT-MEMO = NOTR (durust kayit; kanit
+> scripts/k57_rot_ab.log):** rot profili (plan2 pickle-sahne, cProfile 240s
+> kosu) nd_rotate'i %42 gosterdi -> tur-tekrari memoization hipotezi kodlandi
+> (check_separability_rot rot_cache, 64MB butce, _rot_memo bayragi; 25+31
+> komsu test yesil). ILK kiyas HUKUMSUZDU (ayri kosular: 240s vs 410s —
+> makine-yuku degiskenligi %70, K-57a dersinin bir kaniti daha). ADIL A/B
+> (tek proses, ayni sahne): A memo'suz 411.7s -> B memo'lu 394.1s =
+> **-%4.3 NOTR** — rapor BIT-OZDES BIREBIR (n_locked + removable_order +
+> cert detaylari). Kok: sertifikalar merdivenin ILK basamaginda bulunuyor
+> (aci 1.0-1.18) -> tekrar orani dusuk, memo tavani kucukmus. KARAR: kod
+> zararsiz+testli+bayrakli -> KALIR; rot hizlandirmasi buyuk-kaldirac listesinden
+> DUSTU. Profil yan-bulgusu: rot suresinin kalemleri rotate 100s / voxelize
+> 52s / erosion+dilation 37s / _yonlu_sahne+blocks ~50s — hicbiri tek basina
+> dominant degil, 5-10x'lik yapisal kazanc bu mekanikte YOK (dagilmis maliyet).
+
+> **2026-07-18 — K-57 FASTLEN = GO, URETIMDE (kapinin en buyuk tekil kalemi
+> yarilandi; kanit results/k57_decode_profil.json + k57_decode_fastlen_ab.json
+> + k57_fastlen_kapi.json):** Decode ic-profili (yeni _tel telemetrisi, d4
+> 60p orneklemi): **conv-FFT %93** (bbox-sync %1 / blb %1 — sync hipotezi
+> curudu). KOK: gpu_conv_valid_chunked s=full (crop+kernel-1) FFT boyutunu
+> next_fast_len'e YUVARLAMIYORDU (scipy CPU yolu icerde yapar; cuFFT kotu-
+> kompozit boyutlarda katlarca yavas). FIX: fast_len bayragi (scipy.fft.
+> next_fast_len; sifir-padding buyur, lineer konv valid bolgesi AYNI matematik
+> — karar-birebir) -> decode_gpu DEFAULT ACIK. ORNEKLEM A/B (tek proses, d4
+> ilk-60p): 212.6 -> 106.6s = **-%49.9, h + TUM placements BIREBIR**. KAPI
+> KANITI (3 NFV seti, rot-reuse'lu tabanlara karsi): **PARITE 3/3 BIREBIR**
+> (542.5 / 601.92 / 231.5) · d4 1113.3 -> **874.0s (-239s, -%21)** · p2/p3
+> kazanc gurultu bandinda (decode paylari %14/%19 — makine-yuku +-%10 ortuyor;
+> d4 decode-payi %76 oldugundan sinyal net). NOT: fp32 kestirmesi TARIHI
+> HUKUMLE KAPALI (fft_backend: "f32 gurultusu 0.5 esigini cevirir"); fastlen
+> f64 boru hattini KORUR. KALAN decode adaylari: kernel-FFT spektrum cache
+> (ayni orient + ayni fshape tekrarlari) · fshape stabilizasyonu (cache
+> isabetini buyutur). Kapi tabani (fastlen+rot-reuse, sakin-makine tahmini):
+> ~48-55dk (k51e 88dk'dan ~%40 asagi, kalite sayilari birebir).
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran

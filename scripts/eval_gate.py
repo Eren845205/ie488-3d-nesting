@@ -415,6 +415,9 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
             "nfv_kilit5_s": (nfv_tel or {}).get("kilit5_s"),
             "r11_s": ((nfv_tel or {}).get("r11") or {}).get("sure_s"),
             "rot_kabul_s": ((nfv_tel or {}).get("rot_kabul") or {}).get("sure_s"),
+            # NFV'de "nfv strategy=gpu-resident|cpu-kolA..." (GERCEK kosan yol
+            # — gpu secilip OOM'la CPU'ya dusme buradan gorunur, K-57c acik yonu)
+            "decode_strateji": getattr(r, "adaptive_reason", None),
         },
     }
 

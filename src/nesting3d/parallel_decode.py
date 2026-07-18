@@ -291,11 +291,18 @@ def _blb_gpu(cp, mask):
     return xstar, ystar, zstar
 
 
-def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
+def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True, _tel=None):
+    """_tel (K-57 profil, opsiyonel dict): kalem sureleri toplanir —
+    'bbox_s' (any+where+int sync) / 'conv_s' (FFT) / 'blb_s' (mask tarama) /
+    'tur' (z-merdiven turlari). None (default) = olcum yok, davranis BIREBIR
+    (conv_s olcumu icin eklenen sync yalniz _tel verilince kosar)."""
+    _t = time.perf_counter
     fw, fd, fh = gshape
     nx, ny, nz = occ.shape
     z_cap = fh + 4
     while True:
+        if _tel is not None:
+            _tel["tur"] = _tel.get("tur", 0) + 1
         z_lim = min(nz, z_cap)
         sub = occ[:, :, :z_lim]
         mshape = (nx - fw + 1, ny - fd + 1, z_lim - fh + 1)
@@ -304,10 +311,13 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
         elif not bool(sub.any()):
             o = (0, 0, 0)
         else:
+            _t0 = _t()
             xs = cp.where(sub.any(axis=(1, 2)))[0]
             ys = cp.where(sub.any(axis=(0, 2)))[0]
             x0, x1 = int(xs[0]), int(xs[-1]) + 1
             y0, y1 = int(ys[0]), int(ys[-1]) + 1
+            if _tel is not None:
+                _tel["bbox_s"] = _tel.get("bbox_s", 0.0) + (_t() - _t0)
             cx0 = max(0, x0 - (fw - 1)); cx1 = min(nx, x1 + (fw - 1))
             cy0 = max(0, y0 - (fd - 1)); cy1 = min(ny, y1 + (fd - 1))
             crop = sub[cx0:cx1, cy0:cy1, :]
@@ -315,12 +325,22 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
             if crop.shape[0] >= fw and crop.shape[1] >= fd:
                 # H-17: tam-boy FFT tamponu VRAM butcesini asarsa eksen-dilimli
                 # (butceye sigan durumda ayni matematik — bit-ozdes eski yol).
-                Cc = gpu_conv_valid_chunked(cp, crop, grid_flip, gshape)
+                _t0 = _t()
+                # K-57 fastlen (A/B kaniti 2026-07-18: d4 orneklemi -%49.9,
+                # h + tum placements BIREBIR): cuFFT-dostu next_fast_len boyutu.
+                Cc = gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
+                                            fast_len=fast_len)
+                if _tel is not None:
+                    cp.cuda.Stream.null.synchronize()
+                    _tel["conv_s"] = _tel.get("conv_s", 0.0) + (_t() - _t0)
                 gx1 = min(cx0 + Cc.shape[0], mshape[0]); gy1 = min(cy0 + Cc.shape[1], mshape[1])
                 bx = gx1 - cx0; by = gy1 - cy0
                 if bx > 0 and by > 0:
                     mask[cx0:gx1, cy0:gy1, :] = Cc[:bx, :by, :]
+            _t0 = _t()
             o = _blb_gpu(cp, mask)
+            if _tel is not None:
+                _tel["blb_s"] = _tel.get("blb_s", 0.0) + (_t() - _t0)
         if o is not None:
             return o
         if z_lim >= nz:
@@ -329,7 +349,8 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape):
 
 
 def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
-               time_budget_sec=None, budget_status=None, no_go_mask=None):
+               time_budget_sec=None, budget_status=None, no_go_mask=None,
+               fast_len=True, _tel=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
     yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
@@ -377,7 +398,8 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
             fw, fd, fh = gshape
             if fw > nx or fd > ny:
                 continue
-            o = _blb_xybbox_gpu(cp, occ, gf, gshape)
+            o = _blb_xybbox_gpu(cp, occ, gf, gshape, fast_len=fast_len,
+                                _tel=_tel)
             if o is None:
                 continue
             key = (max(o[2] + fh, cur_max), o[2] + fh, o[2], o[1], o[0], oi)

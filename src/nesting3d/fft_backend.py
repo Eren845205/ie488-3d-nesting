@@ -113,20 +113,33 @@ def _wrap_chunked(base_fn: FeasibleMaskFn) -> FeasibleMaskFn:
 
 
 def gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
-                           budget_bytes: Optional[float] = None):
+                           budget_bytes: Optional[float] = None,
+                           fast_len: bool = False):
     """GPU-resident 'valid' feasibility karari (<0.5) — gerekirse eksen-dilimli.
 
     crop: cihazda bool occupancy kirpigi; grid_flip: cihazda ters-cevrili f64 kernel.
     Donus cihazda bool mask (host transferi YOK — GPU-resident semantik korunur).
-    Dilimsiz dal mevcut _blb_xybbox_gpu konvolusyonuyla ayni matematik (bit-ozdes)."""
+    Dilimsiz dal mevcut _blb_xybbox_gpu konvolusyonuyla ayni matematik (bit-ozdes).
+
+    fast_len (K-57 adayi, default False = eski yol BIREBIR): FFT boyutunu
+    scipy.fft.next_fast_len ile cuFFT-dostu kompozite yuvarla (2^a·3^b·5^c·7^d).
+    Sifir-padding buyur ama LINEER konvolusyonun valid bolgesi ayni matematik
+    (wrap yok; kirpma indeksleri degismez) -> KARAR-birebir; yalniz FFT ic
+    yuvarlamasi ~1e-12 duzeyinde degisebilir, 0-vs->=1 tamsayi karari icin
+    yapisal tolerans 0.5. Olcum kapisiyla dogrulanmadan uretim yolu ACILMAZ."""
     if budget_bytes is None:
         budget_bytes = _fft_budget_bytes(gpu=True)
     fw, fd, fh = (int(g) for g in gshape)
 
     def _conv(sub):
         full = tuple(int(sub.shape[i]) + (fw, fd, fh)[i] - 1 for i in range(3))
-        C = cp.fft.irfftn(cp.fft.rfftn(sub.astype(cp.float64), s=full) *
-                          cp.fft.rfftn(grid_flip, s=full), s=full)
+        if fast_len:
+            from scipy.fft import next_fast_len as _nfl
+            fshape = tuple(int(_nfl(n)) for n in full)
+        else:
+            fshape = full
+        C = cp.fft.irfftn(cp.fft.rfftn(sub.astype(cp.float64), s=fshape) *
+                          cp.fft.rfftn(grid_flip, s=fshape), s=fshape)
         return C[fw - 1:sub.shape[0], fd - 1:sub.shape[1], fh - 1:sub.shape[2]] < 0.5
 
     plan = plan_fft_chunks(tuple(int(s) for s in crop.shape), (fw, fd, fh), budget_bytes)

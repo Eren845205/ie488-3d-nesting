@@ -103,3 +103,4 @@ def test_evaluate_set_sure_kirilim(monkeypatch):
     assert sk["nfv_solve_ham_s"] == 7.7
     assert sk["r11_s"] == 1.1
     assert sk["rot_kabul_s"] is None
+    assert sk["decode_strateji"] is None  # _R'de adaptive_reason yok
