@@ -402,6 +402,16 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
         else:
             tel["r11"] = {"uygulandi": True, **sonuc}
 
+    def _r11_zamanli(res, tel):
+        """K-57 sure-kirilimi: r11 denemesinin duvar-saati tel['r11'] icine.
+
+        r11 kapaliyken _r11_uygula tel'e dokunmaz -> anahtar da sure de
+        eklenmez (bit-ozdes)."""
+        _t = time.perf_counter()
+        _r11_uygula(res, tel)
+        if "r11" in tel:
+            tel["r11"]["sure_s"] = round(time.perf_counter() - _t, 2)
+
     def _kilit(res):
         try:
             return int(check(list(res.placements), res.fine_voxel_parts).n_locked)
@@ -483,34 +493,51 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                             **({"sokum_sirasi": sira} if sira else {})}
         return True
 
+    _ts = time.perf_counter()
     ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                 fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                 n_orientations=n_orientations, time_budget_sec=time_budget_sec,
                 clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds)
+    _solve_ham_s = time.perf_counter() - _ts
+    _ts = time.perf_counter()
     ham_kilit = _kilit(ham)
+    _kilit5_s = time.perf_counter() - _ts
     tel = {"recete": "nfv_kalite(K-36/41/44)", "pitch_mm": float(clearance_mm),
            "ham_height_mm": float(ham.height_mm), "ham_n_locked": ham_kilit,
            "guard_kosuldu": False, "guard_height_mm": None,
-           "guard_n_locked": None, "secilen": "ham"}
+           "guard_n_locked": None, "secilen": "ham",
+           # K-57 sure-kirilimi (davranis-notr telemetri)
+           "solve_ham_s": round(_solve_ham_s, 2),
+           "kilit5_s": round(_kilit5_s, 2)}
     if not ham_kilit:  # 0 veya None-degil-0 -> ham kilitsiz, guard vergisi odenmez
         if ham_kilit == 0:
-            _r11_uygula(ham, tel)
+            _r11_zamanli(ham, tel)
             tel["sure_s"] = round(time.perf_counter() - t0, 1)
             return ham, tel
 
     # ham KESIN kilitli (>0): guard vergisinden once rot-sokum kabulu dene
     # (hoca 2026-07-14: "zor cikan ama cikabilen" red sebebi degil).
-    if ham_kilit and _rot_kabul_dene(ham, tel):
-        _r11_uygula(ham, tel)
-        tel["sure_s"] = round(time.perf_counter() - t0, 1)
-        return ham, tel  # secilen="ham" (init degeri), guard_kosuldu=False
+    if ham_kilit:
+        _ts = time.perf_counter()
+        _rot_ok = _rot_kabul_dene(ham, tel)
+        if "rot_kabul" in tel:
+            tel["rot_kabul"]["sure_s"] = round(time.perf_counter() - _ts, 2)
+        if _rot_ok:
+            _r11_zamanli(ham, tel)
+            tel["sure_s"] = round(time.perf_counter() - t0, 1)
+            return ham, tel  # secilen="ham" (init degeri), guard_kosuldu=False
 
+    _ts = time.perf_counter()
     guard = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                   fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                   n_orientations=n_orientations, time_budget_sec=time_budget_sec,
                   clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
                   exit_guard=True)
+    _solve_guard_s = time.perf_counter() - _ts
+    _ts = time.perf_counter()
     guard_kilit = _kilit(guard)
+    tel["kilit5_s"] = round(tel["kilit5_s"] + time.perf_counter() - _ts, 2)
+    tel["solve_guard_s"] = round(_solve_guard_s, 2)
     tel.update(guard_kosuldu=True, guard_height_mm=float(guard.height_mm),
                guard_n_locked=guard_kilit)
     # Secim: kilitsiz olan kazanir; ikisi de kilitsiz/bilinmiyorsa alcak olan.
@@ -523,6 +550,6 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     else:
         secilen = ("ham", ham) if ham.height_mm <= guard.height_mm else ("guard", guard)
     tel["secilen"] = secilen[0]
-    _r11_uygula(secilen[1], tel)
+    _r11_zamanli(secilen[1], tel)
     tel["sure_s"] = round(time.perf_counter() - t0, 1)
     return secilen[1], tel

@@ -1131,6 +1131,53 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > `kill -0` detached PID'i goremiyor -> cift-kopya tuzagi yasandi (memory
 > feedback-gitbash-kill0-detached-pid; canlilik tasklist/Get-Process ile).
 
+> **2026-07-18 — K-57d ON-TESHIS = NO-GO (voxel-cache kapiyi hizlandirmaz;
+> kanit results/k57d_voxelize_pay.json + scripts/k57d_voxelize_pay_teshis.log):**
+> Eren yonu "kaliteden odun vermeden hiz" -> K-57d kalici voxel-cache adayi
+> once A4 olc-once teshisine sokuldu (cache TASARLANMADAN): 4 setin uretim-
+> rotasi voxelize'i izole zamanlandi (heightmap: to_voxel_parts coarse+fine;
+> NFV: _voxelize_nfv @p2.0 kalite-recetesi; d4 AX24 n24). SONUC: plan1 41.5s
+> (%11.7) · plan2 61.9s (%5.2) · plan3 80.3s (%4.9) · d4 61.4s (%2.9) =
+> **TOPLAM 245s / 5279s = %4.6** (k51e munhasir tabanina oran). MUKEMMEL
+> cache bile kapiyi ~4dk kisaltir (Amdahl duvari); olcum pytest yuku altinda
+> = pay sisik bile olabilir -> karar degismez. HUKUM: K-57d kapi icin
+> DUSUK-ONCELIK/NO-GO; cache ancak cok-tekrarli APP kullaniminda (ayni STL
+> yeniden-islenirse) ayri gerekceyle geri gelir. YAN BULGU (baseline JSON +
+> teshis): kapi suresinin ~%95'i voxelize-DISI — plan3'te r11 UYGULANMIS
+> (kazanc 19.58mm; 1639s icinde payi bilinmiyor), plan2 rot-denetimi 219
+> kilit/226 mesh, d4 clearance 6000-ornek x 588 mesh. SIRADAKI TESHIS:
+> evaluate_set'e davranis-notr sure-kirilim telemetrisi (solve/clearance/
+> kilit5/rot ayri sayaclar) + tek-set anatomi kosusu -> hiz yatiriminin
+> gercek adresi veriyle secilir (r11 mi decode mu olcum katmani mi).
+
+> **2026-07-18 — K-57 ANATOMI OLCUMU (sure-kirilim telemetrisi) = KAPI
+> SURESININ HARITASI CIKTI + CIFT-ROT ISRAFI YAKALANDI (kanit
+> results/k57_anatomi_nfv.json + scripts/k57_anatomi_nfv.log; 3/3 BIREBIR
+> replay 542.5/601.92/231.5):** Once davranis-notr telemetri kablolandi
+> (solve_nfv_kalite tel: solve_ham_s/solve_guard_s/kilit5_s + r11/rot_kabul
+> sure_s; evaluate_set: sure_kirilim dict — TDD tests/test_sure_kirilim.py 5
+> test + komsu 100 yesil). ANATOMI (sakin makine, toplam 3862s):
+> **ham decode 1926s (%50: p2 266 / p3 519 / d4 1141 [AX24 %76!])** ·
+> **r11 622s (%16, yalniz plan3)** · **rot_kabul solve-ici 569s (%15,
+> gerekli — guard vergisinden koruyor)** · **rot eval-katmani 609s (%16:
+> p2 283 + d4 209 dz'SIZ = AYNI denetimin tekrari = 492s SAF ISRAF; p3 117
+> dz'li = mesru)** · olcum (clearance+kilit) 111s (%3 — suclu degil).
+> **CIFT-ROT FIX KODLANDI (TDD 3 test, 64/64 eval_gate yesil):** r11_dz
+> YOK + solve tel rot_kabul.uygulandi=True & rot_kilit=0 -> eval katmani
+> denetimi tekrarlamaz, solve kanitini kullanir (rot_kaynak="solve_reuse";
+> dz'li vaka KONSERVATIF yeniden kosar; kanit-yokluk eski yol birebir).
+> **PARITE KOSUSU 4/4 GECTI (kanit results/k57_rot_reuse_parite.json):**
+> plan2 542.5 BIREBIR + cert 4 BIREBIR + rot_kaynak=solve_reuse, 878.2 ->
+> **678.1s (-200s, -%23)** · d4 231.5 BIREBIR + cert 5 BIREBIR, 1506.9 ->
+> **1113.3s (-394s, -%26)**. Toplam kazanc 594s ≈ 10dk — kalite-notr KANITLI
+> (legal + cert sayilari k51e baseline'la birebir). FIX URETIMDE (evaluate_set
+> default'u; dz'li vaka konservatif korunur). SIRADAKI HIZ ADAYLARI (anatomi-temelli,
+> buyukten kucuge): (1) ham decode 1926s — d4 AX24 dominant; GPU-decode
+> teyidi (K-57c acik yonu, P3 ~2x kanitli) + poz-budama; (2) r11 622s
+> (plan3) — ornekleme/erken-cikis (kalite-riskli, dikkatli); (3) rot_kabul
+> 569s — kilit_rot_meshes hizlandirma (K-55 R11 desenine benzer cKDTree/
+> budama olabilir). Voxelize %4.6 (K-57d NO-GO) ve olcum katmani %3 KAPALI.
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
@@ -1269,7 +1316,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~H-16w~~ | ~~H-16 dirty-cache üretime bağlama~~ → **KAPANDI 2026-07-05** (E2E 5/5: 282.0 BİREBİR + **205s** (H-15p 553s'den 2.7×, K-19 orijinali 6272s'den **31×**) + cache telemetri hit %90.3 + RAM 1.17GB; MEDIUM-2 thread-safety YAPISAL kapalı: cache'li Bin3D _run_fine-lokal, parallel_decode OccupancyBin3D; reviewer PASS 0 C/H/M) | 6GB | — | ÜRETİMDE (wall_aware tetiği, `drop_cache=wall_aware_pitch`) | Kabuk koşusu artık ~3.4dk. LOW notları: thread-isolation test docstring'i geniş; `drop_cache_cap_mb` operatör-ayarlanamaz (default 300, peak 43.6MB — zararsız). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
 | **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** — **K-56a ÖLÇÜLDÜ 2026-07-18 = GO (§3): 302.8 → 202.2 LEGAL şerhsiz (−%33.2), `extra_rot_overrides` opt-in zinciri kodda + testli.** KALAN = K-56b: (1) üretim kablosu (tilt-zorunlu kapı → otomatik hedefli-tilt; eval kapısı 4-set PASS + Eren onayı), (2) ince-açı taraması (x20-x50 @1-2°; 141-110 bandı hedefi), (3) filtre-gevşetme ölçümü | 6GB | Düşük (altyapı hazır) | **YÜKSEK (plan1)** — dik dikilme cezası kanıtla kırıldı; master 8-11 pozları YANLIŞ bant (z=260-285), kazanan hedefli x-tilt; y-tilt yapısal ölü (fp_y>290) | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL (eksen-hizalı); NFV plan1'de K-40 sert no-go. Eski miras kanıtı: dblf@1.0 tilt 141.0. |
-| **K-57** | **Eval-kapısı hızlandırma paketi** (Eren isteği 2026-07-17 "baseline çok hızlı değil"): (a) **münhasır-koşu politikası** — plan3 fast-NFV sakin makinede 27dk vs yüklü 96-155dk = en büyük çarpan CPU çekişmesi, SIFIR kod; (b) **set-paralel orkestrasyon** — 4 set sıralı yerine ayrı süreçlerde (RAM/VRAM-akıllı eşleme: ucuz plan1+d4 birlikte), duvar-saati ≈ en yavaş set → kapı ~30-40dk; (c) kapıda GPU decode yolunun gerçekten seçildiğinin telemetri teyidi (P3 ~2× kanıtlı); (d) kalıcı voxel önbelleği (STL-hash, pitch, poz-seti anahtarlı — ileri aday) | 6GB | (a) sıfır · (b) orta · (c) düşük · (d) orta | **YÜKSEK (iterasyon hızı)** — kapı 1-2.5h → hedef ~30-45dk; her motor değişikliğinin doğrulama maliyetini düşürür | Kanıt: k51e 2026-07-17 (sakin makine: p1 356s · p2 1188s · p3 1640s). Birebirlik kapısı geçerli: paralelleştirme sonuç SAYILARINI değiştirmemeli (süreç-izolasyonu bunu doğal sağlar; yine de 4-set parite koşusuyla kanıtlanır). |
+| **K-57** | **Eval-kapısı hızlandırma paketi**: (a) münhasır-koşu politikası ✅ GEÇERLİ (yük süreleri şişiriyor, kanıtlı); (b) set-paralel orkestrasyon ✅ KODDA (parite 4/4 NOOP kanıtlı) ama **hız bu RAM'de gerçekleşmiyor** (16GB'de RAM-ağır NFV çiftleri OOM→seri-retry; §3 K-57b/c); (c) GPU-teyit kısmi (capabilities OK, per-decode telemetri açık); (d) ~~kalıcı voxel önbelleği~~ → **NO-GO 2026-07-18 (§3 K-57d: voxelize payı toplam %4.6 — Amdahl duvarı; cache ancak çok-tekrarlı APP senaryosunda ayrı gerekçeyle)** | 6GB | — | Kapı hızının kalan adresi: süre-kırılım telemetrisi + r11/decode/ölçüm-katmanı anatomisi (§3 K-57d yan bulgu) + RAM/boş-makine | Kanıt: k51e + K-57b/c parite koşuları + k57d_voxelize_pay.json. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
 ilerleme = **SÜPER BİLGİSAYAR** (A1 sürekli rotasyon + ince-pitch için bol VRAM). Erişim konteyner-app

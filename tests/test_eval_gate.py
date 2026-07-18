@@ -641,3 +641,72 @@ def test_k57c_cocuk_env_ustteki_budgeti_ezer(monkeypatch):
     monkeypatch.setenv("NFV_FFT_BUDGET_MB", "9999")
     env = eg._cocuk_env(fft_budget_mb=300.0)
     assert env["NFV_FFT_BUDGET_MB"] == "300.0"  # acik cap ustteki env'i ezer
+
+
+# ---------------------------------------------------------------------------
+# K-57 cift-rot fix'i: dz'siz vakada solve'un rot kanitinin yeniden kullanimi
+# (anatomi kaniti 2026-07-18: plan2'de ayni denetim iki kez = 283s israf)
+# ---------------------------------------------------------------------------
+
+def test_rot_reuse_dzsiz_solve_kaniti_kullanilir(monkeypatch):
+    """dz yok + solve rot_kabul kilit=0 aklamis -> eval rot denetimi ATLANIR,
+    solve kaniti kullanilir (ayni sahne, ayni fonksiyon — bilgi ozdes)."""
+    from types import SimpleNamespace as NS
+    eg, _ = _fake_eval_ortam(
+        monkeypatch, n_locked=219,
+        nfv_tel={"secilen": "ham",
+                 "rot_kabul": {"uygulandi": True, "rot_kilit": 0, "cert": 4}})
+
+    def rot_fn(meshes):
+        raise AssertionError("rot denetimi yeniden KOSULMAMALIYDI (reuse)")
+
+    r = eg.evaluate_set("t", 42, _rot_fn=rot_fn)
+    assert r["n_locked_rot"] == 0
+    assert r["rot_cert"] == 4
+    assert r["sokum_planli"] is True
+    assert r["legal_height_mm"] == 220.7
+    assert r["rot_kaynak"] == "solve_reuse"
+    assert r["sure_kirilim"]["rot_s"] is None
+
+
+def test_rot_reuse_dzli_vaka_yeniden_kosar(monkeypatch):
+    """r11 dz uygulanmis -> sahne kaymis; solve kaniti KULLANILMAZ,
+    rot denetimi dz'li meshlerde yeniden kosar (konservatif dogru)."""
+    from types import SimpleNamespace as NS
+    sayac = {"rot": 0}
+    eg, _ = _fake_eval_ortam(
+        monkeypatch, n_locked=3,
+        nfv_tel={"secilen": "ham",
+                 "r11": {"uygulandi": True, "dz": [0.1], "height_mm": 219.0},
+                 "rot_kabul": {"uygulandi": True, "rot_kilit": 0, "cert": 1}})
+    monkeypatch.setattr(
+        "src.nesting3d.continuous_settle.kilit_5yon_meshes",
+        lambda m: 3, raising=False)
+
+    def rot_fn(meshes):
+        sayac["rot"] += 1
+        return NS(n_locked=0, certificates=[1])
+
+    r = eg.evaluate_set("t", 42, _rot_fn=rot_fn)
+    assert sayac["rot"] == 1  # dz'li sahnede YENIDEN kosuldu
+    assert r["rot_kaynak"] == "yeniden"
+    assert r["n_locked_rot"] == 0
+
+
+def test_rot_reuse_solve_kaniti_yoksa_eski_yol(monkeypatch):
+    """solve rot_kabul kaniti yok (uygulanmadi/kilitli) -> eski yol birebir."""
+    from types import SimpleNamespace as NS
+    sayac = {"rot": 0}
+    eg, _ = _fake_eval_ortam(
+        monkeypatch, n_locked=12,
+        nfv_tel={"secilen": "ham",
+                 "rot_kabul": {"uygulandi": False, "neden": "rot_kilitli",
+                               "rot_kilit": 2}})
+
+    def rot_fn(meshes):
+        sayac["rot"] += 1
+        return NS(n_locked=0, certificates=[1, 2])
+
+    r = eg.evaluate_set("t", 42, _rot_fn=rot_fn)
+    assert sayac["rot"] == 1
+    assert r["n_locked_rot"] == 0 and r["rot_cert"] == 2

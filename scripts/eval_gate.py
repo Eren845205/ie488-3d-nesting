@@ -312,6 +312,7 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
     r, nfv_tel = _run_champion(name, inst, seed, budget=budget,
                                n_orientations=n_orientations,
                                extra_rot_overrides=extra_rot_overrides)
+    _solve_s = time.perf_counter() - t0  # K-57 sure-kirilimi
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
     height = float(r.height_mm)
 
@@ -327,13 +328,17 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
 
     min_clear = None
     meshes = None
+    _clear_s = 0.0
+    _tk = time.perf_counter()
     if not skip_clearance:
         pitch = float(getattr(r, "fine_pitch"))
         meshes = placed_meshes(r.placements, r.fine_voxel_parts, pitch,
                                dz=r11_dz)
         rep = min_clearance(meshes, samples_per_mesh=6000)  # d4 dersi: 3000 iyimser
         min_clear = float(rep.min_mm)
+        _clear_s = time.perf_counter() - _tk
 
+    _tk = time.perf_counter()
     if r11_dz is not None and meshes is not None:
         try:
             from src.nesting3d.continuous_settle import kilit_5yon_meshes
@@ -342,6 +347,7 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
             n_locked = None  # olculemedi -> INVALID (kanitsizlik gecer not degil)
     else:
         n_locked = int(check_placements(r.placements, r.fine_voxel_parts).n_locked)
+    _kilit_s = time.perf_counter() - _tk
 
     # A2 rot-sokum katmani (Eren karari 2026-07-15; hoca kabulu 2026-07-14):
     # 5-yon kilit>0 tek basina RED degil — kilit_rot_meshes (K-52 tabani,
@@ -352,14 +358,32 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
     n_locked_rot = None
     rot_cert = None
     rot_hata = None
-    if n_locked > 0 and meshes is not None:
-        try:
-            from src.nesting3d.continuous_settle import kilit_rot_meshes
-            rot_rep = (_rot_fn or kilit_rot_meshes)(meshes)
-            n_locked_rot = int(rot_rep.n_locked)
-            rot_cert = len(getattr(rot_rep, "certificates", None) or [])
-        except Exception as exc:
-            rot_hata = f"{type(exc).__name__}: {exc}"
+    rot_kaynak = None
+    _rot_s = None
+    # K-57 cift-rot fix'i (anatomi kaniti 2026-07-18: plan2'de ayni denetim
+    # iki kez = 283s israf): dz YOKSA sahne solve'unkiyle BIREBIR ayni
+    # (placed_meshes ayni girdi) — solve'un rot_kabul kaniti (kilit_rot_meshes
+    # ayni fonksiyon, rot_kilit=0 + cert'ler) yeniden KULLANILIR, denetim
+    # tekrarlanmaz. dz'li (r11) vakada sahne kaydi -> KONSERVATIF yeniden
+    # kosulur. Kanit-yokluk/kilitli -> eski yol birebir.
+    _rk = (nfv_tel or {}).get("rot_kabul") or {}
+    if n_locked > 0:
+        if (r11_dz is None and _rk.get("uygulandi")
+                and _rk.get("rot_kilit") == 0):
+            n_locked_rot = 0
+            rot_cert = _rk.get("cert")
+            rot_kaynak = "solve_reuse"
+        elif meshes is not None:
+            rot_kaynak = "yeniden"
+            _tk = time.perf_counter()
+            try:
+                from src.nesting3d.continuous_settle import kilit_rot_meshes
+                rot_rep = (_rot_fn or kilit_rot_meshes)(meshes)
+                n_locked_rot = int(rot_rep.n_locked)
+                rot_cert = len(getattr(rot_rep, "certificates", None) or [])
+            except Exception as exc:
+                rot_hata = f"{type(exc).__name__}: {exc}"
+            _rot_s = time.perf_counter() - _tk
 
     legal, reason = legal_of(height, n_placed, n_total, min_clear, n_locked,
                              n_locked_rot=n_locked_rot)
@@ -372,10 +396,26 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
         "height_mm": height, "n_placed": n_placed, "n_total": n_total,
         "min_clearance_mm": min_clear, "n_locked": n_locked,
         "n_locked_rot": n_locked_rot, "rot_cert": rot_cert,
-        "rot_hata": rot_hata, "sokum_planli": sokum_planli,
+        "rot_hata": rot_hata, "rot_kaynak": rot_kaynak,
+        "sokum_planli": sokum_planli,
         "r11_uygulandi": bool(_r11.get("uygulandi")),
         "r11_kazanc_mm": _r11.get("kazanc_mm"),
         "duration_s": round(time.perf_counter() - t0, 1),
+        # K-57 sure-kirilimi (davranis-notr): kapi suresinin anatomisi.
+        # solve_s = _run_champion duvar-saati (NFV alt-kirilimi nfv_* ile);
+        # clearance/kilit/rot = olcum katmani kalemleri.
+        "sure_kirilim": {
+            "solve_s": round(_solve_s, 1),
+            "clearance_s": round(_clear_s, 1),
+            "kilit_s": round(_kilit_s, 1),
+            "rot_s": (round(_rot_s, 1) if _rot_s is not None else None),
+            "nfv_sure_s": (nfv_tel or {}).get("sure_s"),
+            "nfv_solve_ham_s": (nfv_tel or {}).get("solve_ham_s"),
+            "nfv_solve_guard_s": (nfv_tel or {}).get("solve_guard_s"),
+            "nfv_kilit5_s": (nfv_tel or {}).get("kilit5_s"),
+            "r11_s": ((nfv_tel or {}).get("r11") or {}).get("sure_s"),
+            "rot_kabul_s": ((nfv_tel or {}).get("rot_kabul") or {}).get("sure_s"),
+        },
     }
 
 
