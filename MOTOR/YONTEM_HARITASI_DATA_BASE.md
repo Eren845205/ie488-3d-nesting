@@ -1104,6 +1104,33 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > cozulunce k51e ile denenir. Kanit: results/eval_gate_last.json;
 > scripts/k51d_baseline_kilit.log.
 
+> **2026-07-18 — K-56a OLCULDU = GO (plan1 uretim-yolu 302.8 -> 202.2 LEGAL,
+> −100.6mm = −%33.2; kanit D:\ie488\results\k56_plan1_uretim_tilt.json +
+> scripts/k56_plan1_uretim_tilt.log):** MEKANIZMA: opt-in `extra_rot_overrides`
+> zinciri (voxelize_part `extra_rot_matrices` -> expand_quantities ->
+> to_voxel_parts -> solve_coarse_to_fine -> eval_gate evaluate_set; ek pozlar
+> default setin SONUNA — coarse/fine indeks tutarli; NFV dalinda ValueError;
+> TUM default'lar bit-ozdes, TDD tests/test_k56_extra_rot.py 10 test + komsu
+> ~394 yesil + A9 fake-imza hizasi test_eval_gate._fake_eval_ortam). DENEY
+> (scripts/k56_plan1_uretim_tilt.py, uretim sozlesmesi evaluate_set):
+> A = uretim default **302.769 replay** (k51e bit-ozdes; 314.6s). Tarama:
+> baseplate_v2'ye x/y 5..85@5 tilt @fine 1.016/margin 2; filtre = grid-sigma
+> + no-go'suz-yerlesebilirlik dikdortgen testi + z<298vox (YERLESEBILEN
+> default-poz esigi — 2026-07-09 "esik cozumun kullandigi poz" dersi). Kabul
+> 14 poz (x20..x85); **TUM y-tilt pozlari YAPISAL OLU** (fp_y~307mm > 290mm
+> no-go-otesi serit — y-tilt baseplate y-boyunu kucultmuyor). B = **202.185
+> LEGAL serhsiz: 112/112, kilit 0 (rot denetimi gerekmeden), clear 2.032,
+> 270.8s (A'dan HIZLI — kule kisaldi)**. Eski dblf@1.0 kaniti 141.0'a kalan
+> ~61mm fark adaylari: 5-derece adim kabaligina karsi ince-aci taramasi
+> (x20-x50 bandinda 1-2 derece), coarse kuantizasyon, dblf sira etkisi.
+> SIRADAKI (K-56b): (1) URETIM KABLOSU — tilt-zorunlu kapi tetiklenince
+> hedefli-tilt otomatik (pipeline + eval kapisi 4-set PASS + Eren onayi),
+> (2) ince-aci taramasi, (3) filtre-gevsetme olcumu (dblf'e birak). SUREC
+> NOTU: D:\ie488 agaci HEAD'den geriydi (onceki kosular kismi kopyayla) —
+> src/scripts/tests robocopy /E ile TAM senkronlandi; ayrica Git Bash
+> `kill -0` detached PID'i goremiyor -> cift-kopya tuzagi yasandi (memory
+> feedback-gitbash-kill0-detached-pid; canlilik tasklist/Get-Process ile).
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
@@ -1241,7 +1268,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
 | ~~H-16w~~ | ~~H-16 dirty-cache üretime bağlama~~ → **KAPANDI 2026-07-05** (E2E 5/5: 282.0 BİREBİR + **205s** (H-15p 553s'den 2.7×, K-19 orijinali 6272s'den **31×**) + cache telemetri hit %90.3 + RAM 1.17GB; MEDIUM-2 thread-safety YAPISAL kapalı: cache'li Bin3D _run_fine-lokal, parallel_decode OccupancyBin3D; reviewer PASS 0 C/H/M) | 6GB | — | ÜRETİMDE (wall_aware tetiği, `drop_cache=wall_aware_pitch`) | Kabuk koşusu artık ~3.4dk. LOW notları: thread-isolation test docstring'i geniş; `drop_cache_cap_mb` operatör-ayarlanamaz (default 300, peak 43.6MB — zararsız). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
-| **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** (baseplate'e eğik pozlar: master set 8-11 [20-35°] ve/veya `voxelize.orientation_overrides` parça-bazlı hedefli açı; K-43 multistart + plan1_hedefli_tilt scriptleri miras) | 6GB | Orta | **YÜKSEK (plan1)** — 302.8'in ~tamamı baseplate'in dik dikilme cezası (dik=302.7); düz poz no-go+335'te GEOMETRİK imkânsız (tilt-zorunlu kapı kanıtı). Manuel ~110 / eğik-SA deneyi 129ş. İlk adım beklentisi ~150-200; 129-110 bandı ince açı taraması ister | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL (eksen-hizalı, eğik yok); NFV plan1'de K-40 sert no-go. Ön-şart: k51e baseline kilidi → kapıya karşı ölçüm. |
+| **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** — **K-56a ÖLÇÜLDÜ 2026-07-18 = GO (§3): 302.8 → 202.2 LEGAL şerhsiz (−%33.2), `extra_rot_overrides` opt-in zinciri kodda + testli.** KALAN = K-56b: (1) üretim kablosu (tilt-zorunlu kapı → otomatik hedefli-tilt; eval kapısı 4-set PASS + Eren onayı), (2) ince-açı taraması (x20-x50 @1-2°; 141-110 bandı hedefi), (3) filtre-gevşetme ölçümü | 6GB | Düşük (altyapı hazır) | **YÜKSEK (plan1)** — dik dikilme cezası kanıtla kırıldı; master 8-11 pozları YANLIŞ bant (z=260-285), kazanan hedefli x-tilt; y-tilt yapısal ölü (fp_y>290) | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL (eksen-hizalı); NFV plan1'de K-40 sert no-go. Eski miras kanıtı: dblf@1.0 tilt 141.0. |
 | **K-57** | **Eval-kapısı hızlandırma paketi** (Eren isteği 2026-07-17 "baseline çok hızlı değil"): (a) **münhasır-koşu politikası** — plan3 fast-NFV sakin makinede 27dk vs yüklü 96-155dk = en büyük çarpan CPU çekişmesi, SIFIR kod; (b) **set-paralel orkestrasyon** — 4 set sıralı yerine ayrı süreçlerde (RAM/VRAM-akıllı eşleme: ucuz plan1+d4 birlikte), duvar-saati ≈ en yavaş set → kapı ~30-40dk; (c) kapıda GPU decode yolunun gerçekten seçildiğinin telemetri teyidi (P3 ~2× kanıtlı); (d) kalıcı voxel önbelleği (STL-hash, pitch, poz-seti anahtarlı — ileri aday) | 6GB | (a) sıfır · (b) orta · (c) düşük · (d) orta | **YÜKSEK (iterasyon hızı)** — kapı 1-2.5h → hedef ~30-45dk; her motor değişikliğinin doğrulama maliyetini düşürür | Kanıt: k51e 2026-07-17 (sakin makine: p1 356s · p2 1188s · p3 1640s). Birebirlik kapısı geçerli: paralelleştirme sonuç SAYILARINI değiştirmemeli (süreç-izolasyonu bunu doğal sağlar; yine de 4-set parite koşusuyla kanıtlanır). |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek

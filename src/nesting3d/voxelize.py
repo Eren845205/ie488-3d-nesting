@@ -400,6 +400,7 @@ def voxelize_part(
     display_mesh: Optional[trimesh.Trimesh] = None,
     allowed_orientations: Optional[Tuple[int, ...]] = None,
     rot_matrices: Optional[List[np.ndarray]] = None,
+    extra_rot_matrices: Optional[List[np.ndarray]] = None,
 ) -> VoxelPart:
     """Voxelize one model into a VoxelPart with per-orientation profiles.
 
@@ -421,6 +422,11 @@ def voxelize_part(
     olarak bu matrislerden üretilir. İnce-açı refinement (Faz 2b, coarse_to_fine)
     kazanan ayrık pozun ±açı çevresinde sürekli (ör. 1° adım) rotasyonlar
     üretmek için kullanır (master sette olmayan keyfi açılar).
+
+    extra_rot_matrices (K-56): default sete EK 4x4 rotasyonlar — sona
+    eklenir (mevcut indeksler DEĞİŞMEZ; None = bit-özdeş). Hedefli-tilt:
+    master sette olmayan düşük-açı pozları (plan1 baseplate 5-50°) parçaya
+    öğretmek için; rot_matrices'ten farkı EZMEK değil EKLEMEK.
     """
     if rot_matrices is not None:
         rots = list(rot_matrices)
@@ -429,6 +435,9 @@ def voxelize_part(
         rots = [master[i] for i in allowed_orientations]
     else:
         rots = rotation_matrices(n_orientations)
+    if extra_rot_matrices:
+        rots = list(rots) + [np.asarray(m, dtype=float)
+                             for m in extra_rot_matrices]
     orientations: List[Orientation] = []
     son_hata: Optional[Exception] = None
     for rot in rots:
@@ -538,6 +547,7 @@ def expand_quantities(
     z_dilate: int = 0,
     method: str = "subdivide",
     orientation_overrides: Optional[dict] = None,
+    extra_rot_overrides: Optional[dict] = None,
     kimlik_map: Optional[dict] = None,
 ) -> List[VoxelPart]:
     """Voxelize each model ONCE, then expand to qty part instances.
@@ -550,6 +560,10 @@ def expand_quantities(
 
     orientation_overrides: {model adı -> 8-poz master sete indeks tuple'ı};
     eşleşmeyen modeller n_orientations default setini kullanır.
+
+    extra_rot_overrides (K-56): {model adı -> [4x4 rot matrisi, ...]} — adı
+    eşleşen modelin default poz setine SONA eklenen ek pozlar (hedefli-tilt).
+    None = bit-özdeş.
 
     kimlik_map (P0, opsiyonel): {model adı -> {"geo_imza", "kaynak_ad",
     "kovalar": [(order_id, qty), ...]}}. Verilirse kopya k'lar deterministik
@@ -566,6 +580,7 @@ def expand_quantities(
       - ValueError (boş grid, ince parça) executor içinden propagate eder.
     """
     overrides = orientation_overrides or {}
+    extra_overrides = extra_rot_overrides or {}
 
     # Her tip için voxelize_part argümanlarını hazırla (sıra korunur).
     entries = []
@@ -584,6 +599,7 @@ def expand_quantities(
             method=method,
             display_mesh=display,
             allowed_orientations=overrides.get(name),
+            extra_rot_matrices=extra_overrides.get(name),
         )
 
     if _should_parallelize(model_set, pitch):

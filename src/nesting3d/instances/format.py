@@ -271,6 +271,7 @@ def to_voxel_parts(
     z_dilate: int = 0,
     method: str = "slice",
     allowed_orientations: Optional[tuple] = None,
+    extra_rot_overrides: Optional[dict] = None,
 ) -> list:
     """Kutu instance'larini trimesh box mesh -> VoxelPart listesine dönüştür.
 
@@ -285,6 +286,11 @@ def to_voxel_parts(
     allowed_orientations: 28-pozluk master sete indeks tuple'ı — TÜM modellere
     aynı poz kısıtı (K-18p: quality=max AX24 eksen-hizalı seti). Verilirse
     n_orientations yok sayılır (voxelize_part önceliği).
+
+    extra_rot_overrides (K-56): {model adı -> [4x4 rot matrisi, ...]} — adı
+    eşleşen modelin default setine SONA eklenen ek pozlar (hedefli-tilt;
+    master sette olmayan düşük açılar). Anahtar görünen ad (display) veya
+    kaynak_ad ile eşleşir. None = bit-özdeş.
 
     z_dilate: TEK-TARAFLI (+z / üst) dilation voxel sayısı (EVAL-1 NFV dikey-
     clearance fix). 0 (default) -> hiç z-dilation (mevcut çağıranlar BİT-ÖZDEŞ).
@@ -345,6 +351,15 @@ def to_voxel_parts(
 
     overrides = ({g["display"]: allowed_orientations for g in groups.values()}
                  if allowed_orientations is not None else None)
+    extra = None
+    if extra_rot_overrides:
+        extra = {}
+        for g in groups.values():
+            rots = extra_rot_overrides.get(g["display"])
+            if rots is None and g["kaynak_ad"] is not None:
+                rots = extra_rot_overrides.get(g["kaynak_ad"])
+            if rots:
+                extra[g["display"]] = rots
     return expand_quantities(
         combined,
         pitch,
@@ -353,6 +368,7 @@ def to_voxel_parts(
         z_dilate=z_dilate,
         method=method,
         orientation_overrides=overrides,
+        extra_rot_overrides=extra,
         kimlik_map=kimlik_map,
     )
 

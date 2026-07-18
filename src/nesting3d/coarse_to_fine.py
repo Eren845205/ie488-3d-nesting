@@ -131,7 +131,7 @@ def _min_feature_mm(instance: NestingInstance) -> float:
 def _voxelize_with_fallback(
     instance: NestingInstance, pitch: float, floor_pitch: float,
     *, n_orientations: int = 4, clearance_mm: float = 0.0,
-    plate_w_mm=None, plate_d_mm=None,
+    plate_w_mm=None, plate_d_mm=None, extra_rot_overrides=None,
 ):
     """Voxelize; boş-grid hatasında pitch'i otomatik KIS (ince-duvar güvenliği).
 
@@ -154,7 +154,8 @@ def _voxelize_with_fallback(
             margin, _ = cap_margin_to_plate(margin, cur, instance,
                                             plate_w_mm, plate_d_mm)
             return to_voxel_parts(instance, cur, n_orientations=n_orientations,
-                                  margin=margin), cur
+                                  margin=margin,
+                                  extra_rot_overrides=extra_rot_overrides), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
@@ -164,7 +165,9 @@ def _voxelize_with_fallback(
                                                 plate_w_mm, plate_d_mm)
                 return to_voxel_parts(instance, floor_pitch,
                                       n_orientations=n_orientations,
-                                      margin=margin), floor_pitch
+                                      margin=margin,
+                                      extra_rot_overrides=extra_rot_overrides
+                                      ), floor_pitch
             cur = nxt
 
 
@@ -449,6 +452,7 @@ def solve_coarse_to_fine(
     drop_cache_cap_mb: float = 300.0,
     clearance_mm: float = 0.0,
     no_go_bounds=None,
+    extra_rot_overrides=None,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -532,7 +536,15 @@ def solve_coarse_to_fine(
                       bosluk birlikte >= clearance_mm gercek boslugu saglar.
                       NFV yolu ayri (zaten margin=1); bu param yalniz bu
                       NFV-DISI coarse_to_fine yolunu etkiler.
-
+    extra_rot_overrides: (K-56 hedefli-tilt) {model adı -> [4x4 rot matrisi]}
+                      — adı eşleşen modelin default poz setine SONA eklenen
+                      ek pozlar; coarse ve fine AYNI sırayla kurar (indeks
+                      tutarlılığı; rot-matris hizalaması ayrıca dayanıklı).
+                      None (default) = bit-özdeş. NOT: adaptive=True yolunda
+                      coarse poz-seçimi ek pozsuz aranır (yalnız fine'a
+                      eklenir); refine (fine_angle) adayları da ek pozların
+                      ±penceresini AÇMAZ — K-56 ölçüm kapsamı non-adaptive
+                      üretim yolu.
     Returns
     -------
     CoarseToFineResult
@@ -562,6 +574,7 @@ def solve_coarse_to_fine(
             instance, coarse_pitch, fine_pitch, n_orientations=n_orientations,
             clearance_mm=clearance_mm,
             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+            extra_rot_overrides=extra_rot_overrides,
         )
 
     # K-54 telemetri: coarse voxelize içinde uygulanan cap'i (varsa) yeniden
@@ -672,7 +685,8 @@ def solve_coarse_to_fine(
     # --- Baz çözüm (ince açı YOK) — daima üretilir (güvenli karşılaştırma tabanı)
     base_parts = to_voxel_parts(instance, fine_pitch,
                                 n_orientations=n_orientations,
-                                margin=_fine_margin)
+                                margin=_fine_margin,
+                                extra_rot_overrides=extra_rot_overrides)
     base_by_id: Dict[str, Any] = {p.id: p for p in base_parts}
 
     # orient_map'i FINE listesine yeniden hizala: once rot-matris eslesmesi,
