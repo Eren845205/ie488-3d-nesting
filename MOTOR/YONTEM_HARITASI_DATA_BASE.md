@@ -1079,8 +1079,23 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > cocuklara gecir** (H-17 dilimli-konvolusyon bit-ozdes; RAM tepesi duser ->
 > OOM'suz gercek paralellik) VEYA daha cok RAM / plan1+d4 gibi HAFIF ciftleri
 > esle. Munhasir-kosu politikasi (K-57a) hala gecerli (yuk sureleri sisiriyor).
-
-> **2026-07-15 — K-51d TAMAM (exit 4; 3/4 set LEGAL, plan1 K-54'e bagli):**
+>
+> **K-57c OLCULDU = FFT-CAP OOM'u COZMEDI (kok neden RAM, FFT DEGIL; kanit
+> scripts/k57_parite_kosu.log @ NFV_FFT_BUDGET_MB=350):** parite 3/4 yine
+> BIT-OZDES (plan1 302.8 · plan2 542.5 [NFV seti, dusuk budget'la da birebir
+> = H-17 dilim=tam-boy SAHADA dogrulandi] · d4 231.5) AMA plan3 IKI KEZ OOM —
+> plan3||d4 cakismasi OOM, seri kurtarmada plan3 TEK BASINA (RAM tekelinde,
+> dusuk budget) BILE OOM ("4.76 MiB alloc fail"). KESIN TESHIS: OOM hata
+> boyutu ~2-5 MiB kucuk dizilerde = sistem TAMAMEN RAM'siz; suclu FFT tamponu
+> DEGIL (350MB'a kapatildi) — FFT-DISI RAM (mesh dizileri, clearance
+> ornekleme 6000/mesh, voxel gridleri) + genel baski (baslangic bos 2.5GB,
+> kullanici aktif). WALL 62dk YANILTICI (plan3 bitmedi = 3-set; onceki 59dk
+> gibi). K-57 NET DEGERI: (a) parite altyapisi + (b) OOM seri-kurtarma
+> URETIMDE/kanitli (opt-in, zararsiz); (c) HIZ bu donanim+yukte
+> GERCEKLESMIYOR — asil kaldirac RAM (daha cok RAM / bos-makine munhasir kosu
+> / super-bilgisayar §5). Kod calisir; HIZ KANITI bos-makine kosusuna
+> ERTELENDI. SONRAKI ADAY: clearance-sample paralel-cap (parite riski, d4
+> 3000-iyimser dersi) veya --parallel 3 + bol RAM (3 agir seti ayirmak icin).
 > plan2 542.5 (3. kez birebir — determinizm saglam) · plan3 601.9 (2. kez
 > birebir; sure 9293s=155dk, k51c'de 5741s — CPU cekismesi duyarli, fast-NFV
 > plan3 yavasligi K-53/K-55 konusu) · d4 276.5 (2. kez birebir; 548.8s) ·
