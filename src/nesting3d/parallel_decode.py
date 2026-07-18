@@ -291,7 +291,8 @@ def _blb_gpu(cp, mask):
     return xstar, ystar, zstar
 
 
-def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True, _tel=None):
+def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True,
+                    spec_cache=None, _tel=None):
     """_tel (K-57 profil, opsiyonel dict): kalem sureleri toplanir —
     'bbox_s' (any+where+int sync) / 'conv_s' (FFT) / 'blb_s' (mask tarama) /
     'tur' (z-merdiven turlari). None (default) = olcum yok, davranis BIREBIR
@@ -329,7 +330,8 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True, _tel=None):
                 # K-57 fastlen (A/B kaniti 2026-07-18: d4 orneklemi -%49.9,
                 # h + tum placements BIREBIR): cuFFT-dostu next_fast_len boyutu.
                 Cc = gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
-                                            fast_len=fast_len)
+                                            fast_len=fast_len,
+                                            spec_cache=spec_cache)
                 if _tel is not None:
                     cp.cuda.Stream.null.synchronize()
                     _tel["conv_s"] = _tel.get("conv_s", 0.0) + (_t() - _t0)
@@ -350,7 +352,7 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True, _tel=None):
 
 def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
                time_budget_sec=None, budget_status=None, no_go_mask=None,
-               fast_len=True, _tel=None):
+               fast_len=True, spec_cache_mb=0.0, _tel=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
     yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
@@ -365,6 +367,16 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
     except Exception:
         pass
     mempool = cp.get_default_memory_pool()
+
+    # K-57 kernel-spektrum LRU'su: decode-omurlu (id anahtari grid_cache
+    # referanslari canliyken guvenli); 0/None = KAPALI (eski yol birebir).
+    # DEFAULT KAPALI — 6GB VRAM'de ZARARLI OLCULDU (A/B 2026-07-18: +%137;
+    # canli spektrumlar cuFFT calisma tamponlarini sikistirip tahsis-thrash
+    # yaratiyor). Opt-in yalniz bol-VRAM ortami icin (super-bilgisayar).
+    _spec = None
+    if spec_cache_mb:
+        from src.nesting3d.fft_backend import SpecLRU
+        _spec = SpecLRU(float(spec_cache_mb) * 2 ** 20)
 
     occ = cp.zeros((nx, ny, _nz_limit(pitch)), dtype=cp.bool_)  # RESIDENT
     if no_go_mask is not None and np.asarray(no_go_mask).any():
@@ -399,7 +411,7 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
             if fw > nx or fd > ny:
                 continue
             o = _blb_xybbox_gpu(cp, occ, gf, gshape, fast_len=fast_len,
-                                _tel=_tel)
+                                spec_cache=_spec, _tel=_tel)
             if o is None:
                 continue
             key = (max(o[2] + fh, cur_max), o[2] + fh, o[2], o[1], o[0], oi)

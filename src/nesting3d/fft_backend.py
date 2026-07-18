@@ -112,9 +112,45 @@ def _wrap_chunked(base_fn: FeasibleMaskFn) -> FeasibleMaskFn:
     return wrapped
 
 
+class SpecLRU:
+    """Kernel-spektrum LRU'su (K-57): {(id(grid_flip), fshape) -> rfftn}.
+
+    VRAM byte-butceli; asim halinde en eski girisler dusurulur. id(grid_flip)
+    anahtari YALNIZ cache'in sahibi (decode_gpu) grid referanslarini canli
+    tuttugu surece guvenli — bu yuzden modul-global DEGIL, cagri-omru boyunca
+    yasayan nesne olarak kurulur ve parametreyle gecirilir."""
+
+    def __init__(self, budget_bytes: float):
+        from collections import OrderedDict
+        self._d = OrderedDict()
+        self._bytes = 0
+        self._budget = float(budget_bytes)
+
+    def get(self, key):
+        v = self._d.get(key)
+        if v is not None:
+            self._d.move_to_end(key)
+        return v
+
+    def put(self, key, value):
+        nb = int(value.nbytes)
+        if nb > self._budget:
+            return  # tek giris butceyi asiyor — cache'lenmez
+        self._d[key] = value
+        self._bytes += nb
+        while self._bytes > self._budget and self._d:
+            _, eski = self._d.popitem(last=False)
+            self._bytes -= int(eski.nbytes)
+
+    def clear(self):
+        self._d.clear()
+        self._bytes = 0
+
+
 def gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
                            budget_bytes: Optional[float] = None,
-                           fast_len: bool = False):
+                           fast_len: bool = False,
+                           spec_cache: Optional[SpecLRU] = None):
     """GPU-resident 'valid' feasibility karari (<0.5) — gerekirse eksen-dilimli.
 
     crop: cihazda bool occupancy kirpigi; grid_flip: cihazda ters-cevrili f64 kernel.
@@ -126,7 +162,12 @@ def gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
     Sifir-padding buyur ama LINEER konvolusyonun valid bolgesi ayni matematik
     (wrap yok; kirpma indeksleri degismez) -> KARAR-birebir; yalniz FFT ic
     yuvarlamasi ~1e-12 duzeyinde degisebilir, 0-vs->=1 tamsayi karari icin
-    yapisal tolerans 0.5. Olcum kapisiyla dogrulanmadan uretim yolu ACILMAZ."""
+    yapisal tolerans 0.5. Olcum kapisiyla dogrulanmadan uretim yolu ACILMAZ.
+
+    spec_cache (K-57): SpecLRU verilirse kernel spektrumu rfftn(grid_flip,
+    s=fshape) onbelleklenir — ayni (kernel, fshape) ciftinde cuFFT ayni degeri
+    uretir (deterministik) -> sonuc BIT-OZDES, yalniz tekrar-hesap kalkar.
+    OOM'da cache temizlenip cache'siz yola dusulur (graceful)."""
     if budget_bytes is None:
         budget_bytes = _fft_budget_bytes(gpu=True)
     fw, fd, fh = (int(g) for g in gshape)
@@ -138,8 +179,21 @@ def gpu_conv_valid_chunked(cp, crop, grid_flip, gshape,
             fshape = tuple(int(_nfl(n)) for n in full)
         else:
             fshape = full
-        C = cp.fft.irfftn(cp.fft.rfftn(sub.astype(cp.float64), s=fshape) *
-                          cp.fft.rfftn(grid_flip, s=fshape), s=fshape)
+        KF = None
+        if spec_cache is not None:
+            _sk = (id(grid_flip), fshape)
+            KF = spec_cache.get(_sk)
+            if KF is None:
+                try:
+                    KF = cp.fft.rfftn(grid_flip, s=fshape)
+                    spec_cache.put(_sk, KF)
+                except Exception:
+                    spec_cache.clear()  # OOM/istisna -> cache'siz yola dus
+                    KF = None
+        if KF is None:
+            KF = cp.fft.rfftn(grid_flip, s=fshape)
+        C = cp.fft.irfftn(cp.fft.rfftn(sub.astype(cp.float64), s=fshape) * KF,
+                          s=fshape)
         return C[fw - 1:sub.shape[0], fd - 1:sub.shape[1], fh - 1:sub.shape[2]] < 0.5
 
     plan = plan_fft_chunks(tuple(int(s) for s in crop.shape), (fw, fd, fh), budget_bytes)

@@ -1225,6 +1225,31 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > isabetini buyutur). Kapi tabani (fastlen+rot-reuse, sakin-makine tahmini):
 > ~48-55dk (k51e 88dk'dan ~%40 asagi, kalite sayilari birebir).
 
+> **2026-07-18 — K-57 SPEC-CACHE = NO-GO @6GB (ZARARLI olculdu; kanit
+> results/k57_speccache_ab.json):** kernel-spektrum LRU'su (rfftn(grid_flip)
+> tekrarlarini onbellekle; SpecLRU VRAM-butceli, decode-omurlu, OOM-graceful)
+> kodlandi + A/B (tek proses, d4 60p): A cache'siz 127.8s -> B 1024MB
+> **303.5s = +%137 YAVASLAMA** (bit-ozdeslik BIREBIR korunarak). MEKANIZMA:
+> 1GB canli spektrum 6GB VRAM'de cuFFT calisma tamponlarini sikistiriyor ->
+> tahsis-thrash (K-57c RAM dersinin VRAM karsiligi). KARAR: default KAPALI
+> (spec_cache_mb=0); kod+testler kalir — YALNIZ bol-VRAM ortaminda (super-
+> bilgisayar A1 kosusu) yeniden degerlendirilir. DERS: cache'in kendisi de
+> bellek-butcesine dahil — "hesabi sakla" ancak saklama ALANI bos ise kazanc.
+
+> **2026-07-18 — K-57b YENIDEN-OLCUM (fastlen sonrasi) = OOM COZULDU,
+> WALL NOTR @tek-GPU (kanit scripts/k57_parite_kosu.log, WALL_S=3488.7):**
+> --parallel 2 kapi: **PARITE 4/4 BIREBIR** (302.8 / 542.5 / 601.9 / 231.5;
+> cert 4/1/5 birebir) ve **OOM HIC YASANMADI** (K-57b/c'nin plan3||d4 OOM'u
+> fastlen'in RAM/VRAM tepe-penceresini kisaltmasiyla KAPANDI — saglamlik
+> kaniti). AMA WALL 58.1dk ~= sirali ~57dk = duvar-saati kazanci SIFIR.
+> KOK: darbogaz artik RAM degil PAYLASILAN GPU — iki NFV decode'u tek
+> RTX3060'i serialize ediyor (p3 1640->3026s, d4 874->2263s sisti; toplam
+> sabit). HUKUM: set-paralel tek-GPU makinede NOTR; deger ancak cok-GPU /
+> super-bilgisayar ortaminda (A1 kosusuyla birlikte). Kapi politikasi:
+> SIRALI + munhasir kosu (K-57a) kalir. NOT: cocuk verdict'i BASELINE-YOK
+> gosterdi cunku D agacinda baseline json yok (k51e baseline C'de; parite
+> degerleri elle dogrulandi — birebir).
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
