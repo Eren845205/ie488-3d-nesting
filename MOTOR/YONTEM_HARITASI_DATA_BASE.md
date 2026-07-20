@@ -28,7 +28,13 @@ Literatür araştırması olduysa §4'e işle. Açık yön kapandıysa/açıldı
 - **Sonuç:** sayısal ölçüm (birebirlik kapısı geçti mi?)
 - **NEDEN (oldu/olmadı):** kök sebep — mekanizma
 - **Ders:** (varsa) gelecek için kural
+- **Karne (A11):** tetik=geometrik/AD-VAR · kapı=PASS/BEKLİYOR · sıfır-dokunuş=KANITLI/BEKLİYOR · sözleşme=DEĞİL/HOCA-BEKLİYOR · held-out=BEKLİYOR
 ```
+
+> **A11 KURALI (2026-07-19, Eren):** Tek-set derinleşme deneyi ŞERHLİ ön-ölçümdür;
+> "kazanç" ancak 4-set kapı PASS + tetiksiz-setlerde sıfır-dokunuş kanıtıyla ilan
+> edilir. Tetik kodda veri-adıyla değil geometrik koşulla yazılır. Detay:
+> `STRATEJI/00_ANAYASA.md` A11.
 
 **Durum etiketleri:** ✅ GO (ölçtü + kazandı, çoğu üretime bağlı) · ❌ NO-GO (ölçtü + kazanmadı/bozdu) ·
 🟡 KISMİ (koşullu kazanç / marjinal / güvenli-modda nötr) · ⏳ AÇIK (denenmedi).
@@ -1250,6 +1256,230 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > gosterdi cunku D agacinda baseline json yok (k51e baseline C'de; parite
 > degerleri elle dogrulandi — birebir).
 
+> **2026-07-20 — plan3 KURTARMA = PASS + K-58 p3-KOLU = NOTR -> K-56b KAPI
+> 4/4 TAMAM (kanit D:\ie488\results\k56b_plan3_kurtarma.json + .log;
+> 27.2dk, OOM YOK @2.6GB):** plan3 **601.92 BIT-OZDES** (tarihsel 3 kosuyla
+> ayni; kilit 3 -> rot 0 sokum-planli, clear 2.004) -> (a) 2026-07-18
+> OOM'unun CEVRESEL oldugu kesinlesti, K-56b kapi kaniti 4/4 TAMAMLANDI
+> (p1 202.18 + p2/d4 birebir + p3 601.92); (b) K-58 p3-kolu NOTR: r11
+> uygulandi (667s) ama net etki 0.00mm — TELEMETRI NUANSI: r11_kazanc=19.58
+> R11'in IC-tabanina gore (h0 621.5 mesh-settle-oncesi), eval mesh-gercek
+> olcumu o bosligu ZATEN goruyordu; p2/d4'te R11 GERCEK ek kazanc verdi
+> (529.04/220.69), p3'te ayni bosluk cift-sayim. (Telemetri iyilestirme
+> adayi: r11_kazanc yaninda eval-taban net-etki alani.) **K-58 4-KOL OZET:
+> p2 -13.46 REKOR · d4 -10.81 SAMPIYON-PARITE · p3 0.00 NOTR (+11dk sure)
+> · p1 etkisiz (heightmap). B2: hicbir set kotulesmedi, 2 set buyuk
+> iyilesti -> PASS ADAYI; insan-karari maddesi: p3'un kalite-notr +11dk
+> R11 maliyeti (Eren).** Kalan: tam suite + Eren commit onaylari (K-56b +
+> K-58) + baseline yenileme (p1 302.8->202.2 + p2/d4 yeni degerler).
+> Karne (A11): tetik=OK | kapi=4/4 OLCULDU | sifir-dokunus=4/4 KANITLI |
+> sozlesme=DEGIL (hard'la kosuldu) | held-out=BEKLIYOR.
+
+> **2026-07-20 — K-58 d4-KOLU OLCULDU = SAMPIYON-PARITE (kanit
+> D:\ie488\results\k58_d4_olcum.json + .log; 58.8dk):** deneme4 uretim yolu
+> (ref 231.5) K-58 tavaniyla **220.6917 LEGAL = SAMPIYON 220.69 BIREBIR**
+> (clear 2.0063 sampiyonla ayni; kilit 12 -> rot 0 sokum-planli;
+> r11_kazanc 8.64). K-50 HIKAYESININ KAPANISI: o donem ayni 8.64mm kazanc
+> "kilit 11->12" diye KAPIDA REDDEDILMISTI — rot-kabul katmani (hoca
+> kriteri 2026-07-14 + K-52) R11 kapisina baglaninca ayni kazanc simdi
+> sokum-planli KABUL. Sifir-dokunus: fark tamamen r11 izi -> r11-haric
+> PASS (p2 ile ayni desen). K-58 DURUM: p2 529.04 (yeni rekor) + d4 220.69
+> (sampiyon-parite) olculdu; KALAN plan3-kolu (sakin RAM; NOT:
+> k56b_plan3_kurtarma'nin BEKLENEN=601.92 varsayimi K-58'li agacta GECERSIZ
+> — r11 uygulanirsa ~577-590 beklenir, script hukmu guncellenmeli) + p1
+> replay (K-58 etkisiz beklenir: heightmap dali) + Eren commit onayi.
+> Karne (A11): tetik=parametre(genel) | kapi=KISMI (p2+d4 olculdu) |
+> sifir-dokunus=p2+d4 KANITLI | sozlesme=DEGIL | held-out=BEKLIYOR.
+
+> **2026-07-19 GECE — K-59 DAGILIMSAL SMOKE = A11/B1 ILK DAGILIM KANITI
+> (kanit D:\ie488\results\k59_dagilim_smoke.json + .log; 1.0dk):** Sentetik
+> aileler (B1, synthetic.py): plaka-baskin 8 ornek (dev plaka 300-334 x
+> 280-325, tetik sinirinin IKI yani) + kontrol random_boxes/long_rods 6.
+> SONUC: (1) **TETIK DOGRULUGU 14/14** — bagimsiz geometrik beklentiyle
+> birebir (sinir-alti s4/s7 dogru sonuk; kontrolde yanlis-pozitif 0/6).
+> (2) **A/B kazanc dagilimi 4/4 WIN, delta ort -94.2mm (aralik -63..-118)**
+> — hedefli-tilt kablosunun kazanci plan1-ozgu DEGIL, aile-geneli;
+> dagilim uzerinde olculdu. (3) Kontrol nokta-kontrolleri BIT-OZDES
+> (tetiksiz aileye sifir dokunus). (4) **KAPSAM BOSLUGU: 2/6 tetiklenen
+> ornek (s3 308x304, s6 327x317 — iki taban boyutu da >290) HEM kablosuz
+> HEM kablolu yolda cokuyor** (k51d istisna sinifi; mevcut uretimde de var
+> = kablo regresyonu degil, ACIK ALT-BOLGE). K-56g pinleme-kapisi + soft
+> sozlesmenin tam hedefi buras — 4 sabit setin gosteremeyecegi bosluk
+> dagilimsal harness'le bulundu. SMOKE SERHI: yukseklik proxy (clearance/
+> kilit tam olcumu + buyuk-N sweep sakin-makine isi). Harness bundan boyle
+> her yeni mekanizmanin standart sinavi (proje CLAUDE.md'de kayitli).
+> Karne (A11): tetik=GEOMETRIK dagilimsal-KANITLI 14/14 | kapi=BEKLIYOR |
+> sifir-dokunus=dagilimsal OZDES + p2 canli r11-haric PASS | sozlesme=
+> degisiklik yok (HARD kosuldu) | held-out=DOKUNULMADI.
+
+> **2026-07-19 GECE — K-58 p2-KOLU OLCULDU = GO-ADAYI + A11 SIFIR-DOKUNUS
+> r11-HARIC PASS (kanit D:\ie488\results\k58_p2_olcum.json + .log; 25dk):**
+> Working tree'de TUM K-56 zinciri dururken plan2 uretim yolu kosuldu (ref
+> 542.5, 4 bagimsiz birebir): **529.04 LEGAL = YENI p2 REKORU** (eski
+> sampiyon 541.44'un 12.4mm alti; clear 2.019, kilit 35 -> rot 0
+> sokum-planli; manuel farki +%10 -> +%7.5). Iz: r11_uygulandi=True (K-58
+> tavan 150->600 kalkti kaniti), r11_kazanc 11.22mm + rot-sokum etkilesimi
+> = -13.46 toplam; **r11-DISI fark YOK -> K-56c/d/e/f mekanizmalarinin
+> p2'ye sizmadigi OLCULDU** (varsayilmadi). K-58 hala SERHLI: 4-set kapi
+> tamamlanmadi (d4 gece sirada ~75dk; plan3 sakin-RAM; p1 replay).
+> Karne (A11): tetik=parametre(genel) | kapi=KISMI (p2 kolu olculdu) |
+> sifir-dokunus=p2 KANITLI, d4/p3 bekliyor | sozlesme=DEGIL | held-out=BEKLIYOR.
+
+> **2026-07-19 — K-56f BUYUK-PLAKA PINLEME = GO (p1 uretim yolu 170.7 ->
+> 140.21 LEGAL; kanit D:\ie488\results\k56f_pinleme.json + .log; 5.8dk):**
+> MEKANIZMA KODDA+TESTLI: solve_coarse_to_fine(pinned_placements) opt-in
+> zinciri — default None BIT-OZDES; pin aramadan CIKAR (SA tasiyamaz);
+> coarse bin'lere danisma-commit (kuantizasyon kelepceli strict=False, hic
+> sigmazsa atlanir); fine'da otorite-commit (sinir-disi ValueError, sessiz
+> kirpma yasak); pin MARGIN'SIZ raw voxelize (tek-tarafli dilation
+> ozdesligi: komsular kendi marjini tasir -> parca-pin boslugu >= margin
+> yapisal); placements + fine_voxel_parts enjeksiyonu -> olcum katmani
+> pin'i normal parca gibi gorur. eval_gate passthrough + NFV guard. TDD
+> tests/test_k56f_pin.py 6 + komsu 136 yesil (A9 bayat-mock 1 fake imza
+> hizalandi; A9 ayrica TAZE if/elif bug'ini yakaladi — pin satiri tilt
+> elif'ini kirmisti, duzeltildi). DENEY: baseplate DUZ pin (raw 325x298,
+> z=40.6mm; x-ortali, y uzak-kenar; no-go girisi 1.50mm <= 12mm tolerans;
+> soft sozlesme; extra_rot_overrides={} ile oto-havuz susturuldu) ->
+> **140.208 LEGAL (clear 2.034, kilit 0, 112/112, 345s)**. Projeksiyon
+> (~141) TUTTU. ZINCIR: 302.8 -> 202.2 (tilt) -> 171.7 (soft) -> 170.7
+> (raw) -> **140.2 (pin)** = toplam -%53.7; dblf@1.0 kaniti 141.0 GECILDI,
+> K-37 129'a 11mm, manuel 110.41'e 30mm kaldi. OKUMA: 140.2-40.6=99.6mm =
+> 111 parcanin plaka-ustu istifi ~ serbest-taban 101.17 — istif zaten
+> dogal tabaninda; kalan makas SAF ISTIF KALITESI (manuelin ustu-istifi
+> ~70mm = ~%30 daha siki). KALAN ADAYLAR: (a) **K-56g uretim kablosu** —
+> "duz-pinleme kapisi" GEOMETRIK tetik (yukseklik-surucu parcanin duz pozu
+> YALNIZ kuantizasyon/kenar-tasma nedeniyle oluyse otomatik pin; A11
+> uyumlu, veri-adi yok) + 4-set kapi; (b) 111-parca alt-problemine kalite
+> modu (K-40 NFV no-go'su PLAKALI olcumdu — plakasiz alt-problem acik
+> soru; pin+NFV kompoziti gelecek isi).
+> **Karne (A11):** tetik=DENEYDE-ELLE (K-56g'de geometriklesecek) |
+> kapi=BEKLIYOR (4-set sakin seans) | sifir-dokunus=BEKLIYOR |
+> sozlesme=SOFT Eren-onayli + no-go-giris/kenar hoca-bekliyor |
+> held-out=BEKLIYOR.
+
+> **2026-07-19 — K-56e DUSUK-POZ ZORLAMA = KOMPOZISYON-DEGISMEZLIGI KANITI
+> (kanit D:\ie488\results\k56e_dusuk_poz_zorla.json + .log; ~14dk):** dar
+> x8..x14 (7 poz) ve orta x8..x20 (13 poz) zorlamalari IKISI DE **170.68857
+> BIT-OZDES** (serbest 43-poz menu + oto 16-poz havuzla AYNI float, AYNI
+> clearance) -> SA zaten alcak pozu SECIYORMUS; 170.7'nin surucusu
+> baseplate acisi DEGIL, kalan 111 parcanin daralan tabanda istifi.
+> SA-miyopi hipotezi RED (kompozisyon menu-degismez; baseplate acisi 8-20
+> bandinda maliyet-NOTR = cozum saglam). KALAN MAKAS (170.7 -> K-37 129 ->
+> manuel 110.4) = DUZ-POZ meselesi: duz 40.6mm poz mevcut dilate-grid
+> semantigiyle hicbir pitch'te acilamiyor (mm-duzeyinde 0-pay [33+302=335
+> tam] + dilate grid plaka kenarindan ~2mm tasar; K-37 rig'i raw-grid
+> semantigindeydi, 129 oradan). ADAY K-56f: "buyuk-plaka PINLEME"
+> iki-asamali dekod — baseplate duz y=33'e DETERMINISTIK sabitlenir (arama
+> yok), 111 parca on-dolu sahnede normal cozulur; projeksiyon ~40.6+101 =
+> ~141 (bugunku istif verimiyle), rafineyle 110-130 bandi. HOCA NETLIGI
+> GEREKEN: (a) parca no-go sinirina temas (raw semantik), (b) plaka
+> kenarina temas / clearance'in plaka-duvarina uygulanmamasi.
+> **Karne (A11, K-56c/d/e zinciri toplu):** tetik=GEOMETRIK (tilt-zorunlu
+> kapi; kodda veri-adi yok) | kapi=BEKLIYOR (4-set sakin seans) |
+> sifir-dokunus=BEKLIYOR (p2/p3/d4'te tetik yok — kapida kanitlanacak) |
+> sozlesme=SOFT Eren-onayli + hoca-teyit-bekliyor, RAW hoca-bekliyor |
+> held-out=BEKLIYOR (kor-test gelince ilk sinav).
+
+> **2026-07-19 — K-56d v2 RAW-NO-GO (KAPI-HIZALI) = MARJINAL (+kapi yamasi
+> KANITLI; kanit D:\ie488\results\k56d_raw_nogo_v2.json + .log; ~16dk):**
+> Yama: predict_nfv_benefit sarildi (kapi karari SOFT bounds — tilt-zorunlu
+> kalir), eg.NOGO_STD=ERODE (cozucu+havuz raw semantigi). Routing DOGRU
+> calisti (otomatik +16 poz; NFV'ye kacis yok). SONUC: A=B **170.689
+> BIT-OZDES** (clear 2.036, kilit 0) — soft 171.70'ten yalniz **-1.0mm**;
+> x8-x14 pozlari (plaka z 80-110mm) MENUDE ama SA yine ~ayni dengede (168
+> vox; soft'ta 169'du). OKUMA: raw semantik sinirlari actı ama SA
+> KOMPOZISYONU degismedi — 111-parca tabani 101.17 iken toplam 170.7'de
+> kalmak fizik degil ARAMA freni suphesi (meta-ders 12 greedy egik-poz
+> miyopisi). K-56e zorlama testi ayni gun -> ayri kayit. SERH: raw semantik
+> hoca netligi bekliyor ("parca no-go sinirina temas edebilir mi").
+
+> **2026-07-19 — K-56d v1 RAW-NO-GO = OLCUM BASARISIZ ama IKI DEGERLI BULGU
+> (kanit D:\ie488\results\k56d_raw_nogo.json + scripts/k56d_raw_nogo.log;
+> 10.5dk):** Deney: clearance margin'inin no-go SINIRINA uygulanmamasi
+> (raw semantik) — NOGO'yu margin kadar erode edip ayni boru hattina verme
+> numarasi. BULGU-1 (TASARIM KISITI, uretim kablosuna gececek): erode
+> ADIM -1 tilt-zorunlu kapisini SONDURDU — kapinin raw-rect testi duz pozu
+> "sigar" sandi (302.0 <= 304.03) -> plan1 NFV'ye yonlendi (K-40 sert
+> no-go yolu) -> A INVALID 111/112, B ValueError. 2026-07-09 "filtre
+> dersi"nin sozlesme-katmani tekrari: KAPI-FEASIBILITY ile COZUCU-
+> YERLESTIREBILIRLIK ayni semantikte kalmali (raw benimsenirse kapi
+> erode-EDILMEMIS bounds'la karar vermeli). BULGU-2 (YAN-OLCUM): NFV
+> kolunda kalan 111 parca TEK BASINA h=101.17'ye istiflendi (clear 2.024,
+> kilit 0) = plan1'in baseplate-disi taban yuksekligi ~101mm — manuel
+> 110.41'in erisilebilirligi ilk kez SAYIYLA gorundu (baseplate x8-x11
+> alcak-tilt'le [z 80-96mm] yanlara sokulabilirse toplam ~101-110 bandi).
+> v2 (kapi-yamali: kapi=SOFT, cozucu=ERODE) ayni gun kosuldu -> ayri kayit.
+
+> **2026-07-19 — K-56c SOFT NO-GO ON-OLCUMU = GO (p1 uretim yolu 202.2 ->
+> 171.70 LEGAL, -30.5mm = -%15.1; kanit D:\ie488\results\k56c_soft_nogo.json
+> + scripts/k56c_soft_nogo.log; 17.4dk; Eren karari 2026-07-19 "soft
+> girsin"):** Maske K-37 (y-ust 45->33 = T=12mm giris; hoca cevap 9
+> dayanagi). IKI KOL BIT-OZDES 171.70457... / clear 2.036 / kilit 0:
+> A_soft = DOGAL routing — K-56b kablosu soft bounds'la OTOMATIK +15 poz
+> kurdu (zehirlenme YOK: duz poz fp_y-dilate 306.8 > 302 filtrede dogru
+> kapali; kapi+kablo sozlesme-parametrik calisiyor KANITLI) · B_soft = acik
+> 40-pozlu @1 menu (x11..x50 acildi; x11-x14 z 95.5-109.7mm MANUEL-ALTI
+> pozlar dahil) — SA yine ayni dengede (dusuk aci genis fp_y ile taban
+> yiyor; granulasyon K-56b(2) gibi yine etkisiz). KALAN ADAYLAR (171.7 ->
+> 129-110): (a) RAW-no-go semantigi — clearance margin'inin no-go SINIRINA
+> uygulanmamasi (K-37 129.0 boyle dogdu; hocanin cevap-9 ornegi bizzat DUZ
+> plaka girisi = kasitla uyumlu; no-go bounds'u margin kadar erode ederek
+> SIFIR solver degisikligiyle olculebilir; x5-x10 z 66-90mm + duz poz
+> acilir AMA duz poz pitch-kuantizasyonda 0-pay/2-vox-tasma sinirinda) ·
+> (b) ust-istif verimi (eğik rampa ustu DBLF kullanimi). SIRADAKI:
+> sozlesme degisikligi paketi (eval NOGO_STD 45->33 + web plate.local.json
+> + 4-set kapi + baseline yenileme; sakin-makine seansi; Eren commit onayi).
+
+> **2026-07-19 — K-56b(2) INCE-ACI TARAMASI = NOTR OLCULDU (kanit
+> D:\ie488\results\k56b_ince_aci.json + scripts/k56b_ince_aci.log; 9.2dk):**
+> x16..x50 @1 (35 poz) + kaba kuyruk x55..x85 @5, K-56a filtresi birebir.
+> Kabul 31+7=38 poz; B = evaluate_set(plan1, 38 poz) = **202.18468...
+> BIT-OZDES (K-56a 14-pozlu sonucla ayni float, clear ayni) -> kazanc
+> +0.0mm.** Ince granulasyon SA kararini DEGISTIRMEDI (deterministik
+> tie-break ayni kazanani seciyor) — @5 izgara suclu DEGILMIS. ASIL BULGU:
+> x16-x19 bandi (z 118.9-132.1mm = hedef 141-110 bandinin ta kendisi) HARD
+> no-go'ya engelli: fp_y 291.6-295.6mm > 290mm ("otede" limiti); x19 SADECE
+> 1.6mm girisle aciliyor (x16 -> z 118.9 = -83mm potansiyel). HUKUM:
+> hard-sozlesmede aci-granulasyonu kaldirac DEGIL (NOTR kayit; tekrar
+> denenmez); p1'in 141-110'a inis yolu = FILTRE-GEVSETME / SOFT NO-GO
+> SOZLESME KARARI (hoca cevap 9 "cok ufak girisler kabul" — K-37'de -12mm
+> kanitli, 129s o maskeyle bulundu; EREN + gerekirse hoca karari bekliyor).
+
+> **2026-07-19 — p2 DEV-PARCA HEDEFLI-TILT = KOSUSUZ NO-GO (A4 teshis,
+> dakikalik; bos deney onlendi):** p2 yukseklik-suphelisi PO-TR155308-17705
+> (356.1x299.2x177.8; 356 hicbir eksen-hizali tabanla 335'e sigmaz -> 356
+> DIK zorunlu — plan1 dik-dikilme cezasinin p2 karsiligi). Gercek-mesh
+> tarama: bbox-matematiginin aksine y35-y45 bandi z'yi dusuruyor
+> (346/332/318mm; voxel @2.0 uretim pitch'inde dogrulandi) AMA fp_y TUM
+> bantta 304mm ve no-go'lu plakada yerlesilebilir y-araligi 290mm (soft
+> no-go'da bile 302mm) -> 304 > 302 HER SOZLESMEDE YERLESEMEZ; z-rot
+> transpozu da olu (fp_x 304 > 152.5/149.5 sol/sag seritleri); x-tilt
+> tamamen olu (fp 404+mm). HUKUM: p2'de hedefli-tilt kaldirac DEGIL —
+> p2 aciginin (+%10 manuel-ustu) kalan adresi istif zekasi (A1 surekli
+> rotasyon, super-bilgisayar §5); K-14 buyuk-levha + K-41 hukumleriyle
+> tutarli. NOT: eval_gate NFV dalinda extra_rot_overrides bilincli
+> ValueError — kablo ihtiyaci da dogmadi.
+
+> **2026-07-18 GECE — K-56b URETIM KABLOSU KANITLANDI (kapi 3/4 + plan3
+> ortam-OOM ertelemesi; kanit scripts/k56b_kapi.log + results/):** Kablo:
+> ModeDecision.tilt_parca (ADIM -1 yapisal alan) -> targeted_tilt.
+> hedefli_tilt_overrides (K-56a tarama mekanigi modullestirildi; filtre:
+> grid-sigma + no-go serit-testi [adaptive ile ayni formul] + yerlesebilen-
+> poz z-esigi) -> eval_gate + demo_pipeline c2f extra_rot_overrides (K-53d
+> parite deseni; acik override ezer, None->tilt'siz birebir, tetiksiz
+> setlerde SIFIR dokunus). TDD tests/test_k56b_tilt_kablo.py 8 test + komsu
+> 109+58 yesil. KAPI KOSUSU (sirali, baseline kiyasli): **plan1 202.2 LEGAL
+> — K-56a olcumuyle ONDALIK-OZDES (202.18468.../clear 2.03227...; kablo
+> deterministik) = baseline 302.8'e -%33.2 IYILESME** · plan2 542.5 + d4
+> 231.5 BIREBIR · plan3 ORTAM-OOM ile INVALID (kablo-ILGISIZ: plan3'te
+> tilt tetiklenmez, ayni gun ayni kodla 3 kez 601.92 birebir; OOM "1.06MiB
+> alloc" = K-57c kucuk-alloc deseni; makine 8+ saat kosu sonrasi commit
+> baskisi 33.6/42GB) -> resmi verdict FAIL exit 1 AMA sebep cevresel.
+> Kurtarma 2 kez denendi (ikincisi acilista sessiz oldu) — UCUNCU KOR
+> DENEME YAPILMADI (recovery kurali); plan3-tek kurtarma (k56b_plan3_
+> kurtarma.py hazir) YENIDEN-BASLATMA-SONRASINA ertelendi. A1 tam-PASS +
+> baseline guncellemesi (302.8 -> 202.2, A8 gerekceli) o kosuya bagli.
+
 > **2026-07-15 — SOKUM KONSOLU P2-P6 TESLIM (Eren: "plandakini eksiksiz
 > uygula, frontend-design ile"):** P2 ortak `static/viewer3d.js` (iki
 > sayfanin kopya viewer'i tek modulde; instancing/agir-sahne/isik/tam-ekran
@@ -1387,7 +1617,8 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | ~~H-15p~~ | ~~Kabuk yolunda kısıtlı coarse arama~~ → **KAPANDI 2026-07-05** (commit `1cccad6`; E2E: 104.5dk → **9.2dk (11.3×)**, 282.0 BİREBİR; telemetri üretimde) | 6GB | — | ÜRETİMDE (opt-in wall_aware yolu) | F3 rollout süre ön-şartı karşılandı. |
 | ~~H-16w~~ | ~~H-16 dirty-cache üretime bağlama~~ → **KAPANDI 2026-07-05** (E2E 5/5: 282.0 BİREBİR + **205s** (H-15p 553s'den 2.7×, K-19 orijinali 6272s'den **31×**) + cache telemetri hit %90.3 + RAM 1.17GB; MEDIUM-2 thread-safety YAPISAL kapalı: cache'li Bin3D _run_fine-lokal, parallel_decode OccupancyBin3D; reviewer PASS 0 C/H/M) | 6GB | — | ÜRETİMDE (wall_aware tetiği, `drop_cache=wall_aware_pitch`) | Kabuk koşusu artık ~3.4dk. LOW notları: thread-isolation test docstring'i geniş; `drop_cache_cap_mb` operatör-ayarlanamaz (default 300, peak 43.6MB — zararsız). |
 | **C1** | ~~Büyük-parça voxelize SÜRESİ~~ → **algoritma-hızı KAPANDI (H-14, 3.1× birebir, 2026-07-02)**; kalan alt-parça = pitch politikası R6 | 6GB | Yüksek/RİSKLİ (R6) | DÜŞÜK-ORTA (kalan) | `_surface_cells` eksen-bazlı + bbox-kırpma üretimde (fine 159s→~50s/parça). GPU-tavan gerekçesi de kısmen karşılandı (voxelize payı 3× küçüldü). KALAN yalnız pitch R6 (tek 1mm parça → 356mm parça da 0.5mm): parça-kaybı+**H-06 duvarı**+cross-dataset riski — ayrı karar ister. |
-| **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** — **K-56a ÖLÇÜLDÜ 2026-07-18 = GO (§3): 302.8 → 202.2 LEGAL şerhsiz (−%33.2), `extra_rot_overrides` opt-in zinciri kodda + testli.** KALAN = K-56b: (1) üretim kablosu (tilt-zorunlu kapı → otomatik hedefli-tilt; eval kapısı 4-set PASS + Eren onayı), (2) ince-açı taraması (x20-x50 @1-2°; 141-110 bandı hedefi), (3) filtre-gevşetme ölçümü | 6GB | Düşük (altyapı hazır) | **YÜKSEK (plan1)** — dik dikilme cezası kanıtla kırıldı; master 8-11 pozları YANLIŞ bant (z=260-285), kazanan hedefli x-tilt; y-tilt yapısal ölü (fp_y>290) | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL (eksen-hizalı); NFV plan1'de K-40 sert no-go. Eski miras kanıtı: dblf@1.0 tilt 141.0. |
+| **K-56** | **plan1 hedefli-tilt'i ÜRETİM yoluna öğret** — **K-56a ÖLÇÜLDÜ 2026-07-18 = GO (§3): 302.8 → 202.2 LEGAL şerhsiz (−%33.2).** K-56b: (1) üretim kablosu KODDA+kapı 3/4 (plan3 çevresel-OOM; kurtarma + baseline + commit bekliyor), (2) ince-açı ~~taraması~~ → **NÖTR ÖLÇÜLDÜ 2026-07-19 (§3: 38 poz, 202.18 bit-özdeş, +0.0mm — açı granülasyonu kaldıraç değil)**, (3) soft no-go → **K-56c GO (202.2→171.70)**; (4) raw/K-56d MARJİNAL (−1.0) + kapı-hizalama dersi; (5) **K-56f PİNLEME GO 2026-07-19 (§3): 170.7→140.21 LEGAL — zincir toplamı 302.8→140.2 (−%53.7), dblf@1.0 141 geçildi; pinned_placements altyapısı kodda+testli.** KALAN: **K-56g düz-pinleme üretim kablosu** (geometrik tetik, A11) + sözleşme paketi (NOGO_STD 45→33 + web + 4-set kapı + baseline; sakin seans) + hoca netlikleri (no-go giriş/kenar teması) + 111-parça istif kalitesi (manuel üstü-istif ~%30 sıkı — plakasız alt-problem NFV açık soru) | 6GB | Düşük (altyapı hazır) | **YÜKSEK (plan1)** — dik dikilme cezası kanıtla kırıldı; y-tilt yapısal ölü (fp_y>290) | Eren sorusu 2026-07-17 ("plan1 niye bu kadar kötü"). Max/AX24 ÇARE DEĞİL; NFV plan1'de K-40 sert no-go. Eski miras kanıtı: dblf@1.0 tilt 141.0. p2 dev-parça tilt karşılığı KOŞUSUZ NO-GO (§3 2026-07-19). |
+| **K-58** | **R11 auto-tavan 150→600** (üretim yolunu şampiyonlara eşitler) — kod+TDD HAZIR 2026-07-19 (`nfv_solve.R11_AUTO_PARCA_TAVANI`; gerekçe K-55 hız kanıtı 588p 375dk→43.5dk; testler 32+57 yeşil, tasarım-pin testleri bilinçli güncellendi). KALAN: 4-set kapı ölçümü (beklenti: d4 231.5→~220.7, p3 601.9→~577.6, p2 +~1mm nötr-pozitif) + Eren commit onayı | 6GB | Düşük | **YÜKSEK (d4+p3 dengesi)** — üretim-şampiyon makasını kapatır (Eren 2026-07-19 "dengesizliği düzelt" yönü) | Kapı süresi +~45-60dk (R11 d4). Sakin-makine seansında plan3 kurtarmayla birlikte. |
 | **K-57** | **Eval-kapısı hızlandırma paketi**: (a) münhasır-koşu politikası ✅ GEÇERLİ (yük süreleri şişiriyor, kanıtlı); (b) set-paralel orkestrasyon ✅ KODDA (parite 4/4 NOOP kanıtlı) ama **hız bu RAM'de gerçekleşmiyor** (16GB'de RAM-ağır NFV çiftleri OOM→seri-retry; §3 K-57b/c); (c) GPU-teyit kısmi (capabilities OK, per-decode telemetri açık); (d) ~~kalıcı voxel önbelleği~~ → **NO-GO 2026-07-18 (§3 K-57d: voxelize payı toplam %4.6 — Amdahl duvarı; cache ancak çok-tekrarlı APP senaryosunda ayrı gerekçeyle)** | 6GB | — | Kapı hızının kalan adresi: süre-kırılım telemetrisi + r11/decode/ölçüm-katmanı anatomisi (§3 K-57d yan bulgu) + RAM/boş-makine | Kanıt: k51e + K-57b/c parite koşuları + k57d_voxelize_pay.json. |
 
 **Net:** 6GB'de hem KALİTE (5 kaldıraç + A2) hem KOLAY/ORTA HIZ (occ-FFT/sparse/VDB) TÜKENDİ. Gerçek
