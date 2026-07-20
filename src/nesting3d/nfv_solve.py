@@ -312,17 +312,20 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     )
 
 
-# R11 "auto" parca tavani (K-50 sure olcumleri: kompakt 226p=63dk / 352p=70dk /
-# 588p=375dk — buyuk sette uretim penceresini asar; gercek gozcu siparisleri
-# 10-112 parca bandinda, orada dakikalar). Ustunde auto ATLAR (iz birakir);
-# rekor/deney kosulari r11=True ile acikca zorlayabilir.
-R11_AUTO_PARCA_TAVANI = 150
+# R11 "auto" parca tavani. K-50 ilk olcumleri (kompakt 226p=63dk / 352p=70dk /
+# 588p=375dk) tavani 150'ye koymustu — buyuk set uretim penceresini asiyordu.
+# K-55 hizlandirmasi (cKDTree workers + distance_upper_bound budama; d4 588p
+# settle+rafine 393dk -> 43.5dk ~9x, h/clear BIREBIR) gerekceyi kaldirdi ->
+# K-58 (2026-07-19): tavan 600 = rot tavaniyla hizali. Gozcu siparisleri
+# (10-112p) zaten kapsamdaydi; artik p2/226 - d4/588 bandi da auto'da.
+# Ustunde auto ATLAR (iz birakir); r11=True acikca zorlayabilir.
+R11_AUTO_PARCA_TAVANI = 600
 
-# rot_kabul="auto" tavani R11'den AYRI (Eren karari 2026-07-15, d4 routing):
-# rot DENETIMI ucuz — K-52 kaniti 588p @1.0 = 1.4dk (K-42'nin "2-4 saat"i eski
-# parametre setiydi; YONTEM §3); asil sigorta sure butcesi (rot_butce_s,
-# butce dolarsa kilitli sayilir = konservatif). R11 KOMPAKSIYONU ise gercekten
-# pahali (K-50: 588p = 375dk) — 150 tavani orada kalir.
+# rot_kabul="auto" tavani (Eren karari 2026-07-15, d4 routing): rot DENETIMI
+# ucuz — K-52 kaniti 588p @1.0 = 1.4dk (K-42'nin "2-4 saat"i eski parametre
+# setiydi; YONTEM §3); asil sigorta sure butcesi (rot_butce_s, butce dolarsa
+# kilitli sayilir = konservatif). (K-58'e dek R11 tavani 150'de AYRIYDI —
+# "R11 pahali" gerekcesi K-55 ile dustu, iki tavan 600'de hizalandi.)
 ROT_KABUL_AUTO_PARCA_TAVANI = 600
 
 

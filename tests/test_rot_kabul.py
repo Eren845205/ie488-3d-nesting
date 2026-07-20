@@ -185,9 +185,10 @@ def test_kalite_rot_auto_parca_tavani():
 
 
 def test_kalite_rot_auto_588_parca_kosar():
-    """d4 senaryosu (588p): R11 tavani ustunde ama ROT tavani altinda ->
+    """d4 senaryosu (588p): hem R11 hem ROT auto tavani KAPSAMINDA (K-58:
+    R11 tavani 150->600, K-55 hiz kanitiyla rot tavaniyla hizalandi) ->
     rot denetimi KOSAR, sokum-planli kabul mumkun."""
-    assert R11_AUTO_PARCA_TAVANI < 588 <= ROT_KABUL_AUTO_PARCA_TAVANI
+    assert 588 <= R11_AUTO_PARCA_TAVANI <= ROT_KABUL_AUTO_PARCA_TAVANI
     ham = _ham(n=588)
 
     def solve(inst, **kw):
@@ -381,10 +382,12 @@ def test_hd0_rot_kabul_auto_tavani_r11_icinde(monkeypatch):
 
 
 def test_hd0_rot_kabul_auto_rot_tavani_altinda_acik(monkeypatch):
-    """r11=True + rot_kabul='auto' + n rot-tavani ALTINDA (R11 tavani ustunde
-    olsa bile) -> R11-rot ACIK gecer (d4 588p senaryosunun R11 karsiligi)."""
+    """r11=True + rot_kabul='auto' + n rot-tavani icinde (sinir dahil) ->
+    R11-rot ACIK gecer. (K-58 oncesi bu test R11-ustu/rot-alti penceresini
+    kullaniyordu; tavanlar 600'de hizalaninca pencere kapandi — sinir degeri
+    ayni 'auto acik' semantigini tasir.)"""
     yakalanan = _r11_passthrough_kur(monkeypatch)
-    ham = _ham(n=R11_AUTO_PARCA_TAVANI + 1)  # 151: rot tavani (600) altinda
+    ham = _ham(n=ROT_KABUL_AUTO_PARCA_TAVANI)  # 600: tavan dahil -> acik
 
     def solve(inst, **kw):
         return ham
@@ -393,6 +396,25 @@ def test_hd0_rot_kabul_auto_rot_tavani_altinda_acik(monkeypatch):
                      r11=True, rot_kabul="auto",
                      _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
     assert yakalanan.get("rot_kabul") is True
+
+
+def test_k58_r11_auto_588_parca_denenir(monkeypatch):
+    """K-58 (2026-07-19): R11 auto tavani 150 -> 600 — d4 senaryosu (588p)
+    r11='auto'da artik ATLANMAZ. Gerekce: K-55 hizlandirmasi (588p
+    settle+rafine 393dk -> 43.5dk ~9x, h/clear BIREBIR) 'R11 pahali' (K-50:
+    588p=375dk) gerekcesini kaldirdi; tavan rot tavaniyla hizalandi."""
+    yakalanan = _r11_passthrough_kur(monkeypatch)
+    ham = _ham(n=588)
+
+    def solve(inst, **kw):
+        return ham
+
+    _, tel = solve_nfv_kalite(
+        None, plate_w_mm=80.0, plate_d_mm=80.0, clearance_mm=2.0,
+        r11="auto", rot_kabul="auto",
+        _solve=solve, _check_5dir=lambda p, v: NS(n_locked=0))
+    assert tel["r11"]["neden"] == "kapilar"    # tavana TAKILMADI, denendi
+    assert yakalanan.get("rot_kabul") is True  # 588 <= rot tavani (600)
 
 
 def test_gecmis_detay_sokum_plani_render():
