@@ -268,7 +268,13 @@ class TestSuggestedVsAppliedPitch:
         def _fake_c2f(instance, *, plate_w_mm, plate_d_mm, coarse_pitch,
                       fine_pitch, budget, seed, menu=None, skip_fine_angle=False,
                       drop_cache=False, drop_cache_cap_mb=300.0, clearance_mm=0.0,
-                      no_go_bounds=None):
+                      no_go_bounds=None, extra_rot_overrides=None,
+                      pinned_placements=None):
+            # extra_rot_overrides (K-56b) / pinned_placements (K-56f): uretim
+            # kablosu bu kwarg'lari HER c2f cagrisinda geciriyor -> mock kabul
+            # ETMELI. Kabul etmezse TypeError broad-except'e yutulur ve sessiz
+            # DBLF-fallback olur (bayat-mock tuzagi; A9 bunu 2026-07-20 tam
+            # suite'inde YAKALADI — 2026-07-11 no_go vakasinin tekrari).
             # clearance_mm: web pipeline 2.0 gecirir (K-45/A2 2mm kurali; kablo
             # kilidi) — mock imzasi yeni kwarg'lari (clearance_mm, no_go_bounds)
             # KABUL ETMELI, yoksa TypeError broad-except'e yutulup sessiz

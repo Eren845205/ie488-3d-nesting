@@ -96,8 +96,8 @@ def _fake_eval_ortam(monkeypatch, n_locked, min_mm=2.1, nfv_tel=None):
                         lambda name: NS(parts=[NS(qty=588)]))
     monkeypatch.setattr(eg, "_run_champion",
                         lambda name, inst, seed, budget=None,
-                        n_orientations=None,
-                        extra_rot_overrides=None: (_R(), nfv_tel))
+                        n_orientations=None, extra_rot_overrides=None,
+                        pinned_placements=None: (_R(), nfv_tel))
 
     def _placed(*a, **k):
         sayac["placed_kw"] = k

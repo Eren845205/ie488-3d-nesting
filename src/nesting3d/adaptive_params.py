@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 _LOG = logging.getLogger(__name__)
 
@@ -168,6 +168,10 @@ class ModeDecision:
     # DEFAULT "fast" = geriye uyum; tuketici acik nfv_quality/n_orientations
     # verdiyse o KAZANIR (oneri yalniz default'u doldurur).
     nfv_quality: str = "fast"
+    # K-56b: ADIM -1 tilt-zorunlu kapisi tetiklendiginde parca ADI (yapisal
+    # alan — reason-parse kirilgan olurdu). None = tetiklenmedi (geriye uyum).
+    # Tuketici (eval_gate/demo_pipeline) bu adla hedefli_tilt_overrides kurar.
+    tilt_parca: Optional[str] = None
 
 
 def predict_nfv_benefit(
@@ -233,6 +237,7 @@ def predict_nfv_benefit(
                 f"{float(_tp.depth_mm):.0f}mm hicbir duz pozda no-go'lu "
                 f"plakaya sigmiyor): NFV eksen-hizali yerlestiremez -> "
                 f"heightmap tilt yolu (K-40)",
+                tilt_parca=str(_tp.name),
             )
 
     # --- C4 CHALLENGER (OPT-IN — yalniz mode_model verilirse; Sprint-3) -------

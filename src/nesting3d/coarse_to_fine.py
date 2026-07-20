@@ -431,6 +431,69 @@ class CoarseToFineResult:
 # ---------------------------------------------------------------------------
 
 
+def _pin_hazirla(pinned_placements, parts, pitch):
+    """K-56f: pin speclerini (VoxelPart, ix, iy, iz) listesine çöz.
+
+    parts: bu pitch'te voxelize edilmiş havuz. Donör = adı eşleşen İLK kopya
+    (id-sıralı, deterministik). Pin, donörün mesh'inden MARGIN'SİZ ve tek
+    pozlu (verilen rot) yeniden voxelize edilir; id/name/kimlik alanları
+    donörden taşınır (ölçüm katmanı paritesi — placements+fine_voxel_parts
+    pin'i normal parça gibi görür). Margin'sizlik bilinçli: sabit nesne
+    dilation taşımaz, komşular kendi marjını taşır → parça-pin boşluğu
+    ≥ margin (tek-taraflı dilation özdeşliği).
+    """
+    from dataclasses import replace as _dc_replace
+
+    from src.nesting3d.voxelize import voxelize_part as _vp
+
+    pins = []
+    for spec in pinned_placements:
+        ad = spec["ad"]
+        adaylar = sorted((p for p in parts if getattr(p, "name", None) == ad),
+                         key=lambda p: p.id)
+        if not adaylar:
+            raise ValueError(f"pinned_placements: '{ad}' bu instance'ta yok")
+        donor = adaylar[0]
+        rot = spec.get("rot")
+        rot = np.eye(4) if rot is None else np.asarray(rot, dtype=float)
+        raw = _vp(donor.name, donor.mesh, pitch, rot_matrices=[rot],
+                  method="slice", margin=0)
+        part = _dc_replace(donor, orientations=raw.orientations,
+                           volume_voxels=raw.volume_voxels)
+        pins.append((part,
+                     int(round(float(spec["x_mm"]) / pitch)),
+                     int(round(float(spec["y_mm"]) / pitch)),
+                     int(round(float(spec["z_mm"]) / pitch))))
+    return pins
+
+
+def _pin_yerlestir(b, pins, strict=True):
+    """Pinleri bin'e commit et.
+
+    strict=True (FINE — otorite): sınır dışı → ValueError (sessiz kırpma
+    yasak: Bin3D.place numpy slice'ı taşanı sessizce kırpar — reddedilir).
+    strict=False (COARSE — danışma): mm→voxel kuantizasyon taşması
+    [0, n-f]'e kelepçelenir; kelepçeyle de sığmıyorsa pin COARSE'ta atlanır
+    (arama ön-dolu sahneyi biraz eksik görür — kalite etkisi, legallik
+    değil; otorite fine pin'dedir)."""
+    pls = []
+    for part, ix, iy, iz in pins:
+        fw, fh = part.orientations[0].filled.shape
+        nx, ny = b.height.shape
+        if not strict:
+            ix = max(0, min(ix, nx - fw))
+            iy = max(0, min(iy, ny - fh))
+            iz = max(0, iz)
+            if ix + fw > nx or iy + fh > ny:
+                continue  # coarse'a hiç sığmıyor — danışma pin atlanır
+        if ix < 0 or iy < 0 or iz < 0 or ix + fw > nx or iy + fh > ny:
+            raise ValueError(
+                f"pinned_placements: '{part.id}' sinir disi "
+                f"(ix={ix} iy={iy} fp={fw}x{fh} grid={nx}x{ny})")
+        pls.append(b.place(part, 0, ix, iy, iz))
+    return pls
+
+
 def solve_coarse_to_fine(
     instance: NestingInstance,
     *,
@@ -453,6 +516,7 @@ def solve_coarse_to_fine(
     clearance_mm: float = 0.0,
     no_go_bounds=None,
     extra_rot_overrides=None,
+    pinned_placements=None,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -545,6 +609,23 @@ def solve_coarse_to_fine(
                       eklenir); refine (fine_angle) adayları da ek pozların
                       ±penceresini AÇMAZ — K-56 ölçüm kapsamı non-adaptive
                       üretim yolu.
+    pinned_placements: (K-56f büyük-parça pinleme) liste; her öğe
+                      {"ad": model adı, "x_mm","y_mm","z_mm": konum,
+                       "rot": 4x4 matris | None (=kimlik/düz)}.
+                      Adı eşleşen İLK kopya ARAMADAN ÇIKARILIR ve verilen
+                      poz+konuma DETERMİNİSTİK sabitlenir (coarse arama
+                      bin'lerinde ve fine yerleşimde; kalan parçalar
+                      ön-dolu sahnede normal çözülür). Pin daima
+                      MARGIN'SİZ (raw) voxelize edilir: sabit nesne
+                      dilation taşımaz; komşular kendi marjını taşıdığı
+                      için parça-pin boşluğu ≥ margin yapısal garanti
+                      (tek-taraflı dilation özdeşliği). Ölçüm katmanı
+                      pin'i normal parça gibi görür (placements +
+                      fine_voxel_parts'a girer). None (default) =
+                      BİT-ÖZDEŞ. Sınır dışı pin → ValueError (sessiz
+                      kırpma yasak). NOT: adaptive ön-prob'u pin'siz
+                      koşar (K-56 deseniyle tutarlı; kapsam non-adaptive
+                      üretim yolu).
     Returns
     -------
     CoarseToFineResult
@@ -577,6 +658,17 @@ def solve_coarse_to_fine(
             extra_rot_overrides=extra_rot_overrides,
         )
 
+    # --- K-56f: büyük-parça pinleme (opt-in; None/boş = bit-özdeş yol) ---
+    # Pin ARAMADAN çıkarılır (SA/DBLF hiç görmez → taşıyamaz) ve coarse
+    # bin'lerine kurucu-sonrası commit edilir (arama ön-dolu sahneyi görür).
+    _pins_coarse: List = []
+    _pins_fine: List = []
+    if pinned_placements:
+        _pins_coarse = _pin_hazirla(pinned_placements, coarse_parts,
+                                    coarse_pitch)
+        _pin_idler = {p.id for p, _x, _y, _z in _pins_coarse}
+        coarse_parts = [p for p in coarse_parts if p.id not in _pin_idler]
+
     # K-54 telemetri: coarse voxelize içinde uygulanan cap'i (varsa) yeniden
     # türet (deterministik — aynı formül, kullanılan coarse_pitch ile).
     _cm_raw, _ = clearance_to_voxels(clearance_mm, coarse_pitch)
@@ -600,9 +692,13 @@ def solve_coarse_to_fine(
         # suresi coarse tune'daki kachesiz _drop_map_general'de yasiyor; H-15
         # dersi "coarse-tune %90" + H-16 cache BIT-OZDES kanitli). Ayni bayrak
         # iki asamayi da acar — default False = eski davranis birebir.
-        return Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc,
-                     no_go_mask=_ng_mask(coarse_pitch),
-                     drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
+        b = Bin3D(plate_w_mm, plate_d_mm, coarse_pitch, z_clearance=_coarse_zc,
+                  no_go_mask=_ng_mask(coarse_pitch),
+                  drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb)
+        if _pins_coarse:
+            # K-56f: arama ön-dolu sahne görür (danışma; kuantizasyon kelepçeli)
+            _pin_yerlestir(b, _pins_coarse, strict=False)
+        return b
 
     tune_result = tune(
         coarse_parts,
@@ -679,8 +775,12 @@ def solve_coarse_to_fine(
         b = Bin3D(plate_w_mm, plate_d_mm, fine_pitch, z_clearance=_fine_zc,
                   drop_cache=drop_cache, drop_cache_cap_mb=drop_cache_cap_mb,
                   no_go_mask=_ng_mask(fine_pitch))
+        # K-56f: pinler aramadan ÖNCE sabitlenir; place_in_order dönüş listesi
+        # bin.placements DEĞİL (dblf lokal liste) → pinler prepend edilir ki
+        # n_placed ve ölçüm katmanı pin'i görsün.
+        pin_pls = _pin_yerlestir(b, _pins_fine) if _pins_fine else []
         pls = place_in_order(ordered, b, orient_fn)
-        return pls, b
+        return pin_pls + pls, b
 
     # --- Baz çözüm (ince açı YOK) — daima üretilir (güvenli karşılaştırma tabanı)
     base_parts = to_voxel_parts(instance, fine_pitch,
@@ -688,6 +788,15 @@ def solve_coarse_to_fine(
                                 margin=_fine_margin,
                                 extra_rot_overrides=extra_rot_overrides)
     base_by_id: Dict[str, Any] = {p.id: p for p in base_parts}
+
+    # K-56f: fine pinleri kur; pin'in RAW (margin'siz, tek-poz) VoxelPart'ı
+    # ölçüm katmanı için base_by_id'deki dilate kopyanın YERİNE geçer
+    # (order_ids pin'i içermez → arama dokunmaz; fine_voxel_parts pin'i görür).
+    if pinned_placements:
+        _pins_fine = _pin_hazirla(pinned_placements,
+                                  list(base_by_id.values()), fine_pitch)
+        for _pp, _x, _y, _z in _pins_fine:
+            base_by_id[_pp.id] = _pp
 
     # orient_map'i FINE listesine yeniden hizala: once rot-matris eslesmesi,
     # bulunamazsa eski indeks LEN-KELEPCELI (poz atlandiysa liste kisalmis
@@ -724,6 +833,9 @@ def solve_coarse_to_fine(
             margin=_fine_margin, orient_rot=orient_rot,
         )
         ref_by_id: Dict[str, Any] = {p.id: p for p in ref_parts}
+        if _pins_fine:  # K-56f: rafine dalında da pin aynı raw part'la geçerli
+            for _pp, _x, _y, _z in _pins_fine:
+                ref_by_id[_pp.id] = _pp
 
         def _ref_orient(idx: int, part: Any):
             return range(len(part.orientations))

@@ -145,7 +145,7 @@ def _poz_seti_cevir(n_orientations):
 
 
 def _run_champion(name, inst, seed, budget=None, n_orientations=None,
-                  extra_rot_overrides=None):
+                  extra_rot_overrides=None, pinned_placements=None):
     """Set'in URETIM DEFAULT yolunu kosar -> (result, nfv_tel | None).
 
     nfv_tel yalniz NFV dalinda doner (solve_nfv_kalite telemetrisi) — kapi
@@ -178,10 +178,10 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
     dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm,
                               rot_sokum=True, no_go_bounds=NOGO_STD)
     if getattr(dec, "mode", "heightmap") == "nfv":
-        if extra_rot_overrides:
+        if extra_rot_overrides or pinned_placements:
             raise ValueError(
-                "extra_rot_overrides yalniz heightmap dalinda gecerli "
-                f"(K-56 hedefli-tilt); {name} NFV'ye yonlendi")
+                "extra_rot_overrides/pinned_placements yalniz heightmap "
+                f"dalinda gecerli (K-56); {name} NFV'ye yonlendi")
         from src.nesting3d.nfv_solve import solve_nfv_kalite
         print(f"    [{name}] routing: NFV kalite (uretim default: "
               f"fast/2mm/nogo/r11-auto/rot-auto)", flush=True)
@@ -214,8 +214,25 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
               no_go_bounds=NOGO_STD)
     if n_orientations is not None:
         kw["n_orientations"] = n_orientations  # tune_bo override (04 §1)
+    if pinned_placements is not None:
+        kw["pinned_placements"] = pinned_placements  # K-56f pinleme
     if extra_rot_overrides is not None:
         kw["extra_rot_overrides"] = extra_rot_overrides  # K-56 hedefli-tilt
+    elif getattr(dec, "tilt_parca", None):
+        # K-56b URETIM KABLOSU (kanit K-56a: plan1 302.8 -> 202.2 LEGAL):
+        # tilt-zorunlu kapi tetiklendiyse hedefli tilt havuzu OTOMATIK kurulur
+        # (acik extra_rot_overrides HER ZAMAN ezer). None donerse tilt'siz
+        # mevcut yol (konservatif). demo_pipeline ile ayni fonksiyon (parite).
+        from src.nesting3d.targeted_tilt import hedefli_tilt_overrides
+        _tilt = hedefli_tilt_overrides(
+            inst, dec.tilt_parca, plate_w_mm=pw, plate_d_mm=pd,
+            no_go_bounds=NOGO_STD, fine_pitch=pitch,
+            clearance_mm=WEB_MIN_CLEARANCE_MM)
+        if _tilt:
+            kw["extra_rot_overrides"] = _tilt
+            print(f"    [{name}] hedefli-tilt: {dec.tilt_parca} "
+                  f"+{len(next(iter(_tilt.values())))} poz (K-56b)",
+                  flush=True)
     if wall:
         kw["menu"] = {"dblf_only": build_menu()["dblf_only"]}
     print(f"    [{name}] routing: wall_aware={wall}  pitch={pitch}", flush=True)
@@ -305,13 +322,14 @@ def compare_verdict(cur, base, fail_pct=FAIL_PCT, noise_pct=NOISE_PCT):
 
 def evaluate_set(name, seed, skip_clearance=False, budget=None,
                  n_orientations=None, extra_rot_overrides=None,
-                 _rot_fn=None, _kilit5_fn=None):
+                 pinned_placements=None, _rot_fn=None, _kilit5_fn=None):
     t0 = time.perf_counter()
     inst = _load_instance(name)
     n_total = sum(int(p.qty) for p in inst.parts)
     r, nfv_tel = _run_champion(name, inst, seed, budget=budget,
                                n_orientations=n_orientations,
-                               extra_rot_overrides=extra_rot_overrides)
+                               extra_rot_overrides=extra_rot_overrides,
+                               pinned_placements=pinned_placements)
     _solve_s = time.perf_counter() - t0  # K-57 sure-kirilimi
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
     height = float(r.height_mm)

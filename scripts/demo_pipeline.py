@@ -811,6 +811,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     # ince-plaka-dominant (NFV'nin %0-kazanç+yavaş olduğu durumlar) → kazan-kazan. Şüphede NFV
     # → false-negative (cavity-zengin→heightmap=kalite kaybı) riski SIFIR. ÖLÇ-ÖNCE kanıtlı.
     auto_reason = None
+    _tilt_parca = None  # K-56b: yalniz auto-daldaki ADIM -1 doldurur
     if nesting_mode == "auto":
         from src.nesting3d.adaptive_params import predict_nfv_benefit
         try:
@@ -835,6 +836,9 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                                        no_go_bounds=no_go_bounds)
             nesting_mode = _dec.mode
             auto_reason = f"auto->{_dec.mode}: {_dec.reason}"
+            # K-56b: tilt-zorunlu parca adi c2f dalinda hedefli-tilt havuzu
+            # kurmak icin tasinir (yapisal alan; None = tetiklenmedi).
+            _tilt_parca = getattr(_dec, "tilt_parca", None)
             # K-53c: aile poz-seti onerisi yalniz ACIK deger YOKKEN dolar
             # (payload nfv_quality=None); eski davranis "fast" korunur.
             if nfv_quality is None:
@@ -976,15 +980,17 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 quality=(nfv_quality or "fast"),  # None = oneri dolmadi (explicit "nfv" modu)
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
-                r11="auto",  # K-50 kablosu: kucuk/orta sette mesh-duzeyi son
-                             # dusme (tek-tarafli; kapilar gecemezse sonuc AYNEN;
-                             # parca tavani ustunde atlar + iz birakir)
+                r11="auto",  # K-50 kablosu: mesh-duzeyi son dusme (tek-tarafli;
+                             # kapilar gecemezse sonuc AYNEN; tavan ustunde
+                             # atlar + iz birakir). K-58: tavan 150->600
+                             # (K-55 hiz kaniti; d4 588p artik kapsamda).
                 rot_kabul="auto",  # K-52 kablosu (Eren onayi 2026-07-15):
                              # kilit ciktiginda reddetme/guard-vergisi yerine
                              # rot-sokum denetimine sor; rot kilit=0 ->
                              # sokum-planli kabul (K-52 kaniti: d4 588p'de
                              # rot denetimi 1.4dk, 12 kilitin 12'si acildi).
-                             # Ayni tavan (<=150) + butce 1200s; tek-tarafli.
+                             # Tavan 600 (ROT_KABUL_AUTO_PARCA_TAVANI) +
+                             # butce 1200s; tek-tarafli.
             )
             _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim + r11)
             tune_result = _c2f_result.tune_result
@@ -1011,6 +1017,27 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "dblf_only: thin_shell/H-15p (coarse tune %90 pay, "
                     "SA/GA kazandirmiyor)"
                 )
+            # K-56b URETIM KABLOSU (kanit K-56a: plan1 302.8 -> 202.2 LEGAL
+            # serhsiz): tilt-zorunlu parca varsa hedefli tilt havuzu kurulur;
+            # None/hata -> tilt'siz mevcut yol BIREBIR (konservatif).
+            # eval_gate ile AYNI fonksiyon (K-53d uretim-parite deseni).
+            _tilt_over = None
+            if _tilt_parca:
+                try:
+                    from src.nesting3d.targeted_tilt import (
+                        hedefli_tilt_overrides)
+                    _tilt_over = hedefli_tilt_overrides(
+                        instance, _tilt_parca,
+                        plate_w_mm=float(container["width_mm"]),
+                        plate_d_mm=float(container["depth_mm"]),
+                        no_go_bounds=no_go_bounds, fine_pitch=pitch,
+                        clearance_mm=WEB_MIN_CLEARANCE_MM)
+                except Exception:
+                    _tilt_over = None
+                if _tilt_over:
+                    _instr["hedefli_tilt"] = {
+                        "parca": _tilt_parca,
+                        "n_poz": len(next(iter(_tilt_over.values())))}
             _c2f_result = solve_coarse_to_fine(
                 instance,
                 plate_w_mm=float(container["width_mm"]),
@@ -1021,6 +1048,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 seed=seed,
                 menu=_coarse_menu,
                 skip_fine_angle=wall_aware_pitch,
+                extra_rot_overrides=_tilt_over,
                 # H-16w: kabuk/donel-simetrik aile (wall_aware) FINE dblf gecisi
                 # ~4x hizlanir (dirty-region drop_map onbellegi). Cache dogruluk-
                 # notr (yukseklik/yerlesim BIREBIR); wall_aware False iken

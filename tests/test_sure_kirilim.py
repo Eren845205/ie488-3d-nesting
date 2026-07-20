@@ -83,8 +83,8 @@ def test_evaluate_set_sure_kirilim(monkeypatch):
                         lambda name: NS(parts=[NS(qty=588)]))
     monkeypatch.setattr(eg, "_run_champion",
                         lambda name, inst, seed, budget=None,
-                        n_orientations=None,
-                        extra_rot_overrides=None:
+                        n_orientations=None, extra_rot_overrides=None,
+                        pinned_placements=None:
                         (_R(), {"sure_s": 9.9, "solve_ham_s": 7.7,
                                 "kilit5_s": 0.5,
                                 "r11": {"uygulandi": True, "sure_s": 1.1}}))
