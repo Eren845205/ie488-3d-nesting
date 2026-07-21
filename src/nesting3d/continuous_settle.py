@@ -103,9 +103,26 @@ def continuous_z_settle(
     ince_adim_mm: float = INCE_ADIM_MM,
     max_sweeps: int = MAX_SWEEPS,
     workers: int = DEFAULT_WORKERS,
+    atlama: bool = True,
 ) -> ContinuousSettleResult:
     """Yerlesik mesh listesini surekli z'de oturt. Mesh'ler DEGISTIRILMEZ;
-    donen dz uygulanacak dusmelerdir (m.apply_translation([0,0,-dz[i]]))."""
+    donen dz uygulanacak dusmelerdir (m.apply_translation([0,0,-dz[i]])).
+
+    atlama (K-60, 2026-07-22): KESIN-esdeger sorgu-atlama paketi — karar
+    matematigi degismez, dz BIT-OZDES (kanit: test_k60_atlama_bit_ozdes +
+    k55_bench_settle dz_md5). Uc katman:
+      (a) esik hesabi bound=req budamali (yalniz min(req,d0) gerekir; inf
+          donerse d0>=req kesindir, esik ayni cikar);
+      (b) analitik AABB-bosluk alt siniri (bulut noktalarinin tamami mesh
+          AABB'si icinde -> cift mesafesi >= kutu boslugu; bosluk >= esik
+          ise sorgu matematiksel gereksiz);
+      (c) Lipschitz onbellegi (z-otelemede her cift mesafesi en fazla
+          |delta_dz| azalir -> bilinen mesafe/alt-sinir - kat edilen yol
+          >= esik oldukca sorgusuz gecilir; sorgular esik+LOOKAH ufkuyla
+          yapilip alt-sinir olarak saklanir).
+    _GUV guvenlik payi float yuvarlamasini karsilar ve YALNIZ atlamayi
+    azaltir (yanlis atlama imkansiz; en kotu durumda eski maliyet).
+    atlama=False eski davranisin birebiridir (esdegerlik testleri icin)."""
     n = len(meshes)
     req = clearance_mm + pay_mm
     clouds = [_surface_cloud(m, samples_per_mesh, seed + i) for i, m in enumerate(meshes)]
@@ -122,25 +139,18 @@ def continuous_z_settle(
     # sira: orijinal alt-z artan, esitlikte girdi sirasi (deterministik)
     sira = sorted(range(n), key=lambda i: (bounds[i][0, 2], i))
 
-    def _pair_min(i: int, j: int, dzi: float) -> float:
-        """i (dzi kadar dusmus) ile j (mevcut dz[j]) arasi min mesafe.
-        Bulutlar ORIJINAL koordinatta; goreli kaydirma sorguya verilir."""
+    LOOKAH_MM = 2.0  # K-60c sorgu ufku (~4 kaba adim); yalniz hiz, karar ayni
+    _GUV = 1e-9      # float-yuvarlama payi — yalniz atlamayi AZALTIR
+
+    def _sinirli_min(i: int, j: int, dzi: float, bound: float) -> float:
+        """min_mesafe(i,j), distance_upper_bound=bound budamali.
+
+        KESIN sozlesme (K-55): sonlu donen her d kesin mesafedir; tum
+        noktalar bound disindaysa inf doner => gercek min >= bound."""
         goreli = dzi - dz[j]
         d, _ = trees[j].query(clouds[i] - np.array([0.0, 0.0, goreli]), k=1,
-                              workers=workers)
+                              distance_upper_bound=bound, workers=workers)
         return float(np.min(d))
-
-    def _esik_alti(i: int, j: int, dzi: float, esik: float) -> bool:
-        """min_mesafe(i,j) < esik testi — distance_upper_bound=esik budamali.
-
-        KESIN esdeger (K-55): bound disindaki noktalar inf doner; sonlu donen
-        her d kesin mesafedir. min(d)<esik <=> (d<esik).any() — strict
-        karsilastirma oldugundan sinirdaki (d==esik) nokta iki yolda da False.
-        Karar bit-ozdes, sorgu agaci erken budandigi icin cok daha ucuz."""
-        goreli = dzi - dz[j]
-        d, _ = trees[j].query(clouds[i] - np.array([0.0, 0.0, goreli]), k=1,
-                              distance_upper_bound=esik, workers=workers)
-        return bool((d < esik).any())
 
     def _komsular(i: int) -> List[int]:
         bi = bounds[i]
@@ -168,11 +178,32 @@ def continuous_z_settle(
                 continue  # plakada oturuyor
             dz_tavan = taban  # en fazla tabana kadar
             komsu = _komsular(i)
-            # her komsu icin korunacak esik: min(hedef, mevcut) - eps
+            # her komsu icin korunacak esik: min(hedef, mevcut) - eps.
+            # K-60a: yalniz min(req, d0) gerekir -> bound=req budamali sorgu.
+            # inf donerse d0 >= req KESINDIR -> min(req, d0) = req; sinir
+            # d0==req iki yolda da req verir. Esik degerleri BIT-OZDES.
             esikler = {}
+            son = {}   # K-60c onbellek: j -> (olculen_dzi, mesafe/alt-sinir)
+            gxy2 = {}  # K-60b: xy AABB bosluk karesi (i'nin turunda sabit)
             for j in komsu:
-                d0 = _pair_min(i, j, dz[i])
-                esikler[j] = min(req, d0) - _EPS_KORU
+                if atlama:
+                    d0 = _sinirli_min(i, j, dz[i], req)
+                    if np.isinf(d0):
+                        esikler[j] = req - _EPS_KORU
+                        son[j] = (dz[i], req)
+                    else:
+                        esikler[j] = min(req, d0) - _EPS_KORU
+                        son[j] = (dz[i], d0)
+                    bi, bj = bounds[i], bounds[j]
+                    gx = max(bj[0, 0] - bi[1, 0], bi[0, 0] - bj[1, 0], 0.0)
+                    gy = max(bj[0, 1] - bi[1, 1], bi[0, 1] - bj[1, 1], 0.0)
+                    gxy2[j] = gx * gx + gy * gy
+                else:  # eski yol birebir (esdegerlik kaniti icin)
+                    goreli = dz[i] - dz[j]
+                    d, _ = trees[j].query(
+                        clouds[i] - np.array([0.0, 0.0, goreli]), k=1,
+                        workers=workers)
+                    esikler[j] = min(req, float(np.min(d))) - _EPS_KORU
             # K-55: en dar esik once — _uygun AND'inde red en cok oradan
             # gelir, erken cikis sorgu sayisini dusurur. Karar AND uzerinden
             # sira-bagimsiz -> dz BIT-OZDES; tie-break j (deterministik).
@@ -184,7 +215,33 @@ def continuous_z_settle(
 
             def _uygun(dzi: float) -> bool:
                 for j in komsu:
-                    if _esik_alti(i, j, dzi, esikler[j]):
+                    esik = esikler[j]
+                    if atlama:
+                        # K-60b: analitik AABB boslugu — tum bulut noktalari
+                        # mesh AABB'sinde; cift mesafesi >= kutu boslugu.
+                        # Bosluk >= esik ise ihlal IMKANSIZ, sorgu atlanir.
+                        bi, bj = bounds[i], bounds[j]
+                        gz = max((bj[0, 2] - dz[j]) - (bi[1, 2] - dzi),
+                                 (bi[0, 2] - dzi) - (bj[1, 2] - dz[j]), 0.0)
+                        if np.sqrt(gxy2[j] + gz * gz) - _GUV >= esik:
+                            continue
+                        # K-60c: Lipschitz — z-otelemede her cift mesafesi
+                        # en fazla |dzi - dzi0| azalabilir; bilinen sinir
+                        # yetiyorsa ihlal IMKANSIZ, sorgu atlanir.
+                        dzi0, dbil = son[j]
+                        if dbil - abs(dzi - dzi0) - _GUV >= esik:
+                            continue
+                        dmin = _sinirli_min(i, j, dzi, esik + LOOKAH_MM)
+                        if np.isinf(dmin):
+                            son[j] = (dzi, esik + LOOKAH_MM)
+                            continue  # dmin >= esik+LOOKAH > esik: ihlal yok
+                        son[j] = (dzi, dmin)
+                        if dmin < esik:
+                            return False
+                        continue
+                    # eski yol birebir: bound=esik, strict '<' (K-55)
+                    dmin = _sinirli_min(i, j, dzi, esik)
+                    if (not np.isinf(dmin)) and dmin < esik:
                         return False
                 return True
 

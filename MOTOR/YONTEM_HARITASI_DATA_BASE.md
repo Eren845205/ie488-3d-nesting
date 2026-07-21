@@ -1256,6 +1256,34 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > gosterdi cunku D agacinda baseline json yok (k51e baseline C'de; parite
 > degerleri elle dogrulandi — birebir).
 
+> **2026-07-22 — K-60 R11 KESIN-ESDEGER SORGU-ATLAMA = SENTETIK GO, uretim
+> kaniti KOSUYOR (kanit scripts/k55_bench_settle cikti + tests
+> test_r11_continuous_settle 13/13):** GEREKCE: plan7 kor-test kirilimi —
+> R11 sure payi %60 (49dk/81dk; ham coz um 21dk) -> R11 en buyuk hiz kalemi.
+> MEKANIZMA (K-55 deseni: karar matematigi DEGISMEZ, veri-tipi dali YOK):
+> (a) esik hesabi bound=req budamali (yalniz min(req,d0) gerekir; inf =>
+> d0>=req kesin, esik bit-ozdes); (b) analitik AABB-bosluk alt siniri
+> (bulut noktalari mesh AABB'sinde -> cift mesafesi >= kutu boslugu;
+> bosluk>=esik ise sorgu gereksiz, bedava); (c) Lipschitz onbellegi
+> (z-otelemede cift mesafesi en fazla |ddz| azalir; bilinen sinir - yol
+> >= esik oldukca sorgusuz; sorgular esik+2mm ufkuyla alt-sinir uretir).
+> _GUV=1e-9 float payi YALNIZ atlamayi azaltir (yanlis atlama imkansiz).
+> `atlama=False` eski yol birebir (esdegerlik kapisi). OLCUM (sentetik
+> k55_bench): 48p 9.5s -> **0.7s (13.6x), dz_md5 BIREBIR**
+> (226d9237...); 96p 2.5s. Kumulatif R11 zinciri: K-55-oncesi 97s ->
+> K-60 0.7s (~139x sentetik). TDD: +2 bit-ozdeslik testi (normal +
+> esik-dibinde sikisik sahne), dosya 13/13.
+> **URETIM KANITI GELDI (ayni gun; kanit results/k60_d4_hiz_paritesi.log
+> D+OneDrive): d4 588p replay PARITE TAM — h 220.69 BIREBIR, clear 2.006
+> BIREBIR, rot kilit 0/588 (5 cert), settle+rafine 43.5dk (K-55) ->
+> 5.1dk (~8.5x; K-52 orijinali 393dk'ya gore 77x).**
+> **Karne: tetik=geometrik (veri-adi yok; saf hiz) | kapi=PASS (d4
+> uretim-olcek parite tam) | sifir-dokunus=N/A (davranis bit-ozdes,
+> testli+replay-kanitli) | sozlesme=DEGIL | held-out=GEREKMEZ
+> (kalite-notr).** ETKI: plan7-tipi 345p sette R11 49dk -> beklenti
+> ~5-8dk (dogrudan olculmedi — held-out'a hiz olcumu icin de dokunulmaz);
+> kapi/uretim koslarinda R11 artik sure engeli degil.
+
 > **2026-07-20 — plan3 KURTARMA = PASS + K-58 p3-KOLU = NOTR -> K-56b KAPI
 > 4/4 TAMAM (kanit D:\ie488\results\k56b_plan3_kurtarma.json + .log;
 > 27.2dk, OOM YOK @2.6GB):** plan3 **601.92 BIT-OZDES** (tarihsel 3 kosuyla

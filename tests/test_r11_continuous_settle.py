@@ -168,3 +168,49 @@ def test_k55_default_workers_sinirlari(monkeypatch):
     assert 1 <= _default_workers() <= 6
     monkeypatch.delenv("R11_WORKERS")
     assert 1 <= _default_workers() <= 6
+
+
+# ---------------------------------------------------------------------------
+# K-60 (2026-07-22): kesin-esdeger sorgu-atlama paketi — bit-ozdeslik kaniti
+# ---------------------------------------------------------------------------
+
+def test_k60_atlama_bit_ozdes():
+    """atlama=True (AABB-bosluk + Lipschitz + bound=req esik) ile atlama=False
+    (eski yol birebir) AYNI dz vektorunu uretir — iki farkli sahnede."""
+    import numpy as np
+    from src.nesting3d.continuous_settle import continuous_z_settle
+    for seed, n in ((3, 10), (13, 14)):
+        meshes = _k55_sahne(n=n, seed=seed)
+        r_hizli = continuous_z_settle(meshes, clearance_mm=2.0,
+                                      samples_per_mesh=800, atlama=True)
+        r_eski = continuous_z_settle(meshes, clearance_mm=2.0,
+                                     samples_per_mesh=800, atlama=False)
+        assert np.array_equal(r_hizli.dz, r_eski.dz), (seed, n)
+        assert r_hizli.height_mm == r_eski.height_mm
+        assert r_hizli.sweeps_used == r_eski.sweeps_used
+
+
+def test_k60_atlama_yogun_sahne_bit_ozdes():
+    """Yatayda sikisik (esik-aktif) sahnede de bit-ozdeslik — atlamalarin
+    ihlal-yakinindaki ciftlerde de dogru karar verdigini kanitlar."""
+    import numpy as np
+    import trimesh
+    from src.nesting3d.continuous_settle import continuous_z_settle
+    rng = np.random.default_rng(42)
+    meshes = []
+    # 3x3 izgara, yanal bosluk ~2.2mm (esik dibinde); z'de asili
+    for gx in range(3):
+        for gy in range(3):
+            w = d = 20.0
+            h = float(rng.uniform(8, 16))
+            gap = float(rng.uniform(2.5, 7.0))
+            m = trimesh.creation.box(extents=[w, d, h])
+            m.apply_translation([gx * 22.2 + w / 2, gy * 22.2 + d / 2,
+                                 gap + h / 2 + gx])
+            meshes.append(m)
+    r_hizli = continuous_z_settle(meshes, clearance_mm=2.0,
+                                  samples_per_mesh=800, atlama=True)
+    r_eski = continuous_z_settle(meshes, clearance_mm=2.0,
+                                 samples_per_mesh=800, atlama=False)
+    assert np.array_equal(r_hizli.dz, r_eski.dz)
+    assert r_hizli.height_mm == r_eski.height_mm
