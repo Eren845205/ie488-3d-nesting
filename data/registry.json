@@ -7,9 +7,16 @@
     "deneme4": {"rol": "dev",      "aile_f1": "thin_shell", "kaynak": "hoca-2026-07-03", "not": "kabuk ailesi; plaka 325x325 (hoca 335-2x5); anchor 264.0mm"},
     "deneme5": {"rol": "dev",      "aile_f1": "tube",       "kaynak": "hoca-2026-07-07", "not": "K-44/47a tuning'de kullanildi -> dev (A3: held-out ILAN EDILEMEZ); 216x ince cubuk + kutular; aile_f1=classify_prelim(tube, conf 0.53) — Eren teyit edecek; sampiyon 218.0 @1.0 (2026-07-13)"},
     "deneme6": {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-08", "not": "DOGUSTAN held-out (01_VERI §3); 15 parca x1; referans 86.32 MANUEL (A10 serhli); cozum HIC kosulmadi (A3)"},
+    "plan7":   {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-20", "not": "DOGUSTAN held-out (01_VERI §3); 10 parca tipi / 345 adet; referans 595mm URETIM YUKSEKLIGI (hazirlanis yontemi+bosluk kosulu mailde yok -> A10 serhli); mail kisiti: 288101642-a2 'Konumu degismeyecek' (pin, K-56g kablosu baglanana dek kosu serhli); ZIP Drive'dan indirildi 2026-07-21; cozum HIC kosulmadi (A3)"},
     "numune":  {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-05", "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"},
     "boxy":    {"rol": "held-out", "aile_f1": "solid_bulk", "kaynak": "sentetik",     "not": "kutu stres seti"}
   },
-  "bakislar": [],
+  "bakislar": [
+    {
+      "setler": ["plan7"],
+      "tarih": "2026-07-21T15:20:00",
+      "sebep": "envanter/metadata bakisi (deneme6 emsali): ZIP indirme sonrasi bbox+ucgen+watertight sayimi; COZUM KOSULMADI. Kanit: results/plan7_envanter.json"
+    }
+  ],
   "kural": "Yeni gercek siparis DOGUSTAN held-out (01_VERI §3); ayni aileden >=2 birikince en eskisi ACIK KARARLA dev'e terfi edebilir."
 }

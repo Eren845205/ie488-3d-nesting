@@ -175,3 +175,26 @@ temasta nazikçe tekrar sorulmalı.
 **Doğrudan işler:** UI çift-aday default'u kesinleşti (tamamı-kolay) ·
 d4 kabul notu YONTEM/RESUME'ye · yeni veri gelince held-out protokolü hazır
 (gözcü + registry + kxx_telemetri kablosu bekliyor).
+
+---
+
+## 2026-07-20 — Plan7 verisi geldi ("verileri hazırlayabildiniz mi?" sorusuna cevap)
+
+**Bağlam:** Eren 2026-07-20 13:45 "verileri hazırlayabildiniz mi?" diye sordu;
+Mert Bey aynı gün 16:18'de cevapladı (thread: "RE: Plan1 ve Plan 3 Nesting",
+Gmail mesaj id `19f7fad84ee93dbb`).
+
+> "Merhaba Eren, Plan7'yi ekte paylaşıyorum. **Üretim yüksekliği 595 mm'dir.**
+> Plan7. İyi çalışmalar, Saygılarımla."
+
+**Doğrudan sonuçlar:**
+- **Plan7 = yeni gerçek sipariş → A3/B1 gereği HELD-OUT doğar** (01_VERI §2.1
+  registry'ye kaydedildi). Tuning'e GİRMEZ; ilk iş kör-test (üretim koşusu).
+- Referans: **595 mm üretim yüksekliği** — hazırlanış yöntemi (manuel mi,
+  Magics mi) ve boşluk/kenar koşulları MAİLDE YOK → **A10 şerhli** kıyas;
+  soru listesine eklendi (2026-07-14'ten beri cevapsız clearance sorusuyla
+  birlikte sorulmalı).
+- Veri kanalı notu: ek + Google Drive paylaşım maili birlikte geldi
+  (büyük dosya Drive üzerinden olabilir).
+- 2026-07-20 canlı test: Plan7 maili gözcü/otonom hattına işletildi
+  (mail→parse→nesting uçtan uca; H10 canlı doğrulaması).

@@ -56,11 +56,18 @@ class PendingOrderStore:
         konu: str,
         stl_map: Dict[str, bytes],
         container: Optional[Dict[str, Any]] = None,
+        review_reason: str = "",
+        share_links: Optional[List[str]] = None,
+        adet_listesi: Optional[Dict[str, int]] = None,
     ) -> str:
         """Bekleyen siparisi (STL'ler + meta) diske yaz. order_id (guvenli) doner.
 
         Ayni order_id ile tekrar cagrilirsa USTUNE yazar (idempotent — ayni mail
         iki kez islenirse cogalmaz).
+
+        review_reason/share_links/adet_listesi: dosya-paylasim-linkli siparisler
+        icin (STL'ler mail ekinde degil linkte — operator indirir). Additive;
+        eski cagiranlar vermeyebilir (geriye uyum, default bos).
         """
         sid = _safe_id(order_id)
         d = self.root / sid
@@ -85,6 +92,9 @@ class PendingOrderStore:
             "konu": konu,
             "stl_names": stl_names,
             "container": container,
+            "review_reason": review_reason or "",
+            "share_links": list(share_links or []),
+            "adet_listesi": dict(adet_listesi or {}),
         }
         (d / _META).write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"

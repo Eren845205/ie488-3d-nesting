@@ -35,12 +35,33 @@ plaka · rol (dev/held-out) · held-out bakış sayısı + tarihleri · notlar`.
 | numune | (tek parça çeşidi; heightmap) | **held-out** | erken dönem frozen anchor'ı var; tuning döngüsünde değil |
 | boxy | solid_bulk (sentetik-gerçek karışım kutu) | **held-out** | c3_generality'de kontrol seti |
 | deneme6 | (15 parça × 1 adet; küçük-orta karışık; en büyük 149×149×30) | **held-out (doğuştan)** | 2026-07-09 hoca maili → `VERILER/Deneme6/`; **referans 86,32 mm (MANUEL yerleşim — Magics değil; koşullar yaklaşık, A10 şerhli)**. Envanter bakışı 2026-07-09 (yalnız metadata: gövde/adet sayımı; ÇÖZÜM KOŞULMADI). Adet STL'de gömülü değil → 15×1. Kör-test protokolü: R11 (`06_HOCA_2026-07-09...md`) |
+| plan7 | *(F1 sınıflaması koşuda)* | **held-out (doğuştan)** | 2026-07-20 hoca maili (thread "Plan1 ve Plan 3 Nesting", mesaj `19f7fad84ee93dbb`; adet .txt eki + Google Drive `Plan7.zip` 19.5MB); **referans 595 mm üretim yüksekliği (hazırlanış yöntemi + boşluk/kenar koşulu MAİLDE YOK → A10 şerhli)**. **Mail kısıtı: `288101642-a2` "Konumu değişmeyecek" (pin — K-56g üretim kablosu bağlanana dek koşular şerhli).** ZIP Drive'dan indirildi 2026-07-21 → `Veriler/Plan7/` (10 STL, adetlerle birebir). Envanter bakışı 2026-07-21 (yalnız metadata: 10 tip / 345 adet, tümü watertight, ince-plaka ağırlıklı, z-max 231mm; ÇÖZÜM KOŞULMADI; kanıt `results/plan7_envanter.json`). eval_gate kablosu hazır (`--heldout-final --sets plan7`); kör-test sakin-makine bekliyor. |
 | *(yeni mail)* | *otomatik F1* | **held-out (doğuştan)** | gözcü kanalı, §3 |
 
 **Kural:** held-out koşusu yapıldığında bu tabloya `bakış: YYYY-MM-DD (sebep)`
 eklenir. Bakış sayısı bir setin "tükenmişlik" göstergesidir — çok bakılan
 held-out sessizce dev-set'e dönüşür (bilgi sızıntısı); ≥3 bakışta rol
 değerlendirmesi yapılır.
+
+## 2.2 Kör-test karnesi — held-out İLK-KOŞU açığı (eklendi 2026-07-21)
+
+> **Amaç (Eren eleştirisi 2026-07-21: "sonsuz kere farklı veride açık
+> kapatamayız; overfit diye bağırıyorum, önlem uygulanmıyor"):** Genelleme
+> iddiasının TEK dürüst ölçüsü, yeni verinin out-of-the-box (hiç dokunmadan,
+> üretim default'uyla) referansa açığıdır. Bu seri ZAMANLA DÜŞMÜYORSA
+> mekanizma envanteri yakınsamıyor demektir → ürün stratejisi kapsam-beyanına
+> döner (güçlü aileler satılır, zayıfta insan-destekli mod). Her yeni veri
+> buraya İLK koşusuyla girer; sonradan kapatılan açık BU TABLOYU DEĞİŞTİRMEZ
+> (tarihsel dürüstlük — trend metriği ilk-koşudur).
+
+| Set | İlk-koşu tarihi | Üretim kolu | Max kolu | Referans | İlk-koşu açığı | Şerhler |
+|---|---|---|---|---|---|---|
+| deneme6 | 2026-07-21 | **68.50 LEGAL** (clear 3.25, kilit 0, NFV-fast, 29s) | **65.50 LEGAL** (kilit 6→rot 0 söküm-planlı, 66s) | 86.32 (manuel, A10ş) | **−%20.6 (MANUEL-ALTI)** | 12 gün koşulmadan bekledi (süreç dersi); max kolu −%24.1; kanıt results/deneme6_heldout_final.json |
+| plan7 | 2026-07-21 | **488.40 LEGAL** (clear 2.000, kilit 15→rot 0 söküm-planlı, r11 uygulandı, 103dk) | **488.40 BİREBİR-ÜRETİM** (AX24 kazanç 0; clear bit-özdeş; 81dk taze proses) | 595 (yöntem bilinmiyor, A10ş) | **−%17.9 (MANUEL-ALTI)** | pin kısıtı uygulanmadı; koşu NOGO_STD'li (595'in no-go koşulu bilinmiyor — açık bizim aleyhimize bile olabilir) |
+
+**Kural:** kör-test sonucu görüldükten sonra o set için mekanizma
+geliştirilmesi = held-out'u dev'e çevirmek. YAPILMAZ; açık ölçülür, kaydedilir,
+geliştirme ancak aile dev'e terfi ederse (B1 ≥2 kuralı) başlar.
 
 ## 3. Yeni altın kanal: gözcü / otonom_gecmis (taslakta yoktu)
 

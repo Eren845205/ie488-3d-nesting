@@ -91,6 +91,45 @@ DATASETS = {
             "17_00-K179 SSB Dugme": 20,
         },
     },
+    "deneme6": {  # HELD-OUT (dogustan, A3) — hoca maili 2026-07-09; 15 parca x1
+        # (adet STL'de gomulu degil -> hepsi 1). Referans 86.32mm MANUEL
+        # (A10 serhli: kosullar yaklasik). Kor-test protokolu R11
+        # (06_HOCA_2026-07-09 §4). 2026-07-21'e dek COZUM HIC KOSULMADI —
+        # kablo bu tarihte dosendi (held-out sinavlari sifirdi; Eren elestirisi).
+        "stl_dir": VERILER / "Deneme6" / "Deneme6", "plate": None,
+        "qty": {
+            "A6336870239_11 02 26": 1,
+            "part517968_09F2F36_printing": 1,
+            "part517991_09F3D81_printing": 1,
+            "part518998_attchelvpfinal": 1,
+            "part519000_vacc_hole_final": 1,
+            "part519443_IQE_pumpV1": 1,
+            "part519444_IQE_pumpV1": 1,
+            "part519445_IQE_pumpV1": 1,
+            "part519446_IQE_pumpV1": 1,
+            "part519579_Display Bezel r1": 1,
+            "part519580_Display Support r2": 1,
+            "part519688_09F52AE_printing": 1,
+            "part522467_BLAM": 1,
+            "PO-TR263894-35825_P495994": 1,
+            "R0025-01-R00": 1,
+        },
+    },
+    "plan7": {  # HELD-OUT (dogustan, A3) — hoca maili 2026-07-20 (Drive Plan7.zip
+        # 19.5MB + "Plan7- Adet Listesi.txt" eki). Referans 595mm uretim yuksekligi
+        # (hazirlanis yontemi + bosluk/kenar kosulu mailde YOK -> A10 serhli).
+        # DIKKAT: 288101642-a2 icin mail notu "Konumu degismeyecek" — pin kisiti;
+        # uretim pinned_placements kablosu (K-56g) baglanana dek kosular serhli.
+        # Bu tablo SET TANIMI'dir (veri kaydi); A11 veri-adi yasagi mekanizma
+        # tetikleri icindir, set-tanim tablosunu kapsamaz.
+        "stl_dir": VERILER / "Plan7", "plate": None,
+        "qty": {
+            "174100684-a": 22, "174100686-a": 10, "174100700-a": 96,
+            "174100712-a": 12, "174100714-a": 6, "174100729-a": 96,
+            "174100747-a": 48, "174100795-a": 48,
+            "288101640-a1_1": 1, "288101642-a2": 6,
+        },
+    },
 }
 
 

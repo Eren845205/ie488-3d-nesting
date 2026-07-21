@@ -693,6 +693,55 @@ def _has_order_signal(text: str) -> bool:
     return False
 
 
+# Dosya-paylasim linki tespiti: buyuk STL ZIP'i mail ekine sigmayinca gonderen
+# link paylasir (mail-saglayici ek limiti gercekligi). Allowlist DOMAIN bazli
+# ve genel — gonderen/set adina ozel durum yok. Yeni saglayici gerekirse
+# buraya eklenir.
+_SHARE_LINK_HOSTS = (
+    "drive.google.com",
+    "docs.google.com",
+    "wetransfer.com",
+    "we.tl",
+    "1drv.ms",
+    "onedrive.live.com",
+    "dropbox.com",
+)
+_URL_RE = re.compile(r"https?://[^\s<>\"'\)\]]+")
+
+
+def _find_share_links(text: str) -> List[str]:
+    """Metindeki dosya-paylasim linklerini don (allowlist host, sirali, tekil)."""
+    out: List[str] = []
+    for url in _URL_RE.findall(text or ""):
+        host = url.split("/", 3)[2].lower() if url.count("/") >= 2 else ""
+        if any(host == h or host.endswith("." + h) for h in _SHARE_LINK_HOSTS):
+            if url not in out:
+                out.append(url)
+    return out[:10]  # tek mailde makul ust sinir (kotu niyetli link seli koruma)
+
+
+def _adet_listesi_from_text_attachments(mail: RawMail) -> Dict[str, int]:
+    """Duz-metin (.txt) eklerinden {parca_adi: adet} cikar (deterministik).
+
+    Gercek-dunya deseni: STL'ler linkte, adet listesi kucuk .txt ekinde gelir.
+    Ilk adet-listesi iceren ek kazanir; hicbiri parse edilemezse bos dict.
+    """
+    from src.runtime.quantity_text_parser import parse_quantities
+
+    for att in (mail.ekler or []):
+        if not att.dosya_adi.lower().endswith(".txt"):
+            continue
+        try:
+            adetler = parse_quantities(_decode_text_bytes(att.icerik))
+        except Exception:
+            logger.debug("adet-listesi eki parse edilemedi: %s",
+                         att.dosya_adi, exc_info=True)
+            continue
+        if adetler:
+            return adetler
+    return {}
+
+
 def _resolve_plate() -> tuple[Optional[float], Optional[float]]:
     """Gercek plaka (width, depth) coz — configs/plate.local.json > env PLATE_*.
 
@@ -1129,6 +1178,45 @@ def ingest_order(
             "parse_source": source_tag,
         }
 
+    # --- Dosya-paylasim linki yolu (Drive / WeTransfer / OneDrive / Dropbox) ---
+    # Gercek-dunya deseni: buyuk STL ZIP'i mail ekine SIGMAZ; gonderen link
+    # paylasir, adet listesi .txt ekinde veya govdede gelir. Veri dosyasi
+    # elimizde olmadigindan pipeline'a sokulamaz — LLM'e de sokulmaz (metinden
+    # bos/sifir-adet siparis uretip is'i dusururdu). Operator indirmesi icin
+    # bekleyen siparise alinir. Ek onceligi korunur: ZIP/Excel/CSV eki varsa
+    # yukaridaki dallar zaten donmustur.
+    share_links = _find_share_links(f"{mail.konu or ''}\n{mail.govde or ''}")
+    if share_links:
+        adet_listesi = _adet_listesi_from_text_attachments(mail)
+        if not adet_listesi:
+            from src.runtime.quantity_text_parser import parse_quantities
+            adet_listesi = parse_quantities(mail.govde or "")
+        _metin = f"{mail.konu or ''} {mail.govde or ''}".lower()
+        _dosya_imasi = (".zip" in _metin) or (".stl" in _metin)
+        # Siparis kaniti: adet listesi VEYA dosya imasi VEYA siparis sinyali.
+        # Ucu birden yoksa mail muhtemelen alakasiz bir paylasim bildirimi —
+        # asagidaki LLM kapisina birakilir (sinyalsizse zaten None doner).
+        if adet_listesi or _dosya_imasi or _has_order_signal(mail.govde or ""):
+            _det_raw = (mail.message_id + share_links[0]).encode("utf-8")
+            _det_hex = hashlib.sha256(_det_raw).hexdigest()[:8].upper()
+            logger.info(
+                "ingest_order: dosya-paylasim linki algilandi (%d link, %d adet "
+                "satiri) — operator indirmesi icin beklemeye alindi: %s",
+                len(share_links), len(adet_listesi), mail.gonderen,
+            )
+            return {
+                "needs_review": True,
+                "review_reason": "share_link_dosya_bekleniyor",
+                "order_id": f"LINK-{_det_hex}",
+                "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+                "parse_source": "share_link",
+                "stl_names": [],
+                "_stl_map": {},
+                "parts": [],
+                "share_links": share_links,
+                "adet_listesi": adet_listesi,
+            }
+
     # --- LLM yolu: serbest metin ---
     # KAPI: ek yok; govdede siparis sinyali (adet/boyut deseni) yoksa LLM'e
     # SOKMA. Sinyalsiz mail (reklam/kisisel/bildirim) LLM'e gidince model
@@ -1168,6 +1256,36 @@ def ingest_order(
     if isinstance(order, dict):
         order = dict(order)
         order["parse_source"] = "llm_text"
+        # BOS-SIPARIS KALKANI: LLM sinyal tasiyan ama parca listesi bos/sifir
+        # adetli mail'den "siparis" uretebilir (2026-07-20 canli dersi: tek
+        # boyle siparis run_pipeline'da 'Gecerli siparis yok' ValueError ->
+        # otonom is 500). run_pipeline'in adet semantigi aynen kullanilir
+        # (qty eksikse 1 sayilir); parca hic yoksa toplam 0. Bos siparis
+        # pipeline yerine operator incelemesine gider (mail KAPANIR — ayni
+        # mail'in her turda LLM'e tekrar sokulmasi da onlenir).
+        _parts = order.get("parts") or []
+        try:
+            _toplam_adet = sum(int(p.get("qty", 1) or 0) for p in _parts)
+        except (TypeError, ValueError, AttributeError):
+            _toplam_adet = 0
+        if _toplam_adet <= 0:
+            _det_hex = hashlib.sha256(
+                mail.message_id.encode("utf-8")).hexdigest()[:8].upper()
+            logger.warning(
+                "ingest_order: LLM bos/sifir-adet siparis uretti — pipeline'a "
+                "sokulmadi, operator incelemesine alindi: %s", mail.gonderen,
+            )
+            return {
+                "needs_review": True,
+                "review_reason": "llm_bos_siparis",
+                "order_id": order.get("order_id") or f"BOS-{_det_hex}",
+                "customer": (order.get("customer")
+                             or mail.gonderen.split("@")[-1].split(".")[0].upper()),
+                "parse_source": "llm_text_incomplete",
+                "stl_names": [],
+                "_stl_map": {},
+                "parts": [],
+            }
     return order
 
 
