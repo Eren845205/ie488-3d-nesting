@@ -136,6 +136,30 @@ heightmap-kolu stratejisidir.
 özellikler) → Ç4. Ç1+Ç2+Ç5 tek sakin-makine seansına sığar (tahmin: kod 1
 gün + koşular).
 
+### Ç2-DERİN YOL PLANI (2026-08-04 akşam — v4/v5/v6 ölçümleri sonrası revize)
+
+Ölçülmüş gerçekler: v4 suçlu-taşıma 136,50 (GO) · v5 azimut/sıra NO-GO ·
+v6 kule-pinleme NO-GO (pin→heightmap zorlaması NFV taban kalitesini yedi:
+105,5→125). Sonuç: kanopi-altı çözüm NFV'DE KALMALI; kule sorunu NFV'nin
+İÇİNDE çözülmeli. Yol, ucuzdan pahalıya üç adım:
+
+**v7 — Suçlu tiplere YATAY poz-kilidi (SIRADAKİ; motor değişikliği YOK):**
+`orientation_overrides` NFV dalında ZATEN destekli (v6'yı düşüren guard
+yalnız pinned/extra_rot içindi). Faz-A suçlu sayımı → o tiplerin poz
+menüsü YATAY pozlarla sınırlanır (yon_poz_tablosu "yatay" kümesi) → NFV
+yeniden çözer (kule diye bir şey kalmaz, her şey ≤~69 bütçesine yatar) →
+kanopi ~70'e oturur. Beklenti: toplam 105-120 bandı. Risk: yatık bobbinler
+taban alanını büyütür — alan yetmezse yükseklik başka yerden artar
+(ölçüm söyler). Maliyet: script-içi ~20 satır + ~15 dk koşu.
+
+**v8 — NFV'ye gerçek pin desteği (v7 yetmezse; ORTA motor işi):**
+occupancy ön-yükleme + parça düşme; kuleler dik kalır (alan tasarrufu) ama
+konumu delikte sabitlenir. Kapılı üretim-motor değişikliği.
+
+**Kablolama + doğrulama (her GO'dan sonra):** Ç5 holey_frames dağılımsal +
+4-set sıfır-dokunuş kapısı + üretim kablosu (kanopi kolu portföy dalı
+olarak; K-56g deseni) + baseline etkisi — hepsi ayrı Eren onaylı seans.
+
 ---
 
 ## BÖLÜM C — Kısıt-v2: 4 yeni tür için motor boşlukları ve plan

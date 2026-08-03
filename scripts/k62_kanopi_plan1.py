@@ -67,6 +67,10 @@ DOLULUK_ESIK = 0.6
 # temiz tutmak (v4/v5 dersi: sonradan tasima 136.5 tavanina takiliyor).
 import os
 V6 = os.environ.get("K62_V6") == "1" or "--v6" in sys.argv
+# V7 (2026-08-04 aksam, C2-derin yol plani): suclu tiplere YATAY poz-kilidi
+# — orientation_overrides NFV dalinda destekli (v6'yi dusuren guard yalniz
+# pinned/extra_rot icindi). Faz-A sayimi ortak; pin YOK, rota zorlamasi YOK.
+V7 = os.environ.get("K62_V7") == "1" or "--v7" in sys.argv
 V6_KULE_BUTCE_MM = 69.0   # min bbox-ekseni bunu asan tip yatamaz = kule
 V6_PIN_MARGIN_VOX = 4     # kule-drop dilated (2mm/0.5) — pin-pin boslugu
 
@@ -145,8 +149,10 @@ def main():
         f"  uygun_ofset={fiz['uygun_sayisi']}")
 
     # ---- V6: zorunlu-kuleleri delik/dis bolgeye ON-PINLE ------------------
+    # ---- V7: suclu tiplere YATAY poz-kilidi (faz-A ortak) -----------------
     v6_pins = None
-    if V6:
+    v7_overrides = None
+    if V6 or V7:
         import trimesh.transformations as _tt
         _pitch6 = 0.5  # champion fine pitch'i (pin mm-cinsinden, guvenli)
         # hedef kanopi ofseti: rot0 orneklerinden medyan-dy (deterministik)
@@ -210,7 +216,15 @@ def main():
         del _rA, _telA, _fvpA, _vpsA
         gc.collect()
 
-        v6_pins = []
+        if V7:
+            from src.runtime.constraint_compiler import yon_poz_tablosu
+            _yatay = tuple(yon_poz_tablosu()["yatay"])
+            v7_overrides = {ad: _yatay for ad in _sayim}
+            log(f"[V7] yatay poz-kilidi ({len(_yatay)} poz) -> tipler:"
+                f" {sorted(v7_overrides)}")
+
+        v6_pins = [] if not V7 else None
+    if V6 and not V7:
         for p in inst.parts:
             if p is p0 or not getattr(p, "stl_path", None):
                 continue
@@ -289,7 +303,8 @@ def main():
     try:
         r1, nfv_tel = eg._run_champion("plan1", inst2, SEED,
                                        extra_rot_overrides={},
-                                       pinned_placements=v6_pins)
+                                       pinned_placements=v6_pins,
+                                       orientation_overrides=v7_overrides)
     finally:
         if _pnb_orig is not None:
             import src.nesting3d.adaptive_params as _ap
@@ -694,6 +709,8 @@ def main():
         "iterasyon_v5": iter2_sonuc,
         "v6_modu": bool(V6),
         "v6_pin_sayisi": (len(v6_pins) if v6_pins else 0),
+        "v7_modu": bool(V7),
+        "v7_kilitli_tipler": (sorted(v7_overrides) if v7_overrides else []),
         "telemetri": tel, "ref": REF, "seed": SEED,
         "pitch": pitch, "nogo": eg.NOGO_STD,
         "toplam_sure_dk": round((time.perf_counter() - t0) / 60, 1),

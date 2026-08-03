@@ -345,3 +345,16 @@ net tek adrese çıkıyor: **NFV dalına pin/bölge-farkındalık desteği**
 Kalıcı kazanım: coarse_to_fine ÇOKLU-KOPYA pin desteği (testli, 8/8;
 tekil davranış bit-özdeş) — gelecekteki her pin işinin altyapısı.
 Kanıt: results/k62_kanopi_plan1_v6b.log (+_v6a FATAL arşivi D'de).
+
+## 2026-08-04 GECE — k62 v7: NO-GO — plan1 günü v4=136,50 ile kapandı
+
+**v7 (suçlu tiplere yatay poz-kilidi, NFV-içi):** kilit uygulandı (4 tip,
+16 yatay poz) ama öngörülen risk gerçekleşti: yatık bobbinler taban alanını
+yiyince NFV tabanı 105,5→119,0'a çıktı; yatıklar üst üste bindi (dolu-altı
+max 118,5; suçlu 37'ye çıktı). Naif 157,0 · iterasyon 170,5 → v4'ün
+gerisinde. **DERS: alan sınırı — 111 parça 69mm bütçeye tamamen yatırılarak
+SIĞMIYOR; kuleler kaçınılmaz, çözüm onları DELİK İÇİNDEN yükseltmekte
+(insan çözümü böyle: kanopi ~70 + delikten 110'a kadar kuleler).** Sıradaki
+tek adres: v8 = NFV'ye pin/bölge-farkındalık (kapılı motor işi, ayrı seans;
+plan Ç2-derin'de). Kanıt: results/k62_kanopi_plan1_v7.log.
+Gün özeti: v4 GO (136,50) · v5/v6/v7 NO-GO (üçü de kayıtlı, A7).
