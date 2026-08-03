@@ -183,6 +183,36 @@ v8 iş listesi (orta motor işi, ~1 gün kod+test + koşular):
 4-set sıfır-dokunuş kapısı + üretim kablosu (kanopi kolu portföy dalı
 olarak; K-56g deseni) + baseline etkisi — hepsi ayrı Eren onaylı seans.
 
+### MANUEL'E (110,41) YAKLAŞMA YOLU — v8b/v9/v10 (2026-08-04 gece; 4 NO-GO'nun sentezi)
+
+Makasın anatomisi (kanıtlı): manuel = kanopi z≈70 + kanopi-altı ≤70 +
+kuleler DELİK İÇİNDEN 110'a. Bizim 136,5'te artan kuleler deliklere
+sığmayıp kanopi ÜSTÜNE çıkıyor (136,5 = 111,5 kanopi-tepe + üstü parça).
+Sorun tek cümle: kuleler ve kanopi-altı BİRLİKTE planlanmıyor.
+
+**v8b — pin ayar düzeltmeleri (yarım gün; beklenti 125-135):**
+1. Pin mührüne +1 voxel dilation (NFV pitch=2,0 kuantizasyonu 2mm boşluk
+   garantisini kırıyordu — v8-MVP clearance 1,16 ihlalinin sebebi).
+2. İteratif pin seti: faz-B'de YENİ kuleleşen tipler de pinlenir (2-3 tur;
+   v8-MVP'de 4 tip pinlendi, başkaları kuleleşti → 47 yeni suçlu).
+
+**v9 — 3D pin: kanopi ÇÖZÜMÜN İÇİNE girer (1-2 gün; beklenti 110-120; ASIL HAMLE):**
+v8-MVP'nin yapısal sınırı: pin mührü 2D kolon → pinin altı-üstü de yasak;
+kanopi pin edilemiyor (altı ölü kalırdı). Çözüm: `best_decode` occupancy'sine
+**3D ön-yükleme** — pin parçanın gerçek voxelleri işlenir, altı-üstü serbest:
+- kanopi z≈70'te 3D-pin → çözücü kanopi ALTINDAKİ gerçek boşluğa istifler,
+- kuleler deliklere 3D-pin → delikten yükselir, üstünden kanopi geçer,
+- = insan çözümünün birebir mekaniği NFV kalitesiyle.
+İş: parallel_decode/fft_backend occ-init yüzeyi + nfv_solve 3D-pin yolu +
+bit-özdeşlik testleri + k62-V9 ölçümü.
+
+**v10 — ortak optimizasyon (cila):** kanopi ofset/azimut × kule-kopya seçimi
+küçük arama + delik bölgesinde kule mini-2D-paketleme. Bandın alt ucu.
+
+**ŞERH:** 110,41 saatlerce insan el işi — birebir garanti değil; gerçekçi
+hedef 110-120 bandı = ilk manuel-parite. Her GO: dağılımsal + 4-set kapı +
+kablolama (mekanizma delikli-parça AİLESİNE yazılır, A11 — ticari değer de bu).
+
 ---
 
 ## BÖLÜM C — Kısıt-v2: 4 yeni tür için motor boşlukları ve plan
