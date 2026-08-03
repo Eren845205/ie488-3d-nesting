@@ -152,9 +152,32 @@ kanopi ~70'e oturur. Beklenti: toplam 105-120 bandı. Risk: yatık bobbinler
 taban alanını büyütür — alan yetmezse yükseklik başka yerden artar
 (ölçüm söyler). Maliyet: script-içi ~20 satır + ~15 dk koşu.
 
-**v8 — NFV'ye gerçek pin desteği (v7 yetmezse; ORTA motor işi):**
-occupancy ön-yükleme + parça düşme; kuleler dik kalır (alan tasarrufu) ama
-konumu delikte sabitlenir. Kapılı üretim-motor değişikliği.
+**v8 — NFV'ye gerçek pin desteği (v7 NO-GO ÇIKTI 2026-08-04 → SIRADAKİ):**
+v7 dersi: 111 parça 69mm bütçeye tamamen yatarak SIĞMIYOR (taban 119'a
+çıktı, yatıklar üst üste) — kuleler kaçınılmaz; insan çözümü kuleleri
+DELİK İÇİNDEN tam yüksekliğe dikiyor (kanopi ~70 + delikte 110'a kule).
+Bunu tek üretebilecek mekanizma: kule NFV çözümü BOYUNCA delikte sabit.
+
+v8 iş listesi (orta motor işi, ~1 gün kod+test + koşular):
+1. `nfv_solve` giriş yüzeyine `pinned_placements` (K-56f spec formatı):
+   - pin voxelleri başlangıç occupancy'ye işlenir (FFT çarpışma pinleri
+     otomatik görür — fft_backend değişmez),
+   - pin parçaları çözüm listesinden düşer (id-tüketimli, çoklu-kopya
+     desteği `_pin_hazirla` ile ortak yardımcıya çıkarılabilir),
+   - placements + fine_voxel_parts'a pin girer (ölçüm-parite, K-56f deseni).
+2. Settle/r11/rot_kabul etkileşimi: pinler TAŞINMAZ kümesi —
+   continuous_settle/fine_settle pin id'lerini atlar; r11 kapı-3 zaten
+   kilit-artışını reddediyor (koruma korunur).
+3. Guard güncelle: "pinned yalnız heightmap" istisnası kalkar (NFV meşru);
+   extra_rot guard'ı DURUR.
+4. Bit-özdeşlik: pinned=None tüm NFV yolları birebir (test + 4-set
+   sıfır-dokunuş kapısı).
+5. Ölçüm: k62 scriptine V8 modu — faz-A sayım → kule pinleri (v6'daki
+   maskeli-drop makinesi AYNEN; delik+dış bölgeye z=0'dan İSTİFLİ dik) →
+   NFV pinli çözüm (rota zorlaması YOK) → kanopi + iterasyon.
+   Beklenti: taban(kulesiz kısım) ~<=70 + kanopi 70-75 → toplam 111-125.
+6. GO ise: Ç5 dağılımsal (holey_frames) + kablolama kapısı + K-56g/K-62
+   üretim entegrasyon paketi (ayrı Eren onayı).
 
 **Kablolama + doğrulama (her GO'dan sonra):** Ç5 holey_frames dağılımsal +
 4-set sıfır-dokunuş kapısı + üretim kablosu (kanopi kolu portföy dalı

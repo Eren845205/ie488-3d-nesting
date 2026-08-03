@@ -358,3 +358,19 @@ SIĞMIYOR; kuleler kaçınılmaz, çözüm onları DELİK İÇİNDEN yükseltmek
 tek adres: v8 = NFV'ye pin/bölge-farkındalık (kapılı motor işi, ayrı seans;
 plan Ç2-derin'de). Kanıt: results/k62_kanopi_plan1_v7.log.
 Gün özeti: v4 GO (136,50) · v5/v6/v7 NO-GO (üçü de kayıtlı, A7).
+
+## 2026-08-04 KAPANIŞ — yarın hazırlığı + sistem geri-açma
+
+- **Sistem geri açıldı:** OneDrive senkron ✅ · Windows Search ✅ · Ollama ✅.
+- **K-56g kapı runner'ı HAZIR:** `scripts/k56g_kapi.py` — soft no-go'yu
+  ENV ile ilan eder (üretim config'e DOKUNMAZ); beklenti p1 iyileşme +
+  p2/p3/d4 birebir. Koşum (sakin makine): D'den
+  `python -m scripts.detach_run k56g_kapi`. PASS sonrası plate.local.json
+  ilanı + baseline = ayrı Eren onayı.
+- **v8 iş planı yazıldı** (PLAN_KOK_SEBEP_VE_KISIT_V2.md Ç2-derin):
+  NFV'ye pinned_placements — occupancy ön-yükleme + taşınmaz kümesi +
+  guard güncellemesi + bit-özdeşlik kapısı + k62-V8 ölçümü (beklenti
+  111-125). ~1 gün kod+test.
+- YARIN SEANSI ÖNERİSİ (Eren onayıyla): (1) k56g_kapi koşusu → PASS ise
+  sözleşme/baseline kararları, (2) v8 kodlama+ölçüm, (3) K-58 kalan +
+  p3 makas teşhisi (fırsat kalırsa).
