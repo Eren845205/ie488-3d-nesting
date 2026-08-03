@@ -397,6 +397,17 @@ function tabloOlustur() {
         tr.appendChild(hucre(adim.dondurme
             ? (adim.dondurme.eksen || 'Z') + ' ' + Math.round(adim.dondurme.aci_deg || 0) + '°'
             : '-'));
+        /* Eren istegi 2026-08-04: satira tiklayinca o adima git (operator
+           istedigi parcayi tabloda secip sahnede gorebilsin). */
+        tr.style.cursor = 'pointer';
+        tr.title = 'Bu adima git';
+        tr.addEventListener('click', () => {
+            if (animasyonda) return;
+            idx = i;
+            durumUygula();
+            document.getElementById('sahne-kutu')
+                .scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
         govde.appendChild(tr);
     });
 }
@@ -648,8 +659,26 @@ function vurguOnPlana(mesh) {
     mesh.renderOrder = 999;
 }
 
+/* Eren istegi 2026-08-04: Oynat animasyonu parcayi disari kaydiriyordu ve
+   geri donuste parca UCMUS konumda kaliyordu. Her mesh'in orijinal
+   poz/duruslari ilk durumUygula'da (sahne pristine iken) kaydedilir; her
+   navigasyonda gorunur parcalar orijinale sifirlanir — adim N'e donus her
+   zaman N'in BASLANGIC sahnesini gosterir. */
+const ORIJINAL_POZ = new Map();
+
 function durumUygula() {
     if (!scene) return;
+    ADIMLAR.forEach((adim) => {
+        meshesFor(adim).forEach(m => {
+            let o = ORIJINAL_POZ.get(m);
+            if (!o) {
+                o = { p: m.position.clone(), q: m.quaternion.clone() };
+                ORIJINAL_POZ.set(m, o);
+            }
+            m.position.copy(o.p);
+            m.quaternion.copy(o.q);
+        });
+    });
     ADIMLAR.forEach((adim, i) => {
         const meshes = meshesFor(adim);
         if (i < idx) {
