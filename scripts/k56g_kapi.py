@@ -46,12 +46,19 @@ def main():
     sys.stdout = _Tee(sys.stdout)
     sys.stderr = _Tee(sys.stderr)
     t0 = time.perf_counter()
-    os.environ["PLATE_NOGO_SOFT"] = NOGO_SOFT_ENV  # import ONCESI sart
-    print("K-56g KAPI KOSUSU (duz-pin kablosu; soft no-go ENV-ilanli,"
+    os.environ["PLATE_NOGO_SOFT"] = NOGO_SOFT_ENV  # web/pipeline katmani icin
+    print("K-56g KAPI KOSUSU (duz-pin kablosu; soft sozlesme MODUL-ATTR ile,"
           " uretim config DOKUNULMADI)")
-    print(f"PLATE_NOGO_SOFT={NOGO_SOFT_ENV}")
     sys.argv = ["eval_gate"]
     from scripts import eval_gate
+    # KRITIK (ilk kosu dersi 2026-08-04): eval_gate env OKUMAZ — kapi
+    # sozlesmesi modul-attribute atamasidir (eval_gate.py:78-80). Env tek
+    # basina birakilirsa pin dali OLU kalir ve NOGO_STD hard (45) kosar
+    # (o kosu kazara sifir-dokunus replay kaniti oldu).
+    SOFT = ((152.5, 0.2), (185.5, 33.0))
+    eval_gate.NOGO_STD = SOFT
+    eval_gate.NOGO_SOFT = SOFT
+    print(f"eg.NOGO_STD = eg.NOGO_SOFT = {SOFT}")
     try:
         rc = eval_gate.main()
     except SystemExit as e:

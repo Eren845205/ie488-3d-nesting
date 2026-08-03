@@ -383,3 +383,26 @@ teyit** ("bazı konuları FSM'de netleştiririz"). → a2-kilitli çözüm + STL
 + rehber taahhüdü RESMEN KAPANDI (kayıt HOCA_CEVAPLARI 2026-08-04).
 Bekleyen dış-halka işleri: FSM tarihi (Eren) + yeni plan geldiğinde
 İLK İŞ held-out sınavı (A3).
+
+## 2026-08-04 GECE-3 — kapı-1 NOOP = v8 motor değişikliklerinin 4-set kanıtı
+
+k56g_kapi ilk koşusu env-ilan hatası yüzünden pin dalını hiç açmadı (teşhis:
+eval_gate sözleşmesi MODÜL-ATTR ister, env okumaz; script düzeltildi) — ama
+bu sayede koşu, bugünkü motor değişikliklerinin (çoklu-kopya pin `c7a6af5`
++ NFV-pin `62624bf`) **4-set SIFIR-DOKUNUŞ kanıtına dönüştü: VERDICT NOOP,
+exit=0, 68 dk** (p1 202,18 · p2 529,04 · p3/d4 birebir). A11 karnesindeki
+"sıfır-dokunuş=BEKLİYOR" kalemi v8 için KANITLI'ya çekildi. Sıra: k62-V8
+ölçümü → düzeltilmiş kapı-2 (gerçek K-56g sınavı).
+
+## 2026-08-04 GECE-4 — k62 v8-MVP: NO-GO (teşhisli) + kapı-1 NOOP kanıtı
+
+**v8-MVP (NFV-içi kule-pin):** mekanizma çalıştı (pinler NFV'de, rota
+zorlamasız) ama naif 158,5 @ clearance 1,16 İHLAL / iterasyon 213 @ 0,33.
+İKİ TEŞHİS: (1) NFV pitch=2,0'da pin mührü RAW footprint — kuantizasyon
+2mm boşluk garantisini kırıyor → mühre +1 voxel dilation gerek;
+(2) yalnız faz-A'nın 4 tipi pinlendi → başka tipler kuleleşti (47 yeni
+suçlu) → pin seti iteratif büyümeli. İkisi de SABAH işi (v8b). Motor pin
+desteğinin kendisi SAĞLAM (16 test + kapı-1 NOOP).
+**Kapı-1 NOOP = sıfır-dokunuş kanıtı** (68dk, exit=0, 4 set birebir):
+çoklu-pin `c7a6af5` + NFV-pin `62624bf` üretim yollarını değiştirmiyor.
+Sıra: kapı-2 (gerçek K-56g sınavı, modül-attr düzeltmeli).
