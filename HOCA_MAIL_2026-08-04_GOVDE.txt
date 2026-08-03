@@ -1,0 +1,22 @@
+Merhaba Mert Bey,
+
+Söz verdiğim a2-kilitli çözüm hazır:
+
+1) Plan7 — a2 duruş kısıtlı yeni çözüm
+- 288101642-a2'nin 6 kopyası da artık belirttiğiniz XY (yatay) duruşta üretilecek şekilde yerleştirildi.
+- Toplam yükseklik: 488,4 mm — kısıtsız çözümle aynı; yani duruş kısıtı yükseklik kaybettirmedi.
+- Parça arası boşluk 2 mm, yasak bölge dahil; söküm planı ile birlikte.
+- Dosyalar Drive'da "plan7_a2_kilitli" klasöründe; yerleşimi değişmeyen 4 tipin STL'si (174100686-a, 174100712-a, 174100714-a, 288101640-a1_1) önceki klasördekiyle birebir aynı olduğundan yeniden yüklemedim.
+
+2) Rehberli söküm dosyasında iki yenilik var
+- Alttaki adım tablosunda herhangi bir satıra tıklayınca sahne o parçaya gidiyor (istediğiniz parçayı seçip bakabilirsiniz).
+- Bir adımın animasyonunu oynatıp geri döndüğünüzde parça artık "dışarıda" kalmıyor; her adım kendi başlangıç görünümünü gösteriyor.
+- Dosya çevrimdışı tek HTML'dir; güncel Chrome/Edge ile açmanız yeterli.
+
+3) Plan1 görüntülerinizin katkısı
+Gönderdiğiniz yerleşim görüntüsündeki yaklaşımı (büyük delikli tabanın yatay, diğer parçaların üstünde/aralarında konumlanması) algoritmama aktardım. İlk ölçümlerde Plan1'de kendi çözümümü 202 mm'den 136,5 mm'ye indirdim; 110,41'lik manuel yerleşiminize yaklaşmak için geliştirmeye devam ediyorum. (Bu henüz ilk ölçüm — doğrulama koşularım sürüyor.)
+
+Kupon siparişi örneğiniz de çok faydalı oldu; bu tür taleplerin (yatay/dikey/45° dağılımı, recoater yönü) otomatik okunması için kısıt sistemime örnek olarak işledim. Ziyarette birkaç teknik netliği (örn. recoater yönünün plaka eksenlerine göre konumu) size sormak isterim.
+
+İyi çalışmalar dilerim,
+Eren Kutlu

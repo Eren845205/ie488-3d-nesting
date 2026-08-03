@@ -61,11 +61,31 @@ CLEAR_MM = 2.0
 ALAN_ORAN_ESIK = 0.35
 DOLULUK_ESIK = 0.6
 
+# --- V6 modu (K62_V6=1 veya --v6): zorunlu-kuleler asama-1'den ONCE
+# kanopi-DELIK/dis bolgesine pinlenir (cok-kopya pin destegi ile), solver
+# kalan kisa parcalari pinli sahnede cozer. Amac: kanopi-altini kuleden
+# temiz tutmak (v4/v5 dersi: sonradan tasima 136.5 tavanina takiliyor).
+import os
+V6 = os.environ.get("K62_V6") == "1" or "--v6" in sys.argv
+V6_KULE_BUTCE_MM = 69.0   # min bbox-ekseni bunu asan tip yatamaz = kule
+V6_PIN_MARGIN_VOX = 4     # kule-drop dilated (2mm/0.5) — pin-pin boslugu
+
 
 def log(m=""):
     print(m, flush=True)
     with LOG.open("a", encoding="utf-8") as fh:
         fh.write(m + "\n")
+
+
+def inst2_onhazir(inst, p0):
+    """Kanopi-haric instance kopyasi (V6 faz-A ve asama-1 ortak)."""
+    i2 = copy.copy(inst)
+    try:
+        i2.parts = [p for p in inst.parts if p is not p0]
+    except Exception:
+        object.__setattr__(i2, "parts",
+                           [p for p in inst.parts if p is not p0])
+    return i2
 
 
 def _kanopi_adayi(inst, pitch):
@@ -124,6 +144,118 @@ def main():
         f"  duz_kalinlik={fiz['duz_kalinlik_mm']}mm"
         f"  uygun_ofset={fiz['uygun_sayisi']}")
 
+    # ---- V6: zorunlu-kuleleri delik/dis bolgeye ON-PINLE ------------------
+    v6_pins = None
+    if V6:
+        import trimesh.transformations as _tt
+        _pitch6 = 0.5  # champion fine pitch'i (pin mm-cinsinden, guvenli)
+        # hedef kanopi ofseti: rot0 orneklerinden medyan-dy (deterministik)
+        _r0 = [pz for pz in fiz["pozlar"] if pz["rot_deg"] == 0.0]
+        if not _r0:
+            _r0 = fiz["pozlar"]
+        _r0s = sorted(_r0, key=lambda pz: (pz["dy_mm"], pz["dx_mm"]))
+        _hedef = _r0s[len(_r0s) // 2]
+        log(f"[V6] hedef kanopi ofseti: rot={_hedef['rot_deg']}"
+            f" dx={_hedef['dx_mm']} dy={_hedef['dy_mm']}")
+        # kanopi dolu-bolge maskesi (hedef ofsette) + no-go -> kule-yasak
+        _vpk6 = voxelize_part("_v6_kanopi", mesh, _pitch6, margin=0,
+                              method="slice",
+                              rot_matrices=[duz_rot_matrisleri(mesh)[0]])
+        _fp6 = np.asarray(_vpk6.orientations[0].grid, dtype=bool).any(axis=2)
+        _b6 = Bin3D(pw, pd, _pitch6,
+                    no_go_mask=Bin3D.no_go_mask_from_bounds(
+                        eg.NOGO_STD, pw, pd, _pitch6))
+        _ix = int(round(_hedef["dx_mm"] / _pitch6))
+        _iy = int(round(_hedef["dy_mm"] / _pitch6))
+        _sub = _b6.height[_ix:_ix + _fp6.shape[0], _iy:_iy + _fp6.shape[1]]
+        np.copyto(_sub, np.maximum(_sub, Bin3D.NO_GO_SEAL), where=_fp6)
+        # FAZ-A (2026-08-04 revize): "zorunlu kule" tipi YOK cikti (tum
+        # tipler yatabilir bbox'ta) — kule kumesi COZUM-guduml u belirlenir:
+        # normal on-cozum kosulur, hedef-ofsetteki cerceve-dolu bolge altinda
+        # tepesi butceyi asan yerlesimlerin TIPLERI sayilir; o kadar kopya
+        # faz-B'de delik/dis bolgeye pinlenir. (A11: tetik cozumden turur,
+        # veri-adi yok.)
+        log("[V6 faz-A] on-cozum (pinsiz) — suclu tipleri belirlenecek ...")
+        _rA, _telA = eg._run_champion("plan1", inst2_onhazir(inst, p0), SEED,
+                                      extra_rot_overrides={})
+        _pitchA = float(getattr(_rA, "fine_pitch", _pitch6))
+        _butceA = int((REF["manuel"] - fiz["duz_kalinlik_mm"]) / _pitchA)
+        _fpA = _fp6  # hedef-ofset cerceve dolu maskesi (0.5 gridinde)
+        _cdA = np.zeros((int(pw / _pitchA), int(pd / _pitchA)), dtype=bool)
+        _sx = int(round(_hedef["dx_mm"] / _pitchA))
+        _sy = int(round(_hedef["dy_mm"] / _pitchA))
+        _w = min(_fpA.shape[0], _cdA.shape[0] - _sx)
+        _h = min(_fpA.shape[1], _cdA.shape[1] - _sy)
+        _cdA[_sx:_sx + _w, _sy:_sy + _h] = _fpA[:_w, :_h]
+        _sayim: dict = {}
+        _fvpA = _rA.fine_voxel_parts
+        _vpsA = {v.id: v for v in
+                 (_fvpA.values() if isinstance(_fvpA, dict) else _fvpA)}
+        for pl in _rA.placements:
+            vpA = _vpsA.get(pl.part_id)
+            if vpA is None:
+                continue
+            oA = vpA.orientations[pl.orientation_idx]
+            if oA is None:
+                continue
+            fA = oA.filled
+            tepeA = int(pl.z + oA.top[fA].max()) if fA.any() else 0
+            if tepeA <= _butceA:
+                continue
+            bolge = _cdA[pl.x:pl.x + fA.shape[0], pl.y:pl.y + fA.shape[1]]
+            if (bolge & fA).any():
+                _ad = getattr(vpA, "name", None) or str(pl.part_id)
+                _sayim[_ad] = _sayim.get(_ad, 0) + 1
+        log(f"[V6 faz-A] suclu tip sayimi: {_sayim}")
+        del _rA, _telA, _fvpA, _vpsA
+        gc.collect()
+
+        v6_pins = []
+        for p in inst.parts:
+            if p is p0 or not getattr(p, "stl_path", None):
+                continue
+            _adet_pin = _sayim.get(p.name, 0)
+            if _adet_pin <= 0:
+                continue
+            try:
+                _m = trimesh.load(p.stl_path, force="mesh")
+            except Exception:
+                continue
+            # dik poz: en uzun ekseni Z'ye getir
+            _ext = np.asarray(_m.extents, dtype=float)
+            _k = int(np.argmax(_ext))
+            if _k == 2:
+                _R = np.eye(4)
+            elif _k == 0:
+                _R = _tt.rotation_matrix(np.pi / 2.0, [0.0, 1.0, 0.0])
+            else:
+                _R = _tt.rotation_matrix(np.pi / 2.0, [1.0, 0.0, 0.0])
+            _vk = voxelize_part(p.name, _m, _pitch6,
+                                margin=V6_PIN_MARGIN_VOX, method="slice",
+                                rot_matrices=[_R])
+            _o = _vk.orientations[0]
+            for _kopya in range(min(_adet_pin, int(p.qty))):
+                Zp = _b6.drop_map(_o)
+                if Zp is None:
+                    raise RuntimeError(f"v6: kule sigmiyor {p.name}")
+                Zpm = np.where(Zp >= Bin3D.NO_GO_SEAL,
+                               np.iinfo(np.int32).max, Zp)
+                if int(Zpm.min()) >= np.iinfo(np.int32).max:
+                    raise RuntimeError(f"v6: kule yeri yok {p.name}")
+                _px, _py = np.unravel_index(int(Zpm.argmin()), Zpm.shape)
+                _pz = int(Zpm.min())
+                _b6.place(_vk, 0, int(_px), int(_py), _pz)
+                v6_pins.append({"ad": p.name,
+                                "x_mm": float(_px) * _pitch6,
+                                "y_mm": float(_py) * _pitch6,
+                                "z_mm": float(_pz) * _pitch6,
+                                "rot": _R.tolist()})
+            log(f"[V6] kule tipi {p.name}: {min(_adet_pin, int(p.qty))}"
+                f" kopya pinlendi (faz-A sayimi {_adet_pin})")
+        log(f"[V6] toplam pin: {len(v6_pins)}")
+        del _b6, _vpk6, _fp6
+        gc.collect()
+
     # ---- asama-1: kanopi-haric set, sampiyon recete -----------------------
     inst2 = copy.copy(inst)
     try:
@@ -134,8 +266,34 @@ def main():
     log(f"[ASAMA-1] {sum(int(p.qty) for p in inst2.parts)} parca"
         " (kanopi haric) cozuluyor ...")
     t1 = time.perf_counter()
-    r1, nfv_tel = eg._run_champion("plan1", inst2, SEED,
-                                   extra_rot_overrides={})
+    # V6: pin yalniz heightmap dalinda gecerli (K-56 guard) — kanopisiz
+    # set NFV'ye yonlenirse rota script-ICI heightmap'e zorlanir (gecici
+    # monkeypatch; uretim davranisi degismiyor, yalniz bu olcum prosesi).
+    _pnb_orig = None
+    if V6 and v6_pins:
+        import src.nesting3d.adaptive_params as _ap
+        _pnb_orig = _ap.predict_nfv_benefit
+
+        def _pnb_zorla(*a, **k):
+            d = _pnb_orig(*a, **k)
+            try:
+                d.mode = "heightmap"
+                d.reason = (getattr(d, "reason", "") or "") + \
+                    " | v6-pin: heightmap zorlamasi"
+            except Exception:
+                pass
+            return d
+
+        _ap.predict_nfv_benefit = _pnb_zorla
+        log("[V6] rota zorlamasi: heightmap (pin uyumu)")
+    try:
+        r1, nfv_tel = eg._run_champion("plan1", inst2, SEED,
+                                       extra_rot_overrides={},
+                                       pinned_placements=v6_pins)
+    finally:
+        if _pnb_orig is not None:
+            import src.nesting3d.adaptive_params as _ap
+            _ap.predict_nfv_benefit = _pnb_orig
     h1 = float(r1.height_mm)
     pitch = float(getattr(r1, "fine_pitch", fine_pitch))
     log(f"[ASAMA-1] h={h1:.2f}mm  n={getattr(r1, 'n_placed', '?')}"
@@ -534,6 +692,8 @@ def main():
         "toplam_mm": toplam_mm, "clearance_mm": clear,
         "iterasyon": iter_sonuc,
         "iterasyon_v5": iter2_sonuc,
+        "v6_modu": bool(V6),
+        "v6_pin_sayisi": (len(v6_pins) if v6_pins else 0),
         "telemetri": tel, "ref": REF, "seed": SEED,
         "pitch": pitch, "nogo": eg.NOGO_STD,
         "toplam_sure_dk": round((time.perf_counter() - t0) / 60, 1),

@@ -451,13 +451,23 @@ def _pin_hazirla(pinned_placements, parts, pitch):
     from src.nesting3d.voxelize import voxelize_part as _vp
 
     pins = []
+    # K-62 v6 (2026-08-04): ayni ada COKLU pin destegi — her pin, adin
+    # SIRADAKI kullanilmamis kopyasini tuketir (id-sirali, deterministik).
+    # Tekil-pin davranisi bit-ozdes (ilk kopya). Onceden ayni ada N pin,
+    # ayni donoru N kez yerlestirip havuzdan tek id dusuruyordu (yanlis).
+    kullanilmis: set = set()
     for spec in pinned_placements:
         ad = spec["ad"]
-        adaylar = sorted((p for p in parts if getattr(p, "name", None) == ad),
+        adaylar = sorted((p for p in parts
+                          if getattr(p, "name", None) == ad
+                          and p.id not in kullanilmis),
                          key=lambda p: p.id)
         if not adaylar:
-            raise ValueError(f"pinned_placements: '{ad}' bu instance'ta yok")
+            raise ValueError(
+                f"pinned_placements: '{ad}' icin kullanilabilir kopya yok "
+                "(instance'ta hic yok veya tum kopyalar zaten pinli)")
         donor = adaylar[0]
+        kullanilmis.add(donor.id)
         rot = spec.get("rot")
         rot = np.eye(4) if rot is None else np.asarray(rot, dtype=float)
         raw = _vp(donor.name, donor.mesh, pitch, rot_matrices=[rot],

@@ -330,3 +330,18 @@ azimut/sıra kaldıraç DEĞİL; üstelik v5 kompozisyonunda clearance 0,214
 delik-farkındalı AŞAMA-1 (kuleleri baştan delik bölgesine çözen derin iş —
 sabah planına). Script t0-gölgeleme json bug'ı düzeltildi (rerun gereksiz,
 v4 kanıtı geçerli).
+
+## 2026-08-04 AKŞAM — k62 v6: NO-GO (öğretici) — v4 136,50 plan1 en-iyisi kalır
+
+**v6 (çözüm-güdümlü kule-pinleme, iki-fazlı):** faz-A suçlu sayımı MÜKEMMEL
+çalıştı (28: bobbin ailesi 26 + 811793-1×2; hepsi deliğe pinlendi). Ama
+faz-B'de pin uyumu için rota heightmap'e zorulunca (K-56 guard: pin NFV'de
+yok) taban istifi çöktü: aşama-1 105,50 (NFV) → **124,97 (heightmap,
+pitch 1.016)**. Naif 167,64 · iterasyon 180,85 (clear 0,768 İHLAL; suçlu
+58'e patladı — delik kapasitesi doldu) · v5 209 (ihlal). **KÖK NEDEN:
+pin kazancı < NFV taban kalitesi kaybı.** Plan1'de 136,5→110 yolu artık
+net tek adrese çıkıyor: **NFV dalına pin/bölge-farkındalık desteği**
+(üretim-motor işi, kapılı; K-62 Ç2-derin olarak plana yazıldı).
+Kalıcı kazanım: coarse_to_fine ÇOKLU-KOPYA pin desteği (testli, 8/8;
+tekil davranış bit-özdeş) — gelecekteki her pin işinin altyapısı.
+Kanıt: results/k62_kanopi_plan1_v6b.log (+_v6a FATAL arşivi D'de).

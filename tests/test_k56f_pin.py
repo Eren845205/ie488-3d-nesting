@@ -111,3 +111,28 @@ def test_pin_nfv_dalinda_reddedilir(monkeypatch):
         _run_champion("sentetik", _instance(), 42,
                       pinned_placements=[{"ad": "plaka", "x_mm": 0.0,
                                           "y_mm": 0.0, "z_mm": 0.0}])
+
+
+def test_ayni_ada_coklu_pin_farkli_kopyalar():
+    # K-62 v6 (2026-08-04): ayni tipin BIRDEN COK kopyasi pinlenebilir —
+    # her pin SIRADAKI kullanilmamis kopyayi tuketir (onceden ayni donor
+    # N kez yerlesirdi). Kalan kopyalar aramada cozulur.
+    pins = [
+        {"ad": "kutu", "x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0, "rot": None},
+        {"ad": "kutu", "x_mm": 40.0, "y_mm": 0.0, "z_mm": 0.0, "rot": None},
+    ]
+    r = _solve(pinned_placements=pins)
+    kutular = [p for p in r.placements if p.part_id.startswith("kutu")]
+    assert len(kutular) == 3  # 2 pin + 1 aranan
+    pinli = [p for p in kutular
+             if (p.x, p.y, p.z) in ((0, 0, 0), (20, 0, 0))]  # /FINE=2.0
+    assert len(pinli) == 2, "iki pin TAM verilen konumlarda olmali"
+    assert pinli[0].part_id != pinli[1].part_id, \
+        "pinler FARKLI kopyalari tuketmeli (ayni donor tekrarlanamaz)"
+
+
+def test_kopya_sayisindan_fazla_pin_hata():
+    pins = [{"ad": "plaka", "x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0,
+             "rot": None}] * 2  # plaka qty=1
+    with pytest.raises(ValueError):
+        _solve(pinned_placements=pins)
