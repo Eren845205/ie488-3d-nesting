@@ -5,11 +5,12 @@ Asenkron /otonom rotalarının arka-plan iş yasam dongusunu yonetir.
 """
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
 
-from src.runtime.otonom_jobs import OtonomJobStore
+from src.runtime.otonom_jobs import OtonomJobStore, scan_orphaned_markers
 
 
 @pytest.fixture
@@ -141,3 +142,76 @@ class TestThreadGuvenligi:
             t.join()
         kazananlar = [j for j in sonuclar if j is not None]
         assert len(kazananlar) == 1, f"Tek-is: tam 1 kazanan beklenir, {len(kazananlar)} oldu"
+
+
+class TestRestartDurustlugu:
+    """marker_dir=None -> mevcut davranis BIREBIR (varsayilan test store'lari
+    zaten marker_dir vermiyor). marker_dir verilirse is basinda isaret
+    yazilir, bitince/hata olunca silinir; scan_orphaned_markers sahipsiz
+    isaretleri okuyup siler (RECOVERY YOK — yalniz durust raporlama)."""
+
+    def test_marker_dir_yoksa_isaret_dosyasi_olusmaz(self, tmp_path, store):
+        jid = store.try_start(meta={"mode": "auto"})
+        assert jid is not None
+        assert list(tmp_path.iterdir()) == []
+
+    def test_is_baslarken_isaret_yazilir(self, tmp_path):
+        seq = iter(range(1, 10_000))
+        clock = iter(range(1, 10_000))
+        store = OtonomJobStore(
+            id_factory=lambda: f"job{next(seq)}",
+            now=lambda: float(next(clock)),
+            marker_dir=tmp_path,
+        )
+        jid = store.try_start(meta={"mode": "auto"})
+        marker = tmp_path / f"calisiyor_{jid}.json"
+        assert marker.exists()
+        data = json.loads(marker.read_text(encoding="utf-8"))
+        assert data["job_id"] == jid
+        assert data["meta"]["mode"] == "auto"
+
+    def test_finish_isareti_siler(self, tmp_path):
+        store = OtonomJobStore(marker_dir=tmp_path)
+        jid = store.try_start(meta={})
+        marker = tmp_path / f"calisiyor_{jid}.json"
+        assert marker.exists()
+        store.finish(jid, sonuc={"ok": True}, status=200)
+        assert not marker.exists()
+
+    def test_fail_isareti_siler(self, tmp_path):
+        store = OtonomJobStore(marker_dir=tmp_path)
+        jid = store.try_start(meta={})
+        marker = tmp_path / f"calisiyor_{jid}.json"
+        store.fail(jid, hata="patladi")
+        assert not marker.exists()
+
+    def test_scan_orphaned_markers_bos_dizinde_bos_liste(self, tmp_path):
+        assert scan_orphaned_markers(tmp_path) == []
+
+    def test_scan_orphaned_markers_yok_dizinde_bos_liste(self, tmp_path):
+        assert scan_orphaned_markers(tmp_path / "yok_dizin") == []
+
+    def test_scan_orphaned_markers_sahipsiz_isareti_bulur_ve_siler(self, tmp_path):
+        store = OtonomJobStore(marker_dir=tmp_path)
+        jid = store.try_start(meta={"mode": "auto"})
+        marker = tmp_path / f"calisiyor_{jid}.json"
+        assert marker.exists()  # restart oncesi is 'calisiyor' halinde kaldi
+
+        orphans = scan_orphaned_markers(tmp_path)
+        assert len(orphans) == 1
+        assert orphans[0]["job_id"] == jid
+        assert orphans[0]["meta"]["mode"] == "auto"
+        assert not marker.exists(), "tarama sonrasi isaret SILINMELI"
+
+    def test_scan_orphaned_markers_bozuk_dosyayi_atlar_ve_siler(self, tmp_path):
+        bozuk = tmp_path / "calisiyor_bozuk.json"
+        bozuk.write_text("{ gecersiz json", encoding="utf-8")
+        orphans = scan_orphaned_markers(tmp_path)
+        assert orphans == []
+        assert not bozuk.exists()
+
+    def test_scan_ikinci_kez_bos_doner(self, tmp_path):
+        store = OtonomJobStore(marker_dir=tmp_path)
+        store.try_start(meta={})
+        scan_orphaned_markers(tmp_path)
+        assert scan_orphaned_markers(tmp_path) == []

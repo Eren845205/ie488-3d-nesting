@@ -17,7 +17,7 @@ import zipfile
 
 import pytest
 
-from src.runtime.zip_stl_extractor import extract_stls
+from src.runtime.zip_stl_extractor import extract_stls, _fix_cp437_mojibake
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +368,52 @@ class TestCakisanAd:
         })
         sonuc = extract_stls(zip_bytes)
         assert set(sonuc.keys()) == {"a", "b", "c"}
+
+
+# ---------------------------------------------------------------------------
+# Dalga-2 #8: ZIP icinde cp437 Turkce mojibake duzeltmesi
+# ---------------------------------------------------------------------------
+
+class TestCp437MojibakeDuzeltme:
+    """UTF-8 bayraksiz ZIP (Windows Explorer davranisi) Turkce dosya adlarini
+    cp437 ile cozer -> mojibake. extract_stls bunu geri cevirmeli."""
+
+    def test_fix_cp437_mojibake_flag_yoksa_duzeltir(self):
+        """flag_bits UTF-8 bayragi (0x800) TASIMIYORSA cp857 ile geri cozulur."""
+        orijinal = "parça_gövde"
+        mojibake = orijinal.encode("cp857").decode("cp437")
+        duzeltilmis = _fix_cp437_mojibake(mojibake, flag_bits=0x00)
+        assert duzeltilmis == orijinal
+
+    def test_fix_cp437_mojibake_utf8_bayragi_varsa_dokunmaz(self):
+        """UTF-8 bayragi (0x800) VARSA ad zaten dogru -- degistirilmez."""
+        ad = "parça_gövde.stl"
+        assert _fix_cp437_mojibake(ad, flag_bits=0x800) == ad
+
+    def test_fix_cp437_mojibake_ascii_ad_no_op(self):
+        """ASCII ad (cp437 roundtrip'i degismez birakir) -- regresyon yok."""
+        ad = "ENG-500053_L-Bracket.stl"
+        assert _fix_cp437_mojibake(ad, flag_bits=0x00) == ad
+
+    def test_extract_stls_cp437_mojibake_gercek_ada_donusur(self, monkeypatch):
+        """extract_stls entegrasyonu: UTF-8 bayraksiz girisde mojibake ad
+        gercek Turkce ada donusur ve STL icerigi dogru eslenir."""
+        orijinal_ad = "parça_gövde"
+        mojibake_ad = orijinal_ad.encode("cp857").decode("cp437")
+        icerik = b"solid govde\nendsolid govde"
+        zip_bytes = _make_zip({"PLACEHOLDER.stl": icerik})
+
+        orig_infolist = zipfile.ZipFile.infolist
+
+        def _patched_infolist(self):
+            infos = orig_infolist(self)
+            for info in infos:
+                if info.filename == "PLACEHOLDER.stl":
+                    info.filename = mojibake_ad + ".stl"
+                    info.flag_bits &= ~0x800  # UTF-8 bayragi yok (harici arac davranisi)
+            return infos
+
+        monkeypatch.setattr(zipfile.ZipFile, "infolist", _patched_infolist)
+        sonuc = extract_stls(zip_bytes)
+        assert orijinal_ad in sonuc
+        assert sonuc[orijinal_ad] == icerik

@@ -30,7 +30,8 @@ class _SolveSpy:
 
     def __call__(self, instance, *, plate_w_mm, plate_d_mm, fine_pitch,
                  quality, seed, n_orientations, time_budget_sec,
-                 clearance_mm, no_go_bounds, exit_guard=False):
+                 clearance_mm, no_go_bounds, exit_guard=False,
+                 orientation_overrides=None):
         self.calls.append({"fine_pitch": fine_pitch, "clearance_mm": clearance_mm,
                            "no_go_bounds": no_go_bounds, "exit_guard": exit_guard,
                            "quality": quality, "seed": seed})

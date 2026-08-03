@@ -60,6 +60,11 @@ LAST = _ROOT / "results" / "eval_gate_last.json"
 
 CLEARANCE_REQ_MM = 2.0  # A2 guncellemesi 2026-07-09 (hoca: "2mm daha guvenli");
 #                         Sprint-3'te eval_gate'e islendi (eskisi 1.0'di)
+#                         SOZLESME SABITI — degistirilmez (hoca teyidi +
+#                         baseline yenileme gerektirir). Capraz-referans:
+#                         src/runtime/plate_config.py resolve_clearance()
+#                         demo_pipeline'in AYNI degerli kod-yolunu config/env
+#                         uzerinden cozer (2026-07-25); bu sabiti degistirmez.
 FAIL_PCT = 2.0    # B2: bir sette bundan fazla kotulesme -> FAIL
 NOISE_PCT = 0.5   # B2: voxel-kuantizasyon gurultu bandi
 
@@ -69,6 +74,13 @@ NOISE_PCT = 0.5   # B2: voxel-kuantizasyon gurultu bandi
 # tarihseldir; baseline ILK KEZ bu sozlesmeyle kilitlenir (A8 gerekceli).
 PLATE_STD = (335.0, 335.0)
 NOGO_STD = ((152.5, 0.2), (185.5, 45.0))
+# K-56g SOFT NO-GO (SOZLESME-KAPILI; default None = kablo kapali, bit-ozdes):
+# soft sozlesme paketi (45->33) kapi kosusunda script tarafindan atanir:
+#   eg.NOGO_STD = SOFT; eg.NOGO_SOFT = SOFT
+# NOGO_SOFT atanmadikca evaluate_set duz-pinleme dalina HIC girmez. Kalici
+# sozlesme degisikligi A11 madde 4 sinifidir (4-set kapi + baseline yenileme +
+# Eren onayi) — bu sabit o karar verilmeden degistirilmez.
+NOGO_SOFT = None
 
 # Faz-1: roller data/registry.json'dan (tek dogruluk kaynagi; 01_VERI §2).
 # Registry yoksa/bozuksa guvenli fallback sabitler.
@@ -145,7 +157,8 @@ def _poz_seti_cevir(n_orientations):
 
 
 def _run_champion(name, inst, seed, budget=None, n_orientations=None,
-                  extra_rot_overrides=None, pinned_placements=None):
+                  extra_rot_overrides=None, pinned_placements=None,
+                  orientation_overrides=None):
     """Set'in URETIM DEFAULT yolunu kosar -> (result, nfv_tel | None).
 
     nfv_tel yalniz NFV dalinda doner (solve_nfv_kalite telemetrisi) — kapi
@@ -195,11 +208,15 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
         # ile ayni default'la olculur. Override (int/"ax24") HER ZAMAN ezer.
         if n_orientations is None:
             _quality = getattr(dec, "nfv_quality", "fast")
+        # K-56g NFV kolu (hoca S2 2026-07-22): siparis-notu durus kilidi
+        # NFV dalinda da tasinir (per-model poz kisiti; pinned/tilt'ten
+        # farkli — voxelize seviyesi, decode'a dokunmaz). None = bit-ozdes.
         res, _tel = solve_nfv_kalite(
             inst, plate_w_mm=pw, plate_d_mm=pd,
             clearance_mm=WEB_MIN_CLEARANCE_MM, no_go_bounds=NOGO_STD,
             quality=_quality, seed=seed,
-            n_orientations=_n_or, r11="auto", rot_kabul="auto")
+            n_orientations=_n_or, r11="auto", rot_kabul="auto",
+            orientation_overrides=orientation_overrides)
         return res, _tel
     if isinstance(n_orientations, str):
         raise ValueError(
@@ -216,8 +233,35 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
         kw["n_orientations"] = n_orientations  # tune_bo override (04 §1)
     if pinned_placements is not None:
         kw["pinned_placements"] = pinned_placements  # K-56f pinleme
+    if orientation_overrides is not None:
+        kw["orientation_overrides"] = orientation_overrides  # K-56g durus kilidi
+    # K-56g DUZ-PINLEME (demo_pipeline paritesi; NOGO_SOFT None iken OLU KOD):
+    # acik pinned/extra parametreleri HER ZAMAN ustundur; yalniz ikisi de
+    # verilmemisken ve tilt-zorunlu parca varken soft-pin denenir. Pin cikarsa
+    # tilt havuzu susturulur (bos dict) ve tilt taramasi hic kosulmaz.
+    _k56g_pin = None
+    if (NOGO_SOFT is not None and pinned_placements is None
+            and extra_rot_overrides is None
+            and getattr(dec, "tilt_parca", None)):
+        from src.nesting3d.targeted_tilt import duz_pin_onerisi
+        try:
+            _k56g_pin = duz_pin_onerisi(
+                inst, dec.tilt_parca, plate_w_mm=pw, plate_d_mm=pd,
+                no_go_soft=NOGO_SOFT, fine_pitch=pitch,
+                giris_tolerans_mm=WEB_MIN_CLEARANCE_MM)
+        except Exception:
+            _k56g_pin = None
+        if _k56g_pin:
+            kw["pinned_placements"] = [
+                {k: _k56g_pin[k] for k in ("ad", "x_mm", "y_mm", "z_mm", "rot")}]
+            kw["extra_rot_overrides"] = {}
+            print(f"    [{name}] k56g duz-pin: {dec.tilt_parca} "
+                  f"x={_k56g_pin['x_mm']:.1f} y={_k56g_pin['y_mm']:.1f} "
+                  f"giris={_k56g_pin['giris_mm']}mm", flush=True)
     if extra_rot_overrides is not None:
         kw["extra_rot_overrides"] = extra_rot_overrides  # K-56 hedefli-tilt
+    elif _k56g_pin:
+        pass  # pin dali kw'yi yukarida kurdu — tilt taramasi atlanir
     elif getattr(dec, "tilt_parca", None):
         # K-56b URETIM KABLOSU (kanit K-56a: plan1 302.8 -> 202.2 LEGAL):
         # tilt-zorunlu kapi tetiklendiyse hedefli tilt havuzu OTOMATIK kurulur
@@ -322,14 +366,16 @@ def compare_verdict(cur, base, fail_pct=FAIL_PCT, noise_pct=NOISE_PCT):
 
 def evaluate_set(name, seed, skip_clearance=False, budget=None,
                  n_orientations=None, extra_rot_overrides=None,
-                 pinned_placements=None, _rot_fn=None, _kilit5_fn=None):
+                 pinned_placements=None, orientation_overrides=None,
+                 export_cb=None, _rot_fn=None, _kilit5_fn=None):
     t0 = time.perf_counter()
     inst = _load_instance(name)
     n_total = sum(int(p.qty) for p in inst.parts)
     r, nfv_tel = _run_champion(name, inst, seed, budget=budget,
                                n_orientations=n_orientations,
                                extra_rot_overrides=extra_rot_overrides,
-                               pinned_placements=pinned_placements)
+                               pinned_placements=pinned_placements,
+                               orientation_overrides=orientation_overrides)
     _solve_s = time.perf_counter() - t0  # K-57 sure-kirilimi
     n_placed = int(getattr(r, "n_placed", len(r.placements)))
     height = float(r.height_mm)
@@ -377,6 +423,7 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
     rot_cert = None
     rot_hata = None
     rot_kaynak = None
+    rot_rep = None  # export kancasi icin detay (certificates/removable_order)
     _rot_s = None
     # K-57 cift-rot fix'i (anatomi kaniti 2026-07-18: plan2'de ayni denetim
     # iki kez = 283s israf): dz YOKSA sahne solve'unkiyle BIREBIR ayni
@@ -409,7 +456,7 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
                         and n_locked_rot == 0)
     if skip_clearance and reason == "clearance olculemedi":
         reason += " (--skip-clearance)"
-    return {
+    out = {
         "legal_height_mm": legal, "invalid_reason": reason,
         "height_mm": height, "n_placed": n_placed, "n_total": n_total,
         "min_clearance_mm": min_clear, "n_locked": n_locked,
@@ -438,6 +485,26 @@ def evaluate_set(name, seed, skip_clearance=False, budget=None,
             "decode_strateji": getattr(r, "adaptive_reason", None),
         },
     }
+    # Export kancasi (opt-in; None = bit-ozdes): solve/olcum sonrasi ham
+    # malzeme (placements/parts/pitch/dz/meshes/rot detayi) cb'ye verilir —
+    # STL/sokum-plani paket uretimi kapi metrigine DOKUNMADAN yapilir.
+    # Cb hatasi metrikleri KAYBETTIRMEZ (uzun kosu korunur) ama sessiz de
+    # gecilmez: out["export_hata"] ile gorunur.
+    if export_cb is not None:
+        try:
+            export_cb({
+                "placements": list(r.placements),
+                "voxel_parts": r.fine_voxel_parts,
+                "pitch": float(getattr(r, "fine_pitch")),
+                "dz": r11_dz,
+                "meshes": meshes,
+                "rot_rep": rot_rep,
+                "nfv_tel": nfv_tel,
+                "metrikler": out,
+            })
+        except Exception as exc:
+            out["export_hata"] = f"{type(exc).__name__}: {exc}"
+    return out
 
 
 def _print_set_ozeti(name, r):

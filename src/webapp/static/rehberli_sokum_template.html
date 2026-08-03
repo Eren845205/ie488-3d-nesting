@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<!--
+  rehberli_sokum_template.html — Rehberli Sokum (cevrimdisi, tek dosya).
+
+  Bu dosya ham HALIYLE calismaz — src/runtime/rehberli_sokum.py
+  (build_rehberli_sokum_html) asagidaki 5 yer tutucuyu doldurur (birebir
+  isimleri asagida DEGIL — kod icinde ara: "VERI JSON", "GLB tabani-64",
+  "three.js kaynagi", "GLTFLoader kaynagi", "OrbitControls kaynagi"):
+    1) operator adim/kimlik verisi (JSON)
+    2) GLB sahnesi (base64)
+    3) three.js ES module kaynagi (base64)
+    4) GLTFLoader.js ES module kaynagi (base64)
+    5) OrbitControls.js ES module kaynagi (base64)
+
+  Doldurulmus cikti file:// altinda TEK BASINA calisir — internet/kurulum
+  gerekmez (data: URI import-map ile three.js modulleri gomulu; fetch/XHR
+  hic kullanilmaz).
+-->
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rehberli Sokum</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #16213a; --panel-2: #1c2740;
+    --ink: #eef2ff; --ink-soft: #a6b0c8; --muted: #64748b;
+    --accent: #ff7a2f; --accent-2: #ffb37a; --line: #2a3a5c;
+    --ok: #2fbf9b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  #uygulama { display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* ---- Ust bilgi cubugu ---- */
+  #ust-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+    padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  #ust-bar h1 { font-size: 16px; margin: 0; font-weight: 700; }
+  #ust-bar .rozet {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    background: var(--panel-2); color: var(--ink-soft); border: 1px solid var(--line);
+  }
+  #ust-bar .rozet.vurgu { background: rgba(255,122,47,0.15); color: var(--accent-2); border-color: var(--accent); }
+
+  /* ---- Sahne alani ---- */
+  #sahne-kutu {
+    position: relative; flex: 1; min-height: 420px;
+    background: radial-gradient(circle at 30% 20%, #17233d 0%, #0b1120 75%);
+  }
+  #sahne { display: block; width: 100%; height: 100%; }
+
+  #hud {
+    position: absolute; top: 14px; left: 14px; max-width: 340px;
+    background: rgba(15,23,42,0.93); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  #hud-adim { font-size: 13px; color: var(--accent-2); font-weight: 700; letter-spacing: .02em; }
+  #hud-bilgi { margin-top: 8px; font-size: 14px; line-height: 1.55; }
+  #hud-bilgi .parca-ad { font-size: 16px; font-weight: 700; color: var(--ink); }
+  #hud-talimat {
+    margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+    background: rgba(255,122,47,0.12); border-left: 3px solid var(--accent);
+    font-size: 14px; font-weight: 600; line-height: 1.4;
+  }
+  #hud-progress-dis {
+    margin-top: 12px; height: 6px; border-radius: 999px; background: var(--panel-2);
+    overflow: hidden;
+  }
+  #hud-progress-ic { height: 100%; width: 0%; background: var(--accent); transition: width .25s ease; }
+  #hud-kalan { margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+
+  #lejant {
+    position: absolute; top: 14px; right: 14px; max-width: 260px;
+    background: rgba(15,23,42,0.93); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; font-size: 12px;
+  }
+  #lejant .lejant-baslik { font-weight: 700; margin-bottom: 6px; color: var(--ink-soft); }
+  .lejant-chip { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .lejant-nokta { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  #sahne-hata {
+    display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
+    color: #f87171; font-size: 14px; text-align: center; padding: 20px;
+  }
+
+  /* ---- Kontrol cubugu ---- */
+  #kontrol-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 18px; background: var(--panel); border-top: 1px solid var(--line);
+  }
+  button.sk-btn {
+    font-size: 13px; font-weight: 600; padding: 9px 16px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+    cursor: pointer; transition: background .15s ease;
+  }
+  button.sk-btn:hover:not(:disabled) { background: #24314f; }
+  button.sk-btn:disabled { opacity: .4; cursor: not-allowed; }
+  button.sk-btn.oynat { background: var(--accent); border-color: var(--accent); color: #1a1200; }
+  button.sk-btn.oynat:hover:not(:disabled) { background: var(--accent-2); }
+  button.sk-btn.bastan { color: var(--ink-soft); }
+  #tamamlandi-mesaj {
+    display: none; font-size: 13px; font-weight: 700; color: var(--ok);
+    margin-left: auto;
+  }
+
+  /* ---- Yazdirilabilir tablo ---- */
+  #yazdir-alan { padding: 24px 18px; background: var(--panel); border-top: 1px solid var(--line); }
+  #yazdir-alan h2 { font-size: 15px; margin: 0 0 4px 0; }
+  #yazdir-alan p.meta-satir { font-size: 12px; color: var(--ink-soft); margin: 0 0 14px 0; }
+  table#adim-tablosu { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table#adim-tablosu th, table#adim-tablosu td {
+    border: 1px solid var(--line); padding: 6px 8px; text-align: left;
+  }
+  table#adim-tablosu th { background: var(--panel-2); color: var(--ink-soft); }
+  table#adim-tablosu tr.aktif-satir td { background: rgba(255,122,47,0.12); }
+
+  @media print {
+    body * { visibility: hidden; }
+    #yazdir-alan, #yazdir-alan * { visibility: visible; }
+    #yazdir-alan { position: absolute; left: 0; top: 0; width: 100%; background: #fff; color: #000; }
+    table#adim-tablosu th, table#adim-tablosu td { border-color: #999; }
+    table#adim-tablosu th { background: #eee; }
+    #uygulama { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="uygulama">
+  <div id="ust-bar">
+    <h1 id="ust-baslik">Rehberli Sokum</h1>
+    <span class="rozet" id="rozet-yukseklik">yukseklik: -</span>
+    <span class="rozet" id="rozet-parca">parca: -</span>
+    <span class="rozet" id="rozet-clearance">clearance: -</span>
+    <span class="rozet vurgu" id="rozet-dondurmeli" style="display:none;">dondurmeli: -</span>
+    <span class="rozet" id="rozet-not" style="display:none;"></span>
+  </div>
+
+  <div id="sahne-kutu">
+    <canvas id="sahne"></canvas>
+    <div id="sahne-hata">3D sahne yuklenemedi — GLB verisi bozuk olabilir.</div>
+    <div id="hud">
+      <div id="hud-adim">Adim 1 / 1</div>
+      <div id="hud-bilgi"></div>
+      <div id="hud-talimat"></div>
+      <div id="hud-progress-dis"><div id="hud-progress-ic"></div></div>
+      <div id="hud-kalan"></div>
+    </div>
+    <div id="lejant" style="display:none;">
+      <div class="lejant-baslik">Siparisler</div>
+      <div id="lejant-govde"></div>
+    </div>
+  </div>
+
+  <div id="kontrol-bar">
+    <button type="button" class="sk-btn bastan" id="btn-bastan">&#8634; Bastan</button>
+    <button type="button" class="sk-btn" id="btn-geri">&larr; Geri</button>
+    <button type="button" class="sk-btn oynat" id="btn-oynat">&#9654; Oynat</button>
+    <button type="button" class="sk-btn" id="btn-ileri">Ileri &rarr;</button>
+    <span id="tamamlandi-mesaj">&#10003; Tum parcalar sokuldu</span>
+  </div>
+</div>
+
+<div id="yazdir-alan">
+  <h2 id="yazdir-baslik">Rehberli Sokum — Adim Tablosu</h2>
+  <p class="meta-satir" id="yazdir-meta"></p>
+  <table id="adim-tablosu">
+    <thead>
+      <tr><th>#</th><th>Parca</th><th>Kopya</th><th>Siparis</th><th>Yontem</th><th>Yon</th><th>Dondurme</th></tr>
+    </thead>
+    <tbody id="adim-tablosu-govde"></tbody>
+  </table>
+</div>
+
+<!-- Operator verisi — JSON.parse ile okunur (raw JS enjeksiyonu YOK) -->
+<script type="application/json" id="veri-json">__VERI_JSON__</script>
+
+<!-- GLB sahnesi (base64) — atob + Uint8Array ile ArrayBuffer'a cevrilir -->
+<script>
+  var __GLB_B64__ = "__GLB_BASE64__";
+</script>
+
+<!-- three.js + GLTFLoader + OrbitControls — BLOB-URL dinamik import zinciri.
+     Gerekce (2026-07-26 duman testi): data:-URI import-map file:// altinda
+     Chrome'da CALISMADI (bos sayfa). Blob URL + calisma-aninda bare-specifier
+     yeniden yazimi file:// dahil her yerde calisir; ag istegi YOK, her sey
+     gomulu. Ayrica gorunur hata kaplamasi: sessiz bos sayfa YASAK. -->
+<script>
+var __THREE_B64 = "__THREE_JS_B64__";
+var __GLTF_B64 = "__GLTFLOADER_JS_B64__";
+var __ORBIT_B64 = "__ORBITCONTROLS_JS_B64__";
+var __BGU_B64 = "__BUFFERGEOMUTILS_JS_B64__";
+
+function __hataGoster(msg) {
+    var d = document.getElementById('hata-kaplama');
+    if (!d) {
+        d = document.createElement('div');
+        d.id = 'hata-kaplama';
+        d.style.cssText = 'position:fixed;inset:0;background:#1a1208;' +
+            'color:#ffb347;font:14px/1.5 monospace;padding:24px;' +
+            'z-index:9999;overflow:auto;white-space:pre-wrap;';
+        (document.body || document.documentElement).appendChild(d);
+    }
+    d.textContent += 'HATA: ' + msg + '\n\n' +
+        'Bu ekrani goruyorsaniz dosyayi guncel Chrome/Edge ile actiginizdan ' +
+        'emin olun ve bu mesaji gelistiriciye iletin.\n';
+}
+window.addEventListener('error', function (e) {
+    __hataGoster((e && e.message) || 'bilinmeyen hata');
+});
+window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    __hataGoster((r && (r.stack || r.message)) || String(r || 'promise hatasi'));
+});
+
+function __b64Bytes(b64) {
+    var bin = atob(b64), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+}
+function __jsBlobUrl(kaynak) {
+    return URL.createObjectURL(new Blob([kaynak], { type: 'text/javascript' }));
+}
+
+(async function () {
+    try {
+        var dec = new TextDecoder();
+        var threeUrl = __jsBlobUrl(dec.decode(__b64Bytes(__THREE_B64)));
+        /* Loader kaynaklarindaki belirticileri calisma aninda blob URL'e
+           cevir (import-map'siz cozum; ayni blob = tek modul ornegi).
+           Saha dersi 2026-07-26: goreli './utils/BufferGeometryUtils.js'
+           importu blob tabaninda COZULEMEZ — o da ayri blob olur. */
+        var yenidenYaz = function (b64, harita) {
+            var kaynak = dec.decode(__b64Bytes(b64))
+                .replace(/from\s+['"]three['"]/g, "from '" + threeUrl + "'");
+            Object.keys(harita || {}).forEach(function (spec) {
+                var kacis = spec.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                kaynak = kaynak.replace(
+                    new RegExp("from\\s+['\"]" + kacis + "['\"]", 'g'),
+                    "from '" + harita[spec] + "'");
+            });
+            return kaynak;
+        };
+        var bguUrl = __jsBlobUrl(yenidenYaz(__BGU_B64));
+        var gltfUrl = __jsBlobUrl(yenidenYaz(__GLTF_B64,
+            { './utils/BufferGeometryUtils.js': bguUrl }));
+        var orbitUrl = __jsBlobUrl(yenidenYaz(__ORBIT_B64));
+        var THREE = await import(threeUrl);
+        var GLTFLoader = (await import(gltfUrl)).GLTFLoader;
+        var OrbitControls = (await import(orbitUrl)).OrbitControls;
+        __THREE_B64 = __GLTF_B64 = __ORBIT_B64 = __BGU_B64 = null;
+        if (document.readyState === 'loading') {
+            await new Promise(function (r) {
+                document.addEventListener('DOMContentLoaded', r, { once: true });
+            });
+        }
+        __rehberBaslat(THREE, GLTFLoader, OrbitControls);
+    } catch (e) {
+        __hataGoster('3D kutuphane yuklenemedi: ' +
+            ((e && (e.stack || e.message)) || e));
+    }
+})();
+</script>
+
+<script>
+"use strict";
+function __rehberBaslat(THREE, GLTFLoader, OrbitControls) {
+
+/* ============================================================
+   Sabitler — renk paleti + yon vektorleri + yon talimat metinleri
+   (viewer3d.js SIPARIS_PALETI / RENK_VURGU / RENK_NOTR ile ayni tonlar).
+   ============================================================ */
+const SIPARIS_PALETI = [
+    0x4f9dde, 0xe8b931, 0x2fbf9b, 0xd964c0, 0x7bc95c, 0xe8704a,
+    0x9d7de8, 0xc9a227, 0x3fc1d9, 0xe86a8a, 0xb5cc45, 0x8f9de0,
+];
+const RENK_VURGU = 0xff7a2f;
+const RENK_NOTR = 0x3d4759;
+const RENK_KILITLI = 0x51607a;
+
+const YON_VEKTOR = {
+    '+X': [1, 0, 0], '-X': [-1, 0, 0],
+    '+Y': [0, 1, 0], '-Y': [0, -1, 0],
+    '+Z': [0, 0, 1], '-Z': [0, 0, -1],
+};
+
+/* 5 yon icin sabit, hazir Turkce talimat metinleri. */
+const YON_METIN = {
+    '+X': '+X: Once +X yonunde kenara kaydirin, sonra yukari alin.',
+    '-X': '-X: Once -X yonunde kenara kaydirin, sonra yukari alin.',
+    '+Y': '+Y: Once +Y yonunde kenara kaydirin, sonra yukari alin.',
+    '-Y': '-Y: Once -Y yonunde kenara kaydirin, sonra yukari alin.',
+    '+Z': '+Z: Dogrudan yukari cekin.',
+};
+
+function talimatMetni(adim) {
+    if (!adim) return '';
+    if (adim.yontem === 'dondurmeli' && adim.dondurme) {
+        const d = adim.dondurme;
+        const eksen = d.eksen || 'Z';
+        const aci = Math.round(d.aci_deg || 0);
+        const yon = adim.yon || '+Z';
+        return `${eksen} ekseni etrafinda ~${aci}° cevirerek ${yon} yonunde cikarin.`;
+    }
+    return YON_METIN[adim.yon] || YON_METIN['+Z'];
+}
+
+/* ============================================================
+   Veri okuma
+   ============================================================ */
+const VERI = JSON.parse(document.getElementById('veri-json').textContent || '{}');
+const META = VERI.meta || {};
+const ADIMLAR = VERI.adimlar || [];
+const KILITLI = VERI.kilitli || [];
+const TOPLAM = ADIMLAR.length;
+
+const ORDER_LISTESI = [...new Set(ADIMLAR.map(a => a.siparis).filter(Boolean))].sort();
+const COKLU_SIPARIS = ORDER_LISTESI.length > 1;
+
+function orderRenk(siparis) {
+    if (!siparis || !COKLU_SIPARIS) return RENK_NOTR;
+    const i = ORDER_LISTESI.indexOf(siparis);
+    if (i < 0) return RENK_NOTR;
+    return SIPARIS_PALETI[i % SIPARIS_PALETI.length];
+}
+
+/* ============================================================
+   DOM yardimcilari
+   ============================================================ */
+function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+}
+
+/* ============================================================
+   Ust bilgi cubugu + lejant + yazdirilabilir tablo — statik, veri gelince
+   bir kez doldurulur.
+   ============================================================ */
+function ustBariDoldur() {
+    document.title = 'Rehberli Sokum — ' + (META.etiket || '');
+    document.getElementById('ust-baslik').textContent =
+        'Rehberli Sokum' + (META.etiket ? ' — ' + META.etiket : '');
+    document.getElementById('rozet-yukseklik').textContent =
+        'yukseklik: ' + (META.yukseklik_mm != null ? Number(META.yukseklik_mm).toFixed(1) + ' mm' : '-');
+    document.getElementById('rozet-parca').textContent =
+        'parca: ' + (META.n_parca != null ? META.n_parca : TOPLAM);
+    document.getElementById('rozet-clearance').textContent =
+        'parca arasi bosluk: ' + (META.clearance_mm != null
+            ? Number(META.clearance_mm).toFixed(2) + ' mm' : '-');
+    if (META.n_dondurmeli) {
+        const r = document.getElementById('rozet-dondurmeli');
+        r.style.display = 'inline-block';
+        r.textContent = 'dondurmeli: ' + META.n_dondurmeli + ' / duz: ' + (META.n_duz != null ? META.n_duz : '-');
+    }
+    if (META.uretim_notu) {
+        const r = document.getElementById('rozet-not');
+        r.style.display = 'inline-block';
+        r.textContent = META.uretim_notu;
+    }
+}
+
+function lejantOlustur() {
+    if (!COKLU_SIPARIS) return;
+    const kutu = document.getElementById('lejant');
+    const govde = document.getElementById('lejant-govde');
+    kutu.style.display = 'block';
+    ORDER_LISTESI.forEach((o, i) => {
+        const chip = el('span', 'lejant-chip');
+        const nokta = el('span', 'lejant-nokta');
+        nokta.style.background = '#' + SIPARIS_PALETI[i % SIPARIS_PALETI.length].toString(16).padStart(6, '0');
+        const musteri = (VERI.siparisler || []).find(s => s.id === o);
+        chip.append(nokta, el('span', null, o + (musteri && musteri.musteri ? ' (' + musteri.musteri + ')' : '')));
+        govde.appendChild(chip);
+    });
+}
+
+function tabloOlustur() {
+    document.getElementById('yazdir-meta').textContent =
+        (META.etiket || '') + ' · ' + TOPLAM + ' adim · ' + (META.uretim_notu || '');
+    const govde = document.getElementById('adim-tablosu-govde');
+    ADIMLAR.forEach((adim, i) => {
+        const tr = document.createElement('tr');
+        tr.dataset.idx = String(i);
+        const hucre = (t) => { const td = document.createElement('td'); td.textContent = t; return td; };
+        tr.appendChild(hucre(String(i + 1)));
+        tr.appendChild(hucre(adim.ad || adim.part_id || '-'));
+        tr.appendChild(hucre(adim.kopya != null ? String(adim.kopya) : '-'));
+        tr.appendChild(hucre(adim.siparis || 'Tek siparis'));
+        tr.appendChild(hucre(adim.yontem === 'dondurmeli' ? 'Dondurmeli' : 'Duz'));
+        tr.appendChild(hucre(adim.yon || '-'));
+        tr.appendChild(hucre(adim.dondurme
+            ? (adim.dondurme.eksen || 'Z') + ' ' + Math.round(adim.dondurme.aci_deg || 0) + '°'
+            : '-'));
+        govde.appendChild(tr);
+    });
+}
+
+function tabloVurgula(idx) {
+    document.querySelectorAll('#adim-tablosu-govde tr').forEach(tr => {
+        tr.classList.toggle('aktif-satir', Number(tr.dataset.idx) === idx);
+    });
+}
+
+/* ============================================================
+   3D sahne kurulumu (viewer3d.js kur() ile ayni isik/kamera deseni,
+   ama INSTANCING YOK — her node bagimsiz mesh; boylece parca-basina
+   animasyon/vurgu/ok basitce uygulanir).
+   ============================================================ */
+const canvas = document.getElementById('sahne');
+const sahneKutu = document.getElementById('sahne-kutu');
+let renderer = null, camera = null, controls = null, scene = null;
+let modelRoot = null;
+const nodeMeshes = new Map(); // key(node|part_id) -> [THREE.Mesh, ...]
+
+function sizeFor() {
+    return { w: sahneKutu.clientWidth || 800, h: sahneKutu.clientHeight || 500 };
+}
+
+function b64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+}
+
+function meshesFor(adim) {
+    if (!adim) return [];
+    return nodeMeshes.get(adim.node) || nodeMeshes.get(adim.part_id) || [];
+}
+
+function sahneKur() {
+    const sz = sizeFor();
+    // powerPreference: dizustu tarayicilar guc tasarrufu icin entegre GPU
+    // secebiliyor; ayrik GPU (orn. RTX) varsa onu iste. antialias kapali:
+    // MSAA buyuk sahnede zayif GPU'yu boguyor, gorsel bedeli kucuk.
+    renderer = new THREE.WebGLRenderer({
+        canvas, antialias: false, powerPreference: 'high-performance' });
+    // Piksel orani 1.0'da sabit: yuksek-DPI ekranda 1.5 kat cizim alani
+    // buyuk sahnede doldurma hizini bogar; gorsel fark kucuk.
+    renderer.setPixelRatio(1);
+    renderer.setSize(sz.w, sz.h);
+    renderer.setClearColor(0x0f172a);
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(45, sz.w / sz.h, 1, 20000);
+    camera.position.set(300, 300, 400);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a4252, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(300, 500, 400);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xdde6ff, 0.45);
+    fill.position.set(-350, 200, -300);
+    scene.add(fill);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.screenSpacePanning = true;
+
+    let buffer;
+    try {
+        buffer = b64ToArrayBuffer(__GLB_B64__);
+    } catch (e) {
+        sahneHataGoster();
+        return;
+    }
+
+    new GLTFLoader().parse(buffer, '', gltf => {
+        const raw = gltf.scene;
+        raw.updateMatrixWorld(true);
+        raw.traverse(child => {
+            if (!child.isMesh) return;
+            if (child.material) {
+                child.material = child.material.clone();
+                // Soluklastirma OPAK renk karisimiyla yapilir (bkz.
+                // renkUygula): 345 seffaf mesh sirala-ciz maliyeti buyuk
+                // sahnede kare hizini 1 FPS'e dusuruyordu.
+                child.material.transparent = false;
+                child.material.flatShading = true;
+                if (child.material.isMeshStandardMaterial) {
+                    child.material.metalness = 0.0;
+                    child.material.roughness = 0.9;
+                }
+                child.material.needsUpdate = true;
+            }
+            if (child.geometry && !child.geometry.attributes.normal) {
+                child.geometry.computeVertexNormals();
+            }
+            const key = (child.name || '').split('#')[0] || child.name || null;
+            if (!key) return;
+            if (!nodeMeshes.has(key)) nodeMeshes.set(key, []);
+            nodeMeshes.get(key).push(child);
+        });
+        modelRoot = raw;
+        scene.add(raw);
+
+        const box = new THREE.Box3().setFromObject(raw);
+        const center = box.getCenter(new THREE.Vector3());
+        raw.position.sub(center);
+        raw.updateMatrixWorld(true);
+        // Konum duzeltmesi meshlerin .position degerlerini bozmaz cunku
+        // sahne-koku (raw) kaydirildi; nodeMeshes icindeki referanslar
+        // raw'in COCUKLARI (yerel koordinatlar hala nesting/GLB uzayinda).
+
+        const size = box.getSize(new THREE.Vector3()).length() || 300;
+        camera.position.set(size * 0.9, size * 0.75, size * 1.1);
+        camera.lookAt(0, 0, 0);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        sahneRenderBaslat();
+        durumUygula();
+    }, () => {
+        sahneHataGoster();
+    });
+}
+
+function sahneHataGoster() {
+    const kutu = document.getElementById('sahne-hata');
+    kutu.style.display = 'flex';
+    canvas.style.display = 'none';
+}
+
+let renderBasladi = false;
+let renderGerekli = true;
+
+/* Istege bagli render: sahne durdugunda GPU bosa calismaz (surekli render
+   dizustunde fani calistirip pili bitiriyordu). Kamera hareketi, adim
+   degisimi, animasyon ve yeniden boyutlandirma kare ister. */
+function istekRender() { renderGerekli = true; }
+
+/* ---- tani rozeti (yalniz #tani ile gorunur; hocaya gonderilen halde
+   gizli kalir). GPU adi + gercek render FPS + ucgen/cizim sayisi. ---- */
+let taniKutu = null, taniZaman = [];
+function taniKur() {
+    if (taniKutu || location.hash.indexOf('tani') < 0) return;
+    taniKutu = document.createElement('div');
+    taniKutu.style.cssText = 'position:absolute;bottom:12px;right:12px;' +
+        'background:rgba(0,0,0,.75);color:#7fffbf;font:11px/1.5 monospace;' +
+        'padding:8px 10px;border-radius:6px;z-index:99;white-space:pre';
+    document.getElementById('sahne-kutu').appendChild(taniKutu);
+    let gpu = '?';
+    try {
+        const gl = renderer.getContext();
+        const d = gl.getExtension('WEBGL_debug_renderer_info');
+        if (d) gpu = gl.getParameter(d.UNMASKED_RENDERER_WEBGL);
+    } catch (e) {}
+    taniKutu.dataset.gpu = gpu;
+}
+window.addEventListener('hashchange', taniKur);
+function taniGuncelle() {
+    if (!taniKutu) return;
+    const simdi = performance.now();
+    taniZaman.push(simdi);
+    if (taniZaman.length > 31) taniZaman.shift();
+    let fps = '-';
+    if (taniZaman.length >= 2) {
+        const sure = simdi - taniZaman[0];
+        if (sure > 0) fps = ((taniZaman.length - 1) * 1000 / sure).toFixed(1);
+    }
+    const inf = renderer.info.render;
+    var NL = String.fromCharCode(10);
+    taniKutu.textContent = 'GPU: ' + taniKutu.dataset.gpu +
+        NL + 'FPS(render): ' + fps +
+        NL + 'ucgen: ' + inf.triangles.toLocaleString() +
+        ' | cizim: ' + inf.calls;
+}
+
+function sahneRenderBaslat() {
+    if (renderBasladi) return;
+    renderBasladi = true;
+    if (controls) controls.addEventListener('change', istekRender);
+    taniKur();
+    (function animate() {
+        requestAnimationFrame(animate);
+        if (controls && controls.update()) istekRender();
+        if (renderGerekli && renderer && scene && camera) {
+            renderer.render(scene, camera);
+            renderGerekli = false;
+            taniGuncelle();
+        }
+    })();
+}
+
+function resizeUygula() {
+    if (!renderer || !camera) return;
+    const sz = sizeFor();
+    renderer.setSize(sz.w, sz.h);
+    camera.aspect = sz.w / sz.h;
+    camera.updateProjectionMatrix();
+    istekRender();
+}
+window.addEventListener('resize', resizeUygula);
+
+/* ============================================================
+   Yon oku (ArrowHelper) — aktif adimin cikis yonu.
+   ============================================================ */
+let okNesnesi = null;
+function okGuncelle(idx) {
+    if (okNesnesi) { scene.remove(okNesnesi); okNesnesi = null; }
+    const adim = ADIMLAR[idx];
+    if (!adim || !scene) return;
+    const meshes = meshesFor(adim);
+    if (!meshes.length) return;
+    const box = new THREE.Box3();
+    meshes.forEach(m => box.expandByObject(m));
+    const center = box.getCenter(new THREE.Vector3());
+    const dirArr = YON_VEKTOR[adim.yon] || [0, 0, 1];
+    const dir = new THREE.Vector3(dirArr[0], dirArr[1], dirArr[2]).normalize();
+    const boyut = box.getSize(new THREE.Vector3()).length() || 20;
+    const uzunluk = Math.max(boyut * 1.6, 70);
+    okNesnesi = new THREE.ArrowHelper(dir, center, uzunluk, RENK_VURGU, uzunluk * 0.28, uzunluk * 0.16);
+    scene.add(okNesnesi);
+}
+
+/* ============================================================
+   Durum makinesi — idx (0-tabanli aktif adim); idx===TOPLAM -> bitti.
+   ============================================================ */
+let idx = 0;
+let animasyonda = false;
+
+const ARKA_PLAN_RENK = 0x0f172a;
+const _solukHedef = new THREE.Color(ARKA_PLAN_RENK);
+
+/* Soluklastirma seffaflikla DEGIL, arka plana dogru renk karisimiyla yapilir.
+   Gorsel sonuc ayni (geri plandaki parcalar soner), maliyeti ise yok:
+   seffaf nesneler her karede siralanip ust uste boyaniyor, 345 parca /
+   1.8M ucgen sahnesinde bu kare hizini 1 FPS'e dusuruyordu. Aktif parca
+   yiginin ICINDE kalirsa gorunsun diye depthTest'i durumUygula kapatir. */
+function renkUygula(mesh, hexRenk, opaklik) {
+    mesh.visible = opaklik > 0.001;
+    if (!mesh.visible) return;
+    const m = mesh.material;
+    m.color.setHex(hexRenk);
+    if (opaklik < 0.999) m.color.lerp(_solukHedef, 1 - opaklik);
+    m.depthTest = true;
+    mesh.renderOrder = 0;
+}
+
+function vurguOnPlana(mesh) {
+    mesh.material.depthTest = false;   // yigin icinde kalsa da gorunur
+    mesh.renderOrder = 999;
+}
+
+function durumUygula() {
+    if (!scene) return;
+    ADIMLAR.forEach((adim, i) => {
+        const meshes = meshesFor(adim);
+        if (i < idx) {
+            meshes.forEach(m => { m.visible = false; });
+        } else if (i === idx) {
+            meshes.forEach(m => { renkUygula(m, RENK_VURGU, 1.0); vurguOnPlana(m); });
+        } else {
+            const renk = orderRenk(adim.siparis);
+            meshes.forEach(m => renkUygula(m, renk, COKLU_SIPARIS ? 0.55 : 0.28));
+        }
+    });
+    KILITLI.forEach(pid => {
+        (nodeMeshes.get(pid) || []).forEach(m => renkUygula(m, RENK_KILITLI, 0.35));
+    });
+    if (idx < TOPLAM) okGuncelle(idx);
+    else if (okNesnesi) { scene.remove(okNesnesi); okNesnesi = null; }
+    hudGuncelle();
+    tabloVurgula(idx < TOPLAM ? idx : -1);
+    istekRender();
+}
+
+function hudGuncelle() {
+    const hudAdim = document.getElementById('hud-adim');
+    const hudBilgi = document.getElementById('hud-bilgi');
+    const hudTalimat = document.getElementById('hud-talimat');
+    const ilerlemeIc = document.getElementById('hud-progress-ic');
+    const kalanEtiket = document.getElementById('hud-kalan');
+    const btnGeri = document.getElementById('btn-geri');
+    const btnIleri = document.getElementById('btn-ileri');
+    const btnOynat = document.getElementById('btn-oynat');
+    const tamamlandi = document.getElementById('tamamlandi-mesaj');
+
+    if (TOPLAM === 0) {
+        hudAdim.textContent = 'Sokum adimi yok';
+        hudBilgi.textContent = '';
+        hudTalimat.textContent = '';
+        ilerlemeIc.style.width = '0%';
+        kalanEtiket.textContent = '';
+        btnGeri.disabled = btnIleri.disabled = btnOynat.disabled = true;
+        return;
+    }
+
+    if (idx >= TOPLAM) {
+        hudAdim.textContent = 'Tamamlandi';
+        hudBilgi.replaceChildren(el('div', 'parca-ad', TOPLAM + ' / ' + TOPLAM + ' parca cikarildi'));
+        hudTalimat.textContent = 'Tum parcalar sokulmustur.';
+        ilerlemeIc.style.width = '100%';
+        kalanEtiket.textContent = '0 parca kaldi';
+        btnGeri.disabled = false;
+        btnIleri.disabled = true;
+        btnOynat.disabled = true;
+        tamamlandi.style.display = 'inline';
+        return;
+    }
+    tamamlandi.style.display = 'none';
+
+    const adim = ADIMLAR[idx];
+    hudAdim.textContent = 'Adim ' + (idx + 1) + ' / ' + TOPLAM;
+    const siparisMetin = adim.siparis ? adim.siparis : 'Tek siparis';
+    hudBilgi.replaceChildren(
+        el('div', 'parca-ad', adim.ad || adim.part_id || '?'),
+        el('div', null, 'Kopya: ' + (adim.kopya != null ? adim.kopya : '-')),
+        el('div', null, 'Siparis: ' + siparisMetin),
+    );
+    hudTalimat.textContent = talimatMetni(adim);
+    ilerlemeIc.style.width = ((idx / TOPLAM) * 100) + '%';
+    kalanEtiket.textContent = (TOPLAM - idx) + ' parca kaldi';
+    btnGeri.disabled = idx === 0;
+    btnIleri.disabled = false;
+    btnOynat.disabled = false;
+}
+
+/* ---- tek-adim navigasyon (animasyonsuz) ---- */
+function ileri() {
+    if (animasyonda) return;
+    if (idx < TOPLAM) { idx += 1; durumUygula(); }
+}
+function geri() {
+    if (animasyonda) return;
+    if (idx > 0) { idx -= 1; durumUygula(); }
+}
+function bastan() {
+    if (animasyonda) return;
+    idx = 0;
+    durumUygula();
+}
+
+/* ---- animasyonlu cikis (Oynat) ---- */
+function tween(sureMs, guncelle, bitince) {
+    const t0 = performance.now();
+    function kare(now) {
+        const t = Math.min(1, (now - t0) / sureMs);
+        const yumusatilmis = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        guncelle(yumusatilmis);
+        istekRender();
+        if (t < 1) requestAnimationFrame(kare);
+        else if (bitince) bitince();
+    }
+    requestAnimationFrame(kare);
+}
+
+function oynat() {
+    if (animasyonda || idx >= TOPLAM) return;
+    const adim = ADIMLAR[idx];
+    const meshes = meshesFor(adim);
+    if (!meshes.length) { ileri(); return; }
+
+    animasyonda = true;
+    document.getElementById('btn-oynat').disabled = true;
+    document.getElementById('btn-ileri').disabled = true;
+    document.getElementById('btn-geri').disabled = true;
+
+    const box = new THREE.Box3();
+    meshes.forEach(m => box.expandByObject(m));
+    const boyut = box.getSize(new THREE.Vector3()).length() || 30;
+    const mesafe = Math.max(boyut * 3, 260);
+    const dirArr = YON_VEKTOR[adim.yon] || [0, 0, 1];
+    const dir = new THREE.Vector3(dirArr[0], dirArr[1], dirArr[2]).normalize();
+
+    const baslangicPos = meshes.map(m => m.position.clone());
+    const baslangicQuat = meshes.map(m => m.quaternion.clone());
+    const dondurme = (adim.yontem === 'dondurmeli') ? adim.dondurme : null;
+
+    function kaymaBaslat() {
+        tween(900, (t) => {
+            meshes.forEach((m, i) => {
+                m.position.copy(baslangicPos[i]).addScaledVector(dir, t * mesafe);
+            });
+        }, () => {
+            meshes.forEach(m => { m.visible = false; });
+            animasyonda = false;
+            idx += 1;
+            durumUygula();
+        });
+    }
+
+    if (dondurme) {
+        const eksenAdi = (dondurme.eksen || 'Z').toUpperCase();
+        const eksenVec = new THREE.Vector3(
+            eksenAdi === 'X' ? 1 : 0,
+            eksenAdi === 'Y' ? 1 : 0,
+            eksenAdi === 'Z' ? 1 : 0,
+        );
+        const aciRad = THREE.MathUtils.degToRad(dondurme.aci_deg || 0);
+        tween(600, (t) => {
+            const q = new THREE.Quaternion().setFromAxisAngle(eksenVec, aciRad * t);
+            meshes.forEach((m, i) => {
+                m.quaternion.copy(baslangicQuat[i]).premultiply(q);
+            });
+        }, kaymaBaslat);
+    } else {
+        kaymaBaslat();
+    }
+}
+
+/* ---- kontroller ---- */
+document.getElementById('btn-bastan').addEventListener('click', bastan);
+document.getElementById('btn-geri').addEventListener('click', geri);
+document.getElementById('btn-ileri').addEventListener('click', ileri);
+document.getElementById('btn-oynat').addEventListener('click', oynat);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') ileri();
+    else if (e.key === 'ArrowLeft') geri();
+});
+
+/* ---- ilk kurulum ---- */
+ustBariDoldur();
+lejantOlustur();
+tabloOlustur();
+sahneKur();
+hudGuncelle();
+}
+</script>
+</body>
+</html>

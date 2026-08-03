@@ -272,6 +272,7 @@ def to_voxel_parts(
     method: str = "slice",
     allowed_orientations: Optional[tuple] = None,
     extra_rot_overrides: Optional[dict] = None,
+    orientation_overrides: Optional[dict] = None,
 ) -> list:
     """Kutu instance'larini trimesh box mesh -> VoxelPart listesine dönüştür.
 
@@ -291,6 +292,13 @@ def to_voxel_parts(
     eşleşen modelin default setine SONA eklenen ek pozlar (hedefli-tilt;
     master sette olmayan düşük açılar). Anahtar görünen ad (display) veya
     kaynak_ad ile eşleşir. None = bit-özdeş.
+
+    orientation_overrides (K-56g): {model adı -> poz indeks tuple'ı} —
+    PARÇA-BAZLI poz kısıtı (28-pozluk master sete indeksler; sipariş-notu
+    kaynaklı "dik/yatay üretilecek" kilidi). Anahtar eşleme extra_rot_overrides
+    ile birebir: önce görünen ad (display), yoksa kaynak_ad. Eşleşen model
+    için allowed_orientations/n_orientations yerine BU set geçer; eşleşmeyen
+    modeller etkilenmez. None (default) = bit-özdeş.
 
     z_dilate: TEK-TARAFLI (+z / üst) dilation voxel sayısı (EVAL-1 NFV dikey-
     clearance fix). 0 (default) -> hiç z-dilation (mevcut çağıranlar BİT-ÖZDEŞ).
@@ -351,6 +359,20 @@ def to_voxel_parts(
 
     overrides = ({g["display"]: allowed_orientations for g in groups.values()}
                  if allowed_orientations is not None else None)
+    # K-56g: parça-bazlı poz kilidi — display/kaynak_ad eşlemesi
+    # extra_rot_overrides deseniyle birebir; eşleşen model global setin
+    # ÜZERİNE yazar (per-model öncelikli), eşleşmeyenler dokunulmaz.
+    if orientation_overrides:
+        per_model = {}
+        for g in groups.values():
+            tup = orientation_overrides.get(g["display"])
+            if tup is None and g["kaynak_ad"] is not None:
+                tup = orientation_overrides.get(g["kaynak_ad"])
+            if tup:
+                per_model[g["display"]] = tuple(tup)
+        if per_model:
+            overrides = dict(overrides or {})
+            overrides.update(per_model)
     extra = None
     if extra_rot_overrides:
         extra = {}

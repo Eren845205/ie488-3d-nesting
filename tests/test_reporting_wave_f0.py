@@ -269,7 +269,7 @@ class TestSuggestedVsAppliedPitch:
                       fine_pitch, budget, seed, menu=None, skip_fine_angle=False,
                       drop_cache=False, drop_cache_cap_mb=300.0, clearance_mm=0.0,
                       no_go_bounds=None, extra_rot_overrides=None,
-                      pinned_placements=None):
+                      pinned_placements=None, orientation_overrides=None):
             # extra_rot_overrides (K-56b) / pinned_placements (K-56f): uretim
             # kablosu bu kwarg'lari HER c2f cagrisinda geciriyor -> mock kabul
             # ETMELI. Kabul etmezse TypeError broad-except'e yutulur ve sessiz

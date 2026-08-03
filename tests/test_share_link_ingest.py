@@ -245,3 +245,66 @@ def test_store_eski_cagri_geriye_uyumlu(tmp_path):
     assert meta["review_reason"] == ""
     assert meta["share_links"] == []
     assert meta["adet_listesi"] == {}
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-03: hoca S5 cevabi sonrasi eklemeler
+# ---------------------------------------------------------------------------
+
+def test_sharepoint_box_mega_linkleri_bulunur():
+    # Hoca S5 (2026-08-03): kanal cesitliligi — TR musteri pratiginde gorulen
+    # ek paylasim hostlari allowlist'e alindi.
+    metin = ("dosyalar: https://firma.sharepoint.com/:f:/g/kl0 ayrica "
+             "https://app.box.com/s/abc12 ve https://mega.nz/folder/xYz9")
+    links = _find_share_links(metin)
+    assert len(links) == 3
+
+
+def test_sharepoint_taklidi_eslesmez():
+    assert _find_share_links("https://fakesharepoint.com/a b") == []
+    assert _find_share_links("https://mega.nz.evil.com/f") == []
+
+
+def test_rawmail_thread_basliklari_default_bos():
+    # Iki-mail eslestirmesinin on kosulu (additive alanlar; eski kurucular
+    # kirilmaz).
+    m = RawMail(gonderen="a@b.c", konu="k", govde="g",
+                tarih="2026-08-03", message_id="<m1>")
+    assert m.in_reply_to == ""
+    assert m.references == ""
+
+
+def test_poller_link_alanlarini_stora_gecirir(tmp_path):
+    """Kayip-veri fix'i: ingest'in share-link alanlari (review_reason /
+    share_links / adet_listesi) poller uzerinden store.add'e AYNEN akar —
+    onceden meta.json'da bos kaliyordu (test yesil, uretim yolu bos)."""
+    from scripts.demo_pipeline import RICH_SCENARIO
+    from src.runtime.mail_poller import process_inbox_once
+
+    mail = RawMail(
+        gonderen="musteri@firma.com", konu="Siparis dosyalari",
+        govde=("Parcalar linkte:\n"
+               "https://drive.google.com/drive/folders/abc123\n"
+               "braket 4 adet\n"),
+        tarih="2026-08-03T10:00:00+03:00", message_id="<link-poller-1@x>",
+    )
+
+    class _Src:
+        def fetch_new(self):
+            return [mail]
+
+    kayit = {}
+
+    class _SpyStore:
+        def add(self, **kw):
+            kayit.update(kw)
+            return kw.get("order_id", "")
+
+    res = process_inbox_once(
+        _Src(), parser_role=None, base_scenario=RICH_SCENARIO,
+        persist_root=str(tmp_path), pending_store=_SpyStore(),
+    )
+    assert res is None  # link maili pipeline'a girmez, beklemeye alinir
+    assert kayit["review_reason"] == "share_link_dosya_bekleniyor"
+    assert kayit["share_links"] == ["https://drive.google.com/drive/folders/abc123"]
+    assert kayit["adet_listesi"] == {"braket": 4}

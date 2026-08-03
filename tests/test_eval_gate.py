@@ -97,7 +97,8 @@ def _fake_eval_ortam(monkeypatch, n_locked, min_mm=2.1, nfv_tel=None):
     monkeypatch.setattr(eg, "_run_champion",
                         lambda name, inst, seed, budget=None,
                         n_orientations=None, extra_rot_overrides=None,
-                        pinned_placements=None: (_R(), nfv_tel))
+                        pinned_placements=None,
+                        orientation_overrides=None: (_R(), nfv_tel))
 
     def _placed(*a, **k):
         sayac["placed_kw"] = k
@@ -204,6 +205,47 @@ def test_evaluate_set_r11_yoksa_eski_yol_bit_ozdes(monkeypatch):
     assert sayac["placed_kw"].get("dz") is None
     assert r["legal_height_mm"] == 220.7
     assert r["r11_uygulandi"] is False
+
+
+def test_evaluate_set_export_cb_yoksa_alan_yok(monkeypatch):
+    """export_cb verilmedi -> cikti sozlesmesi degismez (export_hata alani yok)."""
+    eg, _ = _fake_eval_ortam(monkeypatch, n_locked=0)
+    r = eg.evaluate_set("t", 42)
+    assert "export_hata" not in r
+
+
+def test_evaluate_set_export_cb_ham_malzemeyi_alir(monkeypatch):
+    """Cb'ye placements/voxel_parts/pitch/dz/meshes/rot_rep/metrikler gider;
+    metrik sonucu cb'siz kosuyla ayni kalir."""
+    from types import SimpleNamespace as NS
+    eg, _ = _fake_eval_ortam(monkeypatch, n_locked=12)
+    rot = NS(n_locked=0, certificates={"m0": object()}, removable_order=["m0"])
+    tutulan = {}
+
+    def cb(paket):
+        tutulan.update(paket)
+
+    r = eg.evaluate_set("t", 42, export_cb=cb, _rot_fn=lambda m: rot)
+    assert tutulan["placements"] == ["pl"]
+    assert tutulan["voxel_parts"] == {"k": "vp"}
+    assert tutulan["pitch"] == 1.0
+    assert tutulan["dz"] is None
+    assert tutulan["meshes"] == ["mesh"]
+    assert tutulan["rot_rep"] is rot
+    assert tutulan["metrikler"] is r
+    assert r["legal_height_mm"] == 220.7 and "export_hata" not in r
+
+
+def test_evaluate_set_export_cb_hatasi_metrikleri_kaybettirmez(monkeypatch):
+    """Cb coker -> uzun kosunun metrikleri AYNEN doner + hata gorunur kalir."""
+    eg, _ = _fake_eval_ortam(monkeypatch, n_locked=0)
+
+    def cb(paket):
+        raise OSError("disk dolu")
+
+    r = eg.evaluate_set("t", 42, export_cb=cb)
+    assert r["legal_height_mm"] == 220.7
+    assert "OSError" in r["export_hata"] and "disk dolu" in r["export_hata"]
 
 
 # ---------------------------------------------------------------------------

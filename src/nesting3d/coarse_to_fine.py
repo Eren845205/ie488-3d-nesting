@@ -132,6 +132,7 @@ def _voxelize_with_fallback(
     instance: NestingInstance, pitch: float, floor_pitch: float,
     *, n_orientations: int = 4, clearance_mm: float = 0.0,
     plate_w_mm=None, plate_d_mm=None, extra_rot_overrides=None,
+    orientation_overrides=None,
 ):
     """Voxelize; boş-grid hatasında pitch'i otomatik KIS (ince-duvar güvenliği).
 
@@ -155,7 +156,9 @@ def _voxelize_with_fallback(
                                             plate_w_mm, plate_d_mm)
             return to_voxel_parts(instance, cur, n_orientations=n_orientations,
                                   margin=margin,
-                                  extra_rot_overrides=extra_rot_overrides), cur
+                                  extra_rot_overrides=extra_rot_overrides,
+                                  orientation_overrides=orientation_overrides
+                                  ), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
@@ -166,7 +169,8 @@ def _voxelize_with_fallback(
                 return to_voxel_parts(instance, floor_pitch,
                                       n_orientations=n_orientations,
                                       margin=margin,
-                                      extra_rot_overrides=extra_rot_overrides
+                                      extra_rot_overrides=extra_rot_overrides,
+                                      orientation_overrides=orientation_overrides
                                       ), floor_pitch
             cur = nxt
 
@@ -517,6 +521,7 @@ def solve_coarse_to_fine(
     no_go_bounds=None,
     extra_rot_overrides=None,
     pinned_placements=None,
+    orientation_overrides=None,
 ) -> CoarseToFineResult:
     """Coarse-to-fine iki asamali nesting coz.
 
@@ -626,6 +631,17 @@ def solve_coarse_to_fine(
                       kırpma yasak). NOT: adaptive ön-prob'u pin'siz
                       koşar (K-56 deseniyle tutarlı; kapsam non-adaptive
                       üretim yolu).
+    orientation_overrides: (K-56g sipariş-notu poz kilidi) {model adı ->
+                      poz indeks tuple'ı} — adı eşleşen model YALNIZ bu
+                      pozlarda voxelize edilir (28-poz master set
+                      indeksleri; "dik/yatay üretilecek" kısıtı).
+                      Coarse ve fine AYNI kısıtla kurulur (indeks
+                      tutarlılığı korunur). Rafine (fine_angle) adayları
+                      kazanan İZİNLİ pozun ±window° komşuluğudur —
+                      kilit semantiği bozulmaz. None (default) =
+                      BİT-ÖZDEŞ. NOT: adaptive poz-seçim ön-probu
+                      kısıtsız koşar (K-56/K-56f deseniyle tutarlı;
+                      kapsam non-adaptive üretim yolu).
     Returns
     -------
     CoarseToFineResult
@@ -656,6 +672,7 @@ def solve_coarse_to_fine(
             clearance_mm=clearance_mm,
             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
             extra_rot_overrides=extra_rot_overrides,
+            orientation_overrides=orientation_overrides,
         )
 
     # --- K-56f: büyük-parça pinleme (opt-in; None/boş = bit-özdeş yol) ---
@@ -786,7 +803,8 @@ def solve_coarse_to_fine(
     base_parts = to_voxel_parts(instance, fine_pitch,
                                 n_orientations=n_orientations,
                                 margin=_fine_margin,
-                                extra_rot_overrides=extra_rot_overrides)
+                                extra_rot_overrides=extra_rot_overrides,
+                                orientation_overrides=orientation_overrides)
     base_by_id: Dict[str, Any] = {p.id: p for p in base_parts}
 
     # K-56f: fine pinleri kur; pin'in RAW (margin'siz, tek-poz) VoxelPart'ı

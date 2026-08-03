@@ -1,0 +1,13 @@
+{
+  "kisitlar": [
+    {
+      "tip": "orientation_lock",
+      "parca_adi": "288101642-a2",
+      "deger": {"yon": "durus_koru"},
+      "guven": "yuksek",
+      "gerekce": "\"Konumu değişmeyecek\" üretici dilinde duruş açısının korunması demektir (müşteri teyitli); yükseklik ve X-Y serbest kalır.",
+      "kaynak_satir": "288101642-a2 konumu degismeyecek"
+    }
+  ],
+  "injection_suphesi": false
+}

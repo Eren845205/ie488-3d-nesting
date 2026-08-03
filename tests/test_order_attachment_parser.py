@@ -186,6 +186,37 @@ class TestParseOrderAttachmentCsv(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "test_p")
 
+    def test_csv_semicolon_separated_turkish_headers(self):
+        """Dalga-2 #11: Turkce Excel ';' ayracli CSV export'u dogru parse edilir."""
+        csv_text = "ad;en_mm;boy_mm;yukseklik_mm;adet\nparca_x;80;60;40;3\n"
+        from src.runtime.order_attachment_parser import parse_order_attachment
+        result = parse_order_attachment("turkce_siparis.csv", csv_text.encode("utf-8"))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "parca_x")
+        self.assertEqual(result[0]["width_mm"], 80.0)
+        self.assertEqual(result[0]["qty"], 3)
+
+    def test_csv_semicolon_multiple_rows(self):
+        """';' ayracli CSV cok satirli dosyada da dogru calisir."""
+        csv_text = (
+            "ad;en_mm;boy_mm;yukseklik_mm;adet\n"
+            "braket;40;30;15;2\n"
+            "kapak;60;40;10;4\n"
+        )
+        from src.runtime.order_attachment_parser import parse_order_attachment
+        result = parse_order_attachment("siparis.csv", csv_text.encode("utf-8"))
+        self.assertEqual(len(result), 2)
+        adlar = {r["name"] for r in result}
+        self.assertEqual(adlar, {"braket", "kapak"})
+
+    def test_csv_tab_separated_still_works(self):
+        """Sekme (\\t) ayracli CSV da (sniffer/fallback) taninir."""
+        csv_text = "name\twidth_mm\tdepth_mm\theight_mm\tqty\ntest_t\t50\t40\t30\t1\n"
+        from src.runtime.order_attachment_parser import parse_order_attachment
+        result = parse_order_attachment("data.csv", csv_text.encode("utf-8"))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "test_t")
+
 
 # ---------------------------------------------------------------------------
 # C) Esnek baslik esleme

@@ -28,8 +28,10 @@ Sirlar: parola KODDA DEGİL. ImapMailbox konfig sozlugundan veya env'den alir.
 from __future__ import annotations
 
 import email
+import email.header
 import email.utils
 import hashlib
+import html.parser
 import imaplib
 import io
 import logging
@@ -86,6 +88,12 @@ class RawMail:
     message_id: str
     ekler: List[Attachment] = field(default_factory=list)
     uid: Optional[str] = None  # IMAP UID (ImapMailbox doldurur; FakeMailbox None birakir — geriye uyum)
+    # 2026-08-03 (hoca S5: "once mail, sonra WeTransfer linki"): iki-mail
+    # eslestirmesinin ON KOSULU olan thread basliklari. Additive + default
+    # bos — eski kurucular ve davranis bit-ozdes; eslestirme mantigi AYRI
+    # karar (otomatik birlestirme YOK, tasarim DURUM.md 2026-08-03).
+    in_reply_to: str = ""   # RFC 2822 In-Reply-To
+    references: str = ""    # RFC 2822 References
 
     def __repr__(self) -> str:
         return (
@@ -417,6 +425,8 @@ class ImapMailbox(MailSource):
             message_id=message_id,
             ekler=ekler,
             uid=uid,  # at-least-once: mark_processed icin IMAP UID sakla
+            in_reply_to=msg.get("In-Reply-To", "") or "",
+            references=msg.get("References", "") or "",
         )
 
     # ------------------------------------------------------------------
@@ -575,13 +585,75 @@ class ImapMailbox(MailSource):
 
 
 # ---------------------------------------------------------------------------
+# HTML-only govde -> duz metin (Dalga-2 #7): stdlib html.parser tag-soyma
+# fallback. YENI BAGIMLILIK YOK (bs4 vb. eklenmedi).
+# ---------------------------------------------------------------------------
+
+class _HTMLMetinCikarici(html.parser.HTMLParser):
+    """HTML govdeden duz metin cikarir.
+
+    Blok elemanlari (p, div, br, tr, li, h1-h6, table) satir sonuna cevrilir
+    (boylece '<p>Ad - 62</p><p>Kapak - 4</p>' iki satira ayrilir); script/style
+    icerigi ATLANIR (kod/CSS metne sizip yanlis sinyal uretmesin).
+    """
+
+    _BLOK_ETIKETLER = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table"}
+    _ATLA_ETIKETLER = {"script", "style", "head"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parcalar: List[str] = []
+        self._atla_derinlik = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
+        if tag in self._ATLA_ETIKETLER:
+            self._atla_derinlik += 1
+        elif tag in self._BLOK_ETIKETLER:
+            self._parcalar.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._ATLA_ETIKETLER and self._atla_derinlik > 0:
+            self._atla_derinlik -= 1
+        elif tag in self._BLOK_ETIKETLER:
+            self._parcalar.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._atla_derinlik == 0:
+            self._parcalar.append(data)
+
+    def metin(self) -> str:
+        ham = "".join(self._parcalar)
+        satirlar = [s.strip() for s in ham.splitlines()]
+        return "\n".join(s for s in satirlar if s)
+
+
+def _html_govdeyi_metne_cevir(html_metin: str) -> str:
+    """HTML govdeyi duz metne cevirir (tag-soyma fallback).
+
+    Parse hatasi olursa ham HTML aynen dondurulur (asla firlatmaz) — bozuk
+    HTML'de bile sinyal-tespiti ham metin uzerinde denemeye devam edebilsin.
+    """
+    if not html_metin:
+        return html_metin
+    try:
+        parser = _HTMLMetinCikarici()
+        parser.feed(html_metin)
+        parser.close()
+        cikti = parser.metin()
+        return cikti if cikti else html_metin
+    except Exception:
+        return html_metin
+
+
+# ---------------------------------------------------------------------------
 # Govde cikarici yardimci
 # ---------------------------------------------------------------------------
 
 def _extract_text_body(msg: email.message.Message) -> str:
     """email.Message'dan duz metin govdesini cikarir.
 
-    Oncelik: text/plain; bulunamazsa text/html; her ikisi de yoksa bos dize.
+    Oncelik: text/plain; bulunamazsa text/html (tag-soyma ile duz metne
+    cevrilir — Dalga-2 #7); her ikisi de yoksa bos dize.
     """
     if msg.is_multipart():
         for part in msg.walk():
@@ -591,21 +663,27 @@ def _extract_text_body(msg: email.message.Message) -> str:
                 if payload:
                     charset = part.get_content_charset() or "utf-8"
                     return payload.decode(charset, errors="replace")
-        # text/plain bulunamadi — html dene
+        # text/plain bulunamadi — html dene (tag-soyma)
         for part in msg.walk():
             if part.get_content_type() == "text/html":
                 payload = part.get_payload(decode=True)
                 if payload:
                     charset = part.get_content_charset() or "utf-8"
-                    return payload.decode(charset, errors="replace")
+                    html_metin = payload.decode(charset, errors="replace")
+                    return _html_govdeyi_metne_cevir(html_metin)
         return ""
     else:
         payload = msg.get_payload(decode=True)
         if payload:
             charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
+            metin = payload.decode(charset, errors="replace")
+            if msg.get_content_type() == "text/html":
+                return _html_govdeyi_metne_cevir(metin)
+            return metin
         # decode=False durumu (string payload)
         raw = msg.get_payload()
+        if isinstance(raw, str) and msg.get_content_type() == "text/html":
+            return _html_govdeyi_metne_cevir(raw)
         return raw if isinstance(raw, str) else ""
 
 
@@ -620,11 +698,37 @@ def _extract_text_body(msg: email.message.Message) -> str:
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
+def _decode_mime_filename(name: Optional[str]) -> Optional[str]:
+    """RFC 2047 kodlu ek/konu adini coz (Dalga-2 #14).
+
+    Orn. '=?UTF-8?B?U2lwYXJpxZ8uemlw?=' -> 'Siparis.zip'. email.Message'in
+    get_filename() cogu zaman bu kodlamayi COZMEZ (RFC 2231 continuation'i
+    cozer ama klasik encoded-word'u degil) — decode_header ile tamamlanir.
+    Kodlanmamis/duz ad ise degismeden doner; hata durumunda ham ad korunur
+    (asla firlatmaz).
+    """
+    if not name:
+        return name
+    try:
+        parcalar = email.header.decode_header(name)
+        coz = []
+        for metin, kodlama in parcalar:
+            if isinstance(metin, bytes):
+                coz.append(metin.decode(kodlama or "utf-8", errors="replace"))
+            else:
+                coz.append(metin)
+        sonuc = "".join(coz)
+        return sonuc if sonuc else name
+    except Exception:
+        return name
+
+
 def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
     """email.Message'dan ekleri cikarir.
 
     Kriter: Content-Disposition 'attachment' olan veya dosya adi olan MIME parcalari.
     Fix-2: Ek payload MAX_ATTACHMENT_BYTES (5 MB) sinirini asarsa atlanir.
+    Dosya adi RFC 2047 kodluysa cozulur (Dalga-2 #14).
     Dondurur: List[Attachment] — ek bulunamazsa bos liste.
     """
     attachments: List[Attachment] = []
@@ -633,7 +737,7 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 
     for part in msg.walk():
         content_disposition = part.get_content_disposition() or ""
-        filename = part.get_filename()
+        filename = _decode_mime_filename(part.get_filename())
 
         if content_disposition.lower() == "attachment" or filename:
             payload = part.get_payload(decode=True)
@@ -705,6 +809,12 @@ _SHARE_LINK_HOSTS = (
     "1drv.ms",
     "onedrive.live.com",
     "dropbox.com",
+    # 2026-08-03 (hoca S5 cevabi — kanal cesitliligi): TR musteri pratiginde
+    # gorulen ek hostlar. Allowlist genislemesi tek yonlu-guvenli: yalniz
+    # "beklemeye alinan mail" sayisini artirir (parts=[] -> pipeline'a girmez).
+    "sharepoint.com",
+    "box.com",
+    "mega.nz",
 )
 _URL_RE = re.compile(r"https?://[^\s<>\"'\)\]]+")
 
@@ -761,6 +871,21 @@ def _find_attachment(mail: RawMail, extensions: Set[str]) -> Optional[Attachment
         if ext in extensions:
             return att
     return None
+
+
+def _find_all_attachments(mail: RawMail, extensions: Set[str]) -> List[Attachment]:
+    """Mail eklerinde verilen uzantili TUM ekleri sirali dondurur (Dalga-2 #10).
+
+    _find_attachment ilkini dondurur (tekil-ek varsayimi); coklu-zip senaryosunda
+    (2. zip / ek zip parca dosyasi) hepsinin islenmesi gerekir — bu fonksiyon
+    hicbirini atlamaz.
+    """
+    out: List[Attachment] = []
+    for att in (mail.ekler or []):
+        ext = "." + att.dosya_adi.rsplit(".", 1)[-1].lower() if "." in att.dosya_adi else ""
+        if ext in extensions:
+            out.append(att)
+    return out
 
 
 _STL_ADET_RE = None  # lazy-compile (module import maliyeti sifir kalsin)
@@ -870,16 +995,24 @@ def _llm_zip_quantity_fallback(
 
 def _ingest_zip_stl_order(
     mail: RawMail,
-    zip_att: Attachment,
+    zip_atts: Any,
     persist_root: Optional[str],
     parser_role: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """ZIP ekli STL siparisini isle: zip ac + adet cikar + esleme + bbox.
 
+    zip_atts: TEK Attachment (geriye uyum) VEYA List[Attachment] — birden
+    fazla .zip eki oldugu durumda (Dalga-2 #10) HEPSI acilir ve STL
+    sozlukleri BIRLESTIRILIR. Ayni ada FARKLI icerik cakisirsa (iki zip'te
+    ayni taban ad, farkli bayt) sessiz ezme YOK -> needs_review
+    'zip_name_collision' (operatore gorunur).
+
     ADET KAYNAKLARI (katmanli — insansiz otomatik isleme hedefi):
       1. Mail govdesi — '<ad> <adet> adet' VE '<ad> - <adet>' kaliplari.
       2. .txt eki ("Adet listesi.txt") — govdede olmayan adlari tamamlar.
-      3. LLM fallback (parser_role verildiyse) — YALNIZ deterministik katman
+      3. Kardes .xlsx/.csv adet tablosu — govde+txt tam kapsamadiginda
+         (Dalga-2 #9) tablo ekinden okunan adetler eksik STL adlarina eslenir.
+      4. LLM fallback (parser_role verildiyse) — YALNIZ deterministik katman
          tam kapsayamadiginda; cikti ZIP'in gercek dosya adlarina topraklanir
          ve asagidaki dogrulamayi gecmeden KULLANILMAZ.
 
@@ -906,13 +1039,47 @@ def _ingest_zip_stl_order(
     )
     from src.nesting3d.instances.stl_order_loader import build_instance_from_order
 
-    try:
-        stl_map = extract_stls(zip_att.icerik)
-    except ValueError as exc:  # boyut bombasi vb.
-        logger.warning("ingest_order: ZIP acilamadi (%s) — %s", zip_att.dosya_adi, exc)
-        return None
+    if isinstance(zip_atts, Attachment):
+        zip_atts = [zip_atts]
+
+    stl_map: Dict[str, bytes] = {}
+    collision_names: List[str] = []
+    for _zip_att in zip_atts:
+        try:
+            _tek_map = extract_stls(_zip_att.icerik)
+        except ValueError as exc:  # boyut bombasi vb.
+            logger.warning(
+                "ingest_order: ZIP acilamadi (%s) — %s", _zip_att.dosya_adi, exc
+            )
+            continue
+        for _nm, _data in _tek_map.items():
+            if _nm in stl_map and stl_map[_nm] != _data:
+                collision_names.append(_nm)
+                continue  # ilk gelen kazanir; cakisma asagida needs_review'a duser
+            stl_map[_nm] = _data
+
+    zip_att_adlari = ", ".join(a.dosya_adi for a in zip_atts)
+
+    if collision_names:
+        _det_hex = hashlib.sha256(mail.message_id.encode("utf-8")).hexdigest()[:8].upper()
+        logger.warning(
+            "ingest_order: birden fazla ZIP ekinde AYNI ada FARKLI icerik "
+            "cakismasi (%s) — operator incelemesine alindi (sessiz ezme yok).",
+            ", ".join(sorted(set(collision_names))),
+        )
+        return {
+            "needs_review": True,
+            "review_reason": "zip_name_collision",
+            "order_id": f"ZIP-{_det_hex}",
+            "customer": mail.gonderen.split("@")[-1].split(".")[0].upper(),
+            "parse_source": "attachment_zip_stl_incomplete",
+            "stl_names": sorted(set(collision_names)),
+            "_stl_map": {},
+            "parts": [],
+        }
+
     if not stl_map:
-        logger.warning("ingest_order: ZIP icinde STL bulunamadi — %s", zip_att.dosya_adi)
+        logger.warning("ingest_order: ZIP icinde STL bulunamadi — %s", zip_att_adlari)
         return None
 
     body = mail.govde or ""
@@ -937,6 +1104,29 @@ def _ingest_zip_stl_order(
     if declared_total is None and txt_text:
         declared_total = parse_declared_total(txt_text)
 
+    # K-56g Kapi-0: deterministik not tespiti (LLM'siz, note_detector).
+    # Adaylar BOSSA order/marker dict'ine ALAN HIC KONMAZ -> notsuz siparis
+    # dict'i bit-ozdes eski sekil (test_ingest_zip_stl determinizm sozlesmesi).
+    from src.runtime.note_detector import extract_note_candidates
+    _not_scan = extract_note_candidates(body, txt_text, stl_names)
+
+    def _not_alanlari(d: Dict[str, Any]) -> Dict[str, Any]:
+        if _not_scan["adaylar"]:
+            d["not_adaylari"] = _not_scan["adaylar"]
+            # Ham govde: hoca semantigi netlesince yeniden isleme + operator
+            # onay yuzeyi icin korunur (20KB tavan — injection/sisme guard'i).
+            d["govde_metni"] = (body or "")[:20480]
+            if _not_scan["bilinmeyen_satir"]:
+                d["not_bilinmeyen_satir"] = _not_scan["bilinmeyen_satir"]
+            if _not_scan["kirpildi"]:
+                d["not_kirpildi"] = True
+        # Kapi-0 deterministik injection tespiti aday olmasa da tasinir
+        # (operator gorunurlugu; note_pipeline bunu gorunce hicbir kisiti
+        # uygulamaz). Temiz mailde alan HIC konmaz (bit-ozdes).
+        if _not_scan.get("injection_kapi0"):
+            d["not_injection_kapi0"] = True
+        return d
+
     matched, unmatched_keys, unmatched_stls = match_quantities_to_stls(
         quantities_raw, stl_names
     )
@@ -947,7 +1137,48 @@ def _ingest_zip_stl_order(
             declared_total is None or sum(q.values()) == declared_total
         )
 
-    # Katman 3: LLM fallback — yalniz deterministik katman dogrulanamadiysa.
+    # Katman 3 (Dalga-2 #9): kardes .xlsx/.csv adet tablosu — govde+txt
+    # eksik/tam-kapsamiyorsa mevcut parse_order_attachment altyapisiyla
+    # tablo eki okunup eksik STL adlarina eslenir. Govde/txt oncelikli
+    # (zaten esleseni EZMEZ); tablo yalniz BOSLUKLARI doldurur.
+    table_att = _find_attachment(mail, _STRUCTURED_EXTENSIONS)
+    if table_att is not None and not _validated(matched):
+        from src.runtime.order_attachment_parser import parse_order_attachment
+        try:
+            table_parts = parse_order_attachment(table_att.dosya_adi, table_att.icerik)
+        except Exception as exc:
+            logger.debug("ingest_order: tablo eki parse edilemedi — %s", exc, exc_info=True)
+            table_parts = []
+        table_q: Dict[str, int] = {}
+        for p in table_parts:
+            _t_nm = str(p.get("name") or "").strip()
+            try:
+                _t_qty = int(p.get("qty", 0))
+            except (TypeError, ValueError):
+                continue
+            if _t_nm and _t_qty > 0:
+                table_q[_t_nm] = _t_qty
+        if table_q:
+            _t_matched, _t_unmatched_keys, _t_unmatched_stls = match_quantities_to_stls(
+                table_q, stl_names
+            )
+            _table_added = False
+            for k, v in _t_matched.items():
+                if k not in matched:
+                    matched[k] = v
+                    _table_added = True
+            if _table_added:
+                unmatched_stls = [nm for nm in stl_names if nm not in matched]
+                unmatched_keys = list(dict.fromkeys(unmatched_keys + _t_unmatched_keys))
+                quantity_source = (
+                    f"{quantity_source}+table" if quantity_source != "none" else "table"
+                )
+                logger.info(
+                    "ingest_order: kardes tablo eki (%s) eksik adetleri tamamladi.",
+                    table_att.dosya_adi,
+                )
+
+    # Katman 4: LLM fallback — yalniz deterministik katman dogrulanamadiysa.
     # Kabul esigi deterministik katmandan SIKI: tam kapsama + checksum sart
     # (LLM ciktisi ancak matematiksel teyitle insansiz akisa girer).
     if parser_role is not None and not _validated(matched):
@@ -972,9 +1203,9 @@ def _ingest_zip_stl_order(
         logger.warning(
             "ingest_order: adet celiskisi — beyan %d, eslenen toplam %d (%s); "
             "operator incelemesine alindi.",
-            declared_total, sum(matched.values()), zip_att.dosya_adi,
+            declared_total, sum(matched.values()), zip_att_adlari,
         )
-        return {
+        return _not_alanlari({
             "needs_review": True,
             "review_reason": "quantity_conflict",
             "order_id": f"ZIP-{_det_hex}",
@@ -985,7 +1216,7 @@ def _ingest_zip_stl_order(
             "parsed_total": sum(matched.values()),
             "_stl_map": dict(stl_map),
             "parts": [],
-        }
+        })
 
     quantities = matched
 
@@ -1040,14 +1271,14 @@ def _ingest_zip_stl_order(
             logger.info(
                 "ingest_order: ZIP-STL eksik bilgi — %d STL var ama govdede adet "
                 "yok; operator incelemesine alindi (%s)",
-                len(res.skipped_no_qty), zip_att.dosya_adi,
+                len(res.skipped_no_qty), zip_att_adlari,
             )
             # Operatorun /adet-gir'den adet girip yeniden kurabilmesi icin
             # GECERLI (adeti eksik) STL byte'larini markere koy. Bozuk mesh'ler
             # skipped_no_stl'de — onlar tasinmaz. _stl_map underscore: app/poller
             # icin ic alan; JSON yanitina serialize EDILMEZ.
             valid_stl_map = {nm: stl_map[nm] for nm in res.skipped_no_qty if nm in stl_map}
-            return {
+            return _not_alanlari({
                 "needs_review": True,
                 "review_reason": "missing_quantity",
                 "order_id": f"ZIP-{_det_hex}",
@@ -1056,10 +1287,10 @@ def _ingest_zip_stl_order(
                 "stl_names": sorted(res.skipped_no_qty),
                 "_stl_map": valid_stl_map,
                 "parts": [],
-            }
+            })
         logger.warning(
             "ingest_order: ZIP+govde eslesmedi — hicbir parca uretilmedi (%s)",
-            zip_att.dosya_adi,
+            zip_att_adlari,
         )
         return None
 
@@ -1096,7 +1327,7 @@ def _ingest_zip_stl_order(
     # run_pipeline parti-bazli otomatik turetir (tek karar noktasi pipeline).
     if plate_w is not None and plate_d is not None:
         order["container"] = {"width_mm": plate_w, "depth_mm": plate_d, "height_mm": None}
-    return order
+    return _not_alanlari(order)
 
 
 def ingest_order(
@@ -1128,12 +1359,12 @@ def ingest_order(
     """
     from src.runtime.order_attachment_parser import parse_order_attachment
 
-    # --- En yuksek oncelik: ZIP-STL eki ---
-    zip_att = _find_attachment(mail, _ZIP_EXTENSIONS)
-    if zip_att is not None:
+    # --- En yuksek oncelik: ZIP-STL eki (Dalga-2 #10: TUM .zip ekleri) ---
+    zip_atts = _find_all_attachments(mail, _ZIP_EXTENSIONS)
+    if zip_atts:
         # parser_role: deterministik adet cikarimi tam kapsayamazsa
         # topraklanmis LLM fallback icin (bkz. _ingest_zip_stl_order).
-        return _ingest_zip_stl_order(mail, zip_att, persist_root, parser_role)
+        return _ingest_zip_stl_order(mail, zip_atts, persist_root, parser_role)
 
     # Yapılandırılmış ek kontrolu
     structured_att = _find_attachment(mail, _STRUCTURED_EXTENSIONS)
@@ -1224,6 +1455,19 @@ def ingest_order(
     if parser_role is None or not _has_order_signal(mail.govde or ""):
         logger.info(
             "ingest_order: siparis sinyali yok (adet/boyut deseni) — LLM atlandi: %s",
+            mail.gonderen,
+        )
+        return None
+
+    # H7 (2026-07-25): DETERMINISTIK injection on-taramasi — note_detector'daki
+    # Kapi-0 kalibiyla AYNI kaynak (tek yerde bakim). Eslesirse LLM'e HIC
+    # gidilmez, mevcut injection_suphesi karantina yoluyla AYNI sonuc uretilir
+    # (fail-closed: None donup siparis pipeline'a sokulmaz).
+    from src.runtime.note_detector import has_injection_pattern
+    if has_injection_pattern(mail.govde or ""):
+        logger.warning(
+            "ingest_order: deterministik injection kalibi (Kapi-0 on-tarama) — "
+            "LLM'e gidilmeden karantinaya alindi. gonderen=%r",
             mail.gonderen,
         )
         return None

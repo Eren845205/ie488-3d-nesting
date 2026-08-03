@@ -210,6 +210,38 @@ def _load_llm_components(
             role_cfg=cfg.roles.get("teklif"),
         )
 
+        # K-56g: siparis-notu kisit rolu + hakem (Eren karari: hakem bastan).
+        # Iki rol de AYNI kisit-v1 sablonunu kullanir (KisitRole.ROLE_NAME);
+        # hakem yalniz model/konfig farkiyla ayrisir (qwen2.5:7b). Model
+        # cekili degilse ilk cagri graceful basarisiz olur (run_with_voting
+        # hakem hatasini yutar — guven oldugu yerde kalir); banner probe'u
+        # eksik modeli "ollama pull" uyarisiyla gosterir.
+        from src.llm.roles.kisit import KisitRole
+
+        kisit_role = KisitRole(
+            provider=_provider_for("kisit"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("kisit"),
+        )
+        kisit_hakem_role = KisitRole(
+            provider=_provider_for("kisit_hakem"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("kisit_hakem"),
+        )
+
+        # kisit_modu: "kapali" (default) | "golge" | "otomatik" — LLMConfig
+        # semasina girmeyen serbest alan; ham JSON'dan okunur (from_dict
+        # bilinmeyen ust-duzey anahtari yok sayar).
+        try:
+            import json as _json
+            _kisit_modu = str(_json.loads(
+                cfg_path.read_text(encoding="utf-8")
+            ).get("kisit_modu", "kapali"))
+        except Exception:
+            _kisit_modu = "kapali"
+
         return {
             "report_role": report_role,
             "assistant_role": assistant_role,
@@ -217,6 +249,9 @@ def _load_llm_components(
             "explainer_role": explainer_role,
             "watcher_role": watcher_role,
             "teklif_role": teklif_role,
+            "kisit_role": kisit_role,
+            "kisit_hakem_role": kisit_hakem_role,
+            "kisit_modu": _kisit_modu,
             "llm_active": True,
             # /health probe icin provider referansi (canli Ollama saglik kontrolu)
             "health_provider": provider,
@@ -1183,6 +1218,10 @@ def _register_routes(
         now=time.time,
         pending_store=_pending_store,
         inflight_lock=_scan_lock,
+        # K-56g not->kisit hatti (kisit_modu default "kapali" = birebir)
+        kisit_role=(llm_components or {}).get("kisit_role"),
+        kisit_hakem_role=(llm_components or {}).get("kisit_hakem_role"),
+        kisit_modu=(llm_components or {}).get("kisit_modu", "kapali"),
     )
     app.config["MAIL_POLLER"] = _poller
 
@@ -2131,6 +2170,14 @@ def _register_routes(
                             konu=mail.konu,
                             stl_map=order.get("_stl_map", {}),
                             container=order.get("container"),
+                            # K-56g: not alanlari (yoksa None -> meta bit-ozdes)
+                            not_adaylari=order.get("not_adaylari"),
+                            govde_metni=order.get("govde_metni"),
+                            # 2026-08-03 kayip-veri fix'i (poller'la ayni):
+                            # share-link alanlari meta.json'a aksin.
+                            review_reason=order.get("review_reason", ""),
+                            share_links=order.get("share_links"),
+                            adet_listesi=order.get("adet_listesi"),
                         )
                     except Exception as exc:
                         logger.warning("Otonom: bekleyen siparis kaydedilemedi: %s", exc)
@@ -2164,6 +2211,17 @@ def _register_routes(
                     # Kaynak sayaci
                     src = order.get("parse_source", "llm_text")
                     parse_kaynak_sayac[src] = parse_kaynak_sayac.get(src, 0) + 1
+
+                    # K-56g not->kisit analizi (yapisal kapi note_pipeline'da:
+                    # notsuz order / kisit_modu=kapali -> LLM'e SIFIR dokunus,
+                    # order aynen doner).
+                    from src.runtime.note_pipeline import analyze_order_notes
+                    order = analyze_order_notes(
+                        order,
+                        llm_components.get("kisit_role"),
+                        llm_components.get("kisit_hakem_role"),
+                        mode=llm_components.get("kisit_modu", "kapali"),
+                    )
 
                     parsed_orders.append(order)
                     _order_mails.append(mail)  # mark yalniz pipeline basarisi sonrasi
@@ -2744,9 +2802,34 @@ def _register_routes(
     # timeout + sunucu blok yaratir. Job'i daemon thread'e alir; UI durumu
     # /otonom/durum/<id> ile yoklayarak CANLI gosterir. Tek-is politikasi
     # (OtonomJobStore): ayni anda en fazla 1 aktif is.
-    from src.runtime.otonom_jobs import OtonomJobStore
-    _otonom_jobs = OtonomJobStore()
+    from src.runtime.otonom_jobs import OtonomJobStore, scan_orphaned_markers
+    # marker_dir=_gecmis_root: is baslarken/biterken "calisiyor_<id>.json"
+    # isareti yazilir/silinir (restart durustlugu, 2026-07-25). TESTING'de
+    # _gecmis_root izole gecici dizindir -> gercek data/otonom_gecmis'e
+    # dokunulmaz.
+    _otonom_jobs = OtonomJobStore(marker_dir=_gecmis_root)
     app.config["OTONOM_JOBS"] = _otonom_jobs
+
+    # Sahipsiz calisiyor-isaretleri (onceki calistirmadan restart/crash ile
+    # yarim kalmis is) taranir; RECOVERY YOK — yalniz durust "kesildi" kaydi
+    # gecmise dusulur ve isaret silinir. Bos dizinde (normal kapanis / ilk
+    # calistirma) hicbir sey yapmaz -> davranis bit-ozdes.
+    for _orphan in scan_orphaned_markers(_gecmis_root):
+        try:
+            _otonom_gecmis.kaydet({
+                "durum": "kesildi",
+                "kaynak": "restart_kesintisi",
+                "hata_ozeti": (
+                    "Uygulama yeniden baslatildi, is yarim kaldi (otomatik "
+                    "devam/recovery yok - operator elle kontrol etmeli)."
+                ),
+                "job_id": _orphan.get("job_id"),
+                "started_at": _orphan.get("started_at"),
+                "meta": _orphan.get("meta") or {},
+            })
+        except Exception:
+            logger.exception(
+                "otonom restart-kesintisi kaydi yazilamadi: %r", _orphan)
 
     @app.route("/otonom/baslat", methods=["POST"])
     @_limit("2 per minute")
@@ -2909,6 +2992,57 @@ def _register_routes(
             io.BytesIO(stl_bytes), mimetype="model/stl", as_attachment=True,
             download_name=f"nesting_{kayit_id}_{batch_id}.stl",
         )
+
+    @app.route("/gecmis/<kayit_id>/rehberli-sokum", methods=["GET"])
+    def gecmis_rehberli_sokum(kayit_id: str):
+        """Gecmis kaydinin REHBERLI SOKUM HTML'ini uret (cevrimdisi, tek dosya).
+
+        Kaynak: kalici detay JSON (parca_kimlik/sokum_sirasi/sokum_plani/
+        siparis_ozeti) + kalici GLB. Ikisi de yoksa 404 + aciklayici mesaj —
+        eski kayitlarda (ozellik-oncesi) bu route dogal olarak calismaz.
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        kayit = _otonom_gecmis.get(kayit_id)
+        if kayit is None:
+            return jsonify({"hata": "Kayit bulunamadi."}), 404
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        if detay is None:
+            return jsonify({
+                "hata": "Bu kayit icin tam detay yok (eski kayit) — rehberli sokum uretilemez.",
+            }), 404
+
+        from src.runtime.rehberli_sokum import build_rehberli_sokum_html
+        from src.runtime.sokum_veri import sokum_veri_hazirla
+
+        nesting_results = detay.get("nesting_results") or {}
+        # ILK sokum-verisi tasiyan parti — coklu-parti kayitlarda operator
+        # partiyi ?bid= ile secebilir; verilmezse ilk uygun parti kullanilir.
+        bid = request.args.get("bid")
+        if bid is None or bid not in nesting_results:
+            bid = next(
+                (b for b, nr in nesting_results.items() if nr.get("sokum_sirasi")),
+                next(iter(nesting_results), None),
+            )
+        nr = nesting_results.get(bid) or {}
+        if not nr.get("sokum_sirasi"):
+            return jsonify({
+                "hata": "Bu parti icin sokum sirasi verisi yok — rehberli sokum uretilemez.",
+            }), 404
+
+        try:
+            yol = _otonom_gecmis.glb_path(kayit_id, bid)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D dosyasi yok — rehberli sokum uretilemez.",
+            }), 404
+        glb_bytes = yol.read_bytes()
+
+        veri = sokum_veri_hazirla(kayit, nr)
+        html = build_rehberli_sokum_html(veri, glb_bytes)
+        return Response(html, mimetype="text/html")
 
     @app.route("/gecmis/<kayit_id>/teklif", methods=["POST"])
     @_limit("10 per minute")
@@ -3236,6 +3370,12 @@ def _register_routes(
             "parts": parts,
             "parse_source": "operator_adet_girisi",
         }
+        # K-56g: /kisit-onay'da operatorun ONAYLADIGI kisitlar (varsa)
+        # siparisle birlikte akar; alan yoksa order dict bit-ozdes eski sekil.
+        if meta.get("motor_kisitlari"):
+            order["motor_kisitlari"] = meta["motor_kisitlari"]
+        if meta.get("not_adaylari"):
+            order["not_adaylari"] = meta["not_adaylari"]
         scenario = {**RICH_SCENARIO, "orders": [order]}
         # adet-giris yolu da aile-yonlendirmeli (F5 asama-2 rollout 2026-07-05)
         scenario["auto_family_routing"] = True
@@ -3273,6 +3413,119 @@ def _register_routes(
         # Basariyla islendi -> bekleyen kayidi temizle, sonuc ekranina git.
         _pending_store.remove(order_id)
         return redirect(url_for("sonuc"))
+
+    # -----------------------------------------------------------------------
+    # K-56g Kisit Onayi: siparis notlarindan uretilen kisit onerilerinin
+    # operator onay yuzeyi. Onaylanan kisitlar pending meta'ya yazilir;
+    # /adet-gir islerken order'a motor_kisitlari olarak gecer. HICBIR kisit
+    # onaysiz uygulanmaz (kisit_modu=otomatik yolu ayri — o yalniz
+    # yuksek-guvenli kisitlari uygular ve raporda gorunur).
+    # -----------------------------------------------------------------------
+
+    @app.route("/kisit-onay", methods=["GET"])
+    def kisit_onay_liste():
+        """Notlu bekleyen siparisleri listele."""
+        bekleyenler = [m for m in _pending_store.list()
+                       if m.get("not_adaylari")]
+        return render_template(
+            "kisit_onay.html",
+            notlu_bekleyenler=bekleyenler,
+            detay=None, oneriler=None, analiz_hata=None,
+            n_ornekleme=0,
+            hata=request.args.get("hata"),
+            kaydedildi=request.args.get("kaydedildi"),
+        )
+
+    @app.route("/kisit-onay/<order_id>", methods=["GET"])
+    def kisit_onay_detay(order_id):
+        """Tek siparis: notlar + canli kisit onerisi (oylama+hakem) + form.
+
+        Oneriler meta'ya `kisit_onerileri` olarak KAYDEDILIR — POST tarafi
+        LLM'i yeniden cagirmadan ayni listeden calisir (determinizm).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None or not meta.get("not_adaylari"):
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        oneriler = None
+        analiz_hata = None
+        n_orn = 0
+        kisit_role = (llm_components or {}).get("kisit_role")
+        if kisit_role is None:
+            analiz_hata = "LLM aktif degil (Ollama kapali olabilir)"
+        else:
+            try:
+                from src.runtime.note_pipeline import analyze_order_notes
+                sahte_order = {
+                    "order_id": order_id,
+                    "not_adaylari": meta["not_adaylari"],
+                    "stl_names": meta.get("stl_names") or [],
+                    "container": meta.get("container"),
+                }
+                sahte_order = analyze_order_notes(
+                    sahte_order, kisit_role,
+                    (llm_components or {}).get("kisit_hakem_role"),
+                    mode="golge",  # oneri uretimi — uygulama karari operatorde
+                )
+                na = sahte_order.get("not_analizi") or {}
+                if na.get("hata"):
+                    analiz_hata = na["hata"]
+                elif na.get("injection_suphesi"):
+                    analiz_hata = ("injection suphesi — oneriler guvenilmez, "
+                                   "maili elle inceleyin")
+                else:
+                    oneriler = na.get("kisitlar") or []
+                    n_orn = na.get("n_ornekleme", 0)
+                    _pending_store.update_meta(
+                        order_id, kisit_onerileri=oneriler)
+            except Exception as exc:
+                logger.exception("kisit-onay: analiz hatasi: %s", exc)
+                analiz_hata = str(exc)
+
+        return render_template(
+            "kisit_onay.html",
+            notlu_bekleyenler=None,
+            detay=meta, oneriler=oneriler, analiz_hata=analiz_hata,
+            n_ornekleme=n_orn,
+            hata=None, kaydedildi=None,
+        )
+
+    @app.route("/kisit-onay/<order_id>", methods=["POST"])
+    def kisit_onay_isle(order_id):
+        """Secili onerileri derleyip meta.motor_kisitlari'na kaydet.
+
+        LLM YENIDEN CAGRILMAZ: oneriler GET aninda meta'ya yazilan
+        `kisit_onerileri` listesinden okunur; form yalniz indeks secer.
+        Hicbir secim yoksa motor_kisitlari SILINIR (onay geri alma).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        oneriler = meta.get("kisit_onerileri") or []
+        secili = [k for i, k in enumerate(oneriler)
+                  if request.form.get(f"onay_{i}")]
+
+        from src.runtime.constraint_compiler import compile_constraints
+        from src.runtime.note_pipeline import URETIM_N_ORIENTATIONS
+        cont = meta.get("container") or {}
+        derlenen = compile_constraints(
+            secili, meta.get("stl_names") or [],
+            plate_w_mm=cont.get("width_mm"), plate_d_mm=cont.get("depth_mm"),
+            n_orientations=URETIM_N_ORIENTATIONS,
+        )
+        _pending_store.update_meta(
+            order_id,
+            motor_kisitlari=derlenen.motor_kisitlari or None,
+            onaylanan_kisitlar=secili or None,
+        )
+        logger.info(
+            "kisit-onay: %s icin %d kisit onaylandi (motor: %s)",
+            order_id, len(secili),
+            list((derlenen.motor_kisitlari or {}).keys()) or "yok")
+        return redirect(url_for("kisit_onay_liste") + "?kaydedildi=1")
 
     # -----------------------------------------------------------------------
     # Oncelik Plani rotasi (deterministik, LLM gerektirmez)

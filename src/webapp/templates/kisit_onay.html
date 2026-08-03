@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Kısıt Onayı — Sipariş Notları{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Kısıt Onayı &mdash; Sipariş Notları</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Sipariş mailinde <strong>parça notu</strong> tespit edildi ("dik üretilecek",
+        "konumu değişmeyecek" gibi). Sistem notları analiz edip kısıt önerir;
+        <strong>onayladığınız</strong> kısıtlar siparişe kaydedilir ve sipariş
+        <a href="/adet-gir">Adet Girişi</a>'nden işlenirken uygulanır.
+        Onaylamadığınız hiçbir kısıt uygulanmaz.
+    </p>
+
+    {% if hata == "bulunamadi" %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
+        Sipariş bulunamadı (zaten işlenmiş veya silinmiş olabilir).
+    </div>
+    {% elif kaydedildi %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:13px;">
+        ✓ Onaylanan kısıtlar siparişe kaydedildi. Sipariş
+        <a href="/adet-gir">Adet Girişi</a>'nden işlenirken uygulanacak.
+    </div>
+    {% endif %}
+
+    {% if detay %}
+    {# ---------- Tek sipariş detayı: notlar + öneriler + onay formu ---------- #}
+    <div style="margin:16px 0; padding:16px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-surface, #fff);">
+        <div style="font-weight:700; font-size:15px;">{{ detay.customer or "Bilinmeyen müşteri" }}</div>
+        <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:10px;">
+            Sipariş: <code>{{ detay.order_id }}</code>{% if detay.konu %} · {{ detay.konu }}{% endif %}
+        </div>
+
+        <div style="font-weight:600; font-size:13px; margin:10px 0 4px;">Tespit edilen notlar</div>
+        <ul style="font-size:13px; margin:0 0 12px 18px;">
+            {% for a in detay.not_adaylari %}
+            <li><code>{{ a.satir }}</code>
+                <span style="color:var(--color-text-muted);">({{ a.kaynak }}{% if a.parca_adaylari %} · parça: {{ a.parca_adaylari|join(", ") }}{% endif %})</span>
+            </li>
+            {% endfor %}
+        </ul>
+
+        {% if analiz_hata %}
+        <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fffbe6; border:1px solid #f0e0a0; font-size:13px;">
+            Kısıt önerisi üretilemedi: {{ analiz_hata }}<br>
+            Notları manuel değerlendirin; sipariş kısıtsız işlenebilir.
+        </div>
+        {% elif oneriler %}
+        <form method="POST" action="/kisit-onay/{{ detay.order_id }}">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            <div style="font-weight:600; font-size:13px; margin:10px 0 4px;">Önerilen kısıtlar</div>
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
+                        <th style="padding:6px 8px; width:36px;">Onay</th>
+                        <th style="padding:6px 8px;">Kısıt</th>
+                        <th style="padding:6px 8px;">Parça</th>
+                        <th style="padding:6px 8px;">Oy / Hakem / Güven</th>
+                        <th style="padding:6px 8px;">Gerekçe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for k in oneriler %}
+                    <tr style="border-bottom:1px solid var(--color-border); {% if k.derleme != 'derlendi' %}opacity:0.55;{% endif %}">
+                        <td style="padding:6px 8px;">
+                            {% if k.derleme == 'derlendi' %}
+                            <input type="checkbox" name="onay_{{ loop.index0 }}"
+                                   {% if k.nihai_guven == 'yuksek' %}checked{% endif %}>
+                            {% else %}&mdash;{% endif %}
+                        </td>
+                        <td style="padding:6px 8px;"><code>{{ k.tip }}</code>{% if k.deger %} {{ k.deger }}{% endif %}</td>
+                        <td style="padding:6px 8px; font-family:'IBM Plex Mono', monospace;">{{ k.parca_adi or "?" }}</td>
+                        <td style="padding:6px 8px;">{{ k.oy }}/{{ n_ornekleme }} · {{ k.hakem }} · <strong>{{ k.nihai_guven }}</strong></td>
+                        <td style="padding:6px 8px; font-size:12px;">{{ k.gerekce }}{% if k.derleme_sebep %} <span style="color:#b00;">[{{ k.derleme_sebep }}]</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p style="font-size:12px; color:var(--color-text-muted); margin:8px 0 12px;">
+                Yalnız işaretli kısıtlar kaydedilir. Soluk satırlar derlenemedi
+                (uygulanamaz) — bilgi için gösteriliyor.
+            </p>
+            <button type="submit" class="btn btn-primary" style="font-size:14px; padding:9px 18px;">
+                Seçili Kısıtları Kaydet
+            </button>
+        </form>
+        {% else %}
+        <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fffbe6; border:1px solid #f0e0a0; font-size:13px;">
+            Analiz kısıt önerisi üretmedi (notlar kısıt içermiyor olabilir).
+        </div>
+        {% endif %}
+    </div>
+
+    {% else %}
+    {# ---------- Liste: notlu bekleyen siparişler ---------- #}
+    {% if not notlu_bekleyenler %}
+    <div style="margin:16px 0; padding:14px 16px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
+        ✓ Notlu bekleyen sipariş yok.
+    </div>
+    {% else %}
+    {% for o in notlu_bekleyenler %}
+    <div style="margin:12px 0; padding:12px 16px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-surface, #fff); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+            <div style="font-weight:700; font-size:14px;">{{ o.customer or "Bilinmeyen müşteri" }}</div>
+            <div style="font-size:12px; color:var(--color-text-muted);">
+                <code>{{ o.order_id }}</code> · {{ o.not_adaylari|length }} not
+                {% if o.motor_kisitlari %} · <strong style="color:#0a7d32;">kısıt onaylı</strong>{% endif %}
+            </div>
+        </div>
+        <a class="btn btn-primary" style="font-size:13px; padding:7px 14px;"
+           href="/kisit-onay/{{ o.order_id }}">Notları İncele &rarr;</a>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-muted);">
+        Öneriler yerel yapay zekâ (Ollama) ile 3 bağımsız okuma + hakem model
+        oylamasından gelir; <strong>hiçbir kısıt onaysız uygulanmaz</strong>.
+        Analiz kapalıysa notlar yine burada görünür.
+    </div>
+</div>
+{% endblock %}

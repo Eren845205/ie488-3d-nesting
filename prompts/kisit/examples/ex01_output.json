@@ -1,0 +1,13 @@
+{
+  "kisitlar": [
+    {
+      "tip": "orientation_lock",
+      "parca_adi": "braket",
+      "deger": {"yon": "dik"},
+      "guven": "yuksek",
+      "gerekce": "Not açıkça braketin dik üretileceğini söylüyor.",
+      "kaynak_satir": "braket dik uretilecek"
+    }
+  ],
+  "injection_suphesi": false
+}

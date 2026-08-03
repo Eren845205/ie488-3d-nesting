@@ -1008,6 +1008,57 @@ class TestClearanceGate:
         assert "devox patladi" in instr.get("clearance_check_error", "")
 
 
+class TestKapaliKaviteGate:
+    """FAZ-1 kapali kavite TELEMETRISI (_kapali_kavite_gate, DENETIM_RAPORU_
+    2026-07-03.md #21). Tek-tarafli: hata olursa instr'a alan hic konmaz,
+    uretim (nest sonucu) ASLA etkilenmez. kapali_kavite_analizi mock'lanir
+    (agir geometri gerekmez) — TestClearanceGate ile ayni izolasyon deseni.
+    """
+
+    def test_alan_eklenir(self, monkeypatch):
+        from scripts import demo_pipeline as dp
+        import src.nesting3d.cavity as cav
+
+        monkeypatch.setattr(cav, "occ_grid_from_placements",
+                            lambda *a, **k: object())
+        monkeypatch.setattr(
+            cav, "kapali_kavite_analizi",
+            lambda *a, **k: {"hacim_mm3": 12.0, "n_bolge": 1,
+                             "en_buyuk_mm3": 12.0, "sure_s": 0.001})
+        instr = {}
+        dp._kapali_kavite_gate(["p1", "p2"], {}, 100.0, 100.0, 2.0, instr)
+        assert instr["kapali_kavite"]["hacim_mm3"] == 12.0
+        assert instr["kapali_kavite"]["n_bolge"] == 1
+
+    def test_hata_durumunda_alan_konmaz(self, monkeypatch):
+        """kapali_kavite_analizi patlarsa instr'da alan HIC OLMAMALI —
+        cozum/uretim akisi bundan bagimsiz devam eder (tek-tarafli sart)."""
+        from scripts import demo_pipeline as dp
+        import src.nesting3d.cavity as cav
+
+        def _boom(*a, **k):
+            raise RuntimeError("kavite analizi patladi")
+
+        monkeypatch.setattr(cav, "occ_grid_from_placements",
+                            lambda *a, **k: object())
+        monkeypatch.setattr(cav, "kapali_kavite_analizi", _boom)
+        instr = {}
+        dp._kapali_kavite_gate(["p1", "p2"], {}, 100.0, 100.0, 2.0, instr)
+        assert "kapali_kavite" not in instr
+
+    def test_bos_yerlesimde_atlanir(self):
+        from scripts import demo_pipeline as dp
+        instr = {}
+        dp._kapali_kavite_gate([], {}, 100.0, 100.0, 2.0, instr)
+        assert "kapali_kavite" not in instr
+
+    def test_gecersiz_pitch_atlanir(self):
+        from scripts import demo_pipeline as dp
+        instr = {}
+        dp._kapali_kavite_gate(["p1"], {}, 100.0, 100.0, 0.0, instr)
+        assert "kapali_kavite" not in instr
+
+
 # ---------------------------------------------------------------------------
 # K-53c (2026-07-16): aile poz-seti onerisi kablosu — rot-sokum thin_shell
 # NFV yolunda nfv_quality verilmemisse "max" (AX24) dolar; acik deger ezer.

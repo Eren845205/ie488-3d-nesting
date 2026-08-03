@@ -191,9 +191,30 @@ def _parse_xlsx(icerik: bytes) -> List[Dict[str, Any]]:
 # CSV parse
 # ---------------------------------------------------------------------------
 
+def _sniff_delimiter(text: str) -> str:
+    """CSV ayracini tespit eder (Dalga-2 #11: Turkce Excel ';' ayraci kullanir).
+
+    Once csv.Sniffer dener (';', ',', '\\t' adaylariyla); basarisiz olursa
+    ilk satirda hangi aday karakter GECIYORSA o secilir (ilk-satirda hicbiri
+    yoksa varsayilan ',' korunur — geriye uyum).
+    """
+    ornek = "\n".join(text.splitlines()[:5])
+    try:
+        dialect = csv.Sniffer().sniff(ornek, delimiters=";,\t")
+        return dialect.delimiter
+    except csv.Error:
+        pass
+    ilk_satir = text.splitlines()[0] if text.splitlines() else ""
+    for aday in (";", ",", "\t"):
+        if aday in ilk_satir:
+            return aday
+    return ","
+
+
 def _parse_csv(icerik: bytes) -> List[Dict[str, Any]]:
     """csv modulu ile .csv dosyasindan parca listesi cikar.
 
+    Ayrac otomatik tespit edilir (Dalga-2 #11: Turkce Excel ';' ayraci).
     Bos veya taninamayan baslik -> bos liste + uyari log.
     """
     try:
@@ -207,7 +228,8 @@ def _parse_csv(icerik: bytes) -> List[Dict[str, Any]]:
         return []
 
     try:
-        reader = csv.DictReader(io.StringIO(text))
+        delimiter = _sniff_delimiter(text)
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
         raw_headers = list(reader.fieldnames or [])
         if not raw_headers:
             logger.warning("order_attachment_parser: csv baslik satiri bos.")

@@ -119,3 +119,69 @@ def hedefli_tilt_overrides(instance, hedef_ad: str, *, plate_w_mm: float,
                     and g.shape[2] < z_esik):
                 ok.append(R)
     return {str(hedef_ad): ok} if ok else None
+
+
+def duz_pin_onerisi(instance, hedef_ad: str, *, plate_w_mm: float,
+                    plate_d_mm: float, no_go_soft, fine_pitch: float,
+                    giris_tolerans_mm: float = 2.0) -> Optional[dict]:
+    """K-56g: tilt-zorunlu parcaya DUZ (raw) PIN onerisi uret (K-56f kaniti:
+    plan1 zinciri 302.8 -> 140.21 LEGAL).
+
+    Tetik GEOMETRIKTIR (A11 — kodda set adi yok): hicbir duz pozu no-go'lu
+    plakaya sigmayan yukseklik-surucu parca (cagiran tilt_parca ile gelir),
+    duz raw ayak iziyle plakaya X-ORTALI + Y-UZAK-KENARA-DAYALI sigiyorsa ve
+    soft no-go sinirina girisi tolerans icindeyse pinlenir (aramaya sokulmaz).
+
+    Pin MARGIN'SIZ raw voxelize ile hesaplanir (K-56f: komsular kendi 2mm
+    marjini tasir; tek-tarafli dilation bosluk garantisi). rot=None = duz poz.
+
+    Doner: {"ad", "x_mm", "y_mm", "z_mm", "rot", "giris_mm"} veya None
+    (parca yok / mesh uretilemedi / sigmiyor / giris > tolerans). "giris_mm"
+    yalniz RAPOR icindir — pinned_placements'a verilirken cagiran ayiklar.
+    Deterministik; hata her dalda None (konservatif: cagiran pin'siz devam).
+    """
+    from src.nesting3d.instances.format import _make_mesh
+    from src.nesting3d.voxelize import voxelize_part
+
+    if no_go_soft is None:
+        return None
+    try:
+        (sx1, _sy1), (sx2, sy2) = no_go_soft
+        sx1, sx2, sy2 = float(sx1), float(sx2), float(sy2)
+    except Exception:
+        return None
+
+    hedef = None
+    for p in getattr(instance, "parts", []) or []:
+        if str(getattr(p, "name", "")) == str(hedef_ad):
+            hedef = p
+            break
+    if hedef is None:
+        return None
+    try:
+        mesh = _make_mesh(hedef)
+    except Exception:
+        return None
+
+    try:
+        vp = voxelize_part(str(hedef_ad), mesh, fine_pitch,
+                           rot_matrices=[np.eye(4)], method="slice", margin=0)
+    except Exception:
+        return None
+    g = vp.orientations[0].grid
+    fw, fh = int(g.shape[0]), int(g.shape[1])
+    nx = int(plate_w_mm // fine_pitch)
+    ny = int(plate_d_mm // fine_pitch)
+    ix, iy = (nx - fw) // 2, ny - fh
+    if ix < 0 or iy < 0:
+        return None  # duz raw poz plakaya sigmiyor
+
+    x_mm, y_mm = ix * fine_pitch, iy * fine_pitch
+    # soft dikdortgene giris: yalniz x-araligi kesisiyorsa anlamli
+    x_kesisir = (x_mm < sx2) and (x_mm + fw * fine_pitch > sx1)
+    giris = max(0.0, sy2 - y_mm) if x_kesisir else 0.0
+    if giris > float(giris_tolerans_mm):
+        return None  # "cok hafif giris" sinirini asiyor (konservatif)
+
+    return {"ad": str(hedef_ad), "x_mm": float(x_mm), "y_mm": float(y_mm),
+            "z_mm": 0.0, "rot": None, "giris_mm": round(float(giris), 3)}

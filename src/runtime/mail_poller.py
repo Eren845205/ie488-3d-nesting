@@ -61,6 +61,9 @@ def process_inbox_once(
     pending_store: Any = None,
     on_stage: Optional[Any] = None,
     on_result: Optional[Any] = None,
+    kisit_role: Any = None,
+    kisit_hakem_role: Any = None,
+    kisit_modu: str = "kapali",
 ) -> Optional[Dict[str, Any]]:
     """Gelen kutusunu BIR kez isle: cek -> parse -> pipeline.
 
@@ -136,6 +139,15 @@ def process_inbox_once(
                         konu=mail.konu,
                         stl_map=order.get("_stl_map", {}),
                         container=order.get("container"),
+                        # K-56g: not alanlari (yoksa None -> meta bit-ozdes)
+                        not_adaylari=order.get("not_adaylari"),
+                        govde_metni=order.get("govde_metni"),
+                        # 2026-08-03 kayip-veri fix'i: share-link dali bu
+                        # alanlari uretiyordu ama store'a gecirilmiyordu ->
+                        # meta.json bos kaliyor, operator linki goremiyordu.
+                        review_reason=order.get("review_reason", ""),
+                        share_links=order.get("share_links"),
+                        adet_listesi=order.get("adet_listesi"),
                     )
                 except Exception as exc:
                     logger.warning(
@@ -153,6 +165,13 @@ def process_inbox_once(
 
         if not order.get("deadline"):
             order["deadline"] = fallback
+
+        # K-56g not->kisit analizi (yapisal kapi note_pipeline'da: notsuz
+        # order / kisit_modu=kapali -> order aynen doner, LLM'e dokunulmaz).
+        from src.runtime.note_pipeline import analyze_order_notes
+        order = analyze_order_notes(
+            order, kisit_role, kisit_hakem_role, mode=kisit_modu)
+
         orders.append(order)
         order_mails.append(mail)
 
@@ -363,6 +382,9 @@ class MailPoller:
         now: Optional[Callable[[], float]] = None,
         pending_store: Any = None,
         inflight_lock: Optional[threading.Lock] = None,
+        kisit_role: Any = None,
+        kisit_hakem_role: Any = None,
+        kisit_modu: str = "kapali",
     ) -> None:
         self._make_source = make_source
         self._parser_role = parser_role
@@ -371,6 +393,10 @@ class MailPoller:
         self._on_result = on_result
         self._now = now
         self._pending_store = pending_store
+        # K-56g not->kisit hatti (default kapali = davranis birebir)
+        self._kisit_role = kisit_role
+        self._kisit_hakem_role = kisit_hakem_role
+        self._kisit_modu = kisit_modu
         self.state = PollState(interval_s=interval_s)
         # _stop: AKTIF thread'in stop sinyali. Her start() TAZE bir Event yaratir
         # -> eski thread eski (set edilmis) event'iyle olur, yenisi temiz event'le
@@ -428,6 +454,9 @@ class MailPoller:
                 pending_store=self._pending_store,
                 on_stage=_stage,
                 on_result=self._on_result,
+                kisit_role=self._kisit_role,
+                kisit_hakem_role=self._kisit_hakem_role,
+                kisit_modu=self._kisit_modu,
             )
             with self._lock:
                 self.state.last_error = None

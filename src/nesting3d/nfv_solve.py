@@ -103,10 +103,16 @@ def _nfv_clearance_voxels(clearance_mm, pitch, margin):
 
 
 def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
-                  allowed_orientations=None, clearance_mm=0.0):
+                  allowed_orientations=None, clearance_mm=0.0,
+                  orientation_overrides=None):
     """coarse_to_fine._voxelize_with_fallback mantığı + margin (o fonksiyon margin geçmiyor).
     İnce-duvar parça pitch'te kaybolursa (ValueError) pitch'i kıs, floor'a kadar dene. (parts, used).
     allowed_orientations verilirse (K-18p AX24) n_orientations yok sayılır.
+
+    orientation_overrides (K-56g NFV kolu, hoca S2 2026-07-22): {model adı ->
+    poz indeks tuple'ı} — adı eşleşen model YALNIZ bu pozlarda voxelize edilir
+    (sipariş-notu duruş kilidi; global allowed_orientations'ı o model için
+    ezer). None (default) = bit-özdeş.
 
     clearance_mm > 0 iken xy margin + tek-taraflı z-dilation GERÇEK kullanılan
     pitch'ten türetilir (EVAL-1 NFV dikey-clearance fix); default 0.0 -> davranış
@@ -117,14 +123,16 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
         try:
             return to_voxel_parts(instance, cur, n_orientations=n_orientations,
                                   margin=eff_margin, z_dilate=z_dilate,
-                                  allowed_orientations=allowed_orientations), cur
+                                  allowed_orientations=allowed_orientations,
+                                  orientation_overrides=orientation_overrides), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
                 fm, fz = _nfv_clearance_voxels(clearance_mm, floor_pitch, margin)
                 return (to_voxel_parts(instance, floor_pitch, n_orientations=n_orientations,
                                        margin=fm, z_dilate=fz,
-                                       allowed_orientations=allowed_orientations), floor_pitch)
+                                       allowed_orientations=allowed_orientations,
+                                       orientation_overrides=orientation_overrides), floor_pitch)
             cur = nxt
 
 
@@ -134,7 +142,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               time_budget_sec=None, clearance_mm=0.0,
               no_go_bounds=None,
               repair_separability=False,
-              exit_guard=False, exit_guard_retries=2) -> CoarseToFineResult:
+              exit_guard=False, exit_guard_retries=2,
+              orientation_overrides=None) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -190,7 +199,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             n_reason = f"n={n_orientations} (default, 4subset8 garanti)"
     parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin,
                                       allowed_orientations=allowed_orients,
-                                      clearance_mm=clearance_mm)
+                                      clearance_mm=clearance_mm,
+                                      orientation_overrides=orientation_overrides)
     # fine-settle aynı clearance kuralına uyar (aksi hâlde settle kazanılan boşluğu
     # geri yer). used_pitch'ten türetilen (xy margin, z-dilation) settle'a geçilir.
     settle_margin, settle_zc = _nfv_clearance_voxels(clearance_mm, used_pitch, margin)
@@ -334,6 +344,7 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                      n_orientations=None, time_budget_sec=None,
                      r11=False, r11_samples=12000,
                      rot_kabul=False, rot_butce_s=1200.0,
+                     orientation_overrides=None,
                      _solve=None, _check_5dir=None, _check_rot=None):
     """K-36/38/41/44 sampiyon recetesi: kalite-NFV + kosullu exit_guard.
 
@@ -500,7 +511,8 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
     ham = solve(instance, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                 fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                 n_orientations=n_orientations, time_budget_sec=time_budget_sec,
-                clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds)
+                clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
+                orientation_overrides=orientation_overrides)
     _solve_ham_s = time.perf_counter() - _ts
     _ts = time.perf_counter()
     ham_kilit = _kilit(ham)
@@ -535,7 +547,8 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                   fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                   n_orientations=n_orientations, time_budget_sec=time_budget_sec,
                   clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
-                  exit_guard=True)
+                  exit_guard=True,
+                  orientation_overrides=orientation_overrides)
     _solve_guard_s = time.perf_counter() - _ts
     _ts = time.perf_counter()
     guard_kilit = _kilit(guard)

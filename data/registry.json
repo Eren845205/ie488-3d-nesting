@@ -5,9 +5,9 @@
     "plan2":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cavity-zengin capa; plaka 328.74x328.19 BILINEN gercek"},
     "plan3":   {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "hoca-2026-06", "not": "cubuk-agir; solo auto-plaka 1046mm (2026-07-07); gercek plaka SORULACAK (S8)"},
     "deneme4": {"rol": "dev",      "aile_f1": "thin_shell", "kaynak": "hoca-2026-07-03", "not": "kabuk ailesi; plaka 325x325 (hoca 335-2x5); anchor 264.0mm"},
-    "deneme5": {"rol": "dev",      "aile_f1": "tube",       "kaynak": "hoca-2026-07-07", "not": "K-44/47a tuning'de kullanildi -> dev (A3: held-out ILAN EDILEMEZ); 216x ince cubuk + kutular; aile_f1=classify_prelim(tube, conf 0.53) — Eren teyit edecek; sampiyon 218.0 @1.0 (2026-07-13)"},
-    "deneme6": {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-08", "not": "DOGUSTAN held-out (01_VERI §3); 15 parca x1; referans 86.32 MANUEL (A10 serhli); cozum HIC kosulmadi (A3)"},
-    "plan7":   {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-20", "not": "DOGUSTAN held-out (01_VERI §3); 10 parca tipi / 345 adet; referans 595mm URETIM YUKSEKLIGI (hazirlanis yontemi+bosluk kosulu mailde yok -> A10 serhli); mail kisiti: 288101642-a2 'Konumu degismeyecek' (pin, K-56g kablosu baglanana dek kosu serhli); ZIP Drive'dan indirildi 2026-07-21; cozum HIC kosulmadi (A3)"},
+    "deneme5": {"rol": "dev",      "aile_f1": "tube",       "kaynak": "hoca-2026-07-07", "not": "K-44/47a tuning'de kullanildi -> dev (A3: held-out ILAN EDILEMEZ); 216x ince cubuk + kutular; aile_f1=classify_prelim(tube, conf 0.53) — Eren teyit edecek; SAMPIYON 214.64 R11-v4 (K-50, 2026-07-14; STL deneme5_r11v4_214.6mm.stl; eski 218.0 @1.0 ve 216.96 @2.0+R11 asildi — kayit duzeltmesi 2026-07-25)"},
+    "deneme6": {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-08", "not": "DOGUSTAN held-out (01_VERI §3); 15 parca x1; referans 86.32 MANUEL; ILK KOR-TEST 2026-07-21: uretim 68.50 LEGAL (−%20.6 manuel-alti, 29sn) + max 65.50 (−%24.1); kanit results/deneme6_heldout_final.json (kayit duzeltmesi 2026-07-25: eski 'cozum HIC kosulmadi' notu bayatti)"},
+    "plan7":   {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-20", "not": "DOGUSTAN held-out (01_VERI §3); 10 parca tipi / 345 adet; referans 595mm (S1 cevabi 2026-07-22: Magics+manuel karisik, bosluk firmaca bilinmiyor AMA 2mm mutabakati + no-go dahil -> A10 serhi buyuk olcude kalkti); ILK KOR-TEST 2026-07-21: uretim 488.40 LEGAL (−%17.9 manuel-alti, 103dk; kisitsiz) + max BIREBIR; mail kisiti 288101642-a2 = S2 cevabi 2026-07-22: pin DEGIL DURUS KILIDI (oryantasyon; z/x-y serbest; poz {0,1,4,5}); a2-kisitli yeniden-cozum BEKLIYOR (scripts/plan7_kisitli_cozum.py hazir, kosulmadi); ZIP D:\\ie488\\data\\plan7_gelen\\Plan7.zip"},
     "numune":  {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-05", "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"},
     "boxy":    {"rol": "held-out", "aile_f1": "solid_bulk", "kaynak": "sentetik",     "not": "kutu stres seti"}
   },
@@ -16,6 +16,16 @@
       "setler": ["plan7"],
       "tarih": "2026-07-21T15:20:00",
       "sebep": "envanter/metadata bakisi (deneme6 emsali): ZIP indirme sonrasi bbox+ucgen+watertight sayimi; COZUM KOSULMADI. Kanit: results/plan7_envanter.json"
+    },
+    {
+      "setler": ["deneme6"],
+      "tarih": "2026-07-21T20:22:00",
+      "sebep": "ILK KOR-TEST (heldout-final, out-of-the-box): uretim 68.50 LEGAL + max 65.50. Kanit: results/deneme6_heldout_final.json. (Bakis kaydi 2026-07-25 geri-doldu — kosu gunu bakislar'a islenmemisti, kayit acigi.)"
+    },
+    {
+      "setler": ["plan7"],
+      "tarih": "2026-07-21T20:20:00",
+      "sebep": "ILK KOR-TEST (heldout-final, out-of-the-box, kisitsiz): uretim 488.40 LEGAL; max kolu ayri proses BIREBIR (2026-07-21 aksami). Kanit: results/plan7_heldout_final.json + plan7_max_kolu.json. (Bakis kaydi 2026-07-25 geri-doldu.)"
     }
   ],
   "kural": "Yeni gercek siparis DOGUSTAN held-out (01_VERI §3); ayni aileden >=2 birikince en eskisi ACIK KARARLA dev'e terfi edebilir."

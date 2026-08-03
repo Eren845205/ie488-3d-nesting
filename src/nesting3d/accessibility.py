@@ -83,6 +83,10 @@ class AccessibilityReport:
     locked_groups: List[List[str]] = field(default_factory=list)
     n_locked: int = 0
     n_parts: int = 0
+    # 2026-07-26 (rehberli sokum, ADDITIVE): removable_order ile PARALEL cikis
+    # yonleri ("+Z"/"+X"/"-X"/"+Y"/"-Y"). Yalniz check_separability_5dir
+    # doldurur; +Z-tek denetimde bos kalir (eski cagiranlara etki yok).
+    removable_yonler: List[str] = field(default_factory=list)
 
     @property
     def all_accessible(self) -> bool:
@@ -386,6 +390,7 @@ def check_separability_5dir(placements: Sequence[object],
 
     alive = set(range(n))
     removable_order: List[str] = []
+    removable_yonler: List[str] = []
     while alive:
         freed = []
         # P1 determinizm sertlestirmesi (2026-07-15): sorted(alive) — set
@@ -401,6 +406,9 @@ def check_separability_5dir(placements: Sequence[object],
             break
         for i, _yon in freed:
             removable_order.append(sahneler["+Z"][i].part_id)
+            # Rehberli sokum (2026-07-26): parcayi serbest birakan ILK yon
+            # (_YON_5 tarama sirasi: +Z oncelikli = operatore en kolay talimat).
+            removable_yonler.append(_yon)
             alive.discard(i)
         for i, _yon in freed:
             for yon in _YON_5:
@@ -412,6 +420,7 @@ def check_separability_5dir(placements: Sequence[object],
     groups = _locked_groups(sahneler["+Z"], kalan) if kalan else []
     return AccessibilityReport(
         removable_order=removable_order,
+        removable_yonler=removable_yonler,
         locked_groups=groups,
         n_locked=len(kalan),
         n_parts=n,

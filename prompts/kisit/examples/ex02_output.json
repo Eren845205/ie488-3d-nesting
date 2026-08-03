@@ -1,0 +1,13 @@
+{
+  "kisitlar": [
+    {
+      "tip": "orientation_lock",
+      "parca_adi": "kapak",
+      "deger": {"yon": "yatay"},
+      "guven": "yuksek",
+      "gerekce": "Not kapakların yatay basılmasını açıkça istiyor; kenar gerekçesi yön kilidini destekliyor.",
+      "kaynak_satir": "Kapak parcalari yatay basilmali lutfen, kenarlari bozulmasin"
+    }
+  ],
+  "injection_suphesi": false
+}

@@ -70,7 +70,16 @@ COARSE_BUDGET = 25           # kaba aşama iterasyon (final ince + tam menü)
 # (K-38 clearance-kuantizasyonu: pitch == clearance = tek-voxel TAM pencere).
 # Fix 2026-07-06: eski web yolu margin=0 + z_clearance=1 -> ince pitch'te (Deneme4
 # @0.5mm) gerçek boşluk 0.083mm'ye iniyordu (ihlal); artık pitch'ten türetilir.
-WEB_MIN_CLEARANCE_MM = 2.0
+#
+# Kod-sabiti config/env'e taşındı (2026-07-25): src/runtime/plate_config.py
+# resolve_clearance() öncelik sırası configs/plate.local.json "min_clearance_mm"
+# -> env NESTING_CLEARANCE_MM -> default 2.0. Alan/env yokken davranış BİREBİR
+# (2.0) kalır. scripts/eval_gate.py CLEARANCE_REQ_MM (sözleşme sabiti, A2) ile
+# aynı sayısal değer olmalı — ayrı sabittir, resolve_clearance sözleşmeyi
+# DEĞİŞTİRMEZ, yalnız demo_pipeline'in kod-yolunu hazırlar.
+from src.runtime.plate_config import resolve_clearance as _resolve_clearance
+
+WEB_MIN_CLEARANCE_MM = _resolve_clearance()
 
 # HIGH-2 runtime clearance kapisi (2026-07-06): her web nest'ten SONRA uretilen
 # yerlesimin gercek min boslugu ORNEKLEM ile dogrulanir. min_clearance UST-sinir
@@ -619,6 +628,33 @@ def _clearance_gate(placements, voxel_parts_dict, pitch: float,
     return ""
 
 
+def _kapali_kavite_gate(placements, voxel_parts_dict, plate_w_mm: float,
+                        plate_d_mm: float, pitch: float,
+                        instr: Dict[str, Any]) -> None:
+    """FAZ-1 kapali kavite (SLM toz hapsi) TELEMETRISI (DENETIM_RAPORU_
+    2026-07-03.md #21). Yerlesim sonrasi bin doluluk grid'i uzerinde
+    disaridan erisilemez bos voxel kumelerini olcer, instr'a "kapali_kavite"
+    alanini EKLER — legal/INVALID kararina, clearance'a, separability'ye
+    KESINLIKLE DOKUNMAZ (hoca cevabi bekleniyor; A11/ANAYASA disiplini).
+
+    TEK-TARAFLI: herhangi bir hata/istisnada alan hic konmaz, uretim
+    (nesting cozumu) ASLA etkilenmez — yalniz uyari loglanir.
+    """
+    if not placements or pitch <= 0:
+        return
+    try:
+        from src.nesting3d.cavity import (kapali_kavite_analizi,
+                                          occ_grid_from_placements)
+        nx = max(1, int(plate_w_mm // pitch))
+        ny = max(1, int(plate_d_mm // pitch))
+        occ = occ_grid_from_placements(placements, voxel_parts_dict, nx, ny)
+        instr["kapali_kavite"] = kapali_kavite_analizi(occ, pitch)
+    except Exception as _kk_exc:  # noqa: BLE001 — telemetri, uretimi bozamaz
+        logger.warning(
+            "kapali kavite analizi uretilemedi (uretim etkilenmez): %s",
+            _kk_exc)
+
+
 # ---------------------------------------------------------------------------
 # Fiyat girdisi oluşturucu
 # ---------------------------------------------------------------------------
@@ -750,6 +786,17 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     no_go_bounds = (
         ((float(_ng[0][0]), float(_ng[0][1])), (float(_ng[1][0]), float(_ng[1][1])))
         if _ng else None)
+    # K-56g: siparis-notu kaynakli motor kisitlari (opt-in). Anahtar yokken/
+    # bos dict'ken _kisit_var=False -> asagida HICBIR dal/karar degismez
+    # (bit-ozdes eski yol). Doluyken kisit yalniz coarse_to_fine dalinda
+    # tasinabilir (NFV decode pinned'i reddeder — K-56 guard; tuner/DBLF yolu
+    # kisit parametresi almaz) -> dal zorlamasi asagida.
+    _mk = payload.get("motor_kisitlari") or {}
+    _mk_orient = _mk.get("orientation_overrides") or None
+    _mk_pins = _mk.get("pinned_placements") or None
+    _kisit_var = bool(_mk_orient or _mk_pins)
+    # K-56g: soft no-go ilani (run_pipeline cozer; None = kablo kapali).
+    _ng_soft = payload.get("no_go_soft")
 
     rule_set = RuleSet.from_dict(payload["pricing_rules"])
     pricing_engine = PricingEngine(rule_set)
@@ -851,6 +898,14 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             # Güvenli düşüş: auto türetilemezse hızlı heightmap (regresyon yok).
             nesting_mode = "heightmap"
             auto_reason = f"auto basarisiz ({_auto_exc}) -> heightmap (guvenli dusus)"
+
+    # K-56g DAL ZORLAMASI: motor kisitlari varken nfv modu c2f'e cevrilir
+    # (pitch de asagida heightmap kuralindan turer). Kisit yokken bu blok
+    # hic tetiklenmez -> mod karari bit-ozdes.
+    if _kisit_var and nesting_mode == "nfv":
+        nesting_mode = "heightmap"
+        auto_reason = ((auto_reason + " | ") if auto_reason else "") + \
+            "kisit_yonlendirme: nfv->c2f (motor_kisitlari NFV dalinda tasinamaz)"
 
     try:
         # K-19 OPT-IN: wall_aware_pitch True + kabuk-ailesi + guven kapisi -> cidar
@@ -994,9 +1049,18 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             )
             _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim + r11)
             tune_result = _c2f_result.tune_result
-        elif estimated_n_parts > C2F_THRESHOLD:
+        elif estimated_n_parts > C2F_THRESHOLD or _kisit_var:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
+            # K-56g: kisit varken parca sayisi esigin ALTINDA da bu dala girilir
+            # (tuner/DBLF yolu kisit tasiyamaz); kisitsizken esik karari birebir.
             from src.nesting3d.coarse_to_fine import solve_coarse_to_fine
+            if _kisit_var:
+                _instr["kisit_yonlendirme"] = {
+                    "dal": "c2f",
+                    "orient_kilit": sorted(_mk_orient) if _mk_orient else [],
+                    "n_pin": len(_mk_pins or []),
+                    "tuner_atlandi": estimated_n_parts <= C2F_THRESHOLD,
+                }
             # H-15p: F3 cidar-pitch fiilen uygulandiginda (wall_aware_pitch True
             # = kabuk/donel-simetrik aile) ince-aci rafinesi SONUCA girmiyor ama
             # ~11x yerlesim + ek voxelize odetiyor -> atla (kalite riski sifir).
@@ -1017,12 +1081,37 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "dblf_only: thin_shell/H-15p (coarse tune %90 pay, "
                     "SA/GA kazandirmiyor)"
                 )
+            # K-56g DUZ-PINLEME KABLOSU (kanit K-56f: plan1 zinciri 302.8 ->
+            # 140.21 LEGAL): SOZLESME-KAPILI — no_go_soft ilan edilmedikce
+            # (_ng_soft None) blok hic calismaz, asagidaki tilt yolu birebir.
+            # Tetik GEOMETRIK (A11): tilt-zorunlu yukseklik-surucu parcanin duz
+            # raw pozu, soft sinira toleransli giriste x-ortali/y-dayali
+            # sigiyorsa parca ARAMAYA SOKULMAZ, duz pinlenir; tilt havuzu
+            # SUSTURULUR (K-56f: pin varken gereksiz — bos dict otomatigi
+            # kapatir) ve pahali tilt-taramasi HIC kosulmaz. Siparis-notu pini
+            # (_mk_pins) varsa dokunulmaz (operator otoritesi ustun).
+            _k56g_pin = None
+            if _tilt_parca and _ng_soft and not _mk_pins:
+                try:
+                    from src.nesting3d.targeted_tilt import duz_pin_onerisi
+                    _k56g_pin = duz_pin_onerisi(
+                        instance, _tilt_parca,
+                        plate_w_mm=float(container["width_mm"]),
+                        plate_d_mm=float(container["depth_mm"]),
+                        no_go_soft=_ng_soft, fine_pitch=pitch,
+                        giris_tolerans_mm=WEB_MIN_CLEARANCE_MM)
+                except Exception:
+                    _k56g_pin = None
+                if _k56g_pin:
+                    _instr["k56g_duz_pin"] = dict(_k56g_pin)
             # K-56b URETIM KABLOSU (kanit K-56a: plan1 302.8 -> 202.2 LEGAL
             # serhsiz): tilt-zorunlu parca varsa hedefli tilt havuzu kurulur;
             # None/hata -> tilt'siz mevcut yol BIREBIR (konservatif).
             # eval_gate ile AYNI fonksiyon (K-53d uretim-parite deseni).
             _tilt_over = None
-            if _tilt_parca:
+            if _k56g_pin:
+                _tilt_over = {}  # pin varken tilt otomatigi susturulur (K-56f)
+            elif _tilt_parca:
                 try:
                     from src.nesting3d.targeted_tilt import (
                         hedefli_tilt_overrides)
@@ -1063,6 +1152,14 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 # K-45: yasak bolge (plaka ozelligi) heightmap yolunda da maske
                 # olarak kurulur; None = maske yok (davranis birebir).
                 no_go_bounds=no_go_bounds,
+                # K-56g: siparis-notu kisitlari (None/None = bit-ozdes yol);
+                # not-pini yoksa sozlesme-kapili duz-pin (varsa) devreye girer.
+                # "giris_mm" yalniz rapor alani — pin sozlesmesine girmez.
+                pinned_placements=_mk_pins if _mk_pins else (
+                    [{k: _k56g_pin[k] for k in
+                      ("ad", "x_mm", "y_mm", "z_mm", "rot")}]
+                    if _k56g_pin else None),
+                orientation_overrides=_mk_orient,
             )
             if wall_aware_pitch:
                 _instr["fine_angle_reason"] = "skipped: thin_shell/H-15p"
@@ -1232,6 +1329,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     _clearance_note = _clearance_gate(
         winner_result.placements, voxel_parts_3d, _cl_pitch, _instr)
 
+    # FAZ-1 kapali kavite TELEMETRISI (#21) — tek-tarafli, karara baglanmaz.
+    _kapali_kavite_gate(
+        winner_result.placements, voxel_parts_3d, _cw, _cd, _cl_pitch, _instr)
+
     # TELEMETRI v2 (STRATEJI Faz-2, 2026-07-07): MOD-duzeyi karar + DURUST
     # metrik satiri (data/telemetry/runs_v2.jsonl; v1 dosyasina DOKUNMAZ).
     # Kilit sayisi burada olculur (accessibility ~1sn/588 parca — ucuz);
@@ -1283,6 +1384,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     _instr["nfv_kalite"]["r11"]["min_clearance_mm"]}
                if (_instr.get("nfv_kalite", {}).get("r11", {}) or {})
                .get("uygulandi") else {}),
+            # FAZ-1 kapali kavite (#21) — tek-tarafli telemetri (additive)
+            **({"kapali_kavite_hacmi_mm3":
+                    _instr["kapali_kavite"]["hacim_mm3"]}
+               if _instr.get("kapali_kavite") else {}),
         )
     except _SkipTelemetryV2:
         pass
@@ -1430,6 +1535,9 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         **({"siparis_ozeti": _siparis_ozeti} if _siparis_ozeti else {}),
         # P1 genel sokum sirasi (operator konsolu rehberli-sokum girdisi)
         **({"sokum_sirasi": _sokum_sirasi} if _sokum_sirasi else {}),
+        # FAZ-1 kapali kavite TELEMETRISI (#21) — tek-tarafli, karara BAGLANMAZ
+        **({"kapali_kavite": _instr["kapali_kavite"]}
+           if _instr.get("kapali_kavite") else {}),
     }
 
     pricing_inputs = _build_pricing_inputs(
@@ -1680,12 +1788,26 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     # > plate.local.json "no_go" > env PLATE_NOGO > None (maske yok, davranis
     # birebir). Hoca 2026-07-09 duzeltmesi: x[152.5,185.5] y[0.2,45] tam-yukseklik.
     no_go_bounds = scenario.get("no_go_bounds")
+    no_go_soft = None
     if no_go_bounds is None:
         try:
             from src.runtime.plate_config import resolve_no_go
             no_go_bounds = resolve_no_go(_ROOT)
         except Exception:
             no_go_bounds = None  # config cozulemezse maskesiz devam (guvenli)
+        # K-56g SOZLESME-KAPILI SOFT NO-GO (kanit K-56c: soft maske plan1
+        # 202.2->171.7; hoca 2026-07-09 cevap 3/9 "cok hafif girisler kabul"):
+        # plate config'te "no_go_soft" ILAN EDILMEDIKCE resolve None doner ->
+        # bu blok hic tetiklenmez, no_go_bounds birebir. Ilan edilince efektif
+        # maske soft dikdortgendir (hafif-giris bolgesi 33-45 serbest kalir);
+        # scenario acik no_go verdiyse soft'a HIC bakilmaz (operator otoritesi).
+        try:
+            from src.runtime.plate_config import resolve_no_go_soft
+            no_go_soft = resolve_no_go_soft(_ROOT)
+        except Exception:
+            no_go_soft = None
+        if no_go_soft is not None:
+            no_go_bounds = no_go_soft
 
     # Algoritma-seçim model zarif yükleme (model yoksa None, None)
     _sel_prefilter, _sel_model = _load_selection_model_safe()
@@ -1693,6 +1815,9 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     # --- 1. Sipariş nesnelerini kur + doğrula ---
     orders: List[Order] = []
     order_parts_map: Dict[str, List[Dict[str, Any]]] = {}
+    # K-56g: siparis-bazli motor kisitlari (opt-in alan; yoksa harita bos kalir
+    # ve payload'a anahtar HIC konmaz -> kisitsiz yol bit-ozdes).
+    order_kisit_map: Dict[str, Dict[str, Any]] = {}
     skipped_orders: List[str] = []  # bos/sifir-adet siparisler (atlandi)
 
     for od in scenario["orders"]:
@@ -1733,6 +1858,8 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         o.validate(today)
         orders.append(o)
         order_parts_map[od["order_id"]] = parts_list
+        if od.get("motor_kisitlari"):
+            order_kisit_map[od["order_id"]] = od["motor_kisitlari"]
 
     if not orders:
         # Hicbir gecerli siparis kalmadi -> caller (otonom/poller) yakalar.
@@ -1789,6 +1916,10 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality"),  # None -> aile onerisi (K-53c)
             "no_go_bounds": no_go_bounds,  # K-45: yasak bolge (plaka ozelligi)
+            # K-56g: soft no-go ilani (None = kablo kapali, bit-ozdes).
+            # Aktifken no_go_bounds ZATEN soft dikdortgene esitlenmis durumda;
+            # bu alan yalniz duz-pinleme kararinin giris-toleransi icin tasinir.
+            "no_go_soft": no_go_soft,
             "time_budget_sec": scenario.get("time_budget_sec"),  # #22: None = bugünkü davranış
             # K-19 OPT-IN cidar-duyarli pitch. Yoksa False = gozcu/default davranis
             # DEGISMEZ (BIT-OZDES). True olunca suggest_pitch/suggest_nfv_pitch'e
@@ -1807,6 +1938,22 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # (kabuk->heightmap+wall_aware) — test/acil kapatma anahtari.
             "rot_sokum_routing": bool(scenario.get("rot_sokum_routing", True)),
         })
+        # K-56g: partideki siparislerin motor kisitlarini birlestir; anahtar
+        # YALNIZ doluysa konur -> kisitsiz payload dict'i bit-ozdes eski sekil.
+        _mk_orient_all: Dict[str, Any] = {}
+        _mk_pins_all: List[Any] = []
+        for order in batch.orders:
+            _omk = order_kisit_map.get(order.order_id)
+            if _omk:
+                _mk_orient_all.update(_omk.get("orientation_overrides") or {})
+                _mk_pins_all.extend(_omk.get("pinned_placements") or [])
+        _mk_batch: Dict[str, Any] = {}
+        if _mk_orient_all:
+            _mk_batch["orientation_overrides"] = _mk_orient_all
+        if _mk_pins_all:
+            _mk_batch["pinned_placements"] = _mk_pins_all
+        if _mk_batch:
+            payloads[-1]["motor_kisitlari"] = _mk_batch
 
     # Birden çok bağımsız parti varsa AYRI SÜREÇLERDE paralel koş (örn. 5
     # müşteriden 5 sipariş → 5 parti → ~tek parti süresi, toplamı değil). Sonuç
@@ -1833,6 +1980,13 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = RESULTS_DIR / REPORT_FILENAME
 
+    # K-56g: siparislerdeki not analizi (varsa) rapora tasinir; notsuz
+    # senaryoda dict bos kalir -> rapor bolumu HIC yazilmaz (bit-ozdes).
+    _not_analizleri = {
+        od["order_id"]: od["not_analizi"]
+        for od in scenario["orders"] if od.get("not_analizi")
+    }
+
     report_md = _build_report_markdown(
         today=today,
         ranked=ranked,
@@ -1841,6 +1995,7 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
         nesting_results=nesting_results,
         pricing_results=pricing_results,
         elapsed_total=elapsed_total,
+        not_analizleri=_not_analizleri or None,
     )
     report_path.write_text(report_md, encoding="utf-8")
 
@@ -1878,6 +2033,7 @@ def _build_report_markdown(
     nesting_results: Dict[str, Any],
     pricing_results: Dict[str, Any],
     elapsed_total: float,
+    not_analizleri: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines = []
     lines.append(f"# Demo Pipeline Raporu — {today.isoformat()}")
@@ -2077,6 +2233,44 @@ def _build_report_markdown(
     lines.append(f"| Parti Sayisi | {len(batches)} |")
     lines.append(f"| Uyari Sayisi | {len(warnings)} |")
     lines.append("")
+
+    # --- Bölüm 6: Not Analizi (K-56g; yalniz notlu siparis varsa) ---
+    # not_analizleri None/bos -> bolum HIC yazilmaz (notsuz rapor bit-ozdes).
+    if not_analizleri:
+        lines.append("## 6. Not Analizi (siparis notu -> kisit)")
+        lines.append("")
+        for oid, na in not_analizleri.items():
+            lines.append(f"### Siparis {oid} (mod: {na.get('mode', '?')})")
+            lines.append("")
+            if na.get("hata"):
+                lines.append(f"- HATA: {na['hata']} (siparis kisitsiz kosuldu)")
+                lines.append("")
+                continue
+            if na.get("injection_suphesi"):
+                lines.append("- INJECTION SUPHESI: analiz sonuclari "
+                             "KULLANILMADI; mail operator incelemesi bekliyor")
+            lines.append(
+                f"- ornekleme: {na.get('n_gecerli', 0)}/"
+                f"{na.get('n_ornekleme', 0)} gecerli | hakem: "
+                f"{'evet' if na.get('hakem_kullanildi') else 'hayir'}")
+            if na.get("bilinmeyen_satir"):
+                lines.append(
+                    f"- bilinmeyen satir: {na['bilinmeyen_satir']} "
+                    "(kisit sozlugu kapsamayan not olabilir — golge donem "
+                    "sozluk genisletme girdisi)")
+            for k in na.get("kisitlar", []):
+                lines.append(
+                    f"- [{k.get('tip')}] parca={k.get('parca_adi') or '?'} "
+                    f"deger={k.get('deger')} oy={k.get('oy')} "
+                    f"hakem={k.get('hakem')} guven={k.get('nihai_guven')} "
+                    f"derleme={k.get('derleme')}"
+                    + (f" ({k.get('derleme_sebep')})"
+                       if k.get("derleme_sebep") else ""))
+            if na.get("uygulanan"):
+                lines.append(f"- UYGULANDI: {na['uygulanan']}")
+            for isaret in na.get("operator_isaretleri", []):
+                lines.append(f"- OPERATOR: {isaret}")
+            lines.append("")
 
     return "\n".join(lines)
 

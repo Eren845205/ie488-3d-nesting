@@ -9,7 +9,9 @@ import json
 
 import pytest
 
-from src.runtime.plate_config import resolve_plate, plate_cfg_path
+from src.runtime.plate_config import (
+    resolve_plate, plate_cfg_path, resolve_clearance, DEFAULT_CLEARANCE_MM,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +65,65 @@ def test_gecersiz_deger_none(tmp_path, monkeypatch):
     )
     # gecersiz w/d -> config gecersiz, env de yok -> None
     assert resolve_plate(tmp_path) == (None, None, None)
+
+
+# ---------------------------------------------------------------------------
+# Birim: resolve_clearance oncelik zinciri (WEB_MIN_CLEARANCE_MM kod-sabiti
+# tasima, 2026-07-25)
+# ---------------------------------------------------------------------------
+
+def test_clearance_hicbir_kaynak_yok_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("NESTING_CLEARANCE_MM", raising=False)
+    assert resolve_clearance(tmp_path) == DEFAULT_CLEARANCE_MM == 2.0
+
+
+def test_clearance_config_alani_okunur(tmp_path, monkeypatch):
+    monkeypatch.delenv("NESTING_CLEARANCE_MM", raising=False)
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "plate.local.json").write_text(
+        json.dumps({"min_clearance_mm": 3.5}), encoding="utf-8"
+    )
+    assert resolve_clearance(tmp_path) == 3.5
+
+
+def test_clearance_env_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("NESTING_CLEARANCE_MM", "1.5")
+    assert resolve_clearance(tmp_path) == 1.5
+
+
+def test_clearance_config_env_uzerinde_oncelikli(tmp_path, monkeypatch):
+    monkeypatch.setenv("NESTING_CLEARANCE_MM", "9")
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "plate.local.json").write_text(
+        json.dumps({"min_clearance_mm": 3.5}), encoding="utf-8"
+    )
+    assert resolve_clearance(tmp_path) == 3.5  # config kazandi
+
+
+def test_clearance_gecersiz_deger_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("NESTING_CLEARANCE_MM", raising=False)
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "plate.local.json").write_text(
+        json.dumps({"min_clearance_mm": -1}), encoding="utf-8"
+    )
+    assert resolve_clearance(tmp_path) == DEFAULT_CLEARANCE_MM
+
+
+def test_clearance_diger_plaka_alanlariyla_birlikte_var_olabilir(tmp_path):
+    """min_clearance_mm, width_mm/depth_mm gibi diger alanlarla ayni dosyada
+    yasayabilir — birbirini etkilemez (mevcut plate.local.json semantigi
+    genisletilir, degistirilmez)."""
+    cfg_dir = tmp_path / "configs"
+    cfg_dir.mkdir()
+    (cfg_dir / "plate.local.json").write_text(
+        json.dumps({"width_mm": 335.0, "depth_mm": 300.0,
+                     "min_clearance_mm": 2.5}), encoding="utf-8"
+    )
+    assert resolve_plate(tmp_path) == (335.0, 300.0, None)
+    assert resolve_clearance(tmp_path) == 2.5
 
 
 # ---------------------------------------------------------------------------

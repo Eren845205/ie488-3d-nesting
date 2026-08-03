@@ -39,6 +39,32 @@ logger = logging.getLogger(__name__)
 _CHUNK_SIZE = 1 << 20  # 1 MB
 
 
+def _fix_cp437_mojibake(name: str, flag_bits: int) -> str:
+    """cp437 mojibake'i orijinal Turkce ada cevirir (Dalga-2 #8).
+
+    zipfile UTF-8 bayragi (0x800) TASIMAYAN girisleri her zaman cp437 ile
+    cozer (ZIP standardinin eski davranisi). Windows Explorer gibi araclar
+    bu bayragi koymadan yerel kod sayfasiyla (Turkce sistemde cp857/cp1254
+    ailesi) yazar -> Turkce harfler mojibake olur. Bu fonksiyon zaten-cp437
+    cozulmus adi kendi baytlarina geri kodlayip cp857 (sonra utf-8) ile
+    yeniden cozmeyi dener; hicbiri anlamli sonuc vermezse (roundtrip hatasi)
+    ad DEGISTIRILMEDEN dondurulur (ASCII adlar icin no-op).
+    """
+    if flag_bits & 0x800:
+        return name  # UTF-8 bayragi var -- ad zaten dogru kodlanmis
+    try:
+        ham = name.encode("cp437")
+    except UnicodeEncodeError:
+        return name  # cp437'den gelmemis olmali -- dokunma
+    for enc in ("cp857", "utf-8"):
+        try:
+            duzeltilmis = ham.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        return duzeltilmis
+    return name
+
+
 def extract_stls(
     zip_bytes: bytes,
     *,
@@ -84,13 +110,16 @@ def extract_stls(
                 if bilgi.filename.endswith("/"):
                     continue
 
+                # Dalga-2 #8: cp437 mojibake duzeltmesi (UTF-8 bayraksiz TR ad)
+                duzeltilmis_ad = _fix_cp437_mojibake(bilgi.filename, bilgi.flag_bits)
+
                 # Uzanti kontrolu — sadece .stl (buyuk/kucuk harf farksiz)
-                _kok, uzanti = os.path.splitext(bilgi.filename)
+                _kok, uzanti = os.path.splitext(duzeltilmis_ad)
                 if uzanti.lower() != ".stl":
                     continue
 
                 # Zip-slip / path-traversal korumasI: dizin bileseni at
-                guvenli_taban = os.path.basename(bilgi.filename)
+                guvenli_taban = os.path.basename(duzeltilmis_ad)
                 if not guvenli_taban:
                     # Ola ki basename bossa (ornek: "/../") atla
                     logger.warning(

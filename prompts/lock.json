@@ -29,5 +29,10 @@
     "version": "1.0",
     "content_hash": "e2f27bedfd476e0f4ba0fbb8bb031bd27849e9557daf2acf90f98607d0ff7f38",
     "last_eval_ref": ""
+  },
+  "kisit-v1": {
+    "version": "1.3",
+    "content_hash": "45551a6125b38bdb7352c08827f13da49ff1ce3278ab3b3433d14d669a6cc9b2",
+    "last_eval_ref": "results/kisit_korpus_eval.json (v1.2 skoru alinamadi; v1.3 = hoca S2 durus_koru semantigi — sakin-makine seansinda kosulacak)"
   }
 }

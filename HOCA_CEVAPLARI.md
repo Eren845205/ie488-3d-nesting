@@ -23,8 +23,24 @@
 **AÇIK SORULAR (hocaya sorulacak/soruldu):**
 - Magics sonuçları kendi 1-2mm boşluk kuralıyla mı ölçülüyor? (clearance paritesi)
 - Ayrılabilirlik kriteri tam nedir: düz çekme mi, döndürerek çıkarma da kabul mü?
+  *(cevaplandı 2026-07-09: b+c kabul)*
 - Plan1 baseplate'i Magics plakaya açıyla mı basıyor? (110.41'in anatomisi)
+  *(cevaplandı 2026-08-03: büyük taban parçası YATAY yerleştiriliyor; tamamen
+  insan yerleşimi; ekran görüntüleri mailde — no-go uyumu görüntüden
+  doğrulanacak, bizim geometrik kanıt "düz poz no-go'lu plakaya sığmaz" diyordu)*
 - Magics yerleşim STL'leri / ekran görüntüleri paylaşılabilir mi? (dizilim istihbaratı)
+  *(cevaplandı 2026-07-09: STL'ler mevcut değil)*
+- **Manuel yerleşimlerde parça-arası boşluk kaç mm — özellikle Deneme5 209'un
+  koşulu?** *(2026-07-14'ten beri CEVAPSIZ; 2026-07-22 S1'de plan7 için "2mm ile
+  devam" mutabakatı alındı, eski setler için hâlâ açık)*
+- **KAPALI KAVİTE / TOZ HAPSİ (2026-07-25 eklendi):** İç-içe yerleşimde tamamen
+  kapalı boşluk oluşursa (tozun hiçbir açıklıktan tahliye edilemeyeceği hacim)
+  kabul kriteriniz nedir — yasak mı, tolere edilebilir mi? Eşik var mı (hacim /
+  minimum açıklık)? *(Motora kapalı-kavite denetimi ekleniyor — DENETIM 07-03
+  #21; denetimin legal tanımına bağlanması bu cevaba bakıyor.)*
+  *(cevaplandı 2026-08-03: "zincir olmadığı sürece sorun değil"; eşik YOK;
+  sıkışan toz ufak müdahaleyle açılıyor → cavity denetimi TELEMETRİ-ONLY kalır,
+  legal karara BAĞLANMAZ; detay FSM ziyaretinde)*
 
 ## 2. MAGICS REFERANS SAYILARI (hoca ölçümü; hepsi 335×335 + NO-GO DAHİL)
 
@@ -198,3 +214,175 @@ Gmail mesaj id `19f7fad84ee93dbb`).
   (büyük dosya Drive üzerinden olabilir).
 - 2026-07-20 canlı test: Plan7 maili gözcü/otonom hattına işletildi
   (mail→parse→nesting uçtan uca; H10 canlı doğrulaması).
+
+---
+
+## 2026-07-22 — 5 sorunun cevabı (Plan7 sonuç maili dönüşü)
+
+**Bağlam:** Eren'in 2026-07-21/22 sonuç+soru mailine (kör-test tablosu +
+söküm planı tanıtımı + 5 soru) Mert Bey'in cevabı. Ayrıca: "Elinize sağlık,
+gayet güzel gelişmeler var" + **söküm planı ve HER İKİ yerleşimin (Plan7 +
+Deneme6) STL dosyalarını istedi** ("cihazın programında kontrol etmek
+verimli olur").
+
+**S1 — Plan7 referans koşulları:**
+> "Magics ile manuel hazırlandı. Yerleşim planı firmadan direkt iletildiği
+> için boşluk değerini bilememekteyim. Ancak **2 mm olarak devam
+> edebiliriz**. **Yasak bölge dikkate alınmıştır.**"
+- Sonuç: 595 referansı Magics-manuel karışık kaynak; boşluk bilinmiyor ama
+  **2 mm üzerinde ANLAŞILDI** + no-go dahil → A10 şerhi büyük ölçüde
+  kalkar ("boşluk firmaca bilinmiyor, 2mm mutabakatlı" notuyla kıyas
+  kesinleşir). Bizim 488,4 zaten 2mm+no-go ile koşuldu = adil kıyas.
+
+**S2 — "Konumu değişmeyecek" SEMANTİĞİ (KRİTİK):**
+> "STL verilerini Magics yazılımdan çekmekteyim. Konumu değişmeyecek
+> ibaresi aslında parçanın **açısıyla (duruş açısı/yönelimi)** ilgili bir
+> durum, yani **yatay imal edilmesi** talep edilmektedir. Ancak imalat
+> içinde **herhangi bir yükseklikte veya X-Y koordinatında olabilir**."
+- Sonuç: "konumu değişmeyecek" = KONUM DEĞİL **ORYANTASYON KİLİDİ**
+  (STL'in Magics'ten geldiği duruş korunur; z/x-y tamamen serbest).
+  → not→kısıt hattında bu ibare `orientation_lock {"yon": "durus_koru"}`
+  (geldiği duruşu koruyan poz kümesi {0,1,4,5}; Rz düzlem-içi dönüş
+  serbest — duruş açısını değiştirmez). pinned_position şeması yedekte
+  kalır ama bilinen gerçek ihtiyaç ORYANTASYON. K-56f pinleme motor-içi
+  optimizasyon aracı olarak ayrı yaşar.
+
+**S3 — Plan7 yön kısıtları:**
+> "Bu plan için herhangi bir kısıtımız bulunmamaktadır. Konumu
+> değişmeyecek parça dışında serbest modda devam edilebilir."
+- Sonuç: Plan7 yeniden-çözüm görevi: YALNIZ 288101642-a2 (6 kopya)
+  duruş-kilitli, kalan 339 parça serbest. (Held-out bakışı registry'ye
+  loglanacak; koşu sakin-makine seansında.)
+
+**S4 — Yeni veri / aile talebi:**
+> "Yeni veriler geldikçe iletmeye çalışıyorum. Ancak **eski üretim
+> verilerinden de belirttiğiniz şekilde parçalar bulup yeni planlar
+> iletmeye çalışacağım.**"
+- Sonuç: eksik-aile listesi (kabuk/boru/çubuk/dev-parça/yüksek-adet)
+  kabul gördü; arşivden aile-hedefli plan derleyecek.
+
+**S5 — Gönderim biçimi:**
+> "Dosya boyutları büyük olabildiği için Google Drive linki ile
+> iletiyorum. Firmalardan drive, ZIP veya .stl dosyaları tek tek eklenerek
+> bir maille iletilebiliyor. **İsterseniz ikimizin kullanabileceği bir
+> Drive klasörü açıp** dosyaları oraya da yükleyebiliriz. İkisi de uygun."
+- Sonuç: birincil kanal Drive linki (mevcut share-link ingest doğru
+  yatırımmış); ORTAK KLASÖR önerisi masada — kabul edilirse tek-kanal
+  otomasyon (klasör-izleme) mümkün. Karar Eren'de.
+
+**Doğrudan işler:** (1) Plan7+Deneme6 STL + söküm planı paketi hocaya
+gönderilecek; (2) Plan7, a2-duruş-kilidiyle yeniden çözülecek (üretim
+kablosu K-56g hazır — orientation_overrides); (3) not→kısıt hattında
+"durus_koru" çevirisi + prompt/korpus güncellemesi; (4) Drive ortak
+klasör kararı.
+
+## 2026-08-03 — 7-soruluk paket mailinin cevabı + FSM DAVETİ
+
+**Bağlam:** Eren'in hoca-paketi maili (`HOCA_MAIL_2026-07-26_GOVDE.txt`;
+Drive paket + 7 soru) sonrası Mert Bey'in cevabı (Eren aktarımı 2026-08-03;
+yazışma bu repo'nun izlediği Gmail dışında). "Detaylı çalışman için çok
+teşekkür ederiz." **Mailin 3 ekran görüntüsü eki 2026-08-03'te alındı →
+`Veriler/hoca_ekleri_2026-08-03/`: (a) müşteri mail-notu örneği (kupon
+oryantasyon talebi), (b) Plan1 manuel yerleşim üstten, (c) Plan1 manuel
+yerleşim Magics 3D (Information panelinde 110,41 görünüyor).**
+
+**🏫 FSM DAVETİ (yeni, mailin ana isteği):**
+> "Müsait olduğun bir vakitte FSM'ye gelmen mümkün olur mu? Şu ana kadar
+> yaşanmadı ama bazen bazı soruların tam cevabını aktaramamış olmanın
+> endişesini yaşıyorum."
+- Sonuç: yüz yüze görüşme talebi; kapalı-boşluk/toz konusunu yerinde
+  göstermek istiyor. Ziyaret planı EREN'DE.
+
+**C1 — Kapalı boşluk / toz tahliyesi (bizim S2):**
+> "FSM'ye gelmenizi bu yüzden tavsiye ederim. **Parçalar arasında zincir
+> olmadığı sürece bu durumun sorun olacağını düşünmemekteyim.** Bazen
+> tozlar belli bir bölgede çok sıkışabiliyor. Ancak **ufak müdahalelerle
+> bu kısımlar açılabiliyor.**"
+- Sonuç: kapalı kavite YASAK DEĞİL, eşik YOK; "zincir" (interlok) zaten
+  ayrılabilirlik kısıtımız. → `cavity.py` denetimi TELEMETRİ-ONLY kalır,
+  legal karara bağlanmaz (DENETIM #21 kapanış kararı). Detay FSM'de.
+
+**C2 — Yoğunluk / termal sınır (bizim S3):**
+> "Çok kritik bir nokta bence. Çok yoğun bir üretim olması durumunda
+> vermiş olduğumuz boşluklar aslında bizi kurtarmış oluyor. Onun
+> haricinde cihaz arayüzünden tozun dozajını artırıp eksik toz serilmesine
+> engel olmaktayız. **Yazılımsal olarak şu an için bir eklemeye gerek
+> yoktur.**"
+- Sonuç: bölgesel-yoğunluk/doluluk kuralı EKLENMEYECEK; mevcut 2mm
+  boşluk kuralı yeterli sayılıyor; toz dozajı cihaz tarafında çözülüyor.
+
+**C3 — Parçaya özel gereksinimlerin geliş biçimi (bizim S4; not→kısıt hattı):**
+> "Bu biraz farklı şekilde olmaktadır. Bazen müşteri parçanın yönünü
+> **teknik resimde (farklı bir .pdf dosyası içinde)** belirtmekle birlikte
+> bazen de **mailde** yazmaktadır. En farklı durum ise **parça üzerinden**
+> bu bilginin alınmasıdır. Örneğin **288101642-a2 parçasının üzerinde XY
+> olarak bir label** bulunmaktadır. Bu parçanın **XY yönünde üretilmesi**
+> gerekliliğini ortaya koymaktadır. Maille gelen talebe ait bir ekran
+> görüntüsü ekte paylaşılmıştır."
+- Sonuç: kısıt kaynağı 3 KANAL — (1) mail metni [mevcut not→kısıt hattı
+  doğru hedef], (2) teknik resim PDF'i [yeni kaynak: PDF'ten yön kısıtı
+  çıkarımı — backlog], (3) parça STL'i üzerinde kabartma label ("XY" =
+  XY düzleminde/yatay üretim = duruş kısıtı) [en zor kanal; uzak backlog].
+  a2'nin "XY" label'ı S2 (07-22) "yatay imal" cevabıyla TUTARLI.
+- **GERÇEK ÖRNEK NOT ALINDI (ek a; kısıt korpusu için altın):** test kuponu
+  siparişi — "Her bir test tipi için 3 farklı oryantasyonda kupon: çekme /
+  basma / yorulma testleri için **15 yatay + 15 dikey + 15 transverse (45°)**
+  = 45'er, toplam 135; **yatay ve 45° kuponların recoater ve gaz akış yönüne
+  DİK durması önemli**; mümkünse tek seferde üretim." → mevcut kısıt
+  enum'unun ÖTESİNDE 4 yeni kısıt türü: (1) aynı tipin kopyalarını
+  oryantasyon gruplarına BÖLME (15/15/15), (2) 45° ara açı, (3) makine
+  eksenine göre hizalama (recoater/gaz-akış yönü — plaka ekseni semantiği
+  motora hiç girmedi), (4) tek-plaka tercihi. Korpus + prompt v2 backlog'u.
+
+**C4 — Plan1 110,41'in sırrı (bizim S6):**
+> "**Büyük taban parçası yatay olarak yerleştirilmektedir.** Yerleşime ait
+> ekran görüntüleri ekte paylaşılmıştır. Aslında bu **tamamen insan
+> yerleşimidir.** Bizim de hedefimiz min yüksekliği tutturmaktır. Çok
+> fazla kural olmamakla birlikte genel olarak **büyük parçaların ilk
+> yerleştirilmesi ve sonrasında diğer parçaların bunun etrafında
+> toplanması**dır. Ancak %100 geçerli bir kural değildir."
+- Sonuç: 110,41 Magics-otomatik değil İNSAN yerleşimi; sezgisel kural
+  "büyük önce, küçükler etrafına".
+- **ÇELİŞKİ ÇÖZÜLDÜ (2026-08-03, ekran görüntüleri geldi —
+  `Veriler/hoca_ekleri_2026-08-03/`):** Magics 3D görüntüsünde Information
+  paneli **110,41 mm / 330,2×328,1 / 112 parça** — referansın birincil
+  kanıtı elimizde. Baseplate gerçekten DÜZ (yatay) AMA parçaların
+  **ÜSTÜNDE kanopi** gibi; dik duran parçalar ve no-go kolonu çerçevenin
+  **DELİKLERİNDEN** geçiyor. Bizim K-56 kapısı parçayı dolu bbox saydığı
+  için "düz imkânsız" demişti — delikli parçada YANLIŞ-POZİTİF. Yeni aday
+  **K-62** (YONTEM §5): gerçek-geometri no-go fizibilitesi + düz-kanopi
+  yerleşimi; beklenti plan1 110-130 bandı.
+
+**C5 — Elle yerleşim süresi (bizim S7):**
+> "Bu yerleşim firmadan geldiği için açıkçası tam bilmiyorum. Kendilerini
+> aradım ama ulaşamadım. Ulaştığımda bu konu ile ilgili net bilgi
+> vereceğim. Hatta **onların uyguladıkları parametreleri de almaya
+> çalışacağım.** Ancak tecrübelerime dayanarak; bir insanın bu işi **1
+> günden fazla sürede** yapacağını düşünüyorum. Bu 1 gün sonucunda ise
+> sizin ulaştığınız yüksekliklerden **oldukça fazla bir yükseklikte**
+> yerleşim yapılacağını tahmin ediyorum."
+- Sonuç: plan7 595 referansı firma işi; kesin süre + firma parametreleri
+  hocadan GELECEK. Değer önerisi güçlendi: insan >1 gün + daha yüksek
+  sonuç vs. motor ~103dk + 488,4 (−%17,9).
+
+**C6 — Sipariş dosyalarının geliş kanalı (bizim S5; mail-ingest tasarımı):**
+> "Ağırlıklı olarak; **ZIP içinde (teknik resim, excelde adet bilgisi ve
+> parça verileri)** veya **maile ek olarak teknik resim ve parça verileri,
+> mail içeriğinde adet bilgileri** — 2 farklı şekilde. Daha nadir olarak;
+> **Drive linki veya WeTransfer** ile. Müşteri öncelikle maili göndermekte
+> (adet bilgili, malzeme vs.) sonra WeTransfer bilgilerini iletmektedir."
+- Sonuç: mevcut mail-ingest yatırımı (ZIP çıkarıcı + kardeş-xlsx adet
+  tamamlama + gövdeden adet) TAM İSABET; Drive share-link ingest de var.
+  Eksik: **WeTransfer link indirme otomasyonu** (nadir kanal — backlog) +
+  "önce mail, sonra link" iki-mail eşleştirme senaryosu (pending_orders
+  `share_link_dosya_bekleniyor` durumu bu deseni zaten karşılıyor).
+
+**CEVAPSIZ KALAN:** bizim S1 (eski setlerin — özellikle Deneme5 209 —
+manuel boşluk değeri) bu mailde de yanıtsız; açık-sorular listesinde kalır.
+
+**Doğrudan işler:** (1) FSM ziyaret planı [EREN]; (2) ~~ekleri kaydet~~ ✅
+2026-08-03 `Veriler/hoca_ekleri_2026-08-03/`; (3) ~~plan1 analizi~~ ✅ →
+**K-62 adayı YONTEM §5'te** (gerçek-geometri no-go kapısı + düz-kanopi);
+(4) DENETIM #21 kapanışı: cavity telemetri-only KALICI kararı; (5) not→kısıt
+korpusuna kupon-oryantasyon örneği + PDF-teknik-resim kanalı + 4 yeni kısıt
+türü backlog kaydı; (6) WeTransfer indirme backlog kaydı.

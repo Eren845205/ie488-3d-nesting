@@ -94,3 +94,34 @@ def test_tam_kenet_5yonde_de_kilit():
     assert r.n_locked == 2
     kilitli = {pid for grup in r.locked_groups for pid in grup}
     assert kilitli == {"A", "B"}
+
+
+# --- rehberli sokum (2026-07-26): removable_yonler ADDITIVE alani ---
+
+def test_removable_yonler_paralel_ve_gecerli():
+    # serbest yigin: her parca icin removable_order ile ES-UZUNLUKTA yon listesi
+    parts = {p.id: p for p in (_part("a"), _part("b"))}
+    pls = [_pl("a", 0, 0, 0), _pl("b", 5, 0, 0)]
+    r = check_separability_5dir(pls, parts)
+    assert len(r.removable_yonler) == len(r.removable_order) == 2
+    assert all(y in ("+Z", "+X", "-X", "+Y", "-Y") for y in r.removable_yonler)
+    # engelsiz sahnede tarama sirasi geregi +Z (en kolay talimat) secilir
+    assert r.removable_yonler == ["+Z", "+Z"]
+
+
+def test_removable_yonler_yana_kaydirma_kaydedilir():
+    # xz-caprazi kenet cifti +Z ile CIKAMAZ, +-Y kaymasiyla cikar ->
+    # kaydedilen yon +Z olamaz
+    parts = {"A": _FakePart(_xz_capraz(True)), "B": _FakePart(_xz_capraz(False))}
+    pls = [_pl("A", 0, 0, 0), _pl("B", 0, 0, 0)]
+    r = check_separability_5dir(pls, parts)
+    assert r.n_locked == 0
+    assert len(r.removable_yonler) == len(r.removable_order)
+    assert all(y != "+Z" for y in r.removable_yonler)
+
+
+def test_eski_metrik_yonler_bos():
+    # +Z-tek denetim (check_placements) yeni alani DOLDURMAZ (additive garanti)
+    parts = {p.id: p for p in (_part("a"),)}
+    r = check_placements([_pl("a", 0, 0, 0)], parts)
+    assert r.removable_yonler == []
