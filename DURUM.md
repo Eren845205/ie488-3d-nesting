@@ -406,3 +406,21 @@ desteğinin kendisi SAĞLAM (16 test + kapı-1 NOOP).
 **Kapı-1 NOOP = sıfır-dokunuş kanıtı** (68dk, exit=0, 4 set birebir):
 çoklu-pin `c7a6af5` + NFV-pin `62624bf` üretim yollarını değiştirmiyor.
 Sıra: kapı-2 (gerçek K-56g sınavı, modül-attr düzeltmeli).
+
+## 2026-08-05 GECE — K-56g KAPI-2 TAMAM: SÖZLEŞME-ETKİSİ TABLOSU (İNSAN-KARARI)
+
+Düzeltilmiş kapı (soft sözleşme modül-attr ilanlı; pin tetiklendi
+"baseplate_v2 giriş 1,504mm"), 96 dk, exit=1 VERDICT=İNSAN-KARARI:
+
+| Set | Baseline | Kapı-2 | Fark |
+|---|---|---|---|
+| plan1 | 202,18 | **140,21** (kilit 0) | **−62,0** (pin+soft) |
+| plan2 | 529,04 | 521,18 (söküm-planlı) | −7,86 |
+| plan3 | 601,92 | 607,50 (söküm-planlı) | **+5,58 (bedel)** |
+| deneme4 | 220,69ş | **215,87** (söküm-planlı) | **−4,82 (yeni en-iyi!)** |
+
+Net −69,1; 3 set iyileşme / 1 set bedel (A5 dağılım). d4 215,87 eski
+ŞAMPİYONU da geçti. Kanıt: results/k56g_kapi_kosu2.log + eval_gate_last.
+SABAH EREN KARARI (sözleşme sınıfı, A11-m4): kabul → plate.local.json
+no_go_soft + eval_gate NOGO_STD 33 + 4-set baseline yenileme (+ önce
+/plaka-ayar merge bug fix'i); red → p3 gerekçesiyle mevcut kalır.
