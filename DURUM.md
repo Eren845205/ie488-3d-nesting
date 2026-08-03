@@ -307,3 +307,26 @@ kisit_modu=kapali → davranış garantisi değişmedi.
   Şerhler + koşu-mühendisliği dersleri (OOM/FATAL-kalkanı/NFV-seyrek)
   YONTEM §3 K-62 kaydında. Sonraki aday: delik-farkındalı aşama-1
   yumuşak-tavan + kule-drop azimut araması.
+
+## 2026-08-04 ÖĞLE — PLAN7 a2-KİLİTLİ ÇÖZÜM TAMAM (MAİL TAAHHÜDÜ KAPANDI)
+
+**SONUÇ: legal 488,40 mm — KISIT MALİYETİ +0,00 mm** (kısıtsız 488,40 ile
+birebir; a2'nin 6 kopyası artık `durus_koru` [0,1,4,5] pozlarında).
+clear 2,000 · kilit 15→rot 0 (söküm-planlı legal) · r11 uygulandı ·
+**süre 49 dk** (K-60 sayesinde; ilk koşu 103 dk idi) · ref-595'e −%17,92.
+K-56g/K-61 kısıt kablosunun İLK GERÇEK-VERİ koşusu — kablo çalıştı.
+**Paket üretildi:** `D:\ie488\results\hoca_paketi_2026-07\` altında
+plan7_a2_kilitli_{placements.json, sokum_plani.md/json, stl/} (10 binary
+STL, 872 MB, 345 parça, 1 döndürmeli). Held-out bakışı registry'ye
+loglandı (A3). Kanıt: results/plan7_kisitli_cozum.{json,log} (D+C).
+Hocaya gidecek içerik HAZIR — gönderim Eren'de (dış-iletişim sınırı).
+
+## 2026-08-04 — k62 V5 deneyi: NO-GO (v4 136,50 geçerli kalır)
+
+V5 (kule-drop 4-azimut + boy-sıralı + çok-tur): tavan AYNI 136,50 →
+azimut/sıra kaldıraç DEĞİL; üstelik v5 kompozisyonunda clearance 0,214
+(İHLAL) → V5 NO-GO. **Geçerli plan1 şerhli en-iyi: v4 136,50 (clear
+2,018).** Ders: 136,5 tavanını kanopi-üstü kule yapıyor; kalan kaldıraç
+delik-farkındalı AŞAMA-1 (kuleleri baştan delik bölgesine çözen derin iş —
+sabah planına). Script t0-gölgeleme json bug'ı düzeltildi (rerun gereksiz,
+v4 kanıtı geçerli).

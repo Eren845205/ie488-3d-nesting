@@ -159,6 +159,8 @@ def main():
     pls = [(pl.part_id, pl.orientation_idx, int(pl.x), int(pl.y), int(pl.z))
            for pl in r1.placements]
     meshes = list(placed_meshes(r1.placements, r1.fine_voxel_parts, pitch))
+    # v5 clearance icin mutasyonsuz yedek (v4 meshleri tasiyabilir)
+    meshes_orig = [m.copy() for m in meshes]
     del r1, nfv_tel, _fvp, _fvp_iter
     gc.collect()
     log(f"[ASAMA-2] hafif durum cekildi: {len(pls)} yerlesim,"
@@ -378,12 +380,160 @@ def main():
         log(f"[ITERASYON] atlandi/hata: {type(e).__name__}: {e}")
         log(traceback.format_exc())
 
+    # ---- V5: cok-turlu + boy-sirali + azimutlu kule-drop ------------------
+    # v4'un kalan makas adresleri (Eren: "plan 1'i gelistir", 2026-08-04):
+    # (1) tasinan kule kendi TEK pozuyla dusuyordu -> 4 rot90 azimut denenir
+    #     (profil rot90 = fiziksel Rz; mesh tarafi da Rz ile birebir),
+    # (2) boy-sirali tasima (uzun once, iyi delikleri uzunlar alir),
+    # (3) cok-tur: tasima sonrasi yeni tavan sucluysa o da tasinir (maks 4).
+    iter2_sonuc = None
+    try:
+        butce_vox = int(tel["ideal_alt_butce_mm"] / pitch)
+        INTMAX = np.iinfo(np.int32).max
+
+        def _tepe_vox(k_):
+            pid_, oi_, _x, _y, z_ = pls[k_]
+            f_, top_ = prof[pid_][oi_]
+            return int(z_ + top_[f_].max()) if f_.any() else 0
+
+        def _swdrop(H, f_, top_):
+            """Vektorize maskeli kayan-min-drop; (tepe,x,y,z) veya None."""
+            w_, d_ = f_.shape
+            nx2, ny2 = H.shape[0] - w_ + 1, H.shape[1] - d_ + 1
+            if nx2 <= 0 or ny2 <= 0 or not f_.any():
+                return None
+            sw = np.lib.stride_tricks.sliding_window_view(H, (w_, d_))
+            tm = int(top_[f_].max())
+            best = None
+            for x0 in range(0, nx2, 64):
+                x1 = min(x0 + 64, nx2)
+                Zb = sw[x0:x1, :ny2][:, :, f_].max(axis=2)
+                Zb = np.where(Zb >= Bin3D.NO_GO_SEAL, INTMAX, Zb)
+                zi = int(Zb.min())
+                if zi >= INTMAX:
+                    continue
+                bx, by = np.unravel_index(int(Zb.argmin()), Zb.shape)
+                if best is None or zi < best[3] - z_gap:
+                    best = (zi + z_gap + tm, x0 + int(bx), int(by),
+                            zi + z_gap)
+            return best
+
+        cikar: set = set()
+        final = None
+        for tur in range(1, 5):
+            # (a) cikar-haric replay
+            b5 = Bin3D(pw, pd, pitch, no_go_mask=mask)
+            for k_, (pid_, oi_, x_, y_, z_) in enumerate(pls):
+                if k_ in cikar:
+                    continue
+                f_, top_ = prof[pid_][oi_]
+                sub = b5.height[x_:x_ + f_.shape[0], y_:y_ + f_.shape[1]]
+                np.copyto(sub, np.maximum(sub, z_ + top_), where=f_)
+            # (b) kanopi argmin
+            en5 = None
+            for oik, ok in enumerate(vpk.orientations):
+                Zk = b5.drop_map(ok)
+                if Zk is None:
+                    continue
+                Zkm = np.where(Zk >= Bin3D.NO_GO_SEAL, INTMAX, Zk)
+                if int(Zkm.min()) >= INTMAX:
+                    continue
+                xk, yk = np.unravel_index(int(Zkm.argmin()), Zkm.shape)
+                zk = int(Zkm.min()) + z_gap
+                tk = zk + ok.grid.shape[2]
+                if en5 is None or tk < en5[0]:
+                    en5 = (tk, oik, int(xk), int(yk), zk)
+            if en5 is None:
+                raise RuntimeError("v5: kanopi drop edilemedi")
+            _tk, oik, xk, yk, zk = en5
+            # (c) guncel kanopi dolu-bolgesine gore yeni suclular
+            fK = vpk.orientations[oik].filled
+            cd = np.zeros_like(b5.height, dtype=bool)
+            cd[xk:xk + fK.shape[0], yk:yk + fK.shape[1]] = fK
+            yeni = []
+            for k_, (pid_, oi_, x_, y_, z_) in enumerate(pls):
+                if k_ in cikar or _tepe_vox(k_) <= butce_vox:
+                    continue
+                f_, _t = prof[pid_][oi_]
+                if (cd[x_:x_ + f_.shape[0], y_:y_ + f_.shape[1]] & f_).any():
+                    yeni.append(k_)
+            if yeni and tur < 4:
+                cikar |= set(yeni)
+                log(f"[V5 tur-{tur}] kanopi z={zk * pitch:.1f}; +{len(yeni)}"
+                    f" suclu (toplam {len(cikar)}) -> sonraki tur")
+                continue
+            # (d) final kompozisyon: kanopi place + boy-sirali azimutlu drop
+            ok = vpk.orientations[oik]
+            sub = b5.height[xk:xk + fK.shape[0], yk:yk + fK.shape[1]]
+            np.copyto(sub, np.maximum(sub, zk + ok.top), where=fK)
+            konum = {}
+            for k_ in sorted(cikar, key=_tepe_vox, reverse=True):
+                pid_, oi_, _x, _y, _z = pls[k_]
+                fS, tS = prof[pid_][oi_]
+                best = None
+                for rk in range(4):
+                    fr, tr = np.rot90(fS, rk), np.rot90(tS, rk)
+                    d_ = _swdrop(b5.height, fr, tr)
+                    if d_ is not None and (best is None or d_[0] < best[0]):
+                        best = (d_[0], rk, d_[1], d_[2], d_[3])
+                if best is None:
+                    raise RuntimeError(f"v5: kule drop edilemedi {pid_}")
+                _tt, rk, xx, yy, zz = best
+                fr, tr = np.rot90(fS, rk), np.rot90(tS, rk)
+                sub = b5.height[xx:xx + fr.shape[0], yy:yy + fr.shape[1]]
+                np.copyto(sub, np.maximum(sub, zz + tr), where=fr)
+                konum[k_] = (rk, xx, yy, zz)
+            H5 = np.where(b5.height >= Bin3D.NO_GO_SEAL, 0, b5.height)
+            v5_toplam = float(H5.max()) * pitch
+            log(f"[V5] SONUC tur={tur} toplam={v5_toplam:.2f}mm"
+                f" (tasinan {len(cikar)}; kanopi z={zk * pitch:.1f}"
+                f" rot={[0, 90, 180, 270][oik]})")
+            # (e) clearance — orijinal mesh yedeklerinden kesin kurulum
+            v5_meshes = []
+            for k_, m0 in enumerate(meshes_orig):
+                m = m0.copy()
+                if k_ in konum:
+                    pid_, oi_, x_, y_, z_ = pls[k_]
+                    rk, xx, yy, zz = konum[k_]
+                    m.apply_translation([-x_ * pitch, -y_ * pitch,
+                                         -z_ * pitch])
+                    if rk:
+                        import trimesh.transformations as tt
+                        m.apply_transform(
+                            tt.rotation_matrix(np.deg2rad(90 * rk),
+                                               [0, 0, 1]))
+                        b0 = m.bounds[0]
+                        m.apply_translation([-b0[0], -b0[1], 0.0])
+                    m.apply_translation([xx * pitch, yy * pitch, zz * pitch])
+                v5_meshes.append(m)
+            mk5 = mesh0.copy()
+            mk5.apply_transform(rots[oik])
+            mk5.apply_translation(-mk5.bounds[0])
+            mk5.apply_translation([xk * pitch, yk * pitch, zk * pitch])
+            rep5 = min_clearance(v5_meshes + [mk5], samples_per_mesh=6000)
+            log(f"[V5] clearance min={float(rep5.min_mm):.3f}mm")
+            iter2_sonuc = {
+                "toplam_mm": v5_toplam, "tur": tur,
+                "tasinan": len(cikar),
+                "kanopi": {"rot_deg": [0, 90, 180, 270][oik],
+                           "x_mm": xk * pitch, "y_mm": yk * pitch,
+                           "z_mm": zk * pitch},
+                "clearance_mm": float(rep5.min_mm),
+                "serh": "kule-drop bottom-duz kabulu; azimut rot90; "
+                        "clearance mesh-kesin olculdu",
+            }
+            break
+    except Exception as e:
+        log(f"[V5] atlandi/hata: {type(e).__name__}: {e}")
+        log(traceback.format_exc())
+
     OUT.write_text(json.dumps({
         "serh": "kanopi on-olcumu; kilit olculmedi; tek-set (A11)",
         "kanopi_parca": str(p0.name), "fizibilite": fiz,
         "asama1_h_mm": h1, "kanopi": kanopi_mm,
         "toplam_mm": toplam_mm, "clearance_mm": clear,
         "iterasyon": iter_sonuc,
+        "iterasyon_v5": iter2_sonuc,
         "telemetri": tel, "ref": REF, "seed": SEED,
         "pitch": pitch, "nogo": eg.NOGO_STD,
         "toplam_sure_dk": round((time.perf_counter() - t0) / 60, 1),
