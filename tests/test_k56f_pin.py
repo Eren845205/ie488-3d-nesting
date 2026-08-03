@@ -99,7 +99,10 @@ def test_pin_bilinmeyen_ad_valueerror():
         _solve(pinned_placements=[pin])
 
 
-def test_pin_nfv_dalinda_reddedilir(monkeypatch):
+def test_extra_rot_nfv_dalinda_reddedilir(monkeypatch):
+    # K-62 v8 (2026-08-04): pinned_placements NFV'de artik MESRU (nfv_solve
+    # pin destegi; tests/test_v8_nfv_pin.py) — eski pinned-red testi tersine
+    # dondu. extra_rot yasagi SURUYOR (tilt havuzu NFV'de yok), onu pinler.
     from types import SimpleNamespace as NS
 
     import src.nesting3d.adaptive_params as ap
@@ -107,10 +110,9 @@ def test_pin_nfv_dalinda_reddedilir(monkeypatch):
 
     monkeypatch.setattr(ap, "predict_nfv_benefit",
                         lambda *a, **k: NS(mode="nfv", wall_aware=False))
-    with pytest.raises(ValueError, match="pinned_placements"):
+    with pytest.raises(ValueError, match="extra_rot_overrides"):
         _run_champion("sentetik", _instance(), 42,
-                      pinned_placements=[{"ad": "plaka", "x_mm": 0.0,
-                                          "y_mm": 0.0, "z_mm": 0.0}])
+                      extra_rot_overrides={"plaka": [np.eye(4)]})
 
 
 def test_ayni_ada_coklu_pin_farkli_kopyalar():

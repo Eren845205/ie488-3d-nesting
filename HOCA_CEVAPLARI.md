@@ -386,3 +386,23 @@ manuel boşluk değeri) bu mailde de yanıtsız; açık-sorular listesinde kalı
 (4) DENETIM #21 kapanışı: cavity telemetri-only KALICI kararı; (5) not→kısıt
 korpusuna kupon-oryantasyon örneği + PDF-teknik-resim kanalı + 4 yeni kısıt
 türü backlog kaydı; (6) WeTransfer indirme backlog kaydı.
+
+## 2026-08-04 — a2-kilitli paket mailine cevap (kısa teşekkür)
+
+**Bağlam:** Eren'in a2-kilitli çözüm maili (`HOCA_MAIL_2026-08-04_GOVDE.txt`;
+Drive `plan7_a2_kilitli` klasörü: 6 değişen STL + söküm planı + yeni
+özellikli rehber) GÖNDERİLDİ; Mert Bey aynı gün cevapladı:
+
+> "Çok teşekkür ederim, elinize sağlık. Şu an için yeni bir talebim
+> bulunmamaktadır. Planlar tarafıma geçtikçe size iletiyor olacağım.
+> Bazı konuları FSM'de daha iyi netleştirebileceğimizi düşünüyorum.
+> En kısa sürede haberleşmek üzere."
+
+**Sonuçlar:**
+- **Mail taahhüdü (a2-kilitli çözüm + güncel STL) RESMEN KAPANDI** —
+  paket teslim alındı, itiraz/soru yok.
+- Yeni talep ŞU AN yok; **yeni planlar geldikçe iletilecek** (veri akışı
+  sürecek — her yeni plan İLK İŞ held-out sınavı, A3).
+- **FSM ziyareti teyit edildi** ("bazı konuları FSM'de netleştiririz") —
+  tarih henüz yok; açık teknik sorular (S1 eski-boşluk, no-go temas
+  toleransı, recoater ekseni, örnek iş emirleri) ziyaret gündemine.

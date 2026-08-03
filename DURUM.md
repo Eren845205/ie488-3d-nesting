@@ -374,3 +374,12 @@ Gün özeti: v4 GO (136,50) · v5/v6/v7 NO-GO (üçü de kayıtlı, A7).
 - YARIN SEANSI ÖNERİSİ (Eren onayıyla): (1) k56g_kapi koşusu → PASS ise
   sözleşme/baseline kararları, (2) v8 kodlama+ölçüm, (3) K-58 kalan +
   p3 makas teşhisi (fırsat kalırsa).
+
+## 2026-08-04 GECE-2 — HOCA CEVABI: PAKET TESLİM ALINDI, TAAHHÜT KAPANDI
+
+Mert Bey aynı gün cevapladı ("Çok teşekkür ederim, elinize sağlık"):
+yeni talep ŞU AN yok · yeni planlar geldikçe iletilecek · **FSM ziyareti
+teyit** ("bazı konuları FSM'de netleştiririz"). → a2-kilitli çözüm + STL
++ rehber taahhüdü RESMEN KAPANDI (kayıt HOCA_CEVAPLARI 2026-08-04).
+Bekleyen dış-halka işleri: FSM tarihi (Eren) + yeni plan geldiğinde
+İLK İŞ held-out sınavı (A3).

@@ -143,7 +143,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               no_go_bounds=None,
               repair_separability=False,
               exit_guard=False, exit_guard_retries=2,
-              orientation_overrides=None) -> CoarseToFineResult:
+              orientation_overrides=None,
+              pinned_placements=None) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -201,6 +202,23 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
                                       allowed_orientations=allowed_orients,
                                       clearance_mm=clearance_mm,
                                       orientation_overrides=orientation_overrides)
+
+    # K-62 v8 (2026-08-04): NFV'ye pin destegi — MVP semantigi:
+    # (a) pin donorleri cozum havuzundan DUSER (coklu-kopya, _pin_hazirla),
+    # (b) pin FOOTPRINT kolonlari decode maskesine MUHURLENIR (best_decode
+    #     degismez; cozucu pin kolonlarina hicbir sey koyamaz — pin ustu/alti
+    #     ic-ice kullanim v8-MVP disi, bilincli konservatif),
+    # (c) pinler settle/repair SONRASI gercek yerlesim olarak sahneye girer
+    #     (tasinmazlik bedava; olcum katmani pin'i normal parca gorur).
+    # default None = BIT-OZDES.
+    _pin_specs = pinned_placements
+    _pin_donors = None
+    if _pin_specs:
+        from src.nesting3d.coarse_to_fine import _pin_hazirla
+        _pins0 = _pin_hazirla(_pin_specs, parts, used_pitch)
+        _pin_ids = {p.id for p, _x, _y, _z in _pins0}
+        _pin_donors = [p for p in parts if p.id in _pin_ids]
+        parts = [p for p in parts if p.id not in _pin_ids]
     # fine-settle aynı clearance kuralına uyar (aksi hâlde settle kazanılan boşluğu
     # geri yer). used_pitch'ten türetilen (xy margin, z-dilation) settle'a geçilir.
     settle_margin, settle_zc = _nfv_clearance_voxels(clearance_mm, used_pitch, margin)
@@ -224,6 +242,16 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     if no_go_bounds is not None:
         _ng_mask = Bin3D.no_go_mask_from_bounds(
             no_go_bounds, plate_w_mm, plate_d_mm, used_pitch)
+    if _pin_specs:
+        import numpy as _np
+        _ng_mask = (_np.zeros((nx, ny), dtype=bool) if _ng_mask is None
+                    else _np.asarray(_ng_mask, dtype=bool).copy())
+        for _pp, _ix, _iy, _iz in _pins0:
+            _f = _pp.orientations[0].filled
+            _w = min(_f.shape[0], nx - _ix)
+            _h = min(_f.shape[1], ny - _iy)
+            if _w > 0 and _h > 0:
+                _ng_mask[_ix:_ix + _w, _iy:_iy + _h] |= _f[:_w, :_h]
 
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
                                    time_budget_sec=decode_budget,
@@ -299,6 +327,17 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             repair_note = (f"repair {rr.n_locked_before}->{rr.n_locked_after}"
                            f" kilit / {rr.rounds_used} tur"
                            + (f" ({rr.note})" if rr.note else ""))
+    # K-62 v8: pinler FINAL sahneye (settle/repair sonrasi) gercek yerlesim
+    # olarak eklenir. Settle pitch degistirmis olabilir -> pinler RESULT
+    # pitch'te donor meshlerinden yeniden cozulur (mm-spec pitch-bagimsiz).
+    if _pin_specs:
+        from src.nesting3d.coarse_to_fine import _pin_hazirla as _ph
+        _pins_f = (_pins0 if result_pitch == used_pitch
+                   else _ph(_pin_specs, _pin_donors, result_pitch))
+        for _pp, _ix, _iy, _iz in _pins_f:
+            bin3d.place(_pp, 0, _ix, _iy, _iz)
+            parts_by_id[_pp.id] = _pp
+
     elapsed = time.perf_counter() - t0
 
     h = bin3d.max_height_mm()
@@ -344,7 +383,7 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                      n_orientations=None, time_budget_sec=None,
                      r11=False, r11_samples=12000,
                      rot_kabul=False, rot_butce_s=1200.0,
-                     orientation_overrides=None,
+                     orientation_overrides=None, pinned_placements=None,
                      _solve=None, _check_5dir=None, _check_rot=None):
     """K-36/38/41/44 sampiyon recetesi: kalite-NFV + kosullu exit_guard.
 
@@ -512,7 +551,8 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                 fine_pitch=float(clearance_mm), quality=quality, seed=seed,
                 n_orientations=n_orientations, time_budget_sec=time_budget_sec,
                 clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
-                orientation_overrides=orientation_overrides)
+                orientation_overrides=orientation_overrides,
+                pinned_placements=pinned_placements)
     _solve_ham_s = time.perf_counter() - _ts
     _ts = time.perf_counter()
     ham_kilit = _kilit(ham)
@@ -548,7 +588,8 @@ def solve_nfv_kalite(instance, *, plate_w_mm, plate_d_mm, clearance_mm=2.0,
                   n_orientations=n_orientations, time_budget_sec=time_budget_sec,
                   clearance_mm=float(clearance_mm), no_go_bounds=no_go_bounds,
                   exit_guard=True,
-                  orientation_overrides=orientation_overrides)
+                  orientation_overrides=orientation_overrides,
+                  pinned_placements=pinned_placements)
     _solve_guard_s = time.perf_counter() - _ts
     _ts = time.perf_counter()
     guard_kilit = _kilit(guard)

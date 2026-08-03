@@ -191,9 +191,12 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
     dec = predict_nfv_benefit(inst, family_routing=True, mode_model=_mm,
                               rot_sokum=True, no_go_bounds=NOGO_STD)
     if getattr(dec, "mode", "heightmap") == "nfv":
-        if extra_rot_overrides or pinned_placements:
+        # K-62 v8 (2026-08-04): pinned_placements artik NFV dalinda da
+        # MESRU (nfv_solve pin destegi: donor-dusme + footprint muhru +
+        # final yerlesim). extra_rot yasagi SURUYOR (tilt havuzu NFV'de yok).
+        if extra_rot_overrides:
             raise ValueError(
-                "extra_rot_overrides/pinned_placements yalniz heightmap "
+                "extra_rot_overrides yalniz heightmap "
                 f"dalinda gecerli (K-56); {name} NFV'ye yonlendi")
         from src.nesting3d.nfv_solve import solve_nfv_kalite
         print(f"    [{name}] routing: NFV kalite (uretim default: "
@@ -216,7 +219,8 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
             clearance_mm=WEB_MIN_CLEARANCE_MM, no_go_bounds=NOGO_STD,
             quality=_quality, seed=seed,
             n_orientations=_n_or, r11="auto", rot_kabul="auto",
-            orientation_overrides=orientation_overrides)
+            orientation_overrides=orientation_overrides,
+            pinned_placements=pinned_placements)
         return res, _tel
     if isinstance(n_orientations, str):
         raise ValueError(

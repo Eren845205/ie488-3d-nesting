@@ -71,6 +71,9 @@ V6 = os.environ.get("K62_V6") == "1" or "--v6" in sys.argv
 # — orientation_overrides NFV dalinda destekli (v6'yi dusuren guard yalniz
 # pinned/extra_rot icindi). Faz-A sayimi ortak; pin YOK, rota zorlamasi YOK.
 V7 = os.environ.get("K62_V7") == "1" or "--v7" in sys.argv
+# V8 (2026-08-04 gece): kule pinleri NFV ICINDE — nfv_solve pin destegi
+# eklendi (tests/test_v8_nfv_pin.py 4/4); rota zorlamasi GEREKMEZ.
+V8 = os.environ.get("K62_V8") == "1" or "--v8" in sys.argv
 V6_KULE_BUTCE_MM = 69.0   # min bbox-ekseni bunu asan tip yatamaz = kule
 V6_PIN_MARGIN_VOX = 4     # kule-drop dilated (2mm/0.5) — pin-pin boslugu
 
@@ -152,7 +155,7 @@ def main():
     # ---- V7: suclu tiplere YATAY poz-kilidi (faz-A ortak) -----------------
     v6_pins = None
     v7_overrides = None
-    if V6 or V7:
+    if V6 or V7 or V8:
         import trimesh.transformations as _tt
         _pitch6 = 0.5  # champion fine pitch'i (pin mm-cinsinden, guvenli)
         # hedef kanopi ofseti: rot0 orneklerinden medyan-dy (deterministik)
@@ -224,7 +227,7 @@ def main():
                 f" {sorted(v7_overrides)}")
 
         v6_pins = [] if not V7 else None
-    if V6 and not V7:
+    if (V6 or V8) and not V7:
         for p in inst.parts:
             if p is p0 or not getattr(p, "stl_path", None):
                 continue
@@ -284,7 +287,7 @@ def main():
     # set NFV'ye yonlenirse rota script-ICI heightmap'e zorlanir (gecici
     # monkeypatch; uretim davranisi degismiyor, yalniz bu olcum prosesi).
     _pnb_orig = None
-    if V6 and v6_pins:
+    if V6 and v6_pins and not V8:
         import src.nesting3d.adaptive_params as _ap
         _pnb_orig = _ap.predict_nfv_benefit
 
@@ -710,6 +713,7 @@ def main():
         "v6_modu": bool(V6),
         "v6_pin_sayisi": (len(v6_pins) if v6_pins else 0),
         "v7_modu": bool(V7),
+        "v8_modu": bool(V8),
         "v7_kilitli_tipler": (sorted(v7_overrides) if v7_overrides else []),
         "telemetri": tel, "ref": REF, "seed": SEED,
         "pitch": pitch, "nogo": eg.NOGO_STD,
