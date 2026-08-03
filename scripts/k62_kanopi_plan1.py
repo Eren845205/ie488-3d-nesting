@@ -29,10 +29,12 @@ sakin makine; asama-1 tam plan1-eksi-kanopi cozumu kosar). SAF ASCII stdout.
 from __future__ import annotations
 
 import copy
+import gc
 import json
 import math
 import sys
 import time
+import traceback
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -139,19 +141,43 @@ def main():
     log(f"[ASAMA-1] h={h1:.2f}mm  n={getattr(r1, 'n_placed', '?')}"
         f"  sure={(time.perf_counter() - t1) / 60:.1f}dk  pitch={pitch}")
 
-    # ---- asama-2: replay + kanopi drop ------------------------------------
+    # ---- asama-1 sonucundan HAFIF durum cek + agir nesneleri birak --------
+    # OOM dersi (2026-08-04 ilk kosu + plan7 2026-07-21 runner dersi):
+    # asama-1'in 3D gridleri bellekteyken asama-2 tahsisleri prosesi
+    # olduruyor. Replay yalniz 2D (filled, top) profil ister; clearance
+    # meshleri simdi kur, sonra r1 SERBEST birakilir.
+    _fvp = r1.fine_voxel_parts
+    _fvp_iter = _fvp.values() if isinstance(_fvp, dict) else _fvp
+    prof = {}
+    for vp in _fvp_iter:
+        # NFV yolu orientations listesini SEYREK tutabiliyor (kullanilmayan
+        # poz None) — None slotlar korunur, yalniz kullanilan indeks gerekir.
+        prof[vp.id] = [None if o is None else
+                       (np.array(o.filled, dtype=bool, copy=True),
+                        np.array(o.top, copy=True))
+                       for o in vp.orientations]
+    pls = [(pl.part_id, pl.orientation_idx, int(pl.x), int(pl.y), int(pl.z))
+           for pl in r1.placements]
+    meshes = list(placed_meshes(r1.placements, r1.fine_voxel_parts, pitch))
+    del r1, nfv_tel, _fvp, _fvp_iter
+    gc.collect()
+    log(f"[ASAMA-2] hafif durum cekildi: {len(pls)} yerlesim,"
+        f" {len(prof)} parca profili, {len(meshes)} mesh; agir nesneler"
+        " birakildi (gc)")
+
+    # ---- asama-2: replay (saf height kompozisyonu) + kanopi drop ----------
     mask = Bin3D.no_go_mask_from_bounds(eg.NOGO_STD, pw, pd, pitch)
     b = Bin3D(pw, pd, pitch, no_go_mask=mask)
-    vps = {vp.id: vp for vp in r1.fine_voxel_parts}
-    replay_uyusmaz = 0
-    for pl in r1.placements:
-        vp = vps.get(pl.part_id)
-        if vp is None:
-            log(f"HATA: replay part bulunamadi: {pl.part_id}")
+    for pid_, oi_, x_, y_, z_ in pls:
+        if (pid_ not in prof or oi_ >= len(prof[pid_])
+                or prof[pid_][oi_] is None):
+            log(f"HATA: replay profili yok: {pid_} oi={oi_}")
             log("BITTI")
             return
-        b.place(vp, pl.orientation_idx, pl.x, pl.y, pl.z)
-    log(f"[ASAMA-2] replay tamam ({len(r1.placements)} yerlesim)")
+        f_, top_ = prof[pid_][oi_]
+        sub = b.height[x_:x_ + f_.shape[0], y_:y_ + f_.shape[1]]
+        np.copyto(sub, np.maximum(sub, z_ + top_), where=f_)
+    log(f"[ASAMA-2] replay tamam ({len(pls)} yerlesim)")
 
     mesh0 = mesh.copy()
     mesh0.apply_translation(-mesh0.bounds[0])
@@ -211,10 +237,9 @@ def main():
     log("  (yorum: dolu-alti max, kanopinin z'sini belirler; delik-farkindali"
         "   asama-1 yuksek kuleleri delik bolgesine toplarsa kanopi asagi iner)")
 
-    # ---- clearance (serhli tam-olcum) -------------------------------------
+    # ---- clearance (naif; MESHLER TASINMADAN once olculmeli) --------------
     clear = None
     try:
-        meshes = placed_meshes(r1.placements, r1.fine_voxel_parts, pitch)
         mk = mesh0.copy()
         mk.apply_transform(rots[oi])
         mk.apply_translation(-mk.bounds[0])
@@ -226,11 +251,139 @@ def main():
     except Exception as e:
         log(f"[CLEARANCE] olculemedi: {type(e).__name__}: {e}")
 
+    # ---- ITERASYON: suclu-tasima (telemetri kazanci >= 5mm ise degerli) ---
+    # Naifin siniri: cerceve DOLU kolonlarinin altinda kalan az sayida kule
+    # (p95 ~ asama-1 tepesi). Tasima: suclu kuleler sahneden cikar, kanopi
+    # alcalir, kuleler kanopi SONRASI tekrar drop edilir (delikten gecis
+    # drop_map'te dogal). Saf script-ici; uretim koduna dokunmaz.
+    iter_sonuc = None
+    try:
+        fN = vpk.orientations[oi].filled  # naif kazanan azimut footprint'i
+        # plaka koordinatinda cerceve dolu-kolon maskesi (naif ofsette)
+        cerceve_dolu = np.zeros_like(b.height, dtype=bool)
+        cerceve_dolu[x:x + fN.shape[0], y:y + fN.shape[1]] = fN
+        butce_vox = int(tel["ideal_alt_butce_mm"] / pitch)
+        suclular = []
+        for k_, (pid_, oi_, x_, y_, z_) in enumerate(pls):
+            f_, top_ = prof[pid_][oi_]
+            tepe = int(z_ + top_[f_].max()) if f_.any() else 0
+            if tepe <= butce_vox:
+                continue
+            bolge = cerceve_dolu[x_:x_ + f_.shape[0], y_:y_ + f_.shape[1]]
+            if (bolge & f_).any():
+                suclular.append(k_)
+        log(f"[ITERASYON] suclu kule: {len(suclular)} yerlesim"
+            f" (tepe > {butce_vox * pitch:.1f}mm ve cerceve-dolu altinda)")
+        if suclular:
+            sucset = set(suclular)
+            b2 = Bin3D(pw, pd, pitch, no_go_mask=mask)
+            for k_, (pid_, oi_, x_, y_, z_) in enumerate(pls):
+                if k_ in sucset:
+                    continue
+                f_, top_ = prof[pid_][oi_]
+                sub = b2.height[x_:x_ + f_.shape[0], y_:y_ + f_.shape[1]]
+                np.copyto(sub, np.maximum(sub, z_ + top_), where=f_)
+            # kanopi yeniden-argmin (tum azimutlar)
+            en2 = None
+            for oi2, o2 in enumerate(vpk.orientations):
+                Z2 = b2.drop_map(o2)
+                if Z2 is None:
+                    continue
+                Z2m = np.where(Z2 >= Bin3D.NO_GO_SEAL,
+                               np.iinfo(np.int32).max, Z2)
+                if Z2m.min() >= np.iinfo(np.int32).max:
+                    continue
+                x2, y2 = np.unravel_index(int(Z2m.argmin()), Z2m.shape)
+                z2 = int(Z2m.min()) + z_gap
+                t2 = z2 + o2.grid.shape[2]
+                if en2 is None or t2 < en2[0]:
+                    en2 = (t2, oi2, int(x2), int(y2), z2)
+            if en2 is None:
+                raise RuntimeError("iterasyonda kanopi drop edilemedi")
+            t2, oi2, x2, y2, z2 = en2
+            o2 = vpk.orientations[oi2]
+            f2, top2 = o2.filled, o2.top
+            sub = b2.height[x2:x2 + f2.shape[0], y2:y2 + f2.shape[1]]
+            np.copyto(sub, np.maximum(sub, z2 + top2), where=f2)
+            log(f"[ITERASYON] kanopi: rot={[0, 90, 180, 270][oi2]}"
+                f" x={x2 * pitch:.1f} y={y2 * pitch:.1f} z={z2 * pitch:.1f}")
+            # suclulari kanopi SONRASI tek tek drop et (kendi pozuyla)
+            yeni_konum = {}
+            for k_ in suclular:
+                pid_, oi_, x_, y_, z_ = pls[k_]
+                f_, top_ = prof[pid_][oi_]
+                bot_ = None  # profilde bottom yok; drop_map orient ister —
+                # sahte Orientation yerine: kendi drop'umuz (bottom=0 kabulu,
+                # KONSERVATIF: parca tabani duz sayilir, z fazla tahmin
+                # edilebilir — serh).
+                w_, d_ = f_.shape
+                H = b2.height
+                nx2, ny2 = H.shape[0] - w_ + 1, H.shape[1] - d_ + 1
+                if nx2 <= 0 or ny2 <= 0:
+                    raise RuntimeError(f"suclu sigmiyor: {pid_}")
+                # vektorize maskeli kayan-max (satir parcali; bottom=0
+                # duz-kabul — SERH, clearance dogrular)
+                sw = np.lib.stride_tricks.sliding_window_view(H, (w_, d_))
+                best = None
+                blok = 64
+                for x0 in range(0, nx2, blok):
+                    x1 = min(x0 + blok, nx2)
+                    Zb = sw[x0:x1, :ny2][:, :, f_].max(axis=2)
+                    Zb = np.where(Zb >= Bin3D.NO_GO_SEAL,
+                                  np.iinfo(np.int32).max, Zb)
+                    zi = int(Zb.min())
+                    if zi >= np.iinfo(np.int32).max:
+                        continue
+                    bx, by = np.unravel_index(int(Zb.argmin()), Zb.shape)
+                    if best is None or zi < best[0]:
+                        best = (zi, x0 + int(bx), int(by))
+                if best is None:
+                    raise RuntimeError(f"suclu drop edilemedi: {pid_}")
+                zi, xx, yy = best
+                zz = zi + z_gap
+                tt = zz + int(top_[f_].max())
+                sub = b2.height[xx:xx + w_, yy:yy + d_]
+                np.copyto(sub, np.maximum(sub, zz + top_), where=f_)
+                yeni_konum[k_] = (xx, yy, zz)
+            Hs = np.where(b2.height >= Bin3D.NO_GO_SEAL, 0, b2.height)
+            iter_toplam = float(Hs.max()) * pitch
+            log(f"[ITERASYON] SONUC toplam={iter_toplam:.2f}mm"
+                f" (naif {toplam_mm:.2f} -> kazanc"
+                f" {toplam_mm - iter_toplam:+.2f}mm; SERH: suclu-drop taban"
+                " profili duz-kabul, clearance asagida dogrulanir)")
+            # clearance icin mesh guncelle: tasinanlar delta-cevrilir
+            for k_, (xx, yy, zz) in yeni_konum.items():
+                pid_, oi_, x_, y_, z_ = pls[k_]
+                meshes[k_].apply_translation([
+                    (xx - x_) * pitch, (yy - y_) * pitch, (zz - z_) * pitch])
+            mk2 = mesh0.copy()
+            mk2.apply_transform(rots[oi2])
+            mk2.apply_translation(-mk2.bounds[0])
+            mk2.apply_translation([x2 * pitch, y2 * pitch, z2 * pitch])
+            rep2 = min_clearance(list(meshes) + [mk2], samples_per_mesh=6000)
+            log(f"[ITERASYON] clearance min={float(rep2.min_mm):.3f}mm")
+            iter_sonuc = {
+                "toplam_mm": iter_toplam, "suclu_sayisi": len(suclular),
+                "kanopi": {"rot_deg": [0, 90, 180, 270][oi2],
+                           "x_mm": x2 * pitch, "y_mm": y2 * pitch,
+                           "z_mm": z2 * pitch},
+                "clearance_mm": float(rep2.min_mm),
+                "serh": "suclu-drop bottom-duz kabulu (konservatif-degil, "
+                        "clearance olcumu dogrular)",
+            }
+            # iterasyon mesh'leri tasidi — naif clearance artik OLCULMEZ
+            # (naif clearance yukarida zaten loglandi ilk kosuda; burada
+            # yalniz iterasyon dogrulanir).
+    except Exception as e:
+        log(f"[ITERASYON] atlandi/hata: {type(e).__name__}: {e}")
+        log(traceback.format_exc())
+
     OUT.write_text(json.dumps({
-        "serh": "naif kanopi on-olcumu; kilit olculmedi; tek-set (A11)",
+        "serh": "kanopi on-olcumu; kilit olculmedi; tek-set (A11)",
         "kanopi_parca": str(p0.name), "fizibilite": fiz,
         "asama1_h_mm": h1, "kanopi": kanopi_mm,
         "toplam_mm": toplam_mm, "clearance_mm": clear,
+        "iterasyon": iter_sonuc,
         "telemetri": tel, "ref": REF, "seed": SEED,
         "pitch": pitch, "nogo": eg.NOGO_STD,
         "toplam_sure_dk": round((time.perf_counter() - t0) / 60, 1),
@@ -242,5 +395,19 @@ def main():
     log("BITTI")
 
 
+def _guvenli_main():
+    """Sessiz-olum kalkani: her istisna LOG dosyasina yazilir (stderr'in
+    detach yapilandirmasinda kaybolabildigi 2026-08-04 dersi)."""
+    try:
+        main()
+    except BaseException as e:  # MemoryError dahil
+        try:
+            log(f"FATAL: {type(e).__name__}: {e}")
+            log(traceback.format_exc())
+            log("BITTI")
+        finally:
+            raise
+
+
 if __name__ == "__main__":
-    main()
+    _guvenli_main()

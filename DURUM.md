@@ -291,3 +291,19 @@ kisit_modu=kapali → davranış garantisi değişmedi.
 - KOŞU KUYRUĞU (sakin-makine, sırayla): D senkron → A9 tam suite → commit →
   plan7 a2-kilitli (mail taahhüdü) → K-56g 4-set kapısı → K-58 kalan →
   p3 teşhis → **k62_kanopi_plan1**.
+
+## 2026-08-04 GECE VARDİYASI — A9 yeşil + commit + K-62 Ç2 ÖLÇÜLDÜ (136,50!)
+
+- **A9 tam suite: 3109 passed** (4:05h, düşük-RAM makine); 2 fail = bayat-mock
+  (K-56g `orientation_overrides` imzası; test_sure_kirilim +
+  test_reporting_wave_f0 fake'leri) → düzeltildi, izole 25/25.
+- **Commit `aeb86a1`** (86 dosya): K-61/K-56g/kavite/mail/K-62/kayıtlar.
+  Veriler/ dışarıda; PUSH YOK.
+- **K-62 Ç2 plan1 ölçümü (şerhli GO):** naif kanopi 148,50 (clear 2,000) →
+  telemetri (dolu-altı ort 70,2 ≈ ideal 69,4; p95 105) → **suçlu-taşıma
+  iterasyonu 136,50 mm (clear 2,018) — pin 140,21 GEÇİLDİ; plan1 yeni
+  en-iyi (şerhli)**. Zincir: 202,18 → 148,5 → 136,5; manuel 110,41'e kalan
+  makas 26,1. Kanıt results/k62_kanopi_plan1* (D+C; naif arşiv _v3naif).
+  Şerhler + koşu-mühendisliği dersleri (OOM/FATAL-kalkanı/NFV-seyrek)
+  YONTEM §3 K-62 kaydında. Sonraki aday: delik-farkındalı aşama-1
+  yumuşak-tavan + kule-drop azimut araması.
