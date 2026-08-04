@@ -76,6 +76,7 @@ def fine_settle_raw(
     scale: int = DEFAULT_SCALE,
     mem_budget_bytes: int = MEM_BUDGET_BYTES,
     no_go_bounds=None,
+    onyuk_raw=None,
 ) -> Optional[SettleResult]:
     """NFV raw yerleşimini fine'da oturt; iyileşme yoksa/başarısızsa None.
 
@@ -85,13 +86,19 @@ def fine_settle_raw(
     z_dilate: coarse tek-taraflı z-dilation hücre sayısı (EVAL-1 NFV clearance);
     fine'da z_dilate*scale kullanılır → dikey boşluk garantisi mm-uzayda korunur.
     0 (default) -> z-dilation yok (mevcut settle davranışı BİT-ÖZDEŞ).
+
+    onyuk_raw (K-62 v12b): SABIT nesneler (3D pin) — raw ile ayni format
+    [(pid, oi, x, y, z)], parcalari parts_by_id'de. Fine occ'a HAREKETSIZ
+    damgalanir (tasima/oturtma listesine girmez); hareketli parcalar
+    pinlerin etrafina oturur. Damga hareketli parcalarla AYNI dilation'i
+    tasir (cift-tarafli ayrim, konservatif). None (default) = BIT-OZDES.
     """
     if not raw:
         return None
     try:
         return _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch,
                        margin, h_coarse_mm, scale, mem_budget_bytes, z_dilate,
-                       no_go_bounds)
+                       no_go_bounds, onyuk_raw)
     except MemoryError:
         return None   # bellek sıkışması → coarse sonucu korunur
     except Exception:
@@ -100,7 +107,7 @@ def fine_settle_raw(
 
 def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
             h_coarse_mm, scale, mem_budget_bytes, z_dilate=0,
-            no_go_bounds=None):
+            no_go_bounds=None, onyuk_raw=None):
     # --- bellek pre-flight: occ grid boyutu bütçeyi aşarsa scale'i kıs/vazgeç
     while scale >= 2:
         fine = pitch / scale
@@ -137,6 +144,32 @@ def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
                                           plate_d_mm, fine)
         if _m.shape == (nxf, nyf) and _m.any():
             occ[_m, :] = True
+
+    # K-62 v12b: SABIT on-yukler (3D pin) fine occ'a HAREKETSIZ damgalanir.
+    # Damga hareketlilerle ayni dilation'i tasir (margin/z_dilate * scale);
+    # dilated origin xy'de -margin*scale kayar (pin konumu margin-0 bbox),
+    # damga kirpmali. pid-anahtarli ayri sozluk: ayni (name, oi) anahtarli
+    # HAREKETLI kopyalarla (pin rot'u farkli grid) cakismasin.
+    if onyuk_raw:
+        for pid, oi, x, y, z in onyuk_raw:
+            part = parts_by_id[pid]
+            vp = voxelize_part(part.name, part.mesh, fine,
+                               rot_matrices=[part.orientations[oi].rot_matrix],
+                               margin=margin * scale,
+                               z_dilate=z_dilate * scale, method="slice")
+            g = vp.orientations[0].grid
+            xs = x * scale - margin * scale
+            ys = y * scale - margin * scale
+            zs = z * scale
+            fw, fd, fh = g.shape
+            x0, y0, z0 = max(0, xs), max(0, ys), max(0, zs)
+            x1 = min(nxf, xs + fw); y1 = min(nyf, ys + fd)
+            z1 = min(nzf, zs + fh)
+            if x1 <= x0 or y1 <= y0 or z1 <= z0:
+                continue
+            occ[x0:x1, y0:y1, z0:z1] |= g[x0 - xs:x1 - xs,
+                                          y0 - ys:y1 - ys,
+                                          z0 - zs:z1 - zs]
 
     def feasible(g, x, y, z):
         fw, fd, fh = g.shape

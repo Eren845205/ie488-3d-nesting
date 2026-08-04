@@ -221,12 +221,66 @@ def test_solve_pin3d_dikey_clearance():
             f"{p.part_id} kanopiye dikey-bosluksuz oturdu (z={p.z * P2}mm)"
 
 
-def test_solve_pin3d_settle_ve_repair_korumasi():
+def test_oncelik_none_bit_ozdes():
+    """K-62 v11: oncelik_ids/oncelik_adlari None -> sira ve sonuc BIT-OZDES."""
+    parts = [_box_part(name=f"k{i}") for i in range(3)]
+    a = decode(parts, 20, 20, pitch=PITCH, return_placements=True)
+    b = decode(parts, 20, 20, pitch=PITCH, return_placements=True,
+               oncelik_ids=None)
+    assert a == b
+    ia = _solve(_inst_kanopili())
+    ib = _solve(_inst_kanopili(), oncelik_adlari=None)
+    assert ia.height_mm == ib.height_mm
+
+
+def test_oncelik_kule_once_yerlesir():
+    """Oncelikli id'ler kucuk hacimli olsalar da ILK yerlesir (sira kaniti:
+    ilk placement oncelikli parca olur; default sirada hacim-buyuk once)."""
+    buyuk = _box_part(w=40.0, d=40.0, h=10.0, name="buyuk")
+    kucuk = _box_part(w=10.0, d=10.0, h=10.0, name="kucuk")
+    _h, pls_def = decode([buyuk, kucuk], 20, 20, pitch=PITCH,
+                         return_placements=True)
+    assert pls_def[0][0] == buyuk.id            # default: hacim-buyuk once
+    _h, pls_onc = decode([buyuk, kucuk], 20, 20, pitch=PITCH,
+                         return_placements=True, oncelik_ids={kucuk.id})
+    assert pls_onc[0][0] == kucuk.id            # oncelik: kucuk ONE gecti
+
+
+def test_oncelik_rutbeli_sira():
+    """v13: dict oncelik {id: rutbe} — kucuk rutbe once, rutbesiz en son."""
+    a = _box_part(w=40.0, d=40.0, h=10.0, name="a")     # buyuk hacim
+    b = _box_part(w=10.0, d=10.0, h=10.0, name="b")
+    c = _box_part(w=15.0, d=15.0, h=10.0, name="c")
+    _h, pls = decode([a, b, c], 30, 30, pitch=PITCH, return_placements=True,
+                     oncelik_ids={b.id: 0, c.id: 1})
+    assert [p[0] for p in pls] == [b.id, c.id, a.id]
+
+
+def test_solve_pin3d_repair_korumasi_ve_settle_calisir():
+    """v12b: settle artik pin-farkinda (atlanMAZ); repair hala atlanir."""
     pins = [{"ad": "kanopi", "x_mm": 10.0, "y_mm": 10.0, "z_mm": 30.0,
              "rot": None}]
     r = solve_nfv(_inst_kanopili(), plate_w_mm=PLAKA, plate_d_mm=PLAKA,
                   fine_pitch=P2, seed=42, fine_settle=True,
                   repair_separability=True,
                   pinned_placements=pins, pin_3d=True)
-    assert "settle skipped (pin_3d" in r.adaptive_reason
+    assert "settle skipped (pin_3d" not in r.adaptive_reason
     assert "repair skipped (pin_3d" in r.adaptive_reason
+    assert r.n_placed == 4
+
+
+def test_solve_pin3d_settle_pin_farkinda():
+    """Settle, kanopi USTUNDEKI kutuyu kanopinin icine COMPACT EDEMEZ:
+    (kanopi z=10, kutu boyu 10, clearance 2 -> kutular kanopi ustunde).
+    Pin-farkindasiz settle alti bos gorup kutulari z=0'a indirirdi."""
+    pins = [{"ad": "kanopi", "x_mm": 10.0, "y_mm": 10.0, "z_mm": 10.0,
+             "rot": None}]
+    r = solve_nfv(_inst_kanopili(), plate_w_mm=PLAKA, plate_d_mm=PLAKA,
+                  fine_pitch=P2, seed=42, fine_settle=True,
+                  pinned_placements=pins, pin_3d=True, clearance_mm=2.0)
+    pt = float(r.fine_pitch)
+    for p in r.placements:
+        if p.part_id.startswith("kanopi"):
+            continue
+        assert p.z * pt >= 14.0 - pt, \
+            f"{p.part_id} settle'da kanopinin icine indi (z={p.z * pt}mm)"

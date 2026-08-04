@@ -139,6 +139,28 @@ def _worth_threading(ob, n_eligible) -> bool:
     return n_eligible >= 2 and ob.max_height_voxels() > 0
 
 
+def _sira_anahtari(oncelik_ids):
+    """Decode yerlestirme sirasi (K-62 v11): opt-in oncelik katmani.
+
+    oncelik_ids=None (default) -> tarihsel hacim-azalan sira BIT-OZDES.
+    Verilirse (id kumesi): oncelikli parcalar ONCE (kendi iclerinde ve
+    kalanlarda yine hacim-azalan). Gerekce: kanopi/delik sahnelerinde
+    (pin_3d) BLB hacim-sirasi kisa parcalara tabani kaptirip kule
+    kopyalarini yukari itiyor; insan cozumu once kuleleri diker
+    (v9/v10 olcum teshisi, YONTEM K-62).
+    """
+    if not oncelik_ids:
+        return lambda vp: -vp.volume_voxels
+    if isinstance(oncelik_ids, dict):
+        # RUTBELI oncelik (K-62 v13): id -> rutbe (kucuk = once);
+        # rutbesizler en sona (max+1). Katman ici yine hacim-azalan.
+        omap = dict(oncelik_ids)
+        son = (max(omap.values()) + 1) if omap else 1
+        return lambda vp: (omap.get(vp.id, son), -vp.volume_voxels)
+    oset = set(oncelik_ids)
+    return lambda vp: (0 if vp.id in oset else 1, -vp.volume_voxels)
+
+
 # --------------------------------------------------------------------------
 # Kol A — CPU orient-thread decode
 # --------------------------------------------------------------------------
@@ -146,7 +168,7 @@ def _worth_threading(ob, n_eligible) -> bool:
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
            return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
            skip_status=None, no_go_mask=None, exit_guard=False,
-           exit_guard_retries=2, occ_onyuk=None):
+           exit_guard_retries=2, occ_onyuk=None, oncelik_ids=None):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
@@ -190,7 +212,7 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
     guard_scene = _GuardScene() if exit_guard else None
     # K-33b telemetri (A4 olc-once): vergi nerede yasiyor?
     guard_stats = {"ilk_gecti": 0, "retry_kurtardi": 0, "fallback": 0}
-    sorted_parts = sorted(parts, key=lambda vp: -vp.volume_voxels)
+    sorted_parts = sorted(parts, key=_sira_anahtari(oncelik_ids))
 
     executor = None
     t0 = time.perf_counter()
@@ -359,7 +381,8 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True,
 
 def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
                time_budget_sec=None, budget_status=None, no_go_mask=None,
-               fast_len=True, spec_cache_mb=0.0, _tel=None, occ_onyuk=None):
+               fast_len=True, spec_cache_mb=0.0, _tel=None, occ_onyuk=None,
+               oncelik_ids=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
     yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
@@ -427,7 +450,7 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
     cur_max = _pin_tepe  # pin yoksa 0 = BIT-OZDES; pinli: yukseklik durust
     n_placed = 0
     t0 = time.perf_counter()
-    for part in sorted(parts, key=lambda vp: -vp.volume_voxels):
+    for part in sorted(parts, key=_sira_anahtari(oncelik_ids)):
         if time_budget_sec is not None and (time.perf_counter() - t0) >= time_budget_sec:
             if budget_status is not None:
                 budget_status["budget_exceeded"] = True
@@ -483,7 +506,7 @@ def _mark_budget(strategy: str, status: dict) -> str:
 
 def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None,
                 no_go_mask=None, exit_guard=False, exit_guard_retries=2,
-                occ_onyuk=None):
+                occ_onyuk=None, oncelik_ids=None):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
     GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
 
@@ -501,7 +524,8 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
         try:
             h, raw = decode_gpu(parts, nx, ny, pitch=pitch, return_placements=True,
                                 time_budget_sec=time_budget_sec, budget_status=status,
-                                no_go_mask=no_go_mask, occ_onyuk=occ_onyuk)
+                                no_go_mask=no_go_mask, occ_onyuk=occ_onyuk,
+                                oncelik_ids=oncelik_ids)
             return h, raw, _mark_budget("gpu-resident", status)
         except Exception as e:
             if verbose:
@@ -515,7 +539,7 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
                     return_placements=True, time_budget_sec=time_budget_sec,
                     budget_status=status, skip_status=skip, no_go_mask=no_go_mask,
                     exit_guard=exit_guard, exit_guard_retries=exit_guard_retries,
-                    occ_onyuk=occ_onyuk)
+                    occ_onyuk=occ_onyuk, oncelik_ids=oncelik_ids)
     strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
     g = skip.get("guard")
     if g:

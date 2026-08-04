@@ -144,7 +144,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               repair_separability=False,
               exit_guard=False, exit_guard_retries=2,
               orientation_overrides=None,
-              pinned_placements=None, pin_3d=False) -> CoarseToFineResult:
+              pinned_placements=None, pin_3d=False,
+              oncelik_adlari=None) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -287,11 +288,24 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             if _w > 0 and _h > 0:
                 _ng_mask[_ix:_ix + _w, _iy:_iy + _h] |= _f[:_w, :_h]
 
+    # K-62 v11: opt-in yerlestirme onceligi (tip ADLARI -> id kumesi).
+    # v13: dict {ad: rutbe} de kabul edilir (kucuk rutbe = once).
+    # None (default) = tarihsel hacim-azalan sira BIT-OZDES.
+    _onc_ids = None
+    if oncelik_adlari:
+        if isinstance(oncelik_adlari, dict):
+            _onc_ids = {p.id: oncelik_adlari[p.name] for p in parts
+                        if getattr(p, "name", None) in oncelik_adlari}
+        else:
+            _oset = set(oncelik_adlari)
+            _onc_ids = {p.id for p in parts
+                        if getattr(p, "name", None) in _oset}
+
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
                                    time_budget_sec=decode_budget,
                                    no_go_mask=_ng_mask, exit_guard=exit_guard,
                                    exit_guard_retries=exit_guard_retries,
-                                   occ_onyuk=_occ_onyuk)
+                                   occ_onyuk=_occ_onyuk, oncelik_ids=_onc_ids)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
     # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un
@@ -308,21 +322,32 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     # asilmadiysa settle'a dokunma (v1: settle'in icine butce sizdirmak kapsam disi).
     settle_note = None
     result_pitch = used_pitch
-    if fine_settle and _pin_specs and pin_3d:
-        # v9 MVP korumasi: fine_settle pin-farkinda DEGIL — kanopi USTUNE
-        # yerlesen parcayi (alti cozucu-modelde pin doluydu, settle bos gorur)
-        # kanopinin icine compact edebilirdi. Pin-farkindali settle ayri is.
-        settle_note = "settle skipped (pin_3d v9: settle pin-farkinda degil)"
-    elif fine_settle and budget_exceeded:
+    if fine_settle and budget_exceeded:
         settle_note = "settle skipped (budget)"
     elif fine_settle:
         from src.nesting3d.fine_settle import fine_settle_raw
-        s = fine_settle_raw(raw, parts_by_id,
+        # K-62 v12b: pin_3d'de settle artik PIN-FARKINDA — pinler fine occ'a
+        # sabit damgalanir (onyuk_raw), hareketliler etrafina oturur.
+        # (v9-MVP'de yapisal atlaniyordu; kuantizasyon vergisi geri alinir.)
+        _settle_onyuk = None
+        _settle_parts = parts_by_id
+        _h_settle = bin3d.max_height_mm()
+        if _pin_specs and pin_3d:
+            _settle_parts = dict(parts_by_id)
+            _settle_onyuk = []
+            for _pp, _ix, _iy, _iz in _pins0:
+                _settle_parts[_pp.id] = _pp
+                _settle_onyuk.append((_pp.id, 0, _ix, _iy, _iz))
+                _h_settle = max(_h_settle,
+                                (_iz + _pp.orientations[0].grid.shape[2])
+                                * used_pitch)
+        s = fine_settle_raw(raw, _settle_parts,
                             plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                             pitch=used_pitch, margin=settle_margin,
                             z_dilate=settle_zc,
-                            h_coarse_mm=bin3d.max_height_mm(),
-                            no_go_bounds=no_go_bounds)
+                            h_coarse_mm=_h_settle,
+                            no_go_bounds=no_go_bounds,
+                            onyuk_raw=_settle_onyuk)
         if s is not None:
             fine_bin = Bin3D(plate_w_mm, plate_d_mm, s.fine_pitch)
             for (pid, oi, xf, yf, zf) in s.raw_fine:
