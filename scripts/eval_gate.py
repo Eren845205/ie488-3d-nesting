@@ -73,14 +73,20 @@ NOISE_PCT = 0.5   # B2: voxel-kuantizasyon gurultu bandi
 # olculdugu kosullar). Eski 325/328.74 config plakalari ve no-go'suz kosum
 # tarihseldir; baseline ILK KEZ bu sozlesmeyle kilitlenir (A8 gerekceli).
 PLATE_STD = (335.0, 335.0)
-NOGO_STD = ((152.5, 0.2), (185.5, 45.0))
-# K-56g SOFT NO-GO (SOZLESME-KAPILI; default None = kablo kapali, bit-ozdes):
-# soft sozlesme paketi (45->33) kapi kosusunda script tarafindan atanir:
-#   eg.NOGO_STD = SOFT; eg.NOGO_SOFT = SOFT
-# NOGO_SOFT atanmadikca evaluate_set duz-pinleme dalina HIC girmez. Kalici
-# sozlesme degisikligi A11 madde 4 sinifidir (4-set kapi + baseline yenileme +
-# Eren onayi) — bu sabit o karar verilmeden degistirilmez.
-NOGO_SOFT = None
+# SOZLESME GUNCELLEMESI (2026-08-04, Eren karari — K-56g kapi-2 f615d8d):
+# soft no-go y-ust 45->33 KALICI sozlesme oldu. Dayanak: hoca 2026-07-09
+# cevap 3/9 ("yasak bolgeye cok hafif girisler sorun yaratmiyor") + kapi-2
+# 4-set olcumu (p1 140.21 pin / p2 -7.9 / p3 +5.6 bedel / d4 215.87 yeni
+# en-iyi; net -69.1mm; verdict INSAN-KARARI -> Eren kabul). Hard dikdortgen
+# (y-ust 45) fiziksel plaka kaydi olarak plate.local.json "no_go"da yasar;
+# efektif cozucu maskesi ve pin kablosu SOFT dikdortgeni kullanir (uretim
+# paritesi: demo_pipeline resolve_no_go_soft ayni degeri config'ten cozer).
+# A8: baseline ayni kapi-2 kosusundan yenilendi (results/eval_gate_baseline).
+NOGO_HARD = ((152.5, 0.2), (185.5, 45.0))  # fiziksel kolon (tarihsel/hard)
+NOGO_STD = ((152.5, 0.2), (185.5, 33.0))
+# K-56g duz-pinleme dali NOGO_SOFT ile acilir (None = kablo kapali; eski
+# default). Kalici sozlesmede STD == SOFT (kapi-2 kosusundaki atamayla ayni).
+NOGO_SOFT = NOGO_STD
 
 # Faz-1: roller data/registry.json'dan (tek dogruluk kaynagi; 01_VERI §2).
 # Registry yoksa/bozuksa guvenli fallback sabitler.

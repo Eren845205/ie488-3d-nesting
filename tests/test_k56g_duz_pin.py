@@ -163,9 +163,23 @@ def _patlat(mesaj):
     return _f
 
 
+def test_sozlesme_sabitleri_soft_kalici(monkeypatch):
+    """SOZLESME PINI (2026-08-04, Eren karari — kapi-2 f615d8d): soft no-go
+    y-ust 33 KALICI sozlesme; NOGO_STD == NOGO_SOFT, hard dikdortgen
+    NOGO_HARD'da tarihsel kayit olarak durur. Bu degerler A11 madde 4 sinifi
+    olmadan degistirilemez."""
+    import scripts.eval_gate as eg
+    assert eg.NOGO_STD == ((152.5, 0.2), (185.5, 33.0))
+    assert eg.NOGO_SOFT == eg.NOGO_STD
+    assert eg.NOGO_HARD == ((152.5, 0.2), (185.5, 45.0))
+
+
 def test_run_champion_soft_yokken_pin_dali_olu(monkeypatch):
     eg, yakalanan = _hm_ortam(monkeypatch, "tabla")
-    assert eg.NOGO_SOFT is None  # default sozlesme: kablo kapali
+    # NOGO_SOFT=None semantigi korunur: kablo kapali -> pin dali OLU KOD.
+    # (Kalici sozlesmede default artik SOFT; None davranisi monkeypatch ile
+    # pinlenmeye devam eder — opt-out yolu kirilmasin.)
+    monkeypatch.setattr(eg, "NOGO_SOFT", None)
     import src.nesting3d.targeted_tilt as tt
     monkeypatch.setattr(tt, "duz_pin_onerisi",
                         _patlat("NOGO_SOFT None iken pin cagrilmamaliydi"))

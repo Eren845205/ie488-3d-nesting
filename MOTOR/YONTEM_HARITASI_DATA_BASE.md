@@ -106,12 +106,12 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 > iyi LEGAL sonucu + hangi koldan geldiğini + kanıtını tek yerde tutar; her yeni
 > rekor/kapı sonrası GÜNCELLENİR.
 
-| Set | Üretim yolu (eval baseline 2026-07-20) | En iyi LEGAL (şampiyon) | Kol / kanıt |
+| Set | Üretim yolu (eval baseline 2026-08-04, soft sözleşme) | En iyi LEGAL (şampiyon) | Kol / kanıt |
 |---|---|---|---|
-| plan1 | 202.18 | 202.18 (şerhli aday: 140.21 K-56f zinciri — kablo K-56g bekliyor) | üretim; results/k56f_pinleme.json |
-| plan2 | **529.04** | 529.04 (= üretim; K-58 REKORU — eski v4 541.44'ü geçti) | üretim; k58_p2_olcum.json |
-| plan3 | 601.92 | **577.62** (K-49d R11-v4, 2026-07-13; clear 2.033, kilit 0) | şampiyon-reçete; STL plan3_r11d_577.6mm.stl (D) |
-| deneme4 | **220.69** | 220.69 (= üretim; K-58/K-60 şampiyon-parite; hocaya son raporlanan 229.3) | üretim; k58_d4_olcum.json |
+| plan1 | **140.21** (K-56g pin; soft sözleşme kalıcı) | 140.21 (şerhli aday: **136.50** K-62 v4 kanopi — kilit ölçülmedi, kablo yok) | üretim; eval_gate_baseline 2026-08-04 + results/k62_kanopi_plan1.json |
+| plan2 | **521.18** (kapı-2 REKORU — eski 529.04'ü geçti) | 521.18 (= üretim) | üretim; eval_gate_baseline 2026-08-04 |
+| plan3 | 607.50 (soft bedeli +5.58 — bilinçli kabul, kapı-2) | **577.62** (K-49d R11-v4, 2026-07-13; clear 2.033, kilit 0) | şampiyon-reçete; STL plan3_r11d_577.6mm.stl (D) |
+| deneme4 | **215.87** (kapı-2 YENİ ŞAMPİYON — eski 220.69'u geçti) | 215.87 (= üretim) | üretim; eval_gate_baseline 2026-08-04 |
 | deneme5 | *(eval config'i yok)* | **214.64** (K-50 R11-v4, 2026-07-14) | şampiyon-reçete; STL deneme5_r11v4_214.6mm.stl (D) |
 | deneme6 | **68.50** (kör-test) | 65.50 (max kolu) | held-out; deneme6_heldout_final.json |
 | plan7 | **488.40** (kör-test, kısıtsız) | 488.40 (max BİREBİR) | held-out; plan7_heldout_final.json |
@@ -130,6 +130,13 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 ## §3 — DENENEN YÖNTEMLER ENVANTERİ
 
 ### 3.1 KALİTE
+
+### [K-56g kapı-2 + SÖZLEŞME] Soft no-go (y-üst 45→33) 4-set kapısı → KALICI SÖZLEŞME + BASELINE YENİLEME
+- **Durum:** ✅ ÜRETİMDE (sözleşme kalıcı, Eren kararı 2026-08-04 sabah) · **Tarih:** kapı 2026-08-04 gece (`f615d8d`), kalıcılaştırma 2026-08-04 · **Kanıt:** `results/eval_gate_last.json` 2026-08-04T00:12 (D+C) + `scripts/k56g_kapi.log`
+- **Kapı-2 sonucu (soft sözleşme 4-set, 96dk, münhasır):** p1 202.18→**140.21** (pin tetikli, kilit 0, clear 2.034) · p2 529.04→**521.18** (−7.86 REKOR; söküm-planlı cert 3) · p3 601.92→**607.50** (+5.58 BEDEL) · d4 220.69→**215.87** (−4.82 YENİ ŞAMPİYON; söküm-planlı cert 17). Net −69.1mm; B2 = İNSAN-KARARI (p3 bedeli) → **Eren KABUL**. Kapı-1 (hard sözleşme, NOOP 68dk) = çoklu-pin+NFV-pin motor değişikliklerinin 4-set sıfır-dokunuş kanıtı.
+- **Kalıcılaştırma paketi (2026-08-04):** (1) `/plaka-ayar` POST **MERGE fix** (önceden config'i sıfırdan yazıp form-dışı alanları siliyordu — no_go_soft kaydedilemezdi; +4 test) · (2) `configs/plate.local.json`'a `no_go_soft` ilanı (üretim/demo_pipeline aktivasyonu; hard `no_go` fiziksel kayıt olarak kaldı) · (3) `eval_gate.py` NOGO_STD=NOGO_SOFT=(152.5,0.2)-(185.5,33.0) + NOGO_HARD tarihsel sabit + sözleşme-pin testi · (4) baseline kapı-2 koşusundan terfi (`results/eval_gate_baseline.json` C+D; eski 2026-07-20 değerleri _baseline_not'ta) · (5) bayat testler A9 ile kilitlendi (k56b tilt testleri NOGO_SOFT=None pinler; k45 _SolveSpy imzasına K-62 v8 `pinned_placements` eklendi).
+- **Ders:** eval_gate soft ilanı MODÜL-ATTR ister (env değil) — ilk kapı koşusu env-only bırakınca pin dalı ölü kaldı (o koşu kazara sıfır-dokunuş replay kanıtı oldu). Sözleşme-kapılı kablo deseni (ilan yoksa ölü kod) kalıcılaştırmayı tek-config-alanı işine indirdi.
+- **Karne (A11):** tetik=GEOMETRİK (duz_pin_onerisi; set adı yok) · kapı=**PASS/KABUL** (4-set ölçüldü, İNSAN-KARARI→Eren) · sıfır-dokunuş=**KANITLI** (kapı-1 NOOP + kapı-2'de p2/d4 iyileşme p3 bedel — tetiksiz set yok, hepsi ölçüldü) · sözleşme=**EVET-KARARLI** (hoca 2026-07-09 c3/9 dayanak + Eren 2026-08-04; baseline A8 gerekçeli yenilendi) · held-out=BEKLİYOR (yeni gerçek veri gelince ilk iş).
 
 ### [K-62 ön-teşhis] Delikli-parça düz-poz gerçek-geometri no-go fizibilitesi (plan1 baseplate)
 - **Durum:** ✅ GO (teşhis; mekanizma kodu YOK) · **Tarih:** 2026-08-03 · **Kanıt:** scratchpad `k62_delik_fizibilite.py` → `results/k62_delik_fizibilite{,_p025}.json` (repo + D) + hoca ekran görüntüleri `Veriler/hoca_ekleri_2026-08-03/`

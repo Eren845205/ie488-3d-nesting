@@ -3219,11 +3219,14 @@ def _register_routes(
 
     @app.route("/plaka-ayar", methods=["POST"])
     def plaka_ayar_kaydet():
-        """Plaka boyutunu configs/plate.local.json'a yaz.
+        """Plaka boyutunu configs/plate.local.json'a yaz (MERGE, sifirdan degil).
 
-        Bos birakilirsa (veya 'otomatik' secilirse) config dosyasi SILINIR ->
-        plaka parcalardan otomatik turetilir (cekirdek politika). Boylece kullanici
-        sabit plaka ile otomatik arasinda gecis yapabilir.
+        Bos birakilirsa (veya 'otomatik' secilirse) formun yonettigi plaka
+        alanlari KALDIRILIR -> plaka parcalardan otomatik turetilir (cekirdek
+        politika). Form yalnizca kendi yonettigi anahtarlara dokunur
+        (width/depth/height/no_go); formda olmayan sozlesme alanlari
+        (no_go_soft, min_clearance_mm, ...) KORUNUR — sifirdan-yazma bu
+        alanlari sessizce siliyordu (2026-08-03 bulgusu, K-56g sozlesmesi).
         """
         def _num(key):
             raw = (request.form.get(key) or "").strip().replace(",", ".")
@@ -3239,15 +3242,34 @@ def _register_routes(
         w, d, h = (None, None, None) if otomatik else (_num("width_mm"), _num("depth_mm"), _num("height_mm"))
 
         p = _plate_cfg_path()
+        _FORM_ANAHTARLARI = ("width_mm", "depth_mm", "height_mm", "no_go")
+        try:
+            _eski = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(_eski, dict):
+                _eski = {}
+        except Exception:
+            _eski = {}
+        korunan = {k: v for k, v in _eski.items() if k not in _FORM_ANAHTARLARI}
+
         if w is None or d is None:
-            # Eksik/otomatik -> sabit plaka kaldirilir (varsa dosyayi sil)
-            try:
-                p.unlink()
-            except FileNotFoundError:
-                pass
+            # Eksik/otomatik -> form alanlari kaldirilir; form-disi alanlar
+            # varsa dosya onlarla yasar, yoksa silinir (eski davranis).
+            if korunan:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(
+                    json.dumps(korunan, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            else:
+                try:
+                    p.unlink()
+                except FileNotFoundError:
+                    pass
             return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
 
-        cfg = {"width_mm": w, "depth_mm": d}
+        cfg = dict(korunan)
+        cfg["width_mm"] = w
+        cfg["depth_mm"] = d
         if h is not None:
             cfg["height_mm"] = h
         # K-45: yasak bolge (no-go) — 4 alan da gecerliyse yazilir; x1<x2, y1<y2

@@ -31,10 +31,13 @@ class _SolveSpy:
     def __call__(self, instance, *, plate_w_mm, plate_d_mm, fine_pitch,
                  quality, seed, n_orientations, time_budget_sec,
                  clearance_mm, no_go_bounds, exit_guard=False,
-                 orientation_overrides=None):
+                 orientation_overrides=None, pinned_placements=None):
+        # A9: imza gercek solve_nfv ile kilitli — K-62 v8 (62624bf)
+        # pinned_placements'i kalite yoluna da geciriyor (default None).
         self.calls.append({"fine_pitch": fine_pitch, "clearance_mm": clearance_mm,
                            "no_go_bounds": no_go_bounds, "exit_guard": exit_guard,
-                           "quality": quality, "seed": seed})
+                           "quality": quality, "seed": seed,
+                           "pinned_placements": pinned_placements})
         return self.results.pop(0)
 
 

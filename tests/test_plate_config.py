@@ -168,6 +168,75 @@ def test_plaka_ayar_post_kaydet_ve_temizle(client, plate_root):
     assert not p.exists()
 
 
+def test_plaka_ayar_post_form_disi_alanlari_korur(client, plate_root):
+    """MERGE fix (2026-08-04): POST formda olmayan sozlesme alanlarini
+    (no_go_soft, min_clearance_mm) SILMEZ — eski davranis config'i sifirdan
+    yazip K-56g soft-nogo sozlesmesini sessizce ucuruyordu."""
+    p = plate_root / "configs" / "plate.local.json"
+    p.write_text(json.dumps({
+        "width_mm": 335.0, "depth_mm": 335.0,
+        "no_go": [[152.5, 0.2], [185.5, 45.0]],
+        "no_go_soft": [[152.5, 0.2], [185.5, 33.0]],
+        "min_clearance_mm": 2.0,
+    }), encoding="utf-8")
+
+    r = client.post("/plaka-ayar", data={
+        "width_mm": "335", "depth_mm": "335",
+        "ng_x1": "152.5", "ng_y1": "0.2", "ng_x2": "185.5", "ng_y2": "45",
+    })
+    assert r.status_code in (302, 200)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["no_go_soft"] == [[152.5, 0.2], [185.5, 33.0]]
+    assert data["min_clearance_mm"] == 2.0
+    assert data["no_go"] == [[152.5, 0.2], [185.5, 45.0]]
+    assert (data["width_mm"], data["depth_mm"]) == (335.0, 335.0)
+
+
+def test_plaka_ayar_otomatik_form_disi_alanlarla_dosya_yasar(client, plate_root):
+    """otomatik=1: form alanlari (plaka + no_go) kalkar ama form-disi alanlar
+    varsa dosya SILINMEZ, onlarla yasar."""
+    p = plate_root / "configs" / "plate.local.json"
+    p.write_text(json.dumps({
+        "width_mm": 335.0, "depth_mm": 335.0,
+        "no_go": [[152.5, 0.2], [185.5, 45.0]],
+        "no_go_soft": [[152.5, 0.2], [185.5, 33.0]],
+    }), encoding="utf-8")
+
+    r = client.post("/plaka-ayar", data={"otomatik": "1"})
+    assert r.status_code in (302, 200)
+    assert p.exists()
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data == {"no_go_soft": [[152.5, 0.2], [185.5, 33.0]]}
+    assert resolve_plate(plate_root) == (None, None, None)
+
+
+def test_plaka_ayar_no_go_formdan_silinebilir_soft_kalir(client, plate_root):
+    """Formda no-go alanlari bos gonderilirse no_go anahtar KALKAR (form o
+    anahtarin sahibi) ama no_go_soft'a dokunulmaz."""
+    p = plate_root / "configs" / "plate.local.json"
+    p.write_text(json.dumps({
+        "width_mm": 335.0, "depth_mm": 335.0,
+        "no_go": [[152.5, 0.2], [185.5, 45.0]],
+        "no_go_soft": [[152.5, 0.2], [185.5, 33.0]],
+    }), encoding="utf-8")
+
+    r = client.post("/plaka-ayar", data={"width_mm": "335", "depth_mm": "335"})
+    assert r.status_code in (302, 200)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert "no_go" not in data
+    assert data["no_go_soft"] == [[152.5, 0.2], [185.5, 33.0]]
+
+
+def test_plaka_ayar_bozuk_config_ustune_yazilir(client, plate_root):
+    """Mevcut dosya bozuk JSON ise merge sessizce bos-dict'ten devam eder —
+    POST yine gecerli config yazar (regresyon: exception 500 dondurmesin)."""
+    p = plate_root / "configs" / "plate.local.json"
+    p.write_text("{bozuk json", encoding="utf-8")
+    r = client.post("/plaka-ayar", data={"width_mm": "335", "depth_mm": "300"})
+    assert r.status_code in (302, 200)
+    assert resolve_plate(plate_root)[:2] == (335.0, 300.0)
+
+
 def test_plaka_ayar_gercek_dosyaya_dokunmaz(client, plate_root, tmp_path):
     """Regresyon kapisi: POST akisi proje kokundeki gercek configs/
     plate.local.json'un mtime/iceriğini DEGISTIRMEZ (izolasyon kaniti)."""

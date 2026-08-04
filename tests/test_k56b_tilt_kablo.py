@@ -121,6 +121,11 @@ def _hm_ortam(monkeypatch, tilt_parca):
     monkeypatch.setattr(ap_mod, "predict_nfv_benefit",
                         lambda inst, **k: _Dec())
     monkeypatch.setattr(eg, "solve_coarse_to_fine", sahte_c2f)
+    # Bu dosya TILT mekanizmasini test eder; kalici soft sozlesme (2026-08-04,
+    # NOGO_SOFT != None) pin dalini one gecirip tilt'i susturur. Sozlesmeden
+    # bagimsiz mekanizma testi icin soft kapali pinlenir (pin dali kendi
+    # dosyasinda: test_k56g_duz_pin).
+    monkeypatch.setattr(eg, "NOGO_SOFT", None)
     return eg, yakalanan
 
 
