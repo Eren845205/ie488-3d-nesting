@@ -146,7 +146,7 @@ def _worth_threading(ob, n_eligible) -> bool:
 def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None, pitch=2.0,
            return_placements=False, fft_workers=None, time_budget_sec=None, budget_status=None,
            skip_status=None, no_go_mask=None, exit_guard=False,
-           exit_guard_retries=2):
+           exit_guard_retries=2, occ_onyuk=None):
     """NFV-greedy decode. parallel=False → seri; True → Kol A orient-thread. İki yol AYNI blb_xybbox +
     AYNI reduce → BİREBİR. Döner: height_mm veya (height_mm, [RawPlacement]).
 
@@ -179,6 +179,13 @@ def decode(parts, nx, ny, *, feasible_mask=None, parallel=False, n_threads=None,
     # -> FFT + is_feasible + drop-fallback otomatik kacinir (Bin3D seal esdegeri)
     ob = OccupancyBin3D(nx, ny, nz_limit=_nz_limit(pitch), pitch=pitch,
                         no_go_mask=no_go_mask)
+    # occ_onyuk (K-62 v9): sabit 3D nesneler (pin) decode'dan ONCE gercek
+    # voxelleriyle occupancy'ye islenir -> alti/ustu SERBEST kalir (2D kolon
+    # muhrunun aksine): kanopi altina istif + delikten kule mumkun.
+    # Eleman: (grid_bool, x, y, z); default None = BIT-OZDES.
+    if occ_onyuk:
+        for _g, _px, _py, _pz in occ_onyuk:
+            ob.onyukle(_g, _px, _py, _pz)
     placements: List[RawPlacement] = []
     guard_scene = _GuardScene() if exit_guard else None
     # K-33b telemetri (A4 olc-once): vergi nerede yasiyor?
@@ -352,7 +359,7 @@ def _blb_xybbox_gpu(cp, occ, grid_flip, gshape, fast_len=True,
 
 def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
                time_budget_sec=None, budget_status=None, no_go_mask=None,
-               fast_len=True, spec_cache_mb=0.0, _tel=None):
+               fast_len=True, spec_cache_mb=0.0, _tel=None, occ_onyuk=None):
     """GPU-resident NFV decode. occupancy tek seferlik cihazda; grid'ler cache'li; feasible+BLB GPU'da;
     place in-device; host'a yalnız (oi,x,y,z). BİREBİR (CPU seri). cupy yoksa RuntimeError (dispatcher
     yakalar). Drop fallback gerekirse RuntimeError (dispatcher CPU'ya düşer).
@@ -378,11 +385,32 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
         from src.nesting3d.fft_backend import SpecLRU
         _spec = SpecLRU(float(spec_cache_mb) * 2 ** 20)
 
-    occ = cp.zeros((nx, ny, _nz_limit(pitch)), dtype=cp.bool_)  # RESIDENT
+    # occ_onyuk (K-62 v9): pin tepesi _nz_limit'i asabilir -> nz buyutulur.
+    _nz = _nz_limit(pitch)
+    _pin_tepe = 0
+    if occ_onyuk:
+        for _g, _px, _py, _pz in occ_onyuk:
+            _nz = max(_nz, _pz + np.asarray(_g).shape[2])
+    occ = cp.zeros((nx, ny, _nz), dtype=cp.bool_)  # RESIDENT
     if no_go_mask is not None and np.asarray(no_go_mask).any():
         # yasak kolonlar cihazda TAM yukseklik muhur (CPU ile ayni semantik);
         # cur_max occupancy'den DEGIL yerlesimlerden izlenir -> zehirlenmez.
         occ[cp.asarray(np.asarray(no_go_mask, dtype=bool))] = True
+    if occ_onyuk:
+        # CPU onyukle ile AYNI semantik: kirpmali damga + gercek dolu tepe.
+        for _g, _px, _py, _pz in occ_onyuk:
+            _gb = np.asarray(_g, dtype=bool)
+            fw, fd, fh = _gb.shape
+            gx0, gy0, gz0 = max(0, -_px), max(0, -_py), max(0, -_pz)
+            x0, y0, z0 = max(0, _px), max(0, _py), max(0, _pz)
+            x1, y1 = min(nx, _px + fw), min(ny, _py + fd)
+            if x1 <= x0 or y1 <= y0 or _pz + fh <= z0:
+                continue
+            sub = _gb[gx0:gx0 + (x1 - x0), gy0:gy0 + (y1 - y0), gz0:]
+            occ[x0:x1, y0:y1, z0:_pz + fh] |= cp.asarray(sub)
+            if sub.any():
+                zs = np.where(sub.any(axis=(0, 1)))[0]
+                _pin_tepe = max(_pin_tepe, z0 + int(zs[-1]) + 1)
     grid_cache = {}
 
     def _grids(orient):
@@ -396,7 +424,7 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
         return g
 
     placements: List[RawPlacement] = []
-    cur_max = 0
+    cur_max = _pin_tepe  # pin yoksa 0 = BIT-OZDES; pinli: yukseklik durust
     n_placed = 0
     t0 = time.perf_counter()
     for part in sorted(parts, key=lambda vp: -vp.volume_voxels):
@@ -454,7 +482,8 @@ def _mark_budget(strategy: str, status: dict) -> str:
 
 
 def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_budget_sec=None,
-                no_go_mask=None, exit_guard=False, exit_guard_retries=2):
+                no_go_mask=None, exit_guard=False, exit_guard_retries=2,
+                occ_onyuk=None):
     """En hızlı KANITLANMIŞ yolu seç + graceful fallback. Döner: (height_mm, [RawPlacement], strategy).
     GPU-resident → OOM/exception → CPU Kol A → serial. NAIVE backend KULLANMAZ.
 
@@ -472,7 +501,7 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
         try:
             h, raw = decode_gpu(parts, nx, ny, pitch=pitch, return_placements=True,
                                 time_budget_sec=time_budget_sec, budget_status=status,
-                                no_go_mask=no_go_mask)
+                                no_go_mask=no_go_mask, occ_onyuk=occ_onyuk)
             return h, raw, _mark_budget("gpu-resident", status)
         except Exception as e:
             if verbose:
@@ -485,7 +514,8 @@ def best_decode(parts, nx, ny, pitch=2.0, *, force=None, verbose=False, time_bud
     h, raw = decode(parts, nx, ny, feasible_mask=fm, parallel=parallel, pitch=pitch,
                     return_placements=True, time_budget_sec=time_budget_sec,
                     budget_status=status, skip_status=skip, no_go_mask=no_go_mask,
-                    exit_guard=exit_guard, exit_guard_retries=exit_guard_retries)
+                    exit_guard=exit_guard, exit_guard_retries=exit_guard_retries,
+                    occ_onyuk=occ_onyuk)
     strat_str = _mark_budget(("cpu-kolA" if parallel else "serial"), status)
     g = skip.get("guard")
     if g:

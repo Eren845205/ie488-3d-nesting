@@ -144,7 +144,7 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
               repair_separability=False,
               exit_guard=False, exit_guard_retries=2,
               orientation_overrides=None,
-              pinned_placements=None) -> CoarseToFineResult:
+              pinned_placements=None, pin_3d=False) -> CoarseToFineResult:
     """NFV cavity decode → CoarseToFineResult. force: best_decode strateji zorla (test/debug).
 
     clearance_mm=0.0 (default): MEVCUT davranış BİT-ÖZDEŞ (xy dilation=margin
@@ -211,14 +211,41 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     # (c) pinler settle/repair SONRASI gercek yerlesim olarak sahneye girer
     #     (tasinmazlik bedava; olcum katmani pin'i normal parca gorur).
     # default None = BIT-OZDES.
+    #
+    # K-62 v9 (pin_3d=True): (b) yerine pin GERCEK 3D voxelleriyle decode
+    # occupancy'sine ON-YUKLENIR (occ_onyuk) — pinin alti/ustu SERBEST:
+    # kanopi altina istif + delikten kule = insan cozumunun mekanigi.
+    # Pin cozucu-modelde havuz parcalariyla AYNI clearance dilation'ini
+    # tasir (xy margin + tek-tarafli ust z-dilation) -> parca-pin boslugu
+    # parca-parca ile ayni garanti (v8-MVP'nin 2D-muhur kuantizasyon ihlali
+    # sinifi kapanir); sahneye commit yine margin-0 (adim c, degismez).
+    # default False = v8 semantigi BIT-OZDES.
     _pin_specs = pinned_placements
     _pin_donors = None
+    _occ_onyuk = None
     if _pin_specs:
         from src.nesting3d.coarse_to_fine import _pin_hazirla
         _pins0 = _pin_hazirla(_pin_specs, parts, used_pitch)
         _pin_ids = {p.id for p, _x, _y, _z in _pins0}
         _pin_donors = [p for p in parts if p.id in _pin_ids]
         parts = [p for p in parts if p.id not in _pin_ids]
+        if pin_3d:
+            from src.nesting3d.voxelize import voxelize_part as _vp3
+            import numpy as _np
+            _eff_m, _eff_zc = _nfv_clearance_voxels(clearance_mm, used_pitch,
+                                                    margin)
+            _occ_onyuk = []
+            for (_pp, _ix, _iy, _iz), _spec in zip(_pins0, _pin_specs):
+                _rot = _spec.get("rot")
+                _rot = (_np.eye(4) if _rot is None
+                        else _np.asarray(_rot, dtype=float))
+                _raw3 = _vp3(_pp.name, _pp.mesh, used_pitch,
+                             rot_matrices=[_rot], method="slice",
+                             margin=_eff_m, z_dilate=_eff_zc)
+                # dilated grid origin'i xy'de -margin kayar (voxelize._dilate
+                # pad'i); pin konumu margin-0 bbox'a gore -> damga ofsetlenir.
+                _occ_onyuk.append((_raw3.orientations[0].grid,
+                                   _ix - _eff_m, _iy - _eff_m, _iz))
     # fine-settle aynı clearance kuralına uyar (aksi hâlde settle kazanılan boşluğu
     # geri yer). used_pitch'ten türetilen (xy margin, z-dilation) settle'a geçilir.
     settle_margin, settle_zc = _nfv_clearance_voxels(clearance_mm, used_pitch, margin)
@@ -242,7 +269,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     if no_go_bounds is not None:
         _ng_mask = Bin3D.no_go_mask_from_bounds(
             no_go_bounds, plate_w_mm, plate_d_mm, used_pitch)
-    if _pin_specs:
+    if _pin_specs and not pin_3d:
+        # v8 semantigi: 2D footprint kolon muhru (pin ustu/alti da kapali).
         import numpy as _np
         _ng_mask = (_np.zeros((nx, ny), dtype=bool) if _ng_mask is None
                     else _np.asarray(_ng_mask, dtype=bool).copy())
@@ -256,7 +284,8 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     _, raw, strategy = best_decode(parts, nx, ny, pitch=used_pitch, force=force,
                                    time_budget_sec=decode_budget,
                                    no_go_mask=_ng_mask, exit_guard=exit_guard,
-                                   exit_guard_retries=exit_guard_retries)
+                                   exit_guard_retries=exit_guard_retries,
+                                   occ_onyuk=_occ_onyuk)
 
     # REPLAY → Bin3D (tek kaynak: Placement3D + heightmap). TAM (x,y,z), drop YOK → cavity korunur.
     # Kesme decode'da yapildi (kalan butceye gore, kesin); replay O(n) ucuz ve deterministik → decode'un
@@ -273,7 +302,12 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     # asilmadiysa settle'a dokunma (v1: settle'in icine butce sizdirmak kapsam disi).
     settle_note = None
     result_pitch = used_pitch
-    if fine_settle and budget_exceeded:
+    if fine_settle and _pin_specs and pin_3d:
+        # v9 MVP korumasi: fine_settle pin-farkinda DEGIL — kanopi USTUNE
+        # yerlesen parcayi (alti cozucu-modelde pin doluydu, settle bos gorur)
+        # kanopinin icine compact edebilirdi. Pin-farkindali settle ayri is.
+        settle_note = "settle skipped (pin_3d v9: settle pin-farkinda degil)"
+    elif fine_settle and budget_exceeded:
         settle_note = "settle skipped (budget)"
     elif fine_settle:
         from src.nesting3d.fine_settle import fine_settle_raw
@@ -308,6 +342,11 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     # yerlestirilir (dilate'li mevcut grid'ler -> clearance korunur).
     # default False = BIT-OZDES eski davranis. Ilk saha kaniti: K-29 probu.
     repair_note = None
+    if repair_separability and _pin_specs and pin_3d:
+        # v9 MVP korumasi: repair de pin-farkinda degil (tahliye/yeniden-
+        # yerlestirme pin voxellerini gormez) -> atlanir, iz birakilir.
+        repair_note = "repair skipped (pin_3d v9)"
+        repair_separability = False
     if repair_separability:
         from src.nesting3d.separability_repair import repair_separability as _onar
         _ng = None

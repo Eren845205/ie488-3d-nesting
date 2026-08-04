@@ -238,6 +238,48 @@ class OccupancyBin3D:
 
         self._update_extreme_points(x, y, z, fw, fd, fh)
 
+    def onyukle(self, grid: np.ndarray, x: int, y: int, z: int) -> None:
+        """K-62 v9: SABIT nesneyi (3D pin) occupancy'ye ON-YUKLE.
+
+        place()'ten farklari (bilincli):
+          * CARPISMA KONTROLU YOK — pin, no-go muhru veya baska pinle
+            ortusebilir (orn. soft no-go'ya toleransli giren baseplate);
+            pin fizibilitesi CAGIRANIN sozlesmesidir (k62 fizibilite kapisi).
+          * SINIR KIRPMASI VAR — dilation halesi plaka disina tasabilir
+            (pin konumu margin-0 bbox'a gore verilir, dilated grid origin'i
+            xy'de -margin kayar); tasan kisim sessizce kirpilir (plaka disi
+            zaten yerlesime kapali).
+          * EP tohumlama YOK (bu decode EP kullanmaz; pin "yerlesim" degil).
+        column_top ve _max_z_used gercek dolu voxellerden guncellenir ->
+        heightmap kisayolu (is_feasible) pin ustunde/altinda dogru calisir,
+        yukseklik pin tepesini durustce icerir.
+        """
+        g = np.asarray(grid, dtype=bool)
+        fw, fd, fh = g.shape
+        # kaynak/hedef pencere kesisimi (negatif baslangic dahil kirpma)
+        gx0, gy0, gz0 = max(0, -x), max(0, -y), max(0, -z)
+        x0, y0, z0 = max(0, x), max(0, y), max(0, z)
+        x1, y1 = min(self.nx, x + fw), min(self.ny, y + fd)
+        if x1 <= x0 or y1 <= y0 or z + fh <= z0:
+            return  # tamamen plaka disi (halede mumkun) -> no-op
+        z_top = z + fh
+        self._ensure_z_capacity(z_top)
+        sub = g[gx0:gx0 + (x1 - x0), gy0:gy0 + (y1 - y0), gz0:]
+        self.occupancy[x0:x1, y0:y1, z0:z_top] |= sub
+        if not sub.any():
+            return
+        self.placed_voxels += int(sub.sum())
+        # kolon tepeleri: alt-grid'de kolon basina SON dolu z indeksi
+        filled = sub.any(axis=2)
+        rev_idx = np.argmax(sub[:, :, ::-1], axis=2)      # tepeden ilk dolu
+        last_idx = (sub.shape[2] - 1) - rev_idx
+        tops = np.where(filled, z0 + last_idx + 1, 0).astype(np.int32)
+        region = self.column_top[x0:x1, y0:y1]
+        np.maximum(region, tops, out=region)
+        gercek_tepe = int(tops.max())
+        if gercek_tepe > self._max_z_used:
+            self._max_z_used = gercek_tepe
+
     def _update_extreme_points(self, px: int, py: int, pz: int,
                                 fw: int, fd: int, fh: int) -> None:
         """Generate new EP candidates from the placed part bounding box and prune."""

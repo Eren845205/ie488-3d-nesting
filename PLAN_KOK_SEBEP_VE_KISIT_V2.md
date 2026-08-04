@@ -196,6 +196,17 @@ Sorun tek cümle: kuleler ve kanopi-altı BİRLİKTE planlanmıyor.
 2. İteratif pin seti: faz-B'de YENİ kuleleşen tipler de pinlenir (2-3 tur;
    v8-MVP'de 4 tip pinlendi, başkaları kuleleşti → 47 yeni suçlu).
 
+> **v9 DURUM (2026-08-04): KOD+TDD TAMAM.** `OccupancyBin3D.onyukle` (3D
+> ön-yükleme, kırpmalı, çarpışma-kontrolsüz — no-go örtüşmesi meşru) +
+> `decode/decode_gpu/best_decode occ_onyuk` + `solve_nfv(pin_3d=True)`
+> (pin çözücü-modelde havuzla AYNI clearance dilation'ını taşır → v8-MVP
+> kuantizasyon ihlali sınıfı kapalı; settle/repair pin-farkında değil →
+> yapısal atlanır, iz bırakır). 13 test `tests/test_k62_v9_pin3d.py` +
+> komşular 50/50. Ölçüm scripti `scripts/k62_v9_pin3d.py` (kanopi
+> geometrik tetik + z-taraması 70/72/68/74) duman-PASS (kaba-pitch 112/112,
+> baseplate_v2'yi kendisi seçti). GERÇEK ÖLÇÜM sakin-makine bekliyor
+> (A9 suite sonrası detach, K-57a).
+
 **v9 — 3D pin: kanopi ÇÖZÜMÜN İÇİNE girer (1-2 gün; beklenti 110-120; ASIL HAMLE):**
 v8-MVP'nin yapısal sınırı: pin mührü 2D kolon → pinin altı-üstü de yasak;
 kanopi pin edilemiyor (altı ölü kalırdı). Çözüm: `best_decode` occupancy'sine
