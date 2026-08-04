@@ -57,6 +57,16 @@ DOLULUK_ESIK = 0.6
 _zler_env = os.environ.get("K62V9_ZLER", "").strip()
 Z_ADAYLARI_MM = ([float(v) for v in _zler_env.split(",")] if _zler_env
                  else [70.0, 72.0, 68.0, 74.0])
+# Acik pitch (mm): bos -> auto (suggest_nfv_pitch). Ilk olcum dersi
+# (2026-08-04): auto 2.4 kaba + settle pin_3d'de atlanir -> kuantizasyon
+# vergisi sonucu yedi (139.2). Ince-pitch tek-z derinlesmesi bu env ile.
+_pitch_env = os.environ.get("K62V9_PITCH", "").strip()
+PITCH_MM = float(_pitch_env) if _pitch_env else None
+# Pin poz secimi: fizibilite pozlar[] indeksleri (virgullu). Default [0].
+# Teshis 2026-08-04: tavan = bobbin sutunlarinin delik kapasitesi ->
+# kanopi ofseti delik hizasini degistirir (v10 on-sinyali).
+_poz_env = os.environ.get("K62V9_POZLAR", "").strip()
+POZ_IDX = ([int(v) for v in _poz_env.split(",")] if _poz_env else [0])
 
 
 def log(m=""):
@@ -97,7 +107,7 @@ def main():
     log("K-62 v9 OLCUM: kanopi 3D-pin tek-atis NFV (SERHLI on-olcum)")
     log(f"sozlesme: plate={eg.PLATE_STD} nogo={eg.NOGO_STD}"
         f" clearance={CLEAR_MM} seed={SEED}")
-    log(f"z adaylari (mm): {Z_ADAYLARI_MM}")
+    log(f"z adaylari (mm): {Z_ADAYLARI_MM}  pitch={PITCH_MM or 'auto'}")
 
     inst = eg._load_instance("plan1")
     n_total = sum(int(p.qty) for p in inst.parts)
@@ -109,16 +119,22 @@ def main():
         log("BITTI")
         return
     p0, mesh, fiz = aday
-    poz = fiz["pozlar"][0]
-    rot_deg = float(poz["rot_deg"])
-    rot = (tt.rotation_matrix(np.deg2rad(rot_deg), [0.0, 0.0, 1.0])
-           @ duz_rot_matrisleri(mesh)[0])
-    log(f"pin pozu: rot_deg={rot_deg} dx={poz['dx_mm']:.1f}"
-        f" dy={poz['dy_mm']:.1f} (fizibilite ilk uygun poz)")
-
     pw, pd = eg.PLATE_STD
     sonuclar = []
-    for z_mm in Z_ADAYLARI_MM:
+    kombinasyonlar = []
+    for pi in POZ_IDX:
+        if pi < 0 or pi >= len(fiz["pozlar"]):
+            log(f"uyari: poz idx {pi} yok (kayitli {len(fiz['pozlar'])})")
+            continue
+        for z_mm in Z_ADAYLARI_MM:
+            kombinasyonlar.append((pi, z_mm))
+    for pi, z_mm in kombinasyonlar:
+        poz = fiz["pozlar"][pi]
+        rot_deg = float(poz["rot_deg"])
+        rot = (tt.rotation_matrix(np.deg2rad(rot_deg), [0.0, 0.0, 1.0])
+               @ duz_rot_matrisleri(mesh)[0])
+        log(f"pin pozu[{pi}]: rot_deg={rot_deg} dx={poz['dx_mm']:.1f}"
+            f" dy={poz['dy_mm']:.1f}")
         pin = {"ad": p0.name, "x_mm": float(poz["dx_mm"]),
                "y_mm": float(poz["dy_mm"]), "z_mm": float(z_mm),
                "rot": rot.tolist()}
@@ -126,7 +142,7 @@ def main():
         tz = time.perf_counter()
         try:
             r = solve_nfv(inst, plate_w_mm=pw, plate_d_mm=pd,
-                          fine_pitch=None, seed=SEED, quality="fast",
+                          fine_pitch=PITCH_MM, seed=SEED, quality="fast",
                           clearance_mm=CLEAR_MM, no_go_bounds=eg.NOGO_STD,
                           pinned_placements=[pin], pin_3d=True)
         except Exception:
@@ -137,7 +153,9 @@ def main():
             continue
         sure = time.perf_counter() - tz
         kayit = {
-            "z_mm": z_mm, "height_mm": float(r.height_mm),
+            "z_mm": z_mm, "poz_idx": pi,
+            "poz": {k: float(v) for k, v in poz.items()},
+            "height_mm": float(r.height_mm),
             "n_placed": int(r.n_placed), "n_total": n_total,
             "fine_pitch": float(r.fine_pitch),
             "sure_s": round(sure, 1),
@@ -145,6 +163,52 @@ def main():
         }
         log(f"[z={z_mm}] h={r.height_mm:.2f}mm n={r.n_placed}/{n_total}"
             f" pitch={r.fine_pitch} sure={sure / 60:.1f}dk")
+        # kanopi-goreli katman telemetrisi (A4: tavani NE yapiyor?)
+        kz1 = float(z_mm)
+        kz2 = kz1 + float(fiz["duz_kalinlik_mm"])
+        pt = float(r.fine_pitch)
+        katlar = {"altinda": 0, "delikten": 0, "ustunde": 0, "kanopi": 0}
+        ust_tipler = {}
+        _fvp = r.fine_voxel_parts
+        _vps = (_fvp if isinstance(_fvp, dict)
+                else {v.id: v for v in _fvp})
+        for pl in r.placements:
+            vp = _vps.get(pl.part_id)
+            o = (vp.orientations[pl.orientation_idx]
+                 if vp and pl.orientation_idx < len(vp.orientations) else None)
+            if o is None:
+                continue
+            alt = pl.z * pt
+            ust = (pl.z + o.grid.shape[2]) * pt   # dilation dahil, kaba
+            ad = getattr(vp, "name", str(pl.part_id))
+            if ad == p0.name and abs(alt - kz1) < 2 * pt:
+                katlar["kanopi"] += 1
+            elif ust <= kz1 + 1e-6:
+                katlar["altinda"] += 1
+            elif alt >= kz2 - 1e-6:
+                katlar["ustunde"] += 1
+                ust_tipler[ad] = ust_tipler.get(ad, 0) + 1
+            else:
+                katlar["delikten"] += 1
+        kayit["katmanlar"] = katlar
+        kayit["ustundeki_tipler"] = ust_tipler
+        log(f"[z={z_mm}] katman: {katlar}")
+        log(f"[z={z_mm}] kanopi-ustu tipler: {ust_tipler}")
+        # tavani KIM yapiyor: en yuksek tepeli 5 yerlesim (ad, alt, ust)
+        _tepe = []
+        for pl in r.placements:
+            vp = _vps.get(pl.part_id)
+            o = (vp.orientations[pl.orientation_idx]
+                 if vp and pl.orientation_idx < len(vp.orientations) else None)
+            if o is None:
+                continue
+            _tepe.append((round((pl.z + o.grid.shape[2]) * pt, 1),
+                          round(pl.z * pt, 1),
+                          getattr(vp, "name", str(pl.part_id))))
+        _tepe.sort(reverse=True)
+        kayit["tepe5"] = [{"ust_mm": u, "alt_mm": a, "ad": ad}
+                          for u, a, ad in _tepe[:5]]
+        log(f"[z={z_mm}] tepe5 (ust,alt,ad): {_tepe[:5]}")
         sonuclar.append(kayit)
         # en-iyi aday clearance olcumu icin hafif durumu sakla
         kayit["_r"] = r
@@ -170,16 +234,20 @@ def main():
             meshes = list(placed_meshes(r.placements, r.fine_voxel_parts,
                                         float(r.fine_pitch)))
             cl = min_clearance(meshes)
-            en_iyi["min_clearance_mm"] = float(cl)
-            log(f"[clearance] min={cl:.3f}mm (kural >= {CLEAR_MM})")
+            en_iyi["min_clearance_mm"] = float(cl.min_mm)
+            log(f"[clearance] min={cl.min_mm:.3f}mm (kural >= {CLEAR_MM};"
+                f" worst_pair={cl.worst_pair} cift={cl.n_pairs_checked})")
         except Exception:
             log(f"[clearance] OLCULEMEDI:\n{traceback.format_exc()}")
             en_iyi["min_clearance_mm"] = None
     for s in sonuclar:
         s.pop("_r", None)
 
+    out = (OUT if PITCH_MM is None
+           else OUT.with_name(f"k62_v9_pin3d_p{PITCH_MM}.json"))
     doc = {
         "olcum": "k62_v9_pin3d", "tarih": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "pitch_istek_mm": PITCH_MM,
         "serh": ("tek-set on-olcum (A11); kilit olculmedi; settle/repair "
                  "pin_3d'de atlanir; genelleme k59-deseni dagilimsal bekler"),
         "sozlesme": {"plate": list(eg.PLATE_STD), "nogo": eg.NOGO_STD,
@@ -191,13 +259,13 @@ def main():
         "z_sonuclari": sonuclar,
         "en_iyi": ({k: v for k, v in en_iyi.items()} if en_iyi else None),
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(doc, indent=2, ensure_ascii=True),
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(doc, indent=2, ensure_ascii=True),
                    encoding="utf-8")
-    log(f"yazildi: {OUT}")
+    log(f"yazildi: {out}")
     try:
-        ek = ONEDRIVE / "results" / OUT.name
-        if ONEDRIVE.exists() and ek.resolve() != OUT.resolve():
+        ek = ONEDRIVE / "results" / out.name
+        if ONEDRIVE.exists() and ek.resolve() != out.resolve():
             ek.write_text(json.dumps(doc, indent=2, ensure_ascii=True),
                           encoding="utf-8")
             log(f"kopya: {ek}")

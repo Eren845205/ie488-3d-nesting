@@ -234,6 +234,12 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             import numpy as _np
             _eff_m, _eff_zc = _nfv_clearance_voxels(clearance_mm, used_pitch,
                                                     margin)
+            # NOT (v10 tur-3 teshisi, 2026-08-04): tur-1/2/3 clearance
+            # ihlalleri PIN DILATION'indan degil, olcum-scriptinin pin
+            # koordinat semantigi hatasindandi (halo-origin vs margin-0
+            # bbox-origin; kayma dilation'la buyudu = kanit). Buradaki
+            # tek-tarafli dilation (v9 semantigi) sahada 2.448mm olctu —
+            # +1 emniyet katmani GEREKMEDI, bit-ozdeslik korunur.
             _occ_onyuk = []
             for (_pp, _ix, _iy, _iz), _spec in zip(_pins0, _pin_specs):
                 _rot = _spec.get("rot")
