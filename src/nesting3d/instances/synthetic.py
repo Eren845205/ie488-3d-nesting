@@ -46,6 +46,16 @@ hollow_tubes:
     yüksek uzama; F1 taksonomisinde 'tube' ailesi.
     Parametreler: n_parts, r_min, r_max, wall_min, wall_max, length_min,
     length_max, container, seed.
+
+holey_frames:
+    DELİKLİ DÜZ ÇERÇEVE (kanopi sınıfı; K-62 dağılımsal ailesi) + kule/dolgu
+    kutuları.  Çerçeve GERÇEK STL yazılır (source="stl") — box-source kabuk
+    tuzağının aksine delik geometrisi nesting akışında korunur.  Ayrık kutu
+    partisyonu (boolean'sız, her hücre watertight).  Tasarım parametreleri
+    (analitik doluluk/alan-oran/delik listesi) meta["tasarim"]'a yazılır —
+    tetik-doğruluğu ölçümleri bağımsız beklentiyi oradan türetir.
+    Parametreler: stl_dir (zorunlu), mod ("kucuk"|"buyuk"|None=rastgele),
+    n_towers, n_fillers, container, seed.
 """
 
 from __future__ import annotations
@@ -531,4 +541,189 @@ def perturb_instance(
         parts=parts,
         meta={"family": orijinal_aile, "source": f"perturb({orijinal_aile})",
               "perturb_seed": seed},
+    )
+
+# ---------------------------------------------------------------------------
+# holey_frames — delikli düz çerçeve (kanopi sınıfı; K-62 dağılımsal ailesi)
+# ---------------------------------------------------------------------------
+
+def _cerceve_mesh(fw: float, fd: float, t: float,
+                  delikler: List[Tuple[float, float, float, float]]
+                  ) -> "trimesh.Trimesh":
+    """fw x fd x t plakadan delikler çıkarılmış çerçeve — ızgara-ekstrüzyon
+    (delik kenarlarından x/y kesitleri; dolu hücrelerin üst/alt yüzleri +
+    dolu/boş sınırlarında duvarlar; ORTAK vertex'li TEK watertight mesh).
+
+    Kutu-birleştirme denemesi NO-GO: çakışık yüzeyler slice-voxelize
+    paritesinde delikleri dolduruyordu; extrude_polygon ise triangulation
+    engine bağımlılığı istiyor. Bu yol bağımlılıksız ve deterministik."""
+    xs = sorted({0.0, fw, *[d[0] for d in delikler], *[d[2] for d in delikler]})
+    ys = sorted({0.0, fd, *[d[1] for d in delikler], *[d[3] for d in delikler]})
+    nx, ny = len(xs) - 1, len(ys) - 1
+
+    def dolu(i: int, j: int) -> bool:
+        if i < 0 or j < 0 or i >= nx or j >= ny:
+            return False
+        x1, x2, y1, y2 = xs[i], xs[i + 1], ys[j], ys[j + 1]
+        if x2 - x1 < 1e-9 or y2 - y1 < 1e-9:
+            return False
+        return not any(d[0] - 1e-9 <= x1 and x2 <= d[2] + 1e-9
+                       and d[1] - 1e-9 <= y1 and y2 <= d[3] + 1e-9
+                       for d in delikler)
+
+    verts: List[Tuple[float, float, float]] = []
+    vix = {}
+
+    def v(x: float, y: float, z: float) -> int:
+        k = (round(x, 6), round(y, 6), round(z, 6))
+        if k not in vix:
+            vix[k] = len(verts)
+            verts.append(k)
+        return vix[k]
+
+    faces: List[Tuple[int, int, int]] = []
+
+    def quad(a, b, c, d):  # a-b-c-d çevrimi (dışa bakan CCW)
+        faces.append((a, b, c))
+        faces.append((a, c, d))
+
+    for i in range(nx):
+        for j in range(ny):
+            if not dolu(i, j):
+                continue
+            x1, x2, y1, y2 = xs[i], xs[i + 1], ys[j], ys[j + 1]
+            # üst yüz (+Z) CCW yukarıdan
+            quad(v(x1, y1, t), v(x2, y1, t), v(x2, y2, t), v(x1, y2, t))
+            # alt yüz (-Z)
+            quad(v(x1, y1, 0), v(x1, y2, 0), v(x2, y2, 0), v(x2, y1, 0))
+            # duvarlar: komşu boşsa
+            if not dolu(i - 1, j):  # -X duvarı
+                quad(v(x1, y1, 0), v(x1, y1, t), v(x1, y2, t), v(x1, y2, 0))
+            if not dolu(i + 1, j):  # +X duvarı
+                quad(v(x2, y1, 0), v(x2, y2, 0), v(x2, y2, t), v(x2, y1, t))
+            if not dolu(i, j - 1):  # -Y duvarı
+                quad(v(x1, y1, 0), v(x2, y1, 0), v(x2, y1, t), v(x1, y1, t))
+            if not dolu(i, j + 1):  # +Y duvarı
+                quad(v(x1, y2, 0), v(x1, y2, t), v(x2, y2, t), v(x2, y2, 0))
+
+    mesh = trimesh.Trimesh(vertices=np.asarray(verts, dtype=float),
+                           faces=np.asarray(faces, dtype=np.int64),
+                           process=False)
+    mesh.fix_normals()
+    return mesh
+
+
+def holey_frames(
+    *,
+    stl_dir,
+    mod: Optional[str] = None,
+    n_towers: int = 4,
+    n_fillers: int = 5,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """Delikli düz çerçeve + kule/dolgu kutuları (K-62 kanopi ailesi).
+
+    mod="kucuk": küçük çerçeve — alan-oran tetik sınırının iki yanında
+        (0.20..0.55 bandı), delikler bol (doluluk ateş tarafı), fd <= 302
+        (no-go'dan dy ile kaçabilir -> fizibilite trivial).
+    mod="buyuk": plaka-boyu çerçeve — alan-oran hep yüksek; doluluk VE
+        kenar-çentiği (y=0 kenarında delik satırı) sınırın iki yanında
+        örneklenir; fd >= 305 (no-go üstünden geçmek zorunda).
+    mod=None: seed'e göre iki moddan biri.
+
+    Çerçeve STL'i stl_dir/holey_frame_s<seed>.stl olarak yazılır (C'ye
+    büyük dosya yazmama kuralı: çağıran D/scratch dizini vermeli).
+    meta["tasarim"]: fw/fd/t/delikler/doluluk_analitik/alan_oran_analitik/
+    centik_w/centik_d — bağımsız tetik-beklentisi türetimi için.
+    """
+    from pathlib import Path
+
+    rng = random.Random(seed)
+    cnt = container or ContainerSpec(width_mm=335.0, depth_mm=335.0,
+                                     height_mm=None)
+    W, D = float(cnt.width_mm), float(cnt.depth_mm)
+    if mod is None:
+        mod = "kucuk" if rng.random() < 0.5 else "buyuk"
+
+    t = _uniform(rng, 3.0, 8.0)
+    if mod == "kucuk":
+        fw = _uniform(rng, 150.0, 250.0)
+        fd = _uniform(rng, 150.0, min(250.0, D - 33.0 - 1.0))
+        nx = ny = 2
+        hedef_doluluk = rng.choice([_uniform(rng, 0.42, 0.56),
+                                    _uniform(rng, 0.64, 0.80)])
+        centik = False
+    else:
+        fw = _uniform(rng, 300.0, min(330.0, W - 2.0))
+        fd = _uniform(rng, 305.0, min(330.0, D - 2.0))
+        nx, ny = rng.choice([(2, 2), (3, 2), (3, 3)])
+        hedef_doluluk = rng.choice([_uniform(rng, 0.42, 0.56),
+                                    _uniform(rng, 0.64, 0.80)])
+        centik = rng.random() < 0.7  # %70 fizibil taraf
+
+    # Delik boyutu hedef doluluktan: n delik, toplam alan = (1-doluluk)*fw*fd
+    delik_alan = (1.0 - hedef_doluluk) * fw * fd / (nx * ny)
+    oran = _uniform(rng, 0.7, 1.4)  # hw/hd en-boy
+    hd = min((delik_alan / oran) ** 0.5, fd / (ny + 0.5))
+    hw = min(delik_alan / hd, fw / (nx + 0.5))
+    if centik:
+        hw = max(hw, 36.0)  # no-go (33.0mm) geçişine yeter — fizibil taraf
+        hd = max(hd, 36.0)
+    else:
+        hw = min(hw, 30.0) if mod == "buyuk" else hw  # çentiksiz büyükte
+        # delikler no-go'dan dar -> fizibilite analitik NEGATİF taraf
+
+    gx = (fw - nx * hw) / (nx + 1)
+    delikler: List[Tuple[float, float, float, float]] = []
+    for i in range(nx):
+        x1 = gx + i * (hw + gx)
+        for j in range(ny):
+            if centik and j == 0:
+                y1 = 0.0  # kenar çentiği: y=0 kenarına açık satır
+            else:
+                gy = (fd - ny * hd) / (ny + 1)
+                y1 = gy + j * (hd + gy)
+            delikler.append((round(x1, 3), round(y1, 3),
+                             round(x1 + hw, 3), round(y1 + hd, 3)))
+
+    mesh = _cerceve_mesh(fw, fd, t, delikler)
+    stl_dir = Path(stl_dir)
+    stl_dir.mkdir(parents=True, exist_ok=True)
+    yol = stl_dir / f"holey_frame_s{seed}.stl"
+    mesh.export(yol)
+
+    delik_alan_top = sum((d[2] - d[0]) * (d[3] - d[1]) for d in delikler)
+    doluluk_analitik = 1.0 - delik_alan_top / (fw * fd)
+    e = mesh.extents  # uretim stl_order_loader deseni: bbox boyutlari dolu
+    parts: List[PartSpec] = [PartSpec(
+        id="frame", name="frame", qty=1, source="stl", stl_path=str(yol),
+        width_mm=round(float(e[0]), 3), depth_mm=round(float(e[1]), 3),
+        height_mm=round(float(e[2]), 3))]
+
+    kule_kesit_max = max(10.0, min(hw, hd) - 6.0)
+    for i in range(n_towers):
+        c = _uniform(rng, 8.0, kule_kesit_max)
+        parts.append(_box_part(f"tw{i}", f"tw{i}", rng.randint(1, 2),
+                               c, _uniform(rng, 8.0, kule_kesit_max),
+                               _uniform(rng, 40.0, 90.0)))
+    for i in range(n_fillers):
+        parts.append(_box_part(f"fl{i}", f"fl{i}", 1,
+                               _uniform(rng, 15.0, 55.0),
+                               _uniform(rng, 15.0, 55.0),
+                               _uniform(rng, 8.0, 30.0)))
+
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={"family": "holey_frames", "seed": seed, "mod": mod,
+              "tasarim": {
+                  "fw": round(fw, 3), "fd": round(fd, 3), "t": round(t, 3),
+                  "delikler": [list(d) for d in delikler],
+                  "doluluk_analitik": round(doluluk_analitik, 4),
+                  "alan_oran_analitik": round(fw * fd / (W * D), 4),
+                  "centik": centik,
+                  "centik_w": round(hw, 3) if centik else None,
+                  "centik_d": round(hd, 3) if centik else None,
+              }},
     )
