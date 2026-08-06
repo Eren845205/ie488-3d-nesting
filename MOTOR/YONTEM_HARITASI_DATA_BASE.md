@@ -229,6 +229,18 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **PLATO TESPİTİ:** 127,20 üç bağımsız eksende doğrulandı — (1) sıra-perturbasyonu (v18b), (2) çift-söküm (v21), (3) poz açılımı (v22 kör + v23 cerrahi). Script-seviyesi yerel aramalar tükendi; 110-bandı için kalan yol KOD-GELİŞTİRME sınıfı (küçük-küme ortak arama · delik-atama optimizasyonu · kanopi-altı bölge-hedefli aday üretimi). Cerrahi-override yöntem dersi kalıcı: poz zenginleştirme tip-hedefli yapılır, envanter kuralı (min8−min28>eşik) kablo adayı.
 - **Karne (A11):** v20 karnesiyle aynı sınıf; NÖTR/NO-GO kayıtları tekrar-önleme değerinde.
 
+### [K-62 v24] ZEMİN-ÖNCE rütbe varyantları — ❌ NO-GO (5/5 varyant 139,2-141,6); ders: pyramid'in evi bölge-hedefli, rütbe değil
+- **Durum:** ❌ NO-GO (faz-A 5/5 kötü; faz-B relokasyon ÇALIŞTIRILMADI — v22'de aynı toparlanma deseni ölçülmüştü, süre tasarrufu; süreç R5 sonrası durduruldu) · **Tarih:** 2026-08-07 gece · **Kanıt:** `scripts/k62_v24_zemin_once.log` (D; JSON yazılmadan durduruldu — faz-A değerleri logda)
+- **Analiz zinciri (koşusuz; envanter + kalınlık):** kule dik-boyları 811793 110,8 / 811791 113,9 ≈ manuel 110,41 tavanı; kanopi zarf-kalınlığı 40,64 (footprint %26 tepsi) → manuel baseplate z≈69,8 = bizim 64,8 bandı DOĞRU (yüksek-kanopi ekseni koşusuz kapandı). 127,2 sürücüsü: pyramid 88×88×59,3'ün kanopi çukuruna oturması (67,9+59,3); tepe ≤110 için taban ≤50,7 = zemin şart.
+- **Ölçüm (5 rütbe varyantı; pyramid/geniş-tipler rütbe-0 kombinasyonları):** R1-R3 139,20 · R4-R5 141,60 — hepsi plato 127,20'den KÖTÜ. **Mekanik ders: pyramid'i ERKEN vermek BLB'nin kör köşe-dizimiyle delik-altı zemini kaplatıyor → kuleler deliklere inemeyip tepeye kaçıyor.** Sorun sıra değil KONUM: pyramid'in evi delik-bölgesi-dışı zemin → bölge-hedefli yerleştirme gerek (v25: elle-pin; kablo hali: delik-maskesi-dışı zemin tarama).
+- **Karne (A11):** NO-GO kaydı (tekrar-önleme); tetik dersi kabloya taşınır (zemin-önce rütbesi DEĞİL bölge-hedefli pin).
+
+### [K-62 v25] Pyramid ZEMİN-PİN (bölge-hedefli, elle-xy) — ❌ NO-GO (135,00; zemin alanı sıfır-toplamlı)
+- **Durum:** ❌ NO-GO (final 135,00 söküm-planlı LEGAL [kilit5=11, rot=0] — plato 127,20 aşılamadı) · **Tarih:** 2026-08-07 gece · **Kanıt:** `results/k62_v25_pyramid_pin.json` (D+C) + log
+- **Ölçüm:** 5 pyramid z=0'a elle-pin (sağ/üst şeritler, no-go/kanopi çakışmasız) + kanopi pin + üçlü → taban **139,20** (beklenti 110-114 TUTMADI) → relokasyon d1 bobbin_3 136,80 → takıldı → settle 135,00.
+- **KÖK DERS (v24+v25 birlikte):** zemin alanı SIFIR-TOPLAMLI — pyramid'e zemin vermek (rütbeyle de pinle de) bobbin/dolgu sınıfını delik-sütunlarında bir üst kata itiyor (139,2 = bobbin halka katı, v9 teşhisiyle aynı imza). 127,20 platosu tek-eksenli müdahalelerle kırılmıyor; zemin+delik+kat tahsisi ORTAK bir atama problemi. **Sıradaki (kod-geliştirme, yarın 1 numara): atama-optimizasyonlu planner** — delik envanteri (kanopi maskesi bağlantılı-bileşen) × tip-uyum matrisi × kat kapasitesi üzerinde küçük optimizasyon (greedy-swap/Hungarian); çıktı pin-listesi → mevcut çözücü + relokasyon post-pass. (v10-silo'dan farkı: greedy raster değil gerçek atama optimizasyonu + ham-pin altyapısı.)
+- **Karne (A11):** NO-GO kaydı; pin xy el-koordinatı deney-içi (kabloya girmez).
+
 ### [K-62 v10-MVP] Statik silo planlayıcı (kule-kopya × delik-atama, greedy raster) — ❌ NO-GO (4 tur ölçüldü)
 - **Durum:** ❌ NO-GO (2026-08-04 akşam; 4 tur, hepsi ölçüldü) · **Kanıt:** `results/k62_v10_silo.json` (D+C) + `scripts/k62_v10_silo.log`
 - **Ne:** v9 teşhisinin (tavan = bobbin delik-sütunları) doğrudan saldırısı: faz-A çözüm-güdümlü silo tipleri → faz-B kanopi delik-maskesinde greedy raster sütun tahsisi (katmanlı 3D pinler, tavan ≤ kanopi-tepe) → faz-C kalan set pin_3d çözümü.
