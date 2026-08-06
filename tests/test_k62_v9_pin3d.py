@@ -284,3 +284,107 @@ def test_solve_pin3d_settle_pin_farkinda():
             continue
         assert p.z * pt >= 14.0 - pt, \
             f"{p.part_id} settle'da kanopinin icine indi (z={p.z * pt}mm)"
+
+
+# ---------------------------------------------------------------------------
+# K-62 v17 HAM-PIN (2026-08-06): parca-pin CIFT-DILATION fix'i
+#
+# Sozlesme (_pin_hazirla docstring'i): "sabit nesne dilation tasimaz,
+# komsular kendi marjini tasir -> parca-pin boslugu >= margin". v9'un 3D
+# damgasi pini xy'de TAM dilation'la muhurluyordu -> parca-pin xy sarti
+# 2x margin'e cikti (v16 rip-up 'cebe donememe' KOK bulgusu). Fix: pin
+# xy'de HAM damgalanir (margin=0, origin ofseti kalkar); z_dilate KALIR
+# (pin ustune oturan parcanin dikey boslugunu ALTTAKI nesnenin ust-dilation'i
+# tasir — z_dilate=0 olsaydi parca pin tepesine 0mm'e inerdi, A2 ihlali).
+# ---------------------------------------------------------------------------
+
+
+def _inst_iki_kutu():
+    return NestingInstance(
+        container=ContainerSpec(width_mm=40.0, depth_mm=20.0),
+        parts=[
+            PartSpec(id="pin_kutu", name="pin_kutu", qty=1, source="box",
+                     width_mm=16.0, depth_mm=16.0, height_mm=10.0),
+            PartSpec(id="kutu", name="kutu", qty=1, source="box",
+                     width_mm=16.0, depth_mm=16.0, height_mm=10.0),
+        ],
+    )
+
+
+def _min_mesh_clearance(r):
+    from src.nesting3d.clearance import min_clearance
+    from src.nesting3d.export_stl import placed_meshes
+    meshes = list(placed_meshes(list(r.placements), r.fine_voxel_parts,
+                                float(r.fine_pitch)))
+    return float(min_clearance(meshes).min_mm)
+
+
+def test_pin3d_ham_pin_xy_boslugu_tek_dilation():
+    """Pin yaninda yerlesen parcanin xy boslugu 1x margin (=clearance) olur,
+    2x DEGIL. Dar plaka (20mm derinlik) yan-yana yerlesimi zorlar; pitch 2 +
+    clearance 2 -> margin 1 voxel. Beklenen mesh-boslugu ~2mm (fix oncesi
+    cift-dilation 4mm verirdi)."""
+    pins = [{"ad": "pin_kutu", "x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0,
+             "rot": None}]
+    r = solve_nfv(_inst_iki_kutu(), plate_w_mm=40.0, plate_d_mm=20.0,
+                  fine_pitch=P2, seed=42, fine_settle=False,
+                  pinned_placements=pins, pin_3d=True, clearance_mm=2.0)
+    assert r.n_placed == 2
+    zs = [p.z for p in r.placements]
+    assert all(z == 0 for z in zs), f"kutular yan-yana yerlesmedi (z={zs})"
+    gap = _min_mesh_clearance(r)
+    assert gap >= 2.0 - 1e-6, f"clearance sozlesmesi ihlal: {gap:.3f}mm"
+    assert gap <= 2.0 + P2 / 2, \
+        f"parca-pin xy boslugu cift-dilation vergisi tasiyor: {gap:.3f}mm"
+
+
+def test_pin3d_ham_pin_ustu_dikey_bosluk_korunur():
+    """z_dilate=0 tuzagina karsi: pin USTUNE cikan parca >= clearance dikey
+    boslukla oturur (pin tepesi HAM olsaydi 0mm'e inerdi). Kanopi z=10mm,
+    kutu 10mm -> altina sigmaz, ustune cikar; taban >= 14+2 = 16mm."""
+    pins = [{"ad": "kanopi", "x_mm": 10.0, "y_mm": 10.0, "z_mm": 10.0,
+             "rot": None}]
+    r = _solve(_inst_kanopili(), pinned_placements=pins, pin_3d=True,
+               clearance_mm=2.0)
+    for p in r.placements:
+        if p.part_id.startswith("kanopi"):
+            continue
+        assert p.z * P2 >= 16.0 - 1e-6, \
+            f"{p.part_id} pin tepesine dikey-bosluksuz oturdu (z={p.z * P2}mm)"
+
+
+def test_pin3d_ham_pin_settle_dikey_bosluk_korunur():
+    """Settle katmaninda da pin ust-dilation'i korunur: fine grid'de pin
+    tepesi z_dilate*scale ile sisik kalir -> settle parcayi pin tepesine
+    clearance'siz INDIREMEZ."""
+    pins = [{"ad": "kanopi", "x_mm": 10.0, "y_mm": 10.0, "z_mm": 10.0,
+             "rot": None}]
+    r = solve_nfv(_inst_kanopili(), plate_w_mm=PLAKA, plate_d_mm=PLAKA,
+                  fine_pitch=P2, seed=42, fine_settle=True,
+                  pinned_placements=pins, pin_3d=True, clearance_mm=2.0)
+    pt = float(r.fine_pitch)
+    for p in r.placements:
+        if p.part_id.startswith("kanopi"):
+            continue
+        assert p.z * pt >= 16.0 - 1e-6, \
+            f"{p.part_id} settle'da pin tepesine clearance'siz indi " \
+            f"(taban={p.z * pt}mm)"
+
+
+def test_pin3d_ham_pin_konum_birebir():
+    """Origin ofseti kalkinca pin damgasi pin konumunu birebir korur:
+    yan komsu parca pin'in HAM bbox sinirina gore hizalanir (ofsetli damga
+    olsaydi bosluk asimetrik olurdu). Pin x_mm=0 -> komsu kutu raw baslangici
+    16 (pin) + 2 (clearance) = 18mm."""
+    pins = [{"ad": "pin_kutu", "x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0,
+             "rot": None}]
+    r = solve_nfv(_inst_iki_kutu(), plate_w_mm=40.0, plate_d_mm=20.0,
+                  fine_pitch=P2, seed=42, fine_settle=False,
+                  pinned_placements=pins, pin_3d=True, clearance_mm=2.0)
+    serbest = [p for p in r.placements if not p.part_id.startswith("pin_")]
+    assert len(serbest) == 1
+    # placement x dilated grid origin'i; raw icerik +margin voxel iceride
+    # (clearance 2 @ pitch 2 -> margin 1 voxel, deterministik).
+    raw_x0 = (serbest[0].x + 1) * P2
+    assert raw_x0 == pytest.approx(18.0, abs=P2 / 2), \
+        f"komsu kutu raw baslangici {raw_x0:.2f}mm != 18mm"

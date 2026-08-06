@@ -216,11 +216,14 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
     # K-62 v9 (pin_3d=True): (b) yerine pin GERCEK 3D voxelleriyle decode
     # occupancy'sine ON-YUKLENIR (occ_onyuk) — pinin alti/ustu SERBEST:
     # kanopi altina istif + delikten kule = insan cozumunun mekanigi.
-    # Pin cozucu-modelde havuz parcalariyla AYNI clearance dilation'ini
-    # tasir (xy margin + tek-tarafli ust z-dilation) -> parca-pin boslugu
-    # parca-parca ile ayni garanti (v8-MVP'nin 2D-muhur kuantizasyon ihlali
-    # sinifi kapanir); sahneye commit yine margin-0 (adim c, degismez).
-    # default False = v8 semantigi BIT-OZDES.
+    # v17 HAM-PIN duzeltmesi (2026-08-06): pin xy'de HAM damgalanir; dikey
+    # tek-tarafli ust z-dilation tasir. Parca-pin xy boslugu boylece komsu
+    # parcanin KENDI margin'inden gelir (1x = clearance; _pin_hazirla
+    # sozlesmesi). v9'un "havuzla ayni dilation" damgasi parca-pin sartini
+    # 2x'e cikariyordu (parca-parca decode'da zaten 2x — iki grid de sisik —
+    # ama pin SABIT oldugundan tek tarafin marjini yeterli ve legaldir;
+    # v8 2D-muhur de ham'di, 140.21 LEGAL saha kaniti). Sahneye commit
+    # margin-0 (adim c, degismez). default False = v8 semantigi BIT-OZDES.
     _pin_specs = pinned_placements
     _pin_donors = None
     _occ_onyuk = None
@@ -235,12 +238,16 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
             import numpy as _np
             _eff_m, _eff_zc = _nfv_clearance_voxels(clearance_mm, used_pitch,
                                                     margin)
-            # NOT (v10 tur-3 teshisi, 2026-08-04): tur-1/2/3 clearance
-            # ihlalleri PIN DILATION'indan degil, olcum-scriptinin pin
-            # koordinat semantigi hatasindandi (halo-origin vs margin-0
-            # bbox-origin; kayma dilation'la buyudu = kanit). Buradaki
-            # tek-tarafli dilation (v9 semantigi) sahada 2.448mm olctu —
-            # +1 emniyet katmani GEREKMEDI, bit-ozdeslik korunur.
+            # K-62 v17 HAM-PIN (2026-08-06, v16 rip-up KOK fix'i): pin xy'de
+            # HAM damgalanir (margin=0). _pin_hazirla sozlesmesi: "sabit nesne
+            # dilation tasimaz, komsular kendi marjini tasir" -> parca-pin xy
+            # boslugu 1x margin (=clearance). v9 pin'i TAM dilation'la
+            # damgaliyordu -> parca-pin sarti 2x'e cikiyordu (cift-dilation
+            # vergisi; rip-up'ta sokulen parca eski cebine donemiyordu).
+            # z_dilate KALIR: pin ustune oturan parcanin dikey boslugunu
+            # ALTTAKI nesnenin ust-dilation'i tasir (z_dilate=0 olsaydi parca
+            # pin tepesine 0mm'e inerdi — A2 ihlali). margin=0 oldugundan
+            # xy origin ofseti de kalkar (damga dogrudan pin bbox konumunda).
             _occ_onyuk = []
             for (_pp, _ix, _iy, _iz), _spec in zip(_pins0, _pin_specs):
                 _rot = _spec.get("rot")
@@ -248,11 +255,9 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
                         else _np.asarray(_rot, dtype=float))
                 _raw3 = _vp3(_pp.name, _pp.mesh, used_pitch,
                              rot_matrices=[_rot], method="slice",
-                             margin=_eff_m, z_dilate=_eff_zc)
-                # dilated grid origin'i xy'de -margin kayar (voxelize._dilate
-                # pad'i); pin konumu margin-0 bbox'a gore -> damga ofsetlenir.
+                             margin=0, z_dilate=_eff_zc)
                 _occ_onyuk.append((_raw3.orientations[0].grid,
-                                   _ix - _eff_m, _iy - _eff_m, _iz))
+                                   _ix, _iy, _iz))
     # fine-settle aynı clearance kuralına uyar (aksi hâlde settle kazanılan boşluğu
     # geri yer). used_pitch'ten türetilen (xy margin, z-dilation) settle'a geçilir.
     settle_margin, settle_zc = _nfv_clearance_voxels(clearance_mm, used_pitch, margin)

@@ -90,8 +90,10 @@ def fine_settle_raw(
     onyuk_raw (K-62 v12b): SABIT nesneler (3D pin) — raw ile ayni format
     [(pid, oi, x, y, z)], parcalari parts_by_id'de. Fine occ'a HAREKETSIZ
     damgalanir (tasima/oturtma listesine girmez); hareketli parcalar
-    pinlerin etrafina oturur. Damga hareketli parcalarla AYNI dilation'i
-    tasir (cift-tarafli ayrim, konservatif). None (default) = BIT-OZDES.
+    pinlerin etrafina oturur. v17 HAM-PIN (2026-08-06): damga xy'de HAM
+    (margin=0; parca-pin boslugunu komsunun KENDI marjini tasir — decode ile
+    ayni sozlesme), dikey tek-tarafli z_dilate*scale KALIR (pin ustune
+    oturan parca clearance'siz inemesin). None (default) = BIT-OZDES.
     """
     if not raw:
         return None
@@ -146,20 +148,21 @@ def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
             occ[_m, :] = True
 
     # K-62 v12b: SABIT on-yukler (3D pin) fine occ'a HAREKETSIZ damgalanir.
-    # Damga hareketlilerle ayni dilation'i tasir (margin/z_dilate * scale);
-    # dilated origin xy'de -margin*scale kayar (pin konumu margin-0 bbox),
-    # damga kirpmali. pid-anahtarli ayri sozluk: ayni (name, oi) anahtarli
+    # v17 HAM-PIN: damga xy'de HAM (margin=0, origin ofseti yok) — parca-pin
+    # xy boslugunu hareketlinin KENDI margin*scale'i tasir (decode ile ayni
+    # sozlesme); dikey z_dilate*scale KALIR (pin ustu clearance'i). Damga
+    # kirpmali. pid-anahtarli ayri sozluk: ayni (name, oi) anahtarli
     # HAREKETLI kopyalarla (pin rot'u farkli grid) cakismasin.
     if onyuk_raw:
         for pid, oi, x, y, z in onyuk_raw:
             part = parts_by_id[pid]
             vp = voxelize_part(part.name, part.mesh, fine,
                                rot_matrices=[part.orientations[oi].rot_matrix],
-                               margin=margin * scale,
+                               margin=0,
                                z_dilate=z_dilate * scale, method="slice")
             g = vp.orientations[0].grid
-            xs = x * scale - margin * scale
-            ys = y * scale - margin * scale
+            xs = x * scale
+            ys = y * scale
             zs = z * scale
             fw, fd, fh = g.shape
             x0, y0, z0 = max(0, xs), max(0, ys), max(0, zs)
