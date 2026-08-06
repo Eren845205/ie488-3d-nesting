@@ -216,6 +216,19 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **DERS (mekanizma sınırı):** tekil söküm → BLB tek parçada global-optimale yakın (v20 kazancı); İKİ parça söküm → BLB açgözlü sırası ikiliyi birlikte eski kalitede bile koyamıyor (129,60'a şişme). Relokasyon ekseni çoklu-parçada BLB'ye emanet edilemez — 110-bandı için sıradaki adaylar: (a) sökülen küçük-küme için decode-dışı ORTAK arama (2-3 parça poz×konum exhaustive/branch-bound), (b) tepe sürücülerinin poz-analizi (pyramid yatırma sınıfı — tavan yapısal mı?), (c) delik-atama optimizasyonu. Hepsi kod-geliştirme sınıfı (script-seviyesi hamleler tükendi).
 - **Karne (A11):** v20 karnesiyle aynı sınıf (tek-set ön-ölçüm; NÖTR kayıt tekrar-önleme değerinde).
 
+### [K-62 v22] Poz ekseni: envanter + n24 A/B — ❌ n24 NO-GO (139,20 taban); ✅ envanter bulgusu: MTShoe 8-dışı pozda 35,6mm
+- **Durum:** ❌ n24 kolu NO-GO (final 129,60 LEGAL — v20 127,20 geçilemedi) · ✅ envanter kanıtı KALICI · **Tarih:** 2026-08-06 gece · **Kanıt:** `results/k62_v22_poz_ekseni.json` (D+C) + log
+- **Faz-1 poz-envanter (koşusuz, saniyeler):** tavan tiplerinin 8-poz vs 28-poz min bbox boyu — pyramid 59,3/59,3 · bobbin_3 17,1/17,1 · TAPER 2,5/2,5 · 811791 18,2/18,2 (**poz ekseni ÖLÜ**: min boylar 8'li menüde zaten var) · **MTShoe 58,0 → 22,4 (poz 24; 35,6mm duruş kazancı 8-DIŞI pozda)**. Ayrıca pyramid dik-boy 59,3 + kanopi-üstü ≈ 127-129 tavanını açıklıyor (tavan poz değil YERLEŞİM sorunu).
+- **Faz-2 n24 A/B:** taban 139,20 (n8: 129,60) — **tüm menüyü açmak NET ZARAR** (BLB açgözlü non-monotonluğu; v11b/v13 toplu-ekleme dersiyle aynı sınıf). Faz-3 relokasyon 139,20→132,00→129,60 toparladı ama 127,20'ye ulaşamadı; settle nötr; A2 LEGAL.
+- **Ders:** poz zenginleştirme KÖRLEMESİNE değil HEDEFLİ yapılmalı → v23 cerrahi yol: `orientation_overrides` ile yalnız MTShoe menüsüne alçak pozlar (0-7+24-27); diğer her şey n8 birebir. Envanter kuralı kablo adayı: "min8−min28 > eşik olan tipe otomatik poz-açılımı" (geometrik tetik; A11-uyumlu).
+- **Karne (A11):** tetik=geometrik-ADAY (envanter kuralı) · n24 kolu NO-GO kaydı (tekrar-önleme) · held-out=BEKLİYOR.
+
+### [K-62 v23] MTShoe hedefli poz açılımı (cerrahi override) — ⚪ NÖTR (127,20 paritesi; 127,20 = 3-eksen-doğrulanmış plato)
+- **Durum:** ⚪ NÖTR (final 127,20 A2-LEGAL — v20 paritesi, ek kazanç yok) · **Tarih:** 2026-08-06 gece · **Kanıt:** `results/k62_v23_mtshoe_poz.json` (D+C) + log
+- **Ölçüm:** `orientation_overrides={MTShoe: 0-7+24-27}` taban 129,60 (n8 birebir — cerrahi genişleme tabanı BOZMADI; v22 n24'ün 139,20 zararıyla kıyasla yöntem-kanıtı) → relokasyon d5 pyramid KABUL 127,20 (v20'den farklı yoldan aynı plato) → kalan denemeler + settle nötr → **127,20 LEGAL (2,447 · kilit5=0)**. MTShoe alçak pozu yüksekliğe yansımadı (MTShoe bu sahnede tavan sürücüsü değil).
+- **PLATO TESPİTİ:** 127,20 üç bağımsız eksende doğrulandı — (1) sıra-perturbasyonu (v18b), (2) çift-söküm (v21), (3) poz açılımı (v22 kör + v23 cerrahi). Script-seviyesi yerel aramalar tükendi; 110-bandı için kalan yol KOD-GELİŞTİRME sınıfı (küçük-küme ortak arama · delik-atama optimizasyonu · kanopi-altı bölge-hedefli aday üretimi). Cerrahi-override yöntem dersi kalıcı: poz zenginleştirme tip-hedefli yapılır, envanter kuralı (min8−min28>eşik) kablo adayı.
+- **Karne (A11):** v20 karnesiyle aynı sınıf; NÖTR/NO-GO kayıtları tekrar-önleme değerinde.
+
 ### [K-62 v10-MVP] Statik silo planlayıcı (kule-kopya × delik-atama, greedy raster) — ❌ NO-GO (4 tur ölçüldü)
 - **Durum:** ❌ NO-GO (2026-08-04 akşam; 4 tur, hepsi ölçüldü) · **Kanıt:** `results/k62_v10_silo.json` (D+C) + `scripts/k62_v10_silo.log`
 - **Ne:** v9 teşhisinin (tavan = bobbin delik-sütunları) doğrudan saldırısı: faz-A çözüm-güdümlü silo tipleri → faz-B kanopi delik-maskesinde greedy raster sütun tahsisi (katmanlı 3D pinler, tavan ≤ kanopi-tepe) → faz-C kalan set pin_3d çözümü.
