@@ -1884,6 +1884,24 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **SONUÇ:** 516 vs 284 açığının ayrıştırması: **~116-140mm sözleşme/kıyas-şartı** (çubuk duruşu — S1) + **~76-116mm gerçek motor açığı** (çubuk-arası interleave / tekrar-sömürüsü — K-66 mekanizma hedefi). "Motor %45 geride" okuması YANLIŞTI; eksen-hizalı sözleşmede motor açığı ~%15-22 bandı. K-66-d prototip hedefi netleşti: kitle-plakayı çubuk-arası boşluklara periyodik yerleştiren dekod.
 - **A11 karnesi:** teşhis (mekanizma/kazanç ilanı değil); tetik=yok | kapı=N/A | held-out'a yeni bakış YOK (mevcut kayıt+STL bbox analizi).
 - **Kanıt:** `results/k66_analitik_teshis.json` + `scripts/k66_analitik_teshis.log`.
+- **DÜZELTME (aynı gün, 2026-08-20 gece — K-66-d plan hesabı sırasında):**
+  BULGU-3'ün "gerçek motor açığı ~%15-22 / teorik ~400-440" okuması FAZLA
+  İYİMSERDİ. **Hacim alt-sınırı (bbox-hücre):** Σ(dim+2mm çarpımları) —
+  çubuk 54×(12×97×401,6)=25,3M + plaka 520×hücre + braket 36×hücre ≈ 55M
+  mm³ ÷ plaka alanı 112k mm² ⇒ **eksen-hizalı bbox-paketleme tabanı ~496mm**
+  → 516,0 bu tabana ~%4 mesafede; **bbox düzeyinde motor NEREDEYSE OPTİMAL.**
+  K-66-d kafes dekodunun bu sözleşmedeki gerçekçi tavanı ~490 bandı
+  (~25-35mm; plan hesabı: 28×2 çubuk-satırı + kanala 324/520 dik-kafes
+  plaka, `k66_d_kafes_dekod.py` PLAN_ONLY doğrulandı). **Asıl kaldıraç
+  bbox-dışı:** çubuklar tf=0,098 İÇİ-BOŞ profil — gerçek-geometri
+  İÇ-İÇE/YUVA yerleşimi bbox sınırını kırar; engel (a) pitch 2mm +
+  clearance-dilation ince kanalları MÜHÜRLÜYOR (ince-pitch=RAM → lab 64GB
+  makinesi tam bu iş), (b) hoca "iç-içe geçmesin" beyanı (HOCA_CEVAPLARI
+  2026-08-18(2) ÇELİŞKİ kaydı) buna sözleşme engeli olabilir. SONUÇ:
+  fsm610 açığının sözleşme-payı sanılandan da BÜYÜK; mail S1/S2 + iç-içe
+  teyidi kritik. K-66-d koşusu yine de değerli (sentetik ailede kazanç
+  daha büyük olabilir — çubuk payı düşük instance'larda) ama fsm610'da
+  beklenti ~-25mm ile sınırlı, "büyük kırılma" DEĞİL (A4 kâğıt-hükmü).
 
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
