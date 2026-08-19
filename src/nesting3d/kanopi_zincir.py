@@ -257,6 +257,7 @@ def kanopi_zinciri_coz(
         return en_iyi, tel
 
     # --- adim 4 (opsiyonel): greedy rutbe-1 ----------------------------
+    # (uretim kablosu icin bkz. kanopi_zinciri_uretim asagida)
     if greedy_r1:
         havuz = [ad for ad, _u in sorted(
             asan_tipler(en_iyi, aday["part"].name, kz2).items(),
@@ -295,3 +296,175 @@ def kanopi_zinciri_coz(
 
     tel["etiket"] = etiket
     return en_iyi, tel
+
+
+# --------------------------------------------------------------------------
+# URETIM KABLOSU (K-62 v18, Eren karari 2026-08-15): zincir + A2 legalite +
+# GERI-DUSUS. k62_kapi v3 saha deseninin src karsiligi (plan1 otomatik
+# 129.00 LEGAL kaniti fix'li motorla; YONTEM §3 K-62 KAPI + v17).
+#
+# SOZLESME (tek-tarafli, A2-kapili):
+#   - Tetik yoksa ref AYNEN doner (A2 olcumu bile kosulmaz — sifir maliyet).
+#   - Zincir kazanani ancak TAM A2 legalite (clearance + 5-yon kilit veya
+#     rot-sokum-planli) VE ref'ten lexicographic iyi (n_placed, sonra
+#     yukseklik) ise kabul edilir.
+#   - Kazanan A2 gecemezse geri-dusus adaylari (oncelik-r0 -> yalniz-pin)
+#     sirayla tam-A2 ile denenir (kapi-v2 dersi: 132.60 clearance 1.961
+#     INVALID -> maskelenmez, dusulur).
+#   - Hicbiri gecemezse ref AYNEN doner. Ref'in legalitesi burada YENIDEN
+#     olculmez (kalite yolu kendi guard/rot mekanizmasiyla gelir).
+#   - ref_height_mm: ref'in EFEKTIF yuksekligi (R11 dz uygulanmissa o) —
+#     kiyas bununla yapilir ki kazanan ilani R11'li ref'e haksizlik etmesin.
+# --------------------------------------------------------------------------
+
+def _a2_olc_meshes(res, n_total: int, clearance_mm: float,
+                   rot_butce_s: float) -> Dict[str, Any]:
+    """Tam A2 legalite olcumu: clearance + 5-yon kilit (+ rot-sokum).
+
+    k62_kapi.a2_olc'un src karsiligi. Olcum hatasi legal=False sayilir
+    (konservatif taraf, A2)."""
+    from src.nesting3d.clearance import min_clearance
+    from src.nesting3d.continuous_settle import (kilit_5yon_meshes,
+                                                 kilit_rot_meshes)
+    from src.nesting3d.export_stl import placed_meshes
+
+    cl_mm = None
+    kilit5 = rot_kilit = rot_cert = None
+    sokum_planli = False
+    try:
+        meshes = list(placed_meshes(list(res.placements),
+                                    res.fine_voxel_parts,
+                                    float(res.fine_pitch)))
+        cl_mm = float(min_clearance(meshes).min_mm)
+        kilit5 = kilit_5yon_meshes(meshes)
+        if kilit5 and kilit5 > 0:
+            rapor = kilit_rot_meshes(meshes, sure_butcesi_s=rot_butce_s)
+            rot_kilit = int(rapor.n_locked)
+            rot_cert = len(getattr(rapor, "certificates", {}) or {})
+            sokum_planli = (rot_kilit == 0)
+    except Exception:
+        logger.exception("kanopi uretim: A2 olcum hatasi (legal=False)")
+    yer_ok = int(res.n_placed) == n_total
+    cl_ok = cl_mm is not None and cl_mm >= float(clearance_mm)
+    kilit_ok = (kilit5 == 0) or sokum_planli
+    return {"min_clearance_mm": cl_mm, "kilit_5yon": kilit5,
+            "rot_kilit": rot_kilit, "rot_cert": rot_cert,
+            "sokum_planli": sokum_planli,
+            "legal": yer_ok and cl_ok and kilit_ok}
+
+
+def kanopi_zinciri_uretim(
+    inst,
+    *,
+    plate_w_mm: float,
+    plate_d_mm: float,
+    no_go_bounds=None,
+    clearance_mm: float = 2.0,
+    seed: int = 42,
+    quality: str = "fast",
+    fine_pitch: Optional[float] = None,
+    ref_res=None,
+    ref_height_mm: Optional[float] = None,
+    greedy_r1: bool = True,
+    max_greedy: int = 6,
+    rot_butce_s: float = 1200.0,
+    _a2=None,
+    _solve=None,
+) -> Tuple[Any, Dict[str, Any]]:
+    """Uretim kablosu: (final_result, telemetri) doner — bkz. blok yorumu.
+
+    ref_res ZORUNLU (kalite yolunun secili sonucu); n_total ondan degil
+    inst'ten okunur (ref eksik-yerlesimli olabilir — kapi-1 dersi).
+    _a2/_solve test enjeksiyonu (A9: imzalar gercekle ayni).
+    """
+    import time as _time
+
+    t0 = _time.perf_counter()
+    n_total = (sum(int(p.qty) for p in inst.parts) if inst is not None
+               else int(ref_res.n_placed))
+    ref_eff_h = (float(ref_height_mm) if ref_height_mm is not None
+                 else float(ref_res.height_mm))
+    tel: Dict[str, Any] = {"tetik": False, "secilen": "ref",
+                           "ref_height_mm": float(ref_res.height_mm),
+                           "ref_eff_height_mm": ref_eff_h}
+
+    aday = kanopi_adayi(inst, plate_w_mm, plate_d_mm, no_go_bounds)
+    if aday is None:
+        tel["sure_s"] = round(_time.perf_counter() - t0, 1)
+        return ref_res, tel
+    tel["tetik"] = True
+
+    kazanan, ztel = kanopi_zinciri_coz(
+        inst, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
+        no_go_bounds=no_go_bounds, clearance_mm=clearance_mm, seed=seed,
+        quality=quality, fine_pitch=fine_pitch, greedy_r1=greedy_r1,
+        max_greedy=max_greedy, ref_res=ref_res)
+    tel["zincir"] = ztel
+    if kazanan is ref_res or ztel.get("etiket") == "ref":
+        tel["sure_s"] = round(_time.perf_counter() - t0, 1)
+        return ref_res, tel  # zincir kazanamadi — A2 maliyeti odenmez
+
+    a2 = _a2 or (lambda r: _a2_olc_meshes(r, n_total, clearance_mm,
+                                          rot_butce_s))
+
+    def _kabul(r, a2r):
+        return a2r["legal"] and _daha_iyi(r, int(ref_res.n_placed), ref_eff_h)
+
+    a2_k = a2(kazanan)
+    tel["a2"] = a2_k
+    if _kabul(kazanan, a2_k):
+        tel["secilen"] = "kanopi"
+        tel["etiket"] = ztel.get("etiket")
+        tel["kazanc_mm"] = round(ref_eff_h - float(kazanan.height_mm), 2)
+        tel["sure_s"] = round(_time.perf_counter() - t0, 1)
+        return kazanan, tel
+
+    # --- GERI-DUSUS (kapi-v3 deseni): oncelik-r0 -> yalniz-pin -----------
+    tel["geri_dusus"] = []
+    z = ztel.get("z_secilen")
+    if z is not None:
+        solve = _solve
+        if solve is None:
+            from src.nesting3d.nfv_solve import solve_nfv as solve
+        etiket_kazanan = ztel.get("etiket")
+        r0_rutbe = {ad: 0 for ad in (ztel.get("asan_tipler") or {})}
+        adaylar = []
+        if (etiket_kazanan == "greedy" and r0_rutbe
+                and ztel.get("rutbeler") != r0_rutbe):
+            adaylar.append(("oncelik-r0", r0_rutbe))
+        if etiket_kazanan != "pin":
+            adaylar.append(("yalniz-pin", None))
+        try:
+            _pin = [kanopi_pin(aday, z)]
+        except Exception:
+            logger.exception("kanopi uretim: geri-dusus pin kurulamadi")
+            _pin, adaylar = None, []
+        for gd_etiket, rutbe in adaylar:
+            try:
+                r_gd = solve(inst, plate_w_mm=plate_w_mm,
+                             plate_d_mm=plate_d_mm, fine_pitch=fine_pitch,
+                             seed=seed, quality=quality,
+                             clearance_mm=clearance_mm,
+                             no_go_bounds=no_go_bounds,
+                             pinned_placements=_pin,
+                             pin_3d=True, oncelik_adlari=rutbe)
+            except Exception:
+                logger.exception("kanopi uretim: geri-dusus solve hatasi"
+                                 " (%s)", gd_etiket)
+                continue
+            a2_gd = a2(r_gd)
+            tel["geri_dusus"].append(
+                {"etiket": gd_etiket, "height_mm": float(r_gd.height_mm),
+                 "n_placed": int(r_gd.n_placed), **a2_gd})
+            if _kabul(r_gd, a2_gd):
+                tel["secilen"] = "kanopi"
+                tel["etiket"] = f"geri-dusus:{gd_etiket}"
+                tel["a2"] = a2_gd
+                tel["kazanc_mm"] = round(ref_eff_h - float(r_gd.height_mm), 2)
+                tel["sure_s"] = round(_time.perf_counter() - t0, 1)
+                return r_gd, tel
+            del r_gd
+            gc.collect()
+
+    tel["sure_s"] = round(_time.perf_counter() - t0, 1)
+    return ref_res, tel  # tek-tarafli: legal+iyi aday yok -> ref AYNEN

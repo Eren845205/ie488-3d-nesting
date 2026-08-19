@@ -188,6 +188,159 @@ def test_zincir_ref_eksikken_pin_denenir_ve_tamlik_kazanir(tmp_path, monkeypatch
     assert tel["etiket"] == "pin"
 
 
+# ------------------------------------------------- uretim kablosu (v18) ----
+# kanopi_zinciri_uretim: zincir + A2 legalite + geri-düşüş (k62_kapi v3
+# deseninin src karşılığı; Eren kararı 2026-08-15 — kalite moduna bağlanır).
+
+def _u_res(n, h, etiket="x"):
+    return SimpleNamespace(height_mm=h, n_placed=n, placements=[],
+                           fine_voxel_parts={}, fine_pitch=1.0,
+                           _etiket=etiket)
+
+
+def _u_aday():
+    import trimesh
+    mesh = trimesh.creation.box(extents=(210.0, 210.0, 6.0))
+    return {"part": SimpleNamespace(name="frame"), "mesh": mesh,
+            "fiz": {"pozlar": [{"rot_deg": 0.0, "dx_mm": 0.0, "dy_mm": 0.0}],
+                    "doluluk": 0.5, "duz_kalinlik_mm": 6.0},
+            "alan_oran": 0.4}
+
+
+def test_uretim_tetiksiz_ref_ayni_nesne(monkeypatch):
+    import src.nesting3d.kanopi_zincir as kz
+
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: None)
+    ref = _u_res(5, 100.0, "ref")
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref)
+    assert res is ref
+    assert tel["tetik"] is False
+    assert tel["secilen"] == "ref"
+
+
+def test_uretim_kazanan_legal_ve_iyi_kabul(monkeypatch):
+    import src.nesting3d.kanopi_zincir as kz
+
+    ref = _u_res(5, 140.0, "ref")
+    kazanan = _u_res(5, 129.0, "kanopi")
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: _u_aday())
+    monkeypatch.setattr(kz, "kanopi_zinciri_coz",
+                        lambda *a, **k: (kazanan, {"tetik": True,
+                                                   "etiket": "pin",
+                                                   "adimlar": [],
+                                                   "z_secilen": 60.0}))
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref,
+        _a2=lambda r: {"min_clearance_mm": 2.4, "kilit_5yon": 0,
+                       "rot_kilit": None, "rot_cert": None,
+                       "sokum_planli": False, "legal": True})
+    assert res is kazanan
+    assert tel["secilen"] == "kanopi"
+    assert tel["kazanc_mm"] == pytest.approx(11.0)
+
+
+def test_uretim_kazanan_illegal_geri_dusus_legal(monkeypatch):
+    """Kapı-v3 deseni: kazanan A2 geçemezse sıradaki aday (yalnız-pin)
+    tam-A2 ile denenir; legal bulunursa o döner."""
+    import src.nesting3d.kanopi_zincir as kz
+
+    ref = _u_res(5, 140.0, "ref")
+    kazanan = _u_res(5, 129.0, "greedy")
+    gd = _u_res(5, 135.6, "pin")
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: _u_aday())
+    monkeypatch.setattr(kz, "kanopi_zinciri_coz",
+                        lambda *a, **k: (kazanan, {"tetik": True,
+                                                   "etiket": "greedy",
+                                                   "adimlar": [],
+                                                   "z_secilen": 60.0,
+                                                   "asan_tipler": {"kule": 90.0},
+                                                   "rutbeler": {"kule": 0,
+                                                                "t2": 1}}))
+
+    def sahte_solve(inst, **kw):
+        assert kw.get("pin_3d") is True
+        return gd
+
+    def sahte_a2(r):
+        legal = r is gd
+        return {"min_clearance_mm": 2.1 if legal else 1.96,
+                "kilit_5yon": 0, "rot_kilit": None, "rot_cert": None,
+                "sokum_planli": False, "legal": legal}
+
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref, _a2=sahte_a2, _solve=sahte_solve)
+    assert res is gd
+    assert tel["secilen"] == "kanopi"
+    assert tel["geri_dusus"]  # en az bir geri-düşüş adayı ölçüldü
+
+
+def test_uretim_hicbiri_legal_degil_ref_doner(monkeypatch):
+    import src.nesting3d.kanopi_zincir as kz
+
+    ref = _u_res(5, 140.0, "ref")
+    kazanan = _u_res(5, 129.0, "pin")
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: _u_aday())
+    monkeypatch.setattr(kz, "kanopi_zinciri_coz",
+                        lambda *a, **k: (kazanan, {"tetik": True,
+                                                   "etiket": "pin",
+                                                   "adimlar": [],
+                                                   "z_secilen": 60.0}))
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref,
+        _a2=lambda r: {"min_clearance_mm": 1.9, "kilit_5yon": 3,
+                       "rot_kilit": 2, "rot_cert": 0,
+                       "sokum_planli": False, "legal": False})
+    assert res is ref
+    assert tel["secilen"] == "ref"
+
+
+def test_uretim_zincir_ref_donerse_a2_olculmez(monkeypatch):
+    import src.nesting3d.kanopi_zincir as kz
+
+    ref = _u_res(5, 140.0, "ref")
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: _u_aday())
+    monkeypatch.setattr(kz, "kanopi_zinciri_coz",
+                        lambda *a, **k: (ref, {"tetik": True, "etiket": "ref",
+                                               "adimlar": []}))
+
+    def a2_patlar(r):
+        raise AssertionError("ref donduyse A2 olculmemeli")
+
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref, _a2=a2_patlar)
+    assert res is ref
+    assert tel["secilen"] == "ref"
+
+
+def test_uretim_ref_r11_yuksekligiyle_kiyas(monkeypatch):
+    """ref'e R11 dz uygulanmışsa kıyas efektif (r11) yükseklikle yapılır:
+    kazanan ham ref'ten iyi ama r11-ref'ten kötüyse REF korunur."""
+    import src.nesting3d.kanopi_zincir as kz
+
+    ref = _u_res(5, 140.0, "ref")
+    kazanan = _u_res(5, 133.0, "pin")
+    monkeypatch.setattr(kz, "kanopi_adayi", lambda *a, **k: _u_aday())
+    monkeypatch.setattr(kz, "kanopi_zinciri_coz",
+                        lambda *a, **k: (kazanan, {"tetik": True,
+                                                   "etiket": "pin",
+                                                   "adimlar": [],
+                                                   "z_secilen": 60.0}))
+    res, tel = kz.kanopi_zinciri_uretim(
+        None, plate_w_mm=PLATE[0], plate_d_mm=PLATE[1],
+        no_go_bounds=NOGO, ref_res=ref, ref_height_mm=131.5,
+        _a2=lambda r: {"min_clearance_mm": 2.4, "kilit_5yon": 0,
+                       "rot_kilit": None, "rot_cert": None,
+                       "sokum_planli": False, "legal": True})
+    assert res is ref
+    assert tel["secilen"] == "ref"
+
+
 def test_zincir_tek_tarafli_ve_tam_yerlesim(tmp_path):
     """Tetikli sette zincir referanstan KOTU donemez; sonuç tam yerleşimli.
     (Kazanç garanti edilmez — tek-taraflılık sözleşmesi test edilir.)"""
