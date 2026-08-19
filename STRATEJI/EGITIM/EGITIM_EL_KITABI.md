@@ -167,8 +167,14 @@ Held-out objective'e ASLA girmez; yalnız final tek-koşu doğrulama.
 
 1. **Held-out filtresi:** `build_training_table`'a registry-rol parametresi
    (held-out satırlarını yapısal dışla). Telemetri v2'den ÖNCE şart.
-2. **`gengap` model-parametrik refactor:** `_loo_cv_accuracy(table,
-   model_factory)` + regret raporu → kNN/logistic adayları aynı kapıdan geçer.
+2. ~~**`gengap` model-parametrik refactor**~~ → **KAPANDI (tespit
+   2026-08-18, M2 doğrulaması):** `model_factory` parametresi zaten
+   `7aa4d60` ile kodda (`_loo_cv_accuracy`/`loo_regret`/
+   `compute_generalization_gap`); adaylar (`MiniBaggingSelector`,
+   `ArgminModeSelector`, `RegretWeightedLogistic`) bu kapıdan geçiyor.
+   2026-08-18'de sözleşme testleri eklendi (fake-factory kullanım kanıtı +
+   default bit-özdeşlik; `tests/test_gengap.py` 50 passed). KALAN küçük iş:
+   `regret_mm`'in `GenGapReport` çıktısına entegrasyonu (kodda TODO notu).
 3. **Telemetri v2 alanları** (`01_VERI.md` §5): mod-düzeyi etiket +
    legal_height + F1 — "karar-yüzeyi kayması"nın kapanma ön-şartı.
 4. **`scripts/eval_gate.py` (Faz-0):** test tarafının tek komutu.

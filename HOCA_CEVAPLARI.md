@@ -406,3 +406,104 @@ Drive `plan7_a2_kilitli` klasörü: 6 değişen STL + söküm planı + yeni
 - **FSM ziyareti teyit edildi** ("bazı konuları FSM'de netleştiririz") —
   tarih henüz yok; açık teknik sorular (S1 eski-boşluk, no-go temas
   toleransı, recoater ekseni, örnek iş emirleri) ziyaret gündemine.
+
+## 2026-08-17 — Yüz yüze görüşme: PİLOT ONAYI + BAYKAR İLGİSİ + iş modeli istişaresi
+
+**Bağlam:** Eren hocayla yüz yüze görüştü (demo günü). Sözlü aktarım;
+birebir alıntı değil, Eren'in aktarımıyla kayıt.
+
+**G1 — Pilot/referans site ONAYI:**
+- Hoca kendi laboratuvarının pilot + referans olarak kullanılmasını
+  KABUL ETTİ. Doğrudan talebi: **"artık bunu kur, biz kullanalım."**
+- Sonuç: lab kurulumu resmi iş oldu; kurulum sihirbazı gündeme girdi.
+
+**G2 — BAYKAR görüşmesi:**
+- Hoca Baykar yöneticileriyle görüşmüş; fikri — özellikle UYGULAMA
+  fikrini — çok beğenmişler ("bayılmışlar"). **Talep var.**
+- Hoca zaten Baykar'a drone parçaları basıyor; lab referansı Baykar
+  için doğrudan köprü.
+
+**G3 — Gerçek veri gönderimi:**
+- Hocanın mühendislerinden biri MAIL ile veri gönderdi. Test tamamen
+  uygulama üzerinden yapılacak: mailden çekecek, notları/kısıtları
+  işleyecek, sonuç karşılaştırılacak. (A3: yeni gerçek veri = held-out;
+  ilk iş held-out sınavı.)
+
+**G4 — İş modeli istişaresi (hoca fikirleri):**
+1. **Abonelik/SaaS:** "Gelsinler, bizim server'da çalışsın."
+2. **Donanım-dahil premium:** "Bazı şirketlere donanımı da biz
+   karşılarız, daha pahalıya satarız."
+3. **Alt model (Lite):** mail otomasyonu olmayan, manuel veri yüklemeli
+   ucuz kademe.
+
+**Doğrudan işler:** tümü `BUSINESS_PLAN_VE_YAPILACAKLAR.md`'de (yeni
+business defteri, 2026-08-17 açıldı): P1 mail-veri uçtan uca app testi
+(not→kısıt hattı patlayamaz-kuralı + §2 doğrulama listesi) · P2 lab
+kurulumu + sihirbaz (öncesinde P4 kod koruma ŞART) · P3 lab donanım
+envanteri (fotoğraflar Eren'den gelecek) + LLM/VL model seçimi ·
+P5 uzaktan erişim kararı · §3 kademe kataloğu.
+
+## 2026-08-18 — Hoca teknik geri bildirimleri + uygulama özellik istekleri (Eren aktarımı)
+
+**Bağlam:** Eren'in sözlü aktarımı (görüşme devamı); birebir alıntı değil.
+
+**T1 — Açılı gelen parçalar eksene oturtulmalı:**
+- "Bazı parçalar açılı geliyor; onu doğru eksene oturtarak yapmak daha
+  iyi kazanç sağlayabilir." → Müşteri STL'i eksene hizasız (tilt'li)
+  modellenmiş gelebilir; nesting öncesi OTOMATİK eksen-hizalama
+  (PCA/OBB tabanlı kanonik duruş) ön-adımı kazanç adayı.
+- NOT: "duruş kilidi" kısıtıyla ETKİLEŞİR — kilitli parçada eksen
+  düzeltmesi yapılamaz/müşteriye sorulur; kilitsizde serbest.
+- Kayıt: YONTEM §5 aday (K-63 eksen-kanonikleştirme).
+
+**T2 — Gereksiz simetrik dönüşler (zaman kaybı):**
+- "Bazı parçalar gereksiz döndürülüyor olabilir; 180° mesela — parça
+  aynı yerde kalır, kazanç sağlamaz, zamandan kayıp olur."
+- → Parça simetri tespiti (C2/C4/silindirik) ile poz kümesinden
+  simetri-eş pozları BUDAMA: sonuç birebir, arama süresi kısalır.
+- Kayıt: YONTEM §5 aday (K-64 simetri-poz-budaması; SAF hız işi,
+  sonuç-nötr olduğu bit-özdeşlik testiyle kanıtlanmalı).
+
+**T3 — Plan7 boşluk doldurma:**
+- "Plan7 başarılı ama çok boşluk var; doldurulursa çok daha iyi olabilir.
+  Plan7 (firma işi) 1 günde yapılmış — biz ciddi hız kazancı sağlıyoruz."
+- → Mevcut kanopi-altı GLOBAL yeniden-istif hedefiyle (v27 alan-bütçesi:
+  verim 0,70→0,80 yolu) BİREBİR örtüşüyor; hoca bağımsız aynı yönü işaret
+  etti. Değer önerisi teyidi: insan >1 gün vs. motor ~103dk.
+
+**İ1 — Koşu ilerleme göstergesi (uygulama isteği):**
+- "Koşulurken 'bitmesine şu kadar kaldı / %X tamamlandı' yazsın."
+- Lab pilotu için operatör-görünür ilerleme çubuğu; mevcut aşama
+  callback'leri (on_stage) üzerinden yüzde tahmini.
+
+**İ2 — Koşu hatası bildirimi (uygulama isteği):**
+- "Hata olduysa 'koşulamadı' bildirimi gelsin ki boşuna beklemesinler."
+- Koşu hata durumunun UI baloncuğu/banner + (ileride) mail bildirimi.
+- İkisi de `BUSINESS_PLAN_VE_YAPILACAKLAR.md` P-listesine eklendi
+  (pilot kurulumu öncesi öncelikli).
+
+## 2026-08-18 (2) — "Parçalar asla iç içe geçmemeli" beyanı (Eren aktarımı) — ÇELİŞKİ KAYDI
+
+**Bağlam:** Eren aktarımı (sözlü; birebir alıntı değil): hoca "parçalar
+asla iç içe geçmemeli; 2mm boşluk dahi olsa öbür türlü çıkarılamaz" dedi.
+
+**ÇELİŞKİ — önceki kayıtlı hoca cevaplarıyla:**
+- 2026-07-06 (4 cevap): "iç-içe İZİNLİ + ayrılabilirlik = asıl kısıt".
+- 2026-07-14 (K-51b/K-52 kabulü): "az sayıda zor-söküm ihmal edilebilir"
+  → A2 rot-söküm katmanının (SÖKÜM-PLANLI LEGAL) dayanağı.
+- 2026-08-03: kapalı-kavite serbest (cavity telemetri-only kalıcı).
+
+**Eren'in yorumu (2026-08-18):** "iç içe geçip ÇIKARILABİLİYORSA sıkıntı
+olmaz; söküm (çıkarılabilirlik) asıl değerli olan." — Bu yorum 2026-07-06
+kayıtlı cevapla AYNI çizgide.
+
+**Motor durumu:** mevcut sözleşme (ANAYASA A2) zaten bu ayrımı yapıyor:
+çıkarılamaz iç-içe HİÇBİR ZAMAN legal sayılmaz (INVALID); çıkarılabilir
+iç-içe legal + söküm planı (sokum_sirasi/rehberli söküm HTML + rot
+sertifikaları) üretilir. Davranış DEĞİŞTİRİLMEDİ.
+
+**Statü:** SÖZLEŞME SORUSU — hocanın yeni beyanı sertleşme mi (hiç iç-içe
+istemiyor) yoksa "çıkarılamaz olmasın" vurgusu mu, teyit gerekiyor.
+Teyide kadar mevcut A2 semantiği (söküm-kanıtlı iç-içe serbest) geçerli.
+Teyit araçları: rehberli söküm HTML demo'su + söküm planı örneği
+(hocanın endişesi pratik çıkarma — plan tam bunu adresliyor).

@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NESTING.FORGE — Proje Sunumu</title>
+<style>
+  :root {
+    --ink: #1a2233; --ink-soft: #45526b; --muted: #7a8699;
+    --accent: #c2410c; --accent-soft: #fff1e8;
+    --line: #d8dee8; --surface: #f6f8fb; --ok: #0a7d32; --warn: #b45309;
+    --bad: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #eceff4; color: var(--ink);
+    font-family: "Segoe UI", -apple-system, Roboto, Arial, sans-serif;
+    font-size: 14px; line-height: 1.55;
+  }
+  .sayfa {
+    background: #fff; max-width: 900px; margin: 24px auto; padding: 48px 56px;
+    box-shadow: 0 2px 14px rgba(20,30,50,.08); border-radius: 4px;
+  }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; }
+  h2 {
+    font-size: 20px; margin: 0 0 14px; padding-bottom: 8px;
+    border-bottom: 3px solid var(--accent); letter-spacing: -.01em;
+  }
+  h3 { font-size: 15px; margin: 18px 0 6px; color: var(--ink); }
+  p { margin: 8px 0; }
+  .alt-baslik { color: var(--ink-soft); font-size: 16px; margin-bottom: 2px; }
+  .kucuk { font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--surface); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .onde { color: var(--ok); font-weight: 700; }
+  .geride { color: var(--bad); font-weight: 700; }
+  .rozet {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px;
+    border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+    border: 1px solid #f0c9ae; vertical-align: 2px;
+  }
+  .kutu {
+    background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 6px; padding: 12px 16px; margin: 12px 0;
+  }
+  .kutu.uyari { border-left-color: var(--warn); }
+  .kutu.iyi { border-left-color: var(--ok); }
+  ul { margin: 6px 0 6px 4px; padding-left: 18px; }
+  li { margin: 4px 0; }
+  .akis {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0;
+  }
+  .akis .adim {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft);
+  }
+  .akis .ok { color: var(--accent); font-weight: 700; }
+  .iki-kolon { display: flex; gap: 20px; }
+  .iki-kolon > div { flex: 1; }
+  code {
+    font-family: Consolas, "Courier New", monospace; font-size: 12px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .kapak { text-align: center; padding: 120px 56px 100px; }
+  .kapak .logo { font-size: 13px; letter-spacing: .35em; color: var(--accent); font-weight: 800; margin-bottom: 22px; }
+  .kapak h1 { font-size: 40px; }
+  .kapak .cizgi { width: 90px; height: 4px; background: var(--accent); margin: 26px auto; border-radius: 2px; }
+  .kapak .detay { color: var(--ink-soft); font-size: 15px; line-height: 1.9; }
+  .ozet-grid { display: flex; gap: 14px; margin: 18px 0; flex-wrap: wrap; }
+  .ozet-kart {
+    flex: 1; min-width: 160px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 16px; text-align: center;
+  }
+  .ozet-kart .deger { font-size: 26px; font-weight: 800; color: var(--accent); }
+  .ozet-kart .etiket { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  @media print {
+    body { background: #fff; }
+    .sayfa {
+      box-shadow: none; margin: 0; max-width: none; border-radius: 0;
+      padding: 24px 34px; page-break-after: always;
+    }
+    .sayfa:last-child { page-break-after: auto; }
+    .kapak { padding-top: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ KAPAK ============ -->
+<div class="sayfa kapak">
+  <div class="logo">NESTING.FORGE</div>
+  <h1>3B Nesting &amp; Parti Planlama Sistemi</h1>
+  <p class="alt-baslik">Metal eklemeli imalat için uçtan uca otomatik yerleşim, planlama ve söküm rehberi</p>
+  <div class="cizgi"></div>
+  <p class="detay">
+    IE 488 — Bitirme Projesi<br>
+    Uygulama · Algoritma · Makine Öğrenmesi · Sonuç Karnesi<br>
+    <strong>17 Ağustos 2026</strong>
+  </p>
+</div>
+
+<!-- ============ 1. PROBLEM + ÜRÜN ============ -->
+<div class="sayfa">
+  <h2>1. Problem ve Ürün</h2>
+  <p>
+    Metal 3B baskıda (SLM/DMLS) parçaların yapı hacmine yerleştirilmesi bugün deneyimli bir
+    operatörün <strong>saatler süren manuel Magics çalışmasıyla</strong> yapılıyor. Toplam maliyeti
+    belirleyen ana metrik <strong>yerleşim yüksekliği</strong> (katman sayısı = makine-saat).
+    Sistemimiz bu süreci uçtan uca otomatikleştiriyor:
+  </p>
+  <div class="akis">
+    <span class="adim">📧 Mail / Manuel STL yükleme</span><span class="ok">→</span>
+    <span class="adim">Sipariş + adet çıkarımı</span><span class="ok">→</span>
+    <span class="adim">🤖 Not → Kısıt analizi (LLM)</span><span class="ok">→</span>
+    <span class="adim">👤 Operatör onayı</span><span class="ok">→</span>
+    <span class="adim">⚙ 3B Nesting motoru</span><span class="ok">→</span>
+    <span class="adim">Fiyatlandırma</span><span class="ok">→</span>
+    <span class="adim">3B önizleme + STL + Söküm Planı</span>
+  </div>
+  <div class="ozet-grid">
+    <div class="ozet-kart"><div class="deger">7</div><div class="etiket">gerçek veri setinde ölçüldü</div></div>
+    <div class="ozet-kart"><div class="deger">4 / 7</div><div class="etiket">manuel referansın önünde</div></div>
+    <div class="ozet-kart"><div class="deger">−%20.6</div><div class="etiket">kör testte en iyi kazanç</div></div>
+    <div class="ozet-kart"><div class="deger">dk</div><div class="etiket">çözüm süresi (manuel: saatler)</div></div>
+  </div>
+  <p>
+    Sistem iki yüzlüdür: <strong>operatöre çalışan bir web uygulaması</strong> (sipariş alma → onay → sonuç →
+    arşiv) ve altında <strong>ölçümle geliştirilen nesting motoru</strong>. Bir sonraki sayfa uygulamanın
+    özelliklerini, devamı motorun algoritmalarını anlatır.
+  </p>
+</div>
+
+<!-- ============ 2. UYGULAMA ÖZELLİKLERİ ============ -->
+<div class="sayfa">
+  <h2>2. Uygulama Özellikleri</h2>
+
+  <h3>2.1 Sipariş alma — üç yol</h3>
+  <ul>
+    <li><strong>Otonom mail hattı:</strong> IMAP gözcüsü gerçek posta kutusunu 120 sn'de bir tarar (ilk tarama anında).
+      ZIP/STL eklerini, <em>paylaşım linklerini</em> ve adet listelerini (mail gövdesi veya TXT eki) kendisi çözer;
+      STL dosya adındaki/içindeki adet bilgisini okur. Aynı mail iki kez işlenmez (idempotency); uygulama yeniden
+      başlasa da yarım işler kurtarılır.</li>
+    <li><strong>Manuel yükleme:</strong> bilgisayardan çoklu STL / klasör seçimi + opsiyonel not metni + müşteri adı.
+      Adetler dosya adından, STL içinden ve ekli adet listesinden otomatik çıkarılır; canlı durum paneliyle
+      "yüklendi → taranıyor → koşuluyor → tamamlandı" izlenir.</li>
+    <li><strong>Eksik bilgi yönetimi:</strong> adedi belirsiz siparişler kaybolmaz — <em>Adet Girişi</em> ekranında bekler,
+      operatör adetleri girip tek tıkla koşturur.</li>
+  </ul>
+
+  <h3>2.2 Sipariş notu → kısıt hattı (yapay zekâ destekli, insan onaylı)</h3>
+  <ul>
+    <li><strong>Üç yakalama kanalı:</strong> mail metni ("braket dik basılsın") · TXT adet satırı kuyruğu
+      ("6 adet — konumu değişmeyecek") · <strong>parça üstü kabartma yazı</strong>: STL'deki gömü/kabartma etiket
+      geometrik olarak çıkarılıp görsel modelle okunur (ör. "XY-1" → yatay üretim kısıtı).</li>
+    <li><strong>Baloncuk bildirimleri:</strong> notlu sipariş geldiğinde ekranın köşesinde canlı bildirim belirir;
+      tek tıkla toplu onay veya "İncele ve Onayla" ile detay ekranı. Menüde bekleyen-onay rozeti.</li>
+    <li><strong>Onay ekranı:</strong> her öneri oy sayısı + hakem kararı + güven skoruyla listelenir; yüksek güvenliler
+      önceden işaretli gelir, düşük güvenliler de operatör isterse onaylanabilir. Analiz arka planda koşar
+      (sayfa anında açılır), "yeniden analiz et" düğmesi vardır.</li>
+    <li><strong>Onay → otomatik devam:</strong> onay verildiği an sipariş kendiliğinden koşulur; durum canlı izlenir
+      ("✓ Onay alındı — koşuluyor… → tamamlandı → Sonucu Gör"). İsteğe bağlı anahtar: onay kapısı kapatılırsa
+      yalnız yüksek güvenli kısıtlar otomatik uygulanır.</li>
+  </ul>
+
+  <h3>2.3 Sonuç ekranı ve müşteri çıktıları</h3>
+  <ul>
+    <li><strong>3B önizleme:</strong> her partinin yerleşimi tarayıcıda döndürülebilir 3B sahne olarak görülür
+      (tam ekran modu, parçaya tıkla-tanı, sipariş özet kartları).</li>
+    <li><strong>Söküm Planı:</strong> her koşuda otomatik üretilir — parça parça çıkarma sırası + döndürmeli çıkarma
+      talimatları + <strong>internetsiz açılan tek dosyalık 3B rehberli söküm sayfası</strong> (adım adım animasyon;
+      atölyede operatörün önüne konabilir).</li>
+    <li><strong>Metrikler ve maliyet:</strong> yerleşim yüksekliği, voxel + gerçek-hacim doluluk, koşu süresi,
+      katman-maliyet hesabı ve tasarruf; kural-tabanlı fiyatlandırma kırılımı.</li>
+    <li><strong>Dosya çıktıları:</strong> nesting sonucu tek STL olarak indirilir (Magics'te açılabilir);
+      sonuçta "sipariş notları dikkate alındı — onaylanan istekler" kutusu görünür.</li>
+    <li><strong>LLM işletme yüzü:</strong> müşteriye gidecek yanıt/teklif taslağı, yönetici özeti ve koşu verisine
+      topraklanmış soru-cevap asistanı — tamamı <strong>yerel modelle</strong> (veri fabrika dışına çıkmaz).</li>
+  </ul>
+
+  <h3>2.4 İşletme ve platform</h3>
+  <ul>
+    <li><strong>İş Geçmişi:</strong> işlenen her iş (otomatik/manuel) kalıcı kayıt — metrikler, karar izleri,
+      3B sahne, STL, söküm planı ve teklif taslağı haftalar sonra da erişilebilir; silme/yeniden-işleme kontrollü.</li>
+    <li><strong>Yapılandırma ekranları:</strong> gerçek plaka ölçüsü + yasak (no-go) bölge tanımı; mail hesabı ayarları;
+      sipariş havuzu ve öncelik yönetimi; nesting kalite modu seçimi (hızlı / maksimum).</li>
+    <li><strong>Dağıtım:</strong> fabrika içi tek sunucu + çok tarayıcı-istemci; tek .bat ile başlar
+      (yerel LLM servisi otomatik ayağa kalkar); GPU varsa kendiliğinden kullanılır.</li>
+    <li><strong>Güvenlik ve sağlamlık:</strong> giriş/parola, CSRF, istek sınırlama (brute-force koruması), zip-bomb ve
+      path-traversal savunmaları, SSRF allowlist — bağımsız denetimde 12 üretim blokeri kapatıldı; 230+ otomatik test.</li>
+  </ul>
+</div>
+
+<!-- ============ 2. ALGORİTMA ============ -->
+<div class="sayfa">
+  <h2>3. Nesting Motoru — Algoritma Tipleri</h2>
+  <p>Motor tek bir algoritma değil, <strong>veri geometrisine göre yönlendirilen bir algoritma ailesidir:</strong></p>
+  <table>
+    <tr><th style="width:26%">Bileşen</th><th>Ne yapar</th></tr>
+    <tr><td><strong>Voxel heightmap + DBLF</strong></td>
+      <td>Hızlı taban çözücü: parçalar voxelize edilir, Deepest-Bottom-Left-Fill sırayla yerleştirir.
+      Kaba→ince (coarse-to-fine) iki aşamalı akış büyük setlerde süreyi 104.5 dk'dan 9.2 dk'ya indirdi.</td></tr>
+    <tr><td><strong>NFV kalite modu</strong><br><span class="kucuk">(No-Fit-Voxel)</span></td>
+      <td>Parça-çifti uyum haritalarıyla <em>kavite-içi</em> yerleşim: bir parçanın boşluklarına başka parça sokulabilir
+      (ayrılabilirlik garantili). Kavite içeren gerçek setlerde heightmap'e karşı <strong>%14–29 yükseklik kazancı</strong>;
+      saf kutu setinde %0 (yapının doğası). GPU (CUDA) ile ~5.5× hız.</td></tr>
+    <tr><td><strong>Clearance kuantizasyonu</strong></td>
+      <td>Ölçümle kanıtlanan kural: voxel adımı = boşluk şartı (pitch = clearance) seçilirse sanal şişme sıfırlanır.
+      Şampiyon reçetenin temel taşı.</td></tr>
+    <tr><td><strong>R11 sürekli kompaksiyon</strong></td>
+      <td>Voxel çözümünün üstüne mesh-düzeyi sürekli z-sıkıştırma: parçalar gerçek geometrileriyle milimetre-altı
+      hassasiyette aşağı yerleşir; her adım doğrula-ve-rafine kapısından geçer. 588 parçalık sette 43.5 dk → 5.1 dk.</td></tr>
+    <tr><td><strong>Söküm denetimi + rot-söküm</strong></td>
+      <td>Her çözüm 5-yön çıkarılabilirlik denetiminden geçer; düz çekilemeyen parça küçük bir döndürme
+      sertifikasıyla aklanır (aksi halde çözüm reddedilir). Sertifikalar müşteri-yüzü söküm planına dönüşür.</td></tr>
+    <tr><td><strong>Kanopi zinciri</strong> <span class="rozet">YENİ</span></td>
+      <td>Hocanın Plan 1 manuel sırrının (baseplate'i düz parçaların üstüne kanopi yapıp dik parçaları deliklerden geçirme)
+      otomatikleştirilmiş hali: geometrik tetik → 3B-pin z-taraması → kule-önceliği → geri-düşüş. Plan 1'i
+      202 mm'den <strong>127.2 mm</strong>'ye indiren zincir. Tetiksiz veride bit-özdeş (kayıp yapısal olarak imkânsız).</td></tr>
+    <tr><td><strong>Kısıtlı çözüm</strong></td>
+      <td>Onaylanan müşteri kısıtları (poz kilidi, sabit konum, no-go bölgesi, eğik plaka/tilt) motorun
+      <em>içinde</em> uygulanır — kısıt varken de kalite yolu çalışır.</td></tr>
+    <tr><td><strong>Parti planlama + fiyat</strong></td>
+      <td>Sipariş önceliklendirme, kapasite/parti bölme, plaka politikası (UI &gt; sipariş &gt; otomatik türetme),
+      kural-tabanlı fiyat motoru; partiler ayrı süreçlerde paralel koşar.</td></tr>
+  </table>
+  <div class="kutu iyi">
+    <strong>Legallik tanımı (her sonucun geçtiği kapı):</strong> 2 mm minimum boşluk + no-go bölgesi ihlalsiz +
+    her parçanın çıkarılabilirliği kanıtlı. Bu şartları geçemeyen hiçbir sonuç "kazanç" olarak rapor edilmez.
+  </div>
+</div>
+
+<!-- ============ 3. GELİŞTİRME METODOLOJİSİ + ML ============ -->
+<div class="sayfa">
+  <h2>4. Nasıl Geliştirdik — Metodoloji ve Makine Öğrenmesi</h2>
+  <h3>4.1 Ölçüm disiplini (overfit'e karşı anayasa)</h3>
+  <ul>
+    <li><strong>Tek-set geliştirme yasağı:</strong> bir veri setinde keşfedilen mekanizmanın tetiği
+      <em>geometrik koşul</em> olarak yazılır (kodda veri adı geçmez); aynı oturumda diğer setlerde
+      sıfır-dokunuş kanıtı + sentetik ailede dağılımsal ölçüm zorunludur.</li>
+    <li><strong>4-set kapı koşuları:</strong> her üretim değişikliği 4 gerçek sette birden ölçülür
+      (ör. soft no-go sözleşmesi: net −69.1 mm, 96 dk münhasır koşu).</li>
+    <li><strong>Sentetik aile jeneratörleri:</strong> thin_plates, random_boxes, long_rods, hollow_tubes,
+      holey_frames… Kanopi zinciri bu ailede <strong>24/24 tetik doğruluğu + 0 yanlış-pozitif</strong> ile doğrulandı.</li>
+    <li><strong>Kör (held-out) testler:</strong> Deneme 6 ve Plan 7 geliştirme döngüsünde hiç açılmadı;
+      ilk-koşu sonuçları karneye olduğu gibi yazıldı — genelleme kanıtının en değerlisi.</li>
+    <li><strong>Karar veritabanı:</strong> denenen her yöntem (60+ deney: K-1…K-62) sonucu, kanıt dosyası ve
+      "neden oldu/olmadı" dersiyle kayıt altında; başarısız denemeler de saklanır.</li>
+  </ul>
+  <h3>4.2 Makine öğrenmesi bileşenleri</h3>
+  <table>
+    <tr><th style="width:30%">Bileşen</th><th>Rol</th></tr>
+    <tr><td><strong>Mod seçim modeli</strong></td>
+      <td>Sipariş geometrisinden NFV kazanç tahmini → heightmap/NFV yolunu otomatik seçer.
+      Eğitim: gerçek koşu telemetrisi; doğrulama: stratified split + leave-one-out CV kapısı.
+      Öğrenme <em>manuel tetiklidir</em> (kendini bozan otomatik döngü yok).</td></tr>
+    <tr><td><strong>Geometrik aile yönlendirme</strong></td>
+      <td>Parça ailesi sınıflandırması (ince kabuk, dönel simetrik, kutu…) → aile-özel reçete:
+      kabuk ailesi cidar-türevli ince pitch'e, rot-söküm dünyasına yönlenir.</td></tr>
+    <tr><td><strong>Not → kısıt LLM hattı</strong></td>
+      <td>Yerel model (Ollama, veri dışarı çıkmaz): deterministik ön-filtre (Kapı-0) → 3 bağımsız okuma →
+      <strong>ayrı hakem model oylaması</strong> → güven eşiği → derleyici (yön → 28-poz kümesinden geometrik poz seti).
+      25+ örnekli eval korpusuyla ölçülür (%85; prompt-injection savunması dahil). Düşük güven = operatöre düşer.</td></tr>
+    <tr><td><strong>Görsel model (kanal-3)</strong></td>
+      <td>Parça STL'i üzerindeki kabartma/gömü yazı geometrik olarak çıkarılır, render edilir,
+      görsel LLM okur ("XY-1" → yatay üretim kısıtı). Halüsinasyon filtreleri: prompt-echo,
+      tekrar-döngüsü ve aşırı-liste elemesi.</td></tr>
+    <tr><td><strong>LLM işletme yüzü</strong></td>
+      <td>Müşteri teklif taslağı, yönetici özeti, sonuç asistanı — hepsi koşu verisine
+      topraklanmış (grounding), uydurma sayı üretimi engelli.</td></tr>
+  </table>
+  <h3>4.3 Performans mühendisliği</h3>
+  <ul>
+    <li>GPU (CUDA/cupy) NFV değerlendirme ~<strong>5.5×</strong> · voxelize <strong>3.1×</strong> · drop-map önbelleği <strong>38×</strong></li>
+    <li>Coarse-to-fine: 104.5 dk → 9.2 dk → kabuk yolunda ~3.4 dk · R11 settle: 43.5 dk → 5.1 dk</li>
+    <li>Parti-paralel süreç havuzu; uzun koşular ayrık süreçte (uygulama kilitlenmez)</li>
+  </ul>
+</div>
+
+<!-- ============ 4. SONUÇ KARNESİ ============ -->
+<div class="sayfa">
+  <h2>5. Sonuç Karnesi — Hocanın Verdiği 7 Gerçek Sette</h2>
+  <p>
+    Referanslar deneyimli operatörün <strong>saatler süren manuel Magics yerleşimleridir</strong>.
+    Bizim tüm sonuçlar <strong>legal</strong> ölçümdür: 2 mm boşluk + no-go + tam çıkarılabilirlik.
+    (Fark % = yükseklik farkı; negatif = bizim sonuç daha alçak = daha iyi.)
+  </p>
+  <table>
+    <tr>
+      <th>Veri seti</th><th class="num">Bizim en iyi (mm)</th><th class="num">Manuel ref. (mm)</th>
+      <th class="num">Fark</th><th>Durum</th><th class="num">Bizim süre</th>
+    </tr>
+    <tr>
+      <td><strong>Plan 1</strong> <span class="kucuk">(kanopi zinciri)</span></td>
+      <td class="num">127.20 <span class="kucuk">(otomatik: 129.00)</span></td>
+      <td class="num">110.41</td><td class="num">+%15.2</td>
+      <td class="geride">GERİDE*</td><td class="num">~21 dk</td>
+    </tr>
+    <tr>
+      <td><strong>Plan 2</strong></td>
+      <td class="num">521.18</td><td class="num">492.39</td><td class="num">+%5.8</td>
+      <td class="geride">GERİDE</td><td class="num">~25 dk</td>
+    </tr>
+    <tr>
+      <td><strong>Plan 3</strong></td>
+      <td class="num">577.62</td><td class="num">593</td><td class="num onde">−%2.6</td>
+      <td class="onde">ÖNDE</td><td class="num">~27 dk</td>
+    </tr>
+    <tr>
+      <td><strong>Deneme 4</strong> <span class="kucuk">(588 parça)</span></td>
+      <td class="num">215.87</td><td class="num">250.24</td><td class="num onde">−%13.7</td>
+      <td class="onde">ÖNDE</td><td class="num">~59 dk</td>
+    </tr>
+    <tr>
+      <td><strong>Deneme 5</strong></td>
+      <td class="num">214.64</td><td class="num">209</td><td class="num">+%2.7</td>
+      <td class="geride">GERİDE <span class="kucuk">(yakın)</span></td><td class="num">~15 dk</td>
+    </tr>
+    <tr style="background:var(--accent-soft);">
+      <td><strong>Deneme 6</strong> <span class="rozet">KÖR TEST</span></td>
+      <td class="num">68.50</td><td class="num">86.32</td><td class="num onde">−%20.6</td>
+      <td class="onde">ÖNDE</td><td class="num"><strong>29 saniye</strong></td>
+    </tr>
+    <tr style="background:var(--accent-soft);">
+      <td><strong>Plan 7</strong> <span class="rozet">KÖR TEST</span></td>
+      <td class="num">488.40</td><td class="num">595</td><td class="num onde">−%17.9</td>
+      <td class="onde">ÖNDE</td><td class="num">103 dk</td>
+    </tr>
+  </table>
+  <div class="ozet-grid">
+    <div class="ozet-kart"><div class="deger">4 / 3</div><div class="etiket">önde / geride</div></div>
+    <div class="ozet-kart"><div class="deger">−%17.9<br>−%20.6</div><div class="etiket">iki kör testte de önde</div></div>
+    <div class="ozet-kart"><div class="deger">dakikalar</div><div class="etiket">vs manuel saatler — hız farkı şerhsiz</div></div>
+  </div>
+  <div class="kutu iyi">
+    <strong>En güçlü kanıt:</strong> en büyük kazançlar, geliştirme sırasında hiç görülmemiş
+    <strong>kör testlerde</strong> (Deneme 6: −%20.6, 29 saniyede; Plan 7: −%17.9). Bu, sonuçların veri setine
+    aşırı-uydurma (overfit) değil, genelleyen mekanizma olduğunun kanıtıdır.
+  </div>
+  <div class="kutu uyari">
+    <strong>Dürüstlük şerhleri:</strong> (1) Manuel referansların boşluk (clearance) şartı bilinmiyor;
+    bizim sonuçlar 2 mm sert şartla ölçüldü — kıyas asimetrisi bizim aleyhimize.
+    (2) *Plan 1 manuelinin no-go bölgesine "hafif girişlerle" hazırlandığı hocanın kendisi tarafından
+    doğrulandı; bizde no-go serttir. (3) Plan 1/3/5 en-iyi değerleri şampiyon-reçete kolundandır;
+    üretim varsayılanı Plan 1'de 140.21, Plan 3'te 607.50'dir. (4) Süreler yaklaşık; makine RAM/GPU durumuna göre değişir.
+  </div>
+</div>
+
+<!-- ============ 5. YOL HARİTASI ============ -->
+<div class="sayfa">
+  <h2>6. Aktif Geliştirme ve Yol Haritası</h2>
+  <ul>
+    <li><strong>Plan 1 makası:</strong> 127.2 mm platosunun anatomisi çözüldü (kanopi-tepe 105.8 + bobbin katı 21.6);
+      alan-bütçesi analizi hedefi sayısallaştırdı: kanopi-altı verim 0.70 → 0.80 için global yeniden-istif — 110 bandı alan olarak açık.</li>
+    <li><strong>Kısıtın kalite yolunda taşınması:</strong> müşteri poz-kilidi artık NFV kalite çözücüsünün
+      içinde uygulanıyor (bu hafta bağlandı) — kısıtlı sipariş de en iyi algoritmayla koşuyor.</li>
+    <li><strong>Kısıt kanallarının tamamlanması:</strong> teknik resim PDF'inden kısıt çıkarımı (kanal-2) ve
+      kupon-oryantasyon türü yeni kısıt sınıfları (45°, makine-eksenine hizalama, oryantasyon-grup bölme).</li>
+    <li><strong>LLM yükseltme yolu:</strong> yeni nesil açık-ağırlık modeller (ör. Qwen3.8-27B) uygun GPU'lu
+      makinede not→kısıt doğruluğunu otomatik-mod eşiğinin (≥%90 + sıfır yanlış-pozitif) üstüne taşıyabilir —
+      tam otonom mail→koşu hattı.</li>
+    <li><strong>Sürekli rotasyon (A1):</strong> mevcut 28-poz kümesinin ötesinde serbest açı araması —
+      daha güçlü GPU/süper-bilgisayar erişimiyle fizibil.</li>
+  </ul>
+  <div class="kutu">
+    <strong>Özet mesaj:</strong> Sistem, saatler süren uzman işini dakikalara indiriyor; 7 gerçek setin 4'ünde
+    ve özellikle her iki kör testte manuel uzmanın önünde. Geride kaldığı yerlerde fark küçük, sebebi teşhisli
+    ve kapama planı ölçüme dayalı. Tüm sonuçlar tekrarlanabilir kanıt dosyalarıyla kayıtlıdır.
+  </div>
+  <p class="kucuk" style="margin-top:26px;">
+    Kaynaklar: MOTOR/YONTEM_HARITASI_DATA_BASE.md (karar veritabanı, §2C şampiyon tablosu) ·
+    PROJECT_OVERVIEW.md (danışman dokümanı) · results/ kanıt dosyaları (eval_gate_baseline.json,
+    *_heldout_final.json, k62_*.json) · HOCA_CEVAPLARI.md. Bu sunum internetsiz açılır; PDF almak için
+    tarayıcıda Ctrl+P → "PDF olarak kaydet".
+  </p>
+</div>
+
+</body>
+</html>

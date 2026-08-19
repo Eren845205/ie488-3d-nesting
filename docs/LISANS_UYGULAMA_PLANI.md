@@ -83,12 +83,21 @@ Eren kararları (2026-07-17): süre dolunca default = **salt-okunur mod**;
   `~/.nesting_vendor/registry.jsonl` müşteri kaydı.
 - `verify_license.py` — satıcı-tarafı offline doğrulama yardımcısı.
 
-`docs/EULA_TASLAK.md` — Türkçe taslak; başına "TASLAK — yürürlük öncesi
-avukat incelemesi zorunludur" şerhi. Maddeler: taraflar/tanımlar · lisans
-kapsamı (tek sunucu, süreli, devredilemez) · fikri mülkiyet (kod satıcıda) ·
-yasaklar (tersine müh., yeniden satış) · süre/yenileme/fesih · teknik koruma
-önlemlerini aşma=ihlal · sorumluluk sınırı (tavan=ödenen bedel) · veri
-sahipliği (müşteri verisi müşterinin) · gizlilik · TR hukuku.
+`docs/EULA_TASLAK.md` — ✅ YAZILDI (2026-08-18, v0.1-TASLAK; avukat
+incelemesi şerhli). Maddeler: taraflar/tanımlar · **eser sahipliği (FSEK —
+eser sahibi Eren Kutlu, tüm haklar onda)** · lisans kapsamı (tek sunucu,
+süreli, devredilemez; süre dolumu=salt-okunur) · yasaklar (tersine müh.,
+yeniden satış, koruma-aşma=ağır ihlal) · derlenmiş-teslim + güncelleme ·
+**uzaktan bakım kanalı (onaylı Tailscale; kapsam sunucuyla sınırlı)** ·
+veri sahipliği (müşteri verisi müşterinin) · sorumluluk sınırı ·
+süre/fesih · TR hukuku · **kabul kaydı (madde 11)**.
+
+**SİHİRBAZ KABUL ADIMI (Eren kararı 2026-08-18):** kurulum sihirbazına
+zorunlu EULA ekranı eklenir — metin gösterilir, "Okudum, kabul ediyorum"
+işaretlenmeden kurulum İLERLEMEZ; kabul anında tarih/saat + yazılım
+sürümü + makine kodu + EULA sürümü kurulum kaydına loglanır (lisans
+kaydıyla ilişkili — kanıt değeri). Tailscale onay kutusu AYRI bir onaydır
+(EULA kabulü uzaktan-kanal kurulumunu otomatik açmaz).
 
 `templates/lisans.html` — makine kodu göster + lisans dosyası yükleme formu
 + durum kartı.

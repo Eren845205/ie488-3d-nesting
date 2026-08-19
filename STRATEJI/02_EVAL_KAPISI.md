@@ -11,15 +11,19 @@
 ```
 legal_height(koşu) =
   height_mm   eğer  n_placed == n_total
-             VE  min_clearance(placements) >= 1.0mm   (clearance.min_clearance)
+             VE  min_clearance(placements) >= 2.0mm   (clearance.min_clearance)
              VE  accessibility.check_result.n_locked == 0
   INVALID(sebep)  aksi hâlde
 ```
 - INVALID bir sayı DEĞİLDİR; kıyas tablosunda `INV(sebep)` yazılır ve o koşu
   hiçbir iyileşme iddiasına kanıt olamaz. (K-19: 0.084mm ihlalli 282 böyle
   yakalanırdı; K-21: 554 kilitli 262.5 böyle yakalanırdı.)
-- Clearance şartı hocanın kuralına bağlı: taban 1mm; yoğun plakada 2mm önerisi
-  operatör knob'u (dayatma değil). Kıyaslar hangi değerle koşulduğunu yazar.
+- **Eşik güncellemesi (2026-08-18, Eren onayı — KARAR-3):** 1.0mm → **2.0mm**.
+  ANAYASA A2 zaten 2026-07-09'da (hoca teyidiyle) 2mm demişti; bu dosya 1mm'de
+  kalmıştı (D-4 drift bulgusu, `RAPOR_FSM610_SINIF_VE_ML_DENETIMI_2026-08-18.md`).
+  Muhtemel sonuç: heightmap yolunun ~1mm'lik çıktıları artık dev-set kapısında
+  da INVALID görünür (fsm610'da görünen zafiyet dev'de de yakalanır). Eski
+  1mm-tabanlı kıyas kayıtları TARİHSEL geçerli, yeni iddialar 2mm ile koşulur.
 
 **İkincil metrikler:** doluluk oranı (bilgi amaçlı — [[feedback-doluluk]]
 dersi: mutlak doluluk işin doğası gereği düşük, kıyas ancak aynı iş üzerinde),
@@ -38,8 +42,13 @@ ortalama + maksimum regret (mm), aile kırılımlı. Accuracy yalnız yardımcı
 - **Kapsam:** TÜM dev-set'ler (plan1, plan2, plan3, deneme4 + sentetik
   temsilciler). Held-out YALNIZ final doğrulamada (registry'ye bakış kaydıyla).
 - **Sabitler:** seed=42, gerçek plaka değerleri (deneme4: 325×325; plan2:
-  328.74×328.19; diğerleri registry'den), clearance=1.0mm, üretim decode yolu
+  328.74×328.19; diğerleri registry'den), **clearance=2.0mm** (2026-08-18
+  KARAR-3 hizalaması; eski 1.0mm kayıtları tarihsel), üretim decode yolu
   (değişiklik hangi yoldaysa o yol + değişmeyen yollar bit-özdeşlik kontrolü).
+- **BASELINE YENİLEME BEKLİYOR (A8):** 2mm eşiğiyle TÜM dev-set baseline'ları
+  yeniden koşulmadan yeni "iyileşme" iddiası ilan edilemez; mevcut anchor'lar
+  1mm dönemine ait ve elle değiştirilmez — yenileme koşusu sakin-makine
+  seansında (D:\ie488, münhasır), sonucuyla anchor gerekçeli güncellenir.
 - **Çıktı formatı (dağılım tablosu — A5):**
 
   | set | aile | önce | sonra | Δ% | verdict |
