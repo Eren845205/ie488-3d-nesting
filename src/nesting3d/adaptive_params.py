@@ -174,6 +174,35 @@ class ModeDecision:
     tilt_parca: Optional[str] = None
 
 
+def _duz_yatista_sigmayan_parca(instance):
+    """DUZ yatista (iki buyuk boyut tabanda) plakaya sigmayan ilk parca.
+
+    K-65 tetigi icin geometrik-kesin test: parcanin siralanmis boyutlari
+    (kucuk<=orta<=buyuk) icin duz poz tabani buyuk x orta'dir; eksen-hizali
+    sigma kosulu (buyuk<=PW ve orta<=PD) VEYA (buyuk<=PD ve orta<=PW).
+    Ikisi de saglanmiyorsa parca duz yatamaz (capraz/3B zorunlu).
+
+    Dondurur: (ad, buyuk, orta) | None. Konteyner boyutu yoksa/format
+    cozulemezse None (tetik yok — konservatif, eski davranis).
+    """
+    try:
+        cnt = getattr(instance, "container", None)
+        pw = float(getattr(cnt, "width_mm", None) or 0.0)
+        pd = float(getattr(cnt, "depth_mm", None) or 0.0)
+        if pw <= 0.0 or pd <= 0.0:
+            return None
+        for p in instance.parts:
+            dims = sorted((float(p.width_mm), float(p.depth_mm),
+                           float(p.height_mm)))
+            _orta, _buyuk = dims[1], dims[2]
+            if not ((_buyuk <= pw and _orta <= pd)
+                    or (_buyuk <= pd and _orta <= pw)):
+                return (str(p.name), _buyuk, _orta)
+        return None
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def predict_nfv_benefit(
     instance,
     *,
@@ -320,6 +349,27 @@ def predict_nfv_benefit(
             f"NFV kazanmaz -> hizli heightmap",
         )
     if tpr > thin_plate_thr:
+        # K-65 (2026-08-18; held-out kanit fsm610: NFV 516.0/bosluk 2.002
+        # vs yonlendirici-heightmap 652.8/bosluk 0.131): "duz zaten optimal"
+        # varsayimi, parca DUZ YATISTA plakaya SIGMIYORSA gecersizdir —
+        # thin_plate_ratio min/max oranina baktigi icin uzun-serit/cubuk
+        # parcalari da "ince plaka" sayar; boyle bir parca capraz/3B
+        # yerlesmek zorundadir ve NFV etkilesimli yerlesimde kazanir.
+        # Tetik GEOMETRIK-KESIN (A11): duz poz (iki buyuk boyut tabanda)
+        # eksen-hizali plakaya sigmiyor mu? Konteyner boyutu yoksa tetik
+        # HIC calismaz (bit-ozdes eski yol). Supheli durumda NFV secmek
+        # dosyanin asimetri felsefesiyle ayni yonde (NFV yanlis-pozitifi
+        # yalniz hiz kaybi; heightmap yanlis-negatifi kalite kaybi).
+        _uzun = _duz_yatista_sigmayan_parca(instance)
+        if _uzun is not None:
+            _ad, _mx, _md = _uzun
+            return ModeDecision(
+                "nfv",
+                f"ince-plaka dominant (thin_plate={tpr:.2f}) AMA plaka-asan "
+                f"parca ({_ad}: {_mx:.0f}x{_md:.0f}mm duz yatista plakaya "
+                f"sigmiyor): duz-istif varsayimi gecersiz -> NFV "
+                f"kalite-guvenli (K-65)",
+            )
         return ModeDecision(
             "heightmap",
             f"ince-plaka dominant (thin_plate={tpr:.2f} > {thin_plate_thr}): duz zaten "

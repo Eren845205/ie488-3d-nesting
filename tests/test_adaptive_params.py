@@ -354,3 +354,63 @@ def test_nfv_quality_diger_yollarda_fast():
     assert kutu.nfv_quality == "fast"
     assert cavity.nfv_quality == "fast"
     assert kabuk_eski.nfv_quality == "fast"
+
+
+# ---------------------------------------------------------------------------
+# K-65 (2026-08-18): ince-plaka dalinda plaka-asan parca istisnasi.
+# Held-out kanit (fsm610): thin_plate_ratio uzun-serit/cubugu da "ince" sayar;
+# duz yatista plakaya sigmayan parca varken "duz zaten optimal" varsayimi
+# gecersiz -> NFV. Testler SENTETIK (A11: veri-adi yok).
+# ---------------------------------------------------------------------------
+
+
+def test_k65_ince_plaka_plaka_asan_cubuk_nfv():
+    """Ince-plaka dominant + plakaya sigmayan uzun serit -> NFV (K-65)."""
+    parts = [_box("plk", 90, 32, 9, qty=20),        # ince plaka (sigsin)
+             _box("cubuk", 95, 10, 400, qty=4)]     # 400 > 250 plaka: sigmaz
+    dec = predict_nfv_benefit(_inst(parts, plate=(250.0, 250.0)))
+    assert dec.mode == "nfv"
+    assert "plaka-asan" in dec.reason
+    assert "K-65" in dec.reason
+
+
+def test_k65_hepsi_sigarsa_heightmap_bit_ozdes():
+    """Ince-plaka dominant + TUM parcalar duz yatista sigar -> eski karar."""
+    parts = [_box("plk", 90, 32, 9, qty=20),
+             _box("serit", 95, 10, 200, qty=4)]     # 200 < 250: duz sigar
+    dec = predict_nfv_benefit(_inst(parts, plate=(250.0, 250.0)))
+    assert dec.mode == "heightmap"
+    assert "ince-plaka dominant" in dec.reason
+    assert "K-65" not in dec.reason
+
+
+def test_k65_konteyner_boyutu_yoksa_tetiklemez():
+    """Konteyner olcusu yoksa yardimci None doner (tetik yok — konservatif).
+
+    predict_nfv_benefit'e container'siz instance zaten ulasamaz
+    (extract_features once patlar); guard yardimcinin kendi sozlesmesidir.
+    """
+    from src.nesting3d.adaptive_params import _duz_yatista_sigmayan_parca
+    parts = [_box("plk", 90, 32, 9, qty=20),
+             _box("cubuk", 95, 10, 400, qty=4)]
+    inst_bos = NestingInstance(
+        container=ContainerSpec(None, None, None), parts=parts)
+    assert _duz_yatista_sigmayan_parca(inst_bos) is None
+    inst_yok = NestingInstance.__new__(NestingInstance)  # container atributu bile yok
+    assert _duz_yatista_sigmayan_parca(inst_yok) is None
+
+
+def test_k65_yan_sigma_taninir():
+    """Duz poz 90-derece cevrilerek sigiyorsa (buyuk<=PD, orta<=PW) tetik yok."""
+    parts = [_box("plk", 60, 20, 4, qty=20),
+             _box("levha", 300, 80, 5, qty=2)]      # 300<=320(PD), 80<=250(PW)
+    dec = predict_nfv_benefit(_inst(parts, plate=(250.0, 320.0)))
+    assert dec.mode == "heightmap"
+    assert "K-65" not in dec.reason
+
+
+def test_k65_net_kutu_dalini_etkilemez():
+    """K-65 yalniz ince-plaka dalinda: net-kutu karari bit-ozdes."""
+    dec = predict_nfv_benefit(_inst([_box("a", 40, 40, 40, 5)]))
+    assert dec.mode == "heightmap"
+    assert "kutu" in dec.reason.lower()
