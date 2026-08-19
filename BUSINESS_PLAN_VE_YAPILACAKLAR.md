@@ -65,15 +65,38 @@
       kısıtlarsa B planı: geçici AnyDesk ile ilk kurulum.
 
 ### P3 — Donanım envanteri + AI model seçimi
-- [ ] Eren hocanın bilgisayarlarının donanım fotoğraflarını atacak →
-      envanter çıkar (CPU/RAM/GPU/VRAM/disk).
-- [ ] Donanıma uygun LLM/VL model seç (bizde: qwen2.5:3b demo kararı +
-      qwen2.5vl kabartma okuma; lab donanımı daha zayıfsa küçült,
-      güçlüyse büyüt — eval-audit-and-sweep ile kalite/donanım kıyası
-      yapılabilir).
-- [ ] Bizim donanımla (RTX 3060 6GB) kıyas: NFV/GPU hızlanması lab
-      makinesinde ne olur? Algoritma tarafında donanıma göre ayar
-      gerekir mi (RAM kapıları, K-57a münhasırlık)?
+- [x] Envanter GELDİ (2026-08-18): lab "işistasyonu" **i9-9940X (14C/28T,
+      AVX-512) / 64GB / GTX 1080 8GB** + Dell Precision 3660 **i5-12600K
+      (10C) / 32GB / RTX 3070 8GB**. (Bizim referans: RTX 3060 6GB / 16GB.)
+- [x] **DEĞERLENDİRME (2026-08-20):**
+      1. **Motor için asıl kazanç RAM: 64GB.** Bizim 16GB'de RAM-guard'a
+         takılan her şey (fsm610 pitch-2.0 "22M hücre" uyarısı, K-57b/c
+         set-paralel OOM→seri-retry, "RAM<4GB'ken NFV-ağır başlatma"
+         kuralı) lab'da rahatlar; set-paralel orkestrasyon (kodda hazır,
+         bizde RAM yüzünden hızsız) lab'da GERÇEK hıza dönebilir.
+         KARAR-6'nın (NFV-max baz) süre bedeli lab'da bizdekinden küçük.
+      2. **GPU:** RTX 3070 8GB > bizim 3060 6GB (hem çip hem VRAM) —
+         GPU-ağır NFV işleri için en iyi makine DELL. GTX 1080 8GB
+         Pascal: cupy çalışır ama yaşlı mimari; hız orta, VRAM 8GB
+         bizim 6GB OOM sınırlarını biraz genişletir. "Süper bilgisayar"
+         değil — A1 sınıfı işler için hâlâ küçük.
+      3. **Sunucu önerisi: i9-9940X/64GB** (motor RAM+çekirdek-ağır;
+         topoloji: tek sunucu + çok istemci), Dell = istemci + GPU-ağır
+         yedek. Alternatif tartışılır ama RAM kazancı GPU farkından büyük.
+      4. **LLM/VL: mevcut seçim KORUNUR** — qwen2.5:3b + hakem 7b +
+         qwen2.5vl her iki makinede rahat (8GB VRAM'de 7b-q4 sığar;
+         64GB sistem RAM offload'u da bol). Model büyütme gereksiz;
+         istenirse lab'da hakem rolü kalıcı 7b olabilir.
+      5. **RİSK/AKSİYON:** (a) **CUDA_PATH/driver kontrolü sihirbaza
+         ZORUNLU adım** — bugünkü bulgu: bizim fsm610 koşusu bile
+         CUDA-path'siz CPU'da koştu; pilotta aynı tuzak "yavaş" izlenimi
+         verir. (b) Kurulum sonrası PARİTE koşusu: 1-2 referans işi lab'da
+         koşup bizim sonuçla karşılaştır (RAM-bağımlı dallanma/pitch
+         politikası farkı olabilir — determinizm doğrulaması). (c) GTX
+         1080 sürücü-EOL yolunda: pilotta sorun değil; premium/donanım-
+         dahil paket şartnamesine "min 32GB RAM + 8GB VRAM (Ampere+)"
+         yazılsın. (d) 64GB'de pitch/RAM-bütçe parametrelerinin donanımdan
+         türediğini doğrula (sabit 16GB varsayımı kalmış olabilir).
 
 ### P4 — Kod koruma / lisanslama (ters mühendisliğe karşı)
 - [ ] `docs/LISANS_UYGULAMA_PLANI.md` UYGULAMAYA ALINIR (plan hazır,
@@ -152,6 +175,44 @@ Eren İstanbul'dan ayrılacak; lab'a her zaman gidilemez. Seçenekler:
       "bu maili yeniden işle" (ilgili idempotency kaydını düşür +
       taze tarama) verilmeli. Ayrıca gözcü durdurulduysa panelde
       BÜYÜK görünür uyarı ("gözcü kapalı") olmalı.
+
+### P4/P5/P6 EKLERİ — Eren istek paketi (2026-08-20, değerlendirilmiş)
+- [ ] **(P4) Makine kilidi KARARLAŞTI** (seçenekten karara): lisans makine
+      parmak-izine bağlı; kopyalanan kurulum başka makinede AÇILMAZ.
+- [ ] **(P4) İhlal-tespit katmanı (tamper/copy detection):** parmak-izi
+      uyuşmazlığı + binary/lisans bütünlük hash'i + debugger/inject
+      tespiti (best-effort). Kullanıcı arayüzünde SIFIR iz; imzalı gizli
+      lokal log; bağlantı varken Eren'e bildirim (Tailscale/telefon-evi),
+      offline'sa ilk bağlantıda. GERÇEKÇİ SINIR: caydırıcı katmandır,
+      istemci-tarafı tespit kararlı saldırganca kapatılabilir; %100 =
+      yalnız SaaS (çekirdek hiç çıkmaz). ⚠️ HUKUKİ ŞART: EULA'ya
+      "ihlal-tespit/bildirim telemetrisi" maddesi AÇIKÇA yazılır
+      (ekrandan gizli OLUR, sözleşmeden gizli OLMAZ — KVKK/delil
+      geçerliliği); avukat inceleme kapsamına eklendi.
+- [ ] **(P4-Faz2) Tek-komut sürüm-paket hattı:** kaynak→Nuitka/Cython
+      derleme→paket→installer TEK script. Her değişiklik: yeni installer
+      (yeni kurulum) + updater paketi (mevcut kurulum; rollback'li,
+      veri/config ezilmez). Cevap: "sihirbaza sonradan ekleme" SIKINTISIZ,
+      koşulu bu hattın script'leşmesi. Geliştirme AKIŞ NETLİĞİ: kaynak
+      müşteri makinesine HİÇBİR senaryoda çıkmaz; Claude Code geliştirmeyi
+      BİZİM makinede yapar, uzak makineden yalnız log/telemetri çekilir.
+- [ ] **(YENİ, P5-bağlantılı) Veri geri-akış kanalı:** müşteri kurulumundan
+      BİZE telemetri/geçmiş-özeti akışı (Tailscale). KATMANLI GİZLİLİK:
+      özellik-vektörü + metrik düzeyi (anonim) akar; ham geometri (STL)
+      müşteride kalır (savunma müşterisi kısıtı). EULA'da eğitim-kullanım
+      RIZASI açık madde. Akan veri B1 kuralıyla held-out/eğitim stoğuna
+      girer (registry kayıtlı).
+- [ ] **(YENİ, P6) Job-history dönemsel raporu:** müşteriye özet ("bu ay
+      X iş, ort. doluluk Y, ort. süre Z") + geliştirici kanalından uzak
+      özet çekme.
+- [ ] **(YENİ, P6) Auto-mode ONAYLI/ONAYSIZ switch'i:** onaysız seçilirse
+      mailden çekilen iş HİÇ onay istemeden işlenir. Default=onaylı.
+      Emniyet (onay değil, bilgilendirme): A2-INVALID sonuç onaysız modda
+      da kırmızı baloncuk/mail bildirimi üretir, sessiz "tamam" olmaz.
+- [ ] **(YENİ, P6) UI SADELEŞTİRME (hoca isteği: "olabildiğince basit"):**
+      sekme/özellik envanteri → pilot "basit görünüm" (gereksiz sekmeler
+      gizlenir; operatör akışı 3-4 ekran). Envanter çıkarılıp Eren'le
+      hangi sekmelerin gizleneceği kararlaştırılır.
 
 ### P7 — Süreç/operasyon
 - [ ] Pilot kullanım geri bildirim döngüsü: lab kullanıcıları sorunları
