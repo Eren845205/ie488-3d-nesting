@@ -417,3 +417,60 @@ class TestCp437MojibakeDuzeltme:
         sonuc = extract_stls(zip_bytes)
         assert orijinal_ad in sonuc
         assert sonuc[orijinal_ad] == icerik
+
+
+# ---------------------------------------------------------------------------
+# RAR destegi (2026-08-18): gercek musteri maili .rar ekiyle geldi.
+# Fikstur tests/fixtures/ornek_stl.rar — SENTETIK icerik (WinRAR rar5 ile
+# uretildi): Klasor/kapak.stl + Klasor/kapak_.stl + Klasor/oku_beni.txt.
+# ---------------------------------------------------------------------------
+
+import os
+
+from src.runtime.zip_stl_extractor import _rar_araci_bul
+
+_FIXTURE_RAR = os.path.join(os.path.dirname(__file__), "fixtures", "ornek_stl.rar")
+_rar_arac_yok = _rar_araci_bul() is None
+
+
+def _rar_bytes() -> bytes:
+    with open(_FIXTURE_RAR, "rb") as f:
+        return f.read()
+
+
+@pytest.mark.skipif(_rar_arac_yok, reason="RAR acici arac yok (7z/tar)")
+class TestRarDestegi:
+    """RAR arsivleri ZIP ile ayni sozlesmeyle cozulur."""
+
+    def test_rar_stl_anahtarlari_ve_icerik(self):
+        sonuc = extract_stls(_rar_bytes())
+        # Alt dizin (Klasor/) atilir, yalniz .stl'ler girer, txt atlanir;
+        # alt cizgili varyant AYRI anahtar olarak korunur.
+        assert set(sonuc.keys()) == {"kapak", "kapak_"}
+        assert sonuc["kapak"].startswith(b"solid kapak")
+        assert sonuc["kapak_"].startswith(b"solid kapak_")
+
+    def test_rar_determinizm(self):
+        assert extract_stls(_rar_bytes()) == extract_stls(_rar_bytes())
+
+    def test_rar_boyut_siniri_asimi_valueerror(self):
+        # Fiksturun acilmis boyutu ~yuzlerce bayt; 0.0001 MB (~105 bayt)
+        # siniri kesin asilir -> rar-bomb korumasi ValueError.
+        with pytest.raises(ValueError):
+            extract_stls(_rar_bytes(), max_total_mb=0.0001)
+
+
+def test_rar_arac_yoksa_bos_dict(monkeypatch):
+    """Acici arac bulunamazsa bos dict + uyari (pipeline dusmez)."""
+    import src.runtime.zip_stl_extractor as mod
+    monkeypatch.setattr(mod, "_rar_araci_bul", lambda: None)
+    sonuc = extract_stls(b"Rar!\x1a\x07\x01\x00sahte-icerik")
+    assert sonuc == {}
+
+
+def test_bozuk_rar_bos_dict():
+    """RAR sihirli ama govde bozuk -> arac hata verir -> bos dict, firlatmaz."""
+    if _rar_arac_yok:
+        pytest.skip("RAR acici arac yok")
+    sonuc = extract_stls(b"Rar!\x1a\x07\x01\x00" + b"\x00" * 64)
+    assert sonuc == {}

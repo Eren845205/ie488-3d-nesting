@@ -61,11 +61,12 @@
       "payload_logging": "none"
     }
   },
-  "kisit_modu": "kapali",
+  "kisit_modu": "golge",
   "audit": {
     "log_dir": "logs/llm",
     "payload_log_dir": "logs/llm/payload",
     "payload_logging_default": "none",
     "payload_retention_days": 30
-  }
+  },
+  "kabartma_okuma": true
 }

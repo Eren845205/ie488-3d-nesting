@@ -101,6 +101,16 @@ def process_inbox_once(
     # MailSource ABC concrete no-op tasir, ama testler/dis kaynaklar MailSource'tan
     # TUREMEYEN duck-typed olabilir (orn. _OnceSource) -> getattr guard sart.
     _mark = getattr(mail_source, "mark_processed", None)
+    # "Gecmisten sil -> yeniden islensin" zinciri (kullanici karari 2026-07-05;
+    # 2026-08-18 park-yolu bosluk fix'i): mailin idempotency anahtari pending
+    # meta'ya tasinir ki onay-sonrasi kosunun gecmis kaydi _idem_keys tasisin.
+    _ikey_fn = getattr(mail_source, "idem_key_for", None)
+
+    def _ikey(m):
+        try:
+            return _ikey_fn(m) if _ikey_fn is not None else None
+        except Exception:
+            return None
 
     mails = mail_source.fetch_new()
     if not mails:
@@ -130,7 +140,7 @@ def process_inbox_once(
         if order.get("needs_review"):
             if pending_store is not None:
                 try:
-                    pending_store.add(
+                    _pid = pending_store.add(
                         order_id=order.get("order_id", ""),
                         customer=order.get("customer", ""),
                         sender=mail.gonderen,
@@ -149,6 +159,9 @@ def process_inbox_once(
                         share_links=order.get("share_links"),
                         adet_listesi=order.get("adet_listesi"),
                     )
+                    _mk = _ikey(mail)
+                    if _pid and _mk:
+                        pending_store.update_meta(_pid, mail_idem_key=_mk)
                 except Exception as exc:
                     logger.warning(
                         "mail_poller: bekleyen siparis kaydedilemedi (%s): %s",
@@ -169,8 +182,24 @@ def process_inbox_once(
         # K-56g not->kisit analizi (yapisal kapi note_pipeline'da: notsuz
         # order / kisit_modu=kapali -> order aynen doner, LLM'e dokunulmaz).
         from src.runtime.note_pipeline import analyze_order_notes
+        from src.runtime.not_onay import (
+            efektif_kisit_modu, not_onay_gerekli, notlu_siparisi_beklet)
         order = analyze_order_notes(
-            order, kisit_role, kisit_hakem_role, mode=kisit_modu)
+            order, kisit_role, kisit_hakem_role,
+            mode=efektif_kisit_modu(kisit_modu))
+
+        # NOT-ONAY KAPISI (2026-08-16): Auto Mode'da da notlu TAM siparis
+        # pipeline'a sokulmaz — operator onayina park edilir (onay sonrasi
+        # webapp otomatik kosar). Park edilemezse normal akista devam.
+        if pending_store is not None and not_onay_gerekli(order):
+            park_id = notlu_siparisi_beklet(
+                pending_store, order, mail, mail_idem_key=_ikey(mail))
+            if park_id:
+                logger.info(
+                    "mail_poller: notlu siparis onaya parklandi (%s)", park_id)
+                if _mark is not None:
+                    _mark(mail)
+                continue
 
         orders.append(order)
         order_mails.append(mail)

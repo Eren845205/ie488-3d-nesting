@@ -198,3 +198,14 @@ def test_voting_herhangi_ornekleme_injection(tmp_path):
     v = role.run_with_voting(_NOT, _ADLAR, n=3)
     assert v.injection_suphesi is True
     assert v.kisitlar == []
+
+
+def test_kanonik_ad_alt_cizgi_ayri_parca():
+    """'kapak' ve 'kapak_' AYRI oy anahtarlaridir (2026-08-18 dersi):
+    alt cizgi katlanirsa iki parcanin kisit oylari birlesip biri sessizce
+    dusuyordu."""
+    a = {"tip": "orientation_lock", "parca_adi": "kapak",
+         "deger": {"yon": "durus_koru"}}
+    b = {"tip": "orientation_lock", "parca_adi": "kapak_",
+         "deger": {"yon": "durus_koru"}}
+    assert kanonik_anahtar(a) != kanonik_anahtar(b)

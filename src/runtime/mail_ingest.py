@@ -768,7 +768,9 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 # ---------------------------------------------------------------------------
 
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
-_ZIP_EXTENSIONS = {".zip"}
+# Arsiv ekleri: .zip + .rar (2026-08-18 gercek musteri maili .rar ile geldi;
+# bicim ayrimi extract_stls icinde sihir baytlarindan yapilir — tek yol).
+_ZIP_EXTENSIONS = {".zip", ".rar"}
 # Adet listesi eki: "Adet listesi.txt" gibi duz-metin adet kaynagi (Deneme4
 # gercek maili boyle geldi — govde + txt eki AYNI listeyi tasiyordu).
 _TXT_EXTENSIONS = {".txt"}
@@ -1109,6 +1111,21 @@ def _ingest_zip_stl_order(
     # dict'i bit-ozdes eski sekil (test_ingest_zip_stl determinizm sozlesmesi).
     from src.runtime.note_detector import extract_note_candidates
     _not_scan = extract_note_candidates(body, txt_text, stl_names)
+
+    # KANAL-3 (2026-08-15, Eren karari): parca ustu kabartma taramasi —
+    # config-anahtarli ("kabartma_okuma"; kapali/eksik = bit-ozdes).
+    # Geometrik kapi kabartmasiz parcada VL'ye HIC gitmez; VL kapali/hata
+    # sessiz atlanir (ingest ASLA dusmez). Bulunan etiket not adayi olarak
+    # ayni kisit-onay hattina akar (kaynak="parca_label").
+    try:
+        from src.runtime.kabartma import kabartma_acik, kabartma_not_adaylari
+        if kabartma_acik():
+            _kb = kabartma_not_adaylari(stl_map)
+            if _kb:
+                _not_scan["adaylar"] = list(_not_scan["adaylar"]) + _kb
+                logger.info("kabartma: %d parca-label adayi eklendi", len(_kb))
+    except Exception:
+        logger.warning("kabartma taramasi atlandi", exc_info=True)
 
     def _not_alanlari(d: Dict[str, Any]) -> Dict[str, Any]:
         if _not_scan["adaylar"]:

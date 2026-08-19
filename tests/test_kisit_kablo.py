@@ -198,7 +198,7 @@ def test_kisit_tuner_atlanir_c2f_dali():
 
 
 def test_kisit_nfv_modu_c2f_zorlanir():
-    """nfv modu + kısıt -> heightmap/c2f'e çevrilir (NFV pin taşıyamaz)."""
+    """nfv modu + PINNED kısıt -> heightmap/c2f'e çevrilir (NFV pin taşıyamaz)."""
     r = _process_batch(_payload(
         nesting_mode="nfv",
         motor_kisitlari={"pinned_placements": [
@@ -207,6 +207,22 @@ def test_kisit_nfv_modu_c2f_zorlanir():
     assert r["nesting"]["nesting_mode_used"] == "heightmap"
     yon = r["nesting"].get("kisit_yonlendirme")
     assert yon is not None and yon["n_pin"] == 1
+    assert r["nesting"]["height_mm"] > 0
+
+
+def test_kisit_orientation_nfv_yolunda_kalir():
+    """2026-08-16 Eren kararı: YALNIZ orientation kilidi nfv modunu düşürmez —
+    kısıt EN İYİ algoritmanın (NFV kalite yolu) içinde uygulanır; kanopi
+    zinciri kilit korumasıyla atlanır (telemetri izi)."""
+    r = _process_batch(_payload(
+        nesting_mode="nfv",
+        motor_kisitlari={"orientation_overrides": {"box_small": [0]}}))
+    assert r["nesting"]["nesting_mode_used"] == "nfv"
+    yon = r["nesting"].get("kisit_yonlendirme")
+    assert yon is not None
+    assert yon["dal"] == "nfv"
+    assert yon["orient_kilit"] == ["box_small"]
+    assert yon["n_pin"] == 0
     assert r["nesting"]["height_mm"] > 0
 
 

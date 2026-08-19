@@ -348,3 +348,90 @@ def test_match_deneme4_tam_takim():
     assert len(m) == 13
     assert sum(m.values()) == 588
     assert m["02_T00-K179 Dugme Cift Fonksiyonlu-25pcs"] == 26
+
+
+# ---------------------------------------------------------------------------
+# "isimli parça" akan-cumle kalibi (2026-08-18 gercek musteri maili bicimi)
+# + ham-birebir (alt cizgi) ve onek-artigi eslestirme asamalari.
+# Testler SENTETIK adlarla yazilir (A11: veri-adi bagimliligi yok).
+# ---------------------------------------------------------------------------
+
+
+def test_isimli_kalip_akan_cumle_coklu_kayit():
+    """Tek cumlede virgul/'ve' ayracli coklu 'X isimli parcadan N adet'."""
+    text = ("Ekteki parçaları eksenleri sabit şekilde\n"
+            "5 adet isimli parçadan 5 adet, kutu isimli parçadan 12 adet ve\n"
+            "kapak_ isimli parçadan 3 adet yerleştirilmesini istiyorum.")
+    q = parse_quantities(text)
+    # Ilk kaydin basina cumle girisi yapisir (onek artigi) — esleme asamasi
+    # cozer; kalan kayitlar temiz ad tasir.
+    assert q.get("kutu") == 12
+    assert q.get("kapak_") == 3
+    assert any(k.endswith("5 adet") and v == 5 for k, v in q.items())
+
+
+def test_isimli_kalip_satir_kirilmasina_dayanikli():
+    """Mail istemcisi kaydi satir ortasindan kirar — kayit yine cozulur."""
+    text = "vida\nisimli parçadan 40 adet"
+    q = parse_quantities(text)
+    assert q == {"vida": 40}
+
+
+def test_isimli_kalip_satir_bazli_cifte_sayim_yok():
+    """'isimli parça' satiri klasik satir kalibina TEKRAR girmez."""
+    text = "profil isimli parçadan 7 adet"
+    q = parse_quantities(text)
+    assert q == {"profil": 7}  # tek kayit, 14 degil
+
+
+def test_isimli_kalip_eski_formatlar_regresyonsuz():
+    """Klasik '<ad> N adet' satirlari ayni mailde calismaya devam eder."""
+    text = "braket 22 adet\nvida isimli parçadan 40 adet"
+    q = parse_quantities(text)
+    assert q == {"braket": 22, "vida": 40}
+
+
+def test_match_ham_birebir_alt_cizgi_ayrimi():
+    """'kapak' ve 'kapak_' AYRI parcalardir — normalize katlama karistirmaz."""
+    matched, unmatched, _ = match_quantities_to_stls(
+        {"kapak": 10, "kapak_": 20}, ["kapak", "kapak_"])
+    assert matched == {"kapak": 10, "kapak_": 20}
+    assert unmatched == []
+
+
+def test_match_onek_artigi_tek_aday_eslenir():
+    """Akan-cumle onek artigi kelime sinirinda gercek ada oturur."""
+    matched, unmatched, _ = match_quantities_to_stls(
+        {"ekteki parçaları sabit şekilde 5 adet": 5},
+        ["5 adet", "kutu"])
+    assert matched == {"5 adet": 5}
+    assert unmatched == []
+
+
+def test_match_onek_artigi_coklu_aday_belirsiz():
+    """Anahtar birden cok STL adiyla bitiyorsa eslenmez (insana sor)."""
+    matched, unmatched, _ = match_quantities_to_stls(
+        {"buyuk sol kapak": 4}, ["kapak", "sol kapak"])
+    assert matched == {}
+    assert unmatched == ["buyuk sol kapak"]
+
+
+def test_match_onek_artigi_kisa_ad_eslenmez():
+    """<3 karakterli ad onek-artigi asamasina girmez (yanlis-pozitif)."""
+    matched, unmatched, _ = match_quantities_to_stls(
+        {"gerekli olan sey a": 9}, ["a", "kutu"])
+    assert matched == {}
+    assert "gerekli olan sey a" in unmatched
+
+
+def test_gercek_bicim_uctan_uca_esleme():
+    """2026-08-18 mail bicimiyle ayni YAPIDA sentetik uctan uca dogrulama."""
+    text = ("Yeni klasör içerisindeki parçaları rotasyonları değişmeyecek "
+            "şekilde\n8 adet isimli parçadan 8 adet, 4 adet isimli parçadan "
+            "4 adet, 6adet\nisimli parçadan 6 adet ve 6adet_ isimli parçadan "
+            "6 adet\nyerleştirilmesini istiyorum.")
+    names = ["8 adet", "4 adet", "6adet", "6adet_"]
+    q = parse_quantities(text)
+    matched, unmatched, unmatched_stl = match_quantities_to_stls(q, names)
+    assert matched == {"8 adet": 8, "4 adet": 4, "6adet": 6, "6adet_": 6}
+    assert unmatched == [] and unmatched_stl == []

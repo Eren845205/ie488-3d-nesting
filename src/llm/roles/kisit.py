@@ -57,9 +57,14 @@ _GUVEN_SIRA = {"dusuk": 0, "orta": 1, "yuksek": 2}
 
 
 def _kanonik_ad(ad: Any) -> str:
-    """Oylama kanonik anahtari icin ad normalizasyonu (rol-ici tutarlilik)."""
+    """Oylama kanonik anahtari icin ad normalizasyonu (rol-ici tutarlilik).
+
+    Alt cizgi KORUNUR (2026-08-18 gercek musteri verisi dersi): "kapak" ve
+    "kapak_" iki AYRI parcadir; alt cizgiyi bosluga katlamak iki parcanin
+    oylarini AYNI anahtarda birlestirip birinin kisitini sessizce dusuruyordu
+    (dedup son-kazanan). quantity_text_parser._ham_name ile ayni ilke.
+    """
     s = str(ad or "").casefold()
-    s = s.replace("_", " ")
     return re.sub(r"\s+", " ", s).strip()
 
 

@@ -63,6 +63,25 @@ _QTY_DASH_LINE = re.compile(
     re.IGNORECASE,
 )
 
+# Akan-cumle kalibi: "<ad> isimli parçadan <sayi> adet" (2026-08-18 gercek
+# musteri maili: "520 adet isimli parçadan 520 adet, 36 adet isimli parçadan
+# 36 adet ... yerleştirilmesini istiyorum"). Satir-bazli kaliplardan farki:
+#   * TEK cumle icinde virgul/"ve" ile ayrilmis COK kayit tasir;
+#   * kayit satir sonuna tasabilir (mail istemcisi kirmasi) -> metin once
+#     bosluk-normalize edilip BUTUN halinde taranir;
+#   * parca adi "adet" kelimesini ICEREBILIR ("520 adet" adli dosya) — klasik
+#     kalip bu yuzden yanlis boler, "isimli parça" ibaresi guvenli caradir.
+# Ad grubu virgul/noktali-virgulle sinirlidir (kayitlar birbirine karismaz);
+# bas taraftaki baglac/serbest metin artiklari _ISIMLI_AD_ARTIK ile kirpilir
+# (kirpilamayan uzun onek match_quantities_to_stls sonek-caps asamasinda
+# gercek STL adina oturur).
+_QTY_ISIMLI = re.compile(
+    r"(?P<ad>[^,;]+?)\s+isimli\s+par[cç]a\w*\s+(?P<adet>\d+)\s*adet\b",
+    re.IGNORECASE,
+)
+_ISIMLI_AD_ARTIK = re.compile(r"^(?:ve|ile|ayr[ıi]ca)\s+", re.IGNORECASE)
+_ISIMLI_IBARE = re.compile(r"isimli\s+par[cç]a", re.IGNORECASE)
+
 # Beyan edilen toplam: "588 parça için ..." / "Toplam 42 parca" — mail
 # govdesindeki toplam-parca beyani. Cross-check (checksum) kaynagi:
 # parse edilen adetlerin toplamiyla karsilastirilir; tutarsizlik = celiski.
@@ -90,8 +109,46 @@ def parse_quantities(text: str) -> Dict[str, int]:
         parca iki satirda boluunmus olabilir).
     """
     result: Dict[str, int] = {}
+
+    # Asama-0: akan-cumle "isimli parça" kalibi. Kayit satir ortasindan
+    # kirilabilir (mail istemcisi) — ama TUM metni tek satira indirmek
+    # onceki satirdaki BAGIMSIZ kaydi ad grubuna yutar. Bu yuzden yalniz
+    # ibare-ici kirilmalar birlestirilir: sonraki satir "isimli" ile
+    # basliyorsa VEYA onceki satir "isimli"/"isimli parça*" ile bitiyorsa.
+    _fold = lambda s: s.translate(_TR_FOLD).casefold()  # noqa: E731
+    birlesik: List[str] = []
+    for _ln in (text or "").splitlines():
+        _ln = _ln.strip()
+        if not _ln:
+            birlesik.append(_ln)
+            continue
+        if birlesik and birlesik[-1] and (
+                re.match(r"^isimli\b", _fold(_ln))
+                or re.search(r"\bisimli(?:\s+parca\w*)?$", _fold(birlesik[-1]))):
+            birlesik[-1] = birlesik[-1] + " " + _ln
+        else:
+            birlesik.append(_ln)
+    duz_metin = " ; ".join(re.sub(r"\s+", " ", s) for s in birlesik if s)
+    for m in _QTY_ISIMLI.finditer(duz_metin):
+        ad = _ISIMLI_AD_ARTIK.sub("", m.group("ad").strip()).strip()
+        adet = int(m.group("adet"))
+        if not ad or adet <= 0:
+            continue
+        if adet > MAX_QTY:
+            logger.warning(
+                "quantity_text_parser: '%s' adeti asiri buyuk (%d, izin verilen "
+                "ust sinir %d) — clamp'lendi.", ad, adet, MAX_QTY,
+            )
+            adet = MAX_QTY
+        result[ad] = result.get(ad, 0) + adet
+
     for line in text.splitlines():
         stripped = line.strip()
+        # "isimli parça" ibaresi tasiyan satirlar Asama-0'da islenmistir;
+        # satir-bazli kaliplara sokulursa ayni kayit IKI kez sayilir veya
+        # yanlis bolunmus sahte ad uretilir -> atla.
+        if _ISIMLI_IBARE.search(stripped):
+            continue
         # Tire-ayracli kalip ONCE denenir: "Ad - 26 adet" satirinda klasik
         # kalip adi "Ad -" diye yanlis keserdi; tire kalibi ikisini de dogru
         # boler. Klasik "braket 22 adet" satirinda ayrac yoktur -> tire kalibi
@@ -161,6 +218,21 @@ def _norm_name(name: str) -> str:
     return s
 
 
+def _ham_name(name: str) -> str:
+    """Birebir (Asama-0) eslestirme anahtari: alt cizgi KORUNUR.
+
+    _norm_name alt cizgiyi bosluga cevirdigi icin "kapak" ile "kapak_"
+    AYNI normalize ada duser (gercek musteri verisinde iki AYRI parca,
+    2026-08-18) — birebir asama bu ayrimi korur: yalniz case/TR-katlama +
+    .stl uzantisi dusurme + bosluk tekleme yapilir.
+    """
+    s = str(name).translate(_TR_FOLD).casefold()
+    if s.endswith(".stl"):
+        s = s[:-4]
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def match_quantities_to_stls(
     quantities: Dict[str, int],
     stl_names: List[str],
@@ -183,16 +255,32 @@ def match_quantities_to_stls(
         matched: {gercek_stl_adi: adet} — anahtarlar stl_names'ten birebir.
     """
     stl_by_norm: Dict[str, List[str]] = {}
+    stl_by_ham: Dict[str, List[str]] = {}
     for nm in stl_names:
         stl_by_norm.setdefault(_norm_name(nm), []).append(nm)
+        stl_by_ham.setdefault(_ham_name(nm), []).append(nm)
 
     matched: Dict[str, int] = {}
     claimed: set = set()
     unmatched_keys: List[str] = []
 
+    # Asama 0 — HAM birebir (alt cizgi korunur): "kapak_" beyani yalniz
+    # "kapak_.stl"i alir, "kapak.stl"e sizmaz (iki AYRI parca). Bu asama
+    # normalize asamadan ONCE kosar ki alt-cizgi katlamasi belirsizlik
+    # uretmesin (2026-08-18 gercek musteri verisi dersi).
+    norm_stage: List[Tuple[str, int]] = []
+    for key, qty in quantities.items():
+        cands = stl_by_ham.get(_ham_name(key), [])
+        free = [c for c in cands if c not in claimed]
+        if len(free) == 1:
+            matched[free[0]] = matched.get(free[0], 0) + qty
+            claimed.add(free[0])
+        else:
+            norm_stage.append((key, qty))
+
     # Asama 1 — normalize birebir
     suffix_stage: List[Tuple[str, int]] = []
-    for key, qty in quantities.items():
+    for key, qty in norm_stage:
         cands = stl_by_norm.get(_norm_name(key), [])
         free = [c for c in cands if c not in claimed]
         if len(free) == 1:
@@ -205,6 +293,7 @@ def match_quantities_to_stls(
             suffix_stage.append((key, qty))
 
     # Asama 2 — sonek toleransi (yalniz sahiplenilmemis dosyalar)
+    prefix_stage: List[Tuple[str, int]] = []
     for key, qty in suffix_stage:
         nk = _norm_name(key)
         cands = []
@@ -214,6 +303,29 @@ def match_quantities_to_stls(
             ns = _norm_name(nm)
             longer, shorter = (ns, nk) if len(ns) >= len(nk) else (nk, ns)
             if longer.startswith(shorter) and _SUFFIX_TOLERANCE.match(longer[len(shorter):]):
+                cands.append(nm)
+        if len(cands) == 1:
+            matched[cands[0]] = matched.get(cands[0], 0) + qty
+            claimed.add(cands[0])
+        else:
+            prefix_stage.append((key, qty))
+
+    # Asama 3 — onek-artigi toleransi: akan-cumle kaliplarinda ("... sekilde
+    # 520 adet isimli parcadan") ad grubunun BASINA serbest metin yapisir;
+    # normalize anahtar gercek STL adiyla KELIME SINIRINDA bitiyorsa ve tek
+    # serbest aday varsa eslenir. Cok kisa (<3) adlar bu asamaya girmez —
+    # "A" gibi bir ad her cumle sonuna yapisip yanlis eslerdi. Birden cok
+    # aday ayni anahtar sonunda eslesiyorsa belirsizlik korunur (insana sor).
+    for key, qty in prefix_stage:
+        nk = _norm_name(key)
+        cands = []
+        for nm in stl_names:
+            if nm in claimed:
+                continue
+            ns = _norm_name(nm)
+            if len(ns) < 3:
+                continue
+            if nk == ns or nk.endswith(" " + ns):
                 cands.append(nm)
         if len(cands) == 1:
             matched[cands[0]] = matched.get(cands[0], 0) + qty
