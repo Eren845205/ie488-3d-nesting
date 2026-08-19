@@ -1874,6 +1874,17 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **A11 karnesi: ŞERHLİ-GO.** Tetik genel + dağılımsal doğruluk tam + zarar-yok kanıtlı; **kazanç büyüklüğü kanıtı tek held-out gözlemden** (sentetik A/B fast-quality küçük-N proxy'sinde parite — kazancın büyük-N + max-quality'de açıldığı hipotezi fsm610 ile tutarlı ama dağılımsal kazanç ölçümü tam-sweep işi). Üretim kablosu commit onayı Eren'de.
 - **Yan bulgu:** heightmap yolunda min_clearance<2,0 ihlali (fsm610 iki koşu) — AYRI teşhis (§5 K-65 satırı notu).
 
+### [K-66-a/b TEŞHİS] fsm610 analitik kafes alt-sınırı + 516,0 z-anatomisi — ✅ KALICI BULGU: EKSEN-HİZALI TABAN 399,6 (referans 284 eksen-hizalı tek-plaka İMKÂNSIZ)
+
+- **Tarih:** 2026-08-20 · **Tetikleyici:** Eren "nfv-max sonucu da felaket; asıl sıkıntı bu" — 516,0 vs referans ~284 açığının S1/S2'den bağımsız ayrıştırılması (A4 ölç-önce; KOŞUSUZ, 3sn offline analiz).
+- **Yöntem:** `scripts/k66_analitik_teshis.py` — (a) model-bazlı analitik kafes (325×325 kullanılabilir, 2mm boşluk, eksen-hizalı 3 yatış); (b) mevcut 516,0 çözümünün Placement3D z-taban dağılımı (127MB sonuç JSON'undan parse, yeni koşu YOK).
+- **BULGU-1 (sert, matematiksel):** çubuk 95×10×399,6 — yatay iki yerleşimi de (95×399,6 / 10×399,6 taban) 325'e SIĞMAZ; eksen-hizalı TEK seçenek dik = **399,6mm taban tavanı**. Referans ~284 < 399,6 ⇒ **referans ya çubukları yatırdı/eğdi (rot-serbestisi) ya da çok-plaka** — kıyas-şartı şüphesi artık hipotez değil ARİTMETİK. (Çapraz-yatış 325√2=459,6>399,6 MÜMKÜN — rot-serbest çözücünün kullanabileceği yol; S1 cevabı hangisi olduğunu söyleyecek.)
+- **BULGU-2 (kafes kapasiteleri):** 520 plaka (32×90×9,6) dik-kafes 196/katman × 3 katman = **100,0mm**; 36 braket 148,0mm; yani çubuk-dışı kitle tek başına ~250mm'lik iş DEĞİL — doğru istifte çubukların YANINA/ARASINA büyük ölçüde sığar.
+- **BULGU-3 (516'nın anatomisi):** çubuklar 54/54 z=0 (dik kolonlar 0→399,6); braketler alçak (0-124); **plakaların %52'si z>300, taban medyanı 314, max 502** ⇒ 516 ≈ 399,6 çubuk-tavanı + ~116mm plaka-bandı çubukların ÜSTÜNE yığılmış. Motorun gerçek eksiği: çubuk-arası hacmi plakayla dolduramamak (interleave zayıf) — teorik eksen-hizalı optimum ~400-440 bandı (plaka bandının çoğu araya iner).
+- **SONUÇ:** 516 vs 284 açığının ayrıştırması: **~116-140mm sözleşme/kıyas-şartı** (çubuk duruşu — S1) + **~76-116mm gerçek motor açığı** (çubuk-arası interleave / tekrar-sömürüsü — K-66 mekanizma hedefi). "Motor %45 geride" okuması YANLIŞTI; eksen-hizalı sözleşmede motor açığı ~%15-22 bandı. K-66-d prototip hedefi netleşti: kitle-plakayı çubuk-arası boşluklara periyodik yerleştiren dekod.
+- **A11 karnesi:** teşhis (mekanizma/kazanç ilanı değil); tetik=yok | kapı=N/A | held-out'a yeni bakış YOK (mevcut kayıt+STL bbox analizi).
+- **Kanıt:** `results/k66_analitik_teshis.json` + `scripts/k66_analitik_teshis.log`.
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;
