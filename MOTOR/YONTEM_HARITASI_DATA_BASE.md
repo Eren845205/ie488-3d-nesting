@@ -1940,7 +1940,7 @@ placement, energy-aware nesting+scheduling (hocanın alanı), DBLF varyantları.
 | B1' | bit-pack popcount RawKernel (gerçek B1) | 6GB | Yüksek (CUDA) | Marjinal (Amdahl + mikro-dersi) | Naif sparse NO-GO'ydu (H-10); önermiyoruz. |
 | B3 | BVH/OBB broad-phase | 6GB | Düşük | Sınırlı (xy-bbox zaten broad-phase) | |
 | — | Kalite kazanımlarını (n=8/adaptif) default heightmap'e bağla | 6GB | Düşük | Adaptif şu an 6× yavaş → önce maliyet ayarı | App-bağlama işi. |
-| A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | 1-2 yıl sonra tekrar bak. |
+| A3 | DRL/diffusion | GPU+eğitim | Yüksek | Belirsiz | ~~1-2 yıl sonra~~ → **M16 pilotu (öğrenilen yerleştirme skoru, ML planı §6C) sonuçlanınca HEMEN yeniden değerlendir** (Eren 2026-08-20: erteleme yok; M16 = aynı fikrin stdlib'le denetlenebilir öncülü — kazanç kanıtlarsa ağır uca o gün geçilir). |
 | ~~K-17p~~ | ~~K-17 üretime bağla~~ → **KAPANDI 2026-07-03** (commit `07f697b`: `fine_settle.py` + solve_nfv default-on + pitch_mm export hizası) | 6GB | — | +%0.4-1.6 ÜRETİMDE | |
 | ~~K-18p~~ | ~~AX24'ü quality=max'a bağla~~ → **KAPANDI 2026-07-03** (commit `f44ee80`; cross-dataset 3/3: plan1 −%6.9 / plan2 −%1.8 / plan3 −%10.5) | 6GB | — | ÜRETİMDE (opt-in max) | |
 | **K-19p/F3** | Cidar-duyarlı pitch'i üretime bağla (tetik: `family∈{thin_shell,tube}`; K-19 GO — Deneme4 377.3→**282.0**, Magics açığı %12.7) | 6GB | Orta | **YÜKSEK (kabuk ailesi)** | Ön-şart: zaman bütçesi aktif + cross-dataset ≤%1 + süre-patlaması guard'ı (131dk/koşu!). Aile-genelleştirme programı F3; F4-B fast-path ile birlikte değerlendir. |

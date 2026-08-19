@@ -185,6 +185,31 @@ yönü DAİMA nfv-max (müşteriye giden sonuç); heightmap yalnız YANINDA,
 karşı-olgusal ETİKET için koşulur — kullanılmak için değil. "Heightmap'e
 düşme" diye bir yol YOKTUR.
 
+## §6C — ÇÖZÜCÜ-İÇİ ÖĞRENME PROGRAMI (2026-08-20, Eren: "algoritmaları
+yarıştırsın diye değil — algoritmanın kendisi gelişsin")
+
+Konum tespiti: mod-seçimi ML'i GÜVENLİK/VERİM katmanıdır; ilerlemenin
+motoru değildir ve öyle satılmaz. Algoritmanın kendisini öğrenen yapan
+program aşağıdadır — öğrenme ARAMANIN İÇİNE girer:
+
+| # | İş | Bağımlılık | Sınıf |
+|---|---|---|---|
+| M16 | **Öğrenilen yerleştirme değer-fonksiyonu**: decode aday-poz skoru (temas/yerel-doluluk/kavite/erişim-bloke/boşluğa-girme özellikleri) küçük lineer/ağaç modelle; sinyal = arama geri-oynatımından final-yükseklik kredisi. Pilot saha: K-66-d dekodunun iç-kararları | K-66-d | çözücü-içi |
+| M17 | **Öğrenilen sıralama politikası**: "hangi parça önce" — sabit sıra yerine durum-koşullu skor | M16 | çözücü-içi |
+| M18 | **Öğrenilen parametre politikası**: instance→(SA bütçesi, relokasyon tetiği, pitch) sürekli haritası | M4 | çözücü-içi |
+
+**Overfit konumu (kritik):** bu programın eğitim verisi MÜŞTERİ VERİSİ
+DEĞİL, aramanın kendi ürettiği deneyimdir (sentetik ailelerde koşu başına
+binlerce ölçülmüş yerleştirme kararı — kendi-verisini-üreten öğrenme).
+Gerçek setler yalnız SINAV (A3/Y-2 aynen). "Az gerçek veri" kısıtı bu
+katmanı bağlamaz.
+
+**Risk beyanı:** araştırma-sınıfı iş; kazanç garanti değil (kredi-atama
+zor); default'a dokunmadan, dev-set kapısız BAĞLANMAZ (A1/A6). DRL/GNN
+uçları YONTEM §5 A3'te park — M16-M18 bunların stdlib'le denetlenebilir
+öncülüdür. Öncelik: K-66-d (satış-kritik açık, elle mekanizma) ÖNCE;
+M16 pilotu paralel/peşinden.
+
 ## §7 — KARAR LİSTESİ (Eren)
 
 - **KARAR-1:** fsm610 dev'e terfi (held-out vasfı resmen düşer; Aşama-1
