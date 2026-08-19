@@ -4,15 +4,20 @@ uzatılmış özellikler (wall_est/true_fill_mean/shell_score).
 
 from __future__ import annotations
 
+import pytest
 import trimesh
 
 from src.nesting3d.instances.features import (
     EXTENDED_FEATURE_NAMES,
     FAMILY_FEATURE_NAMES,
     FEATURE_NAMES,
+    FULL_FEATURE_NAMES,
+    M5_FEATURE_NAMES,
     extract_family_features,
     extract_features,
     extract_features_extended,
+    extract_features_full,
+    extract_m5_features,
 )
 from src.nesting3d.instances.format import ContainerSpec, NestingInstance, PartSpec
 from src.nesting3d.instances.stl_order_loader import build_instance_from_order
@@ -164,3 +169,207 @@ class TestFamilyFeatures:
     def test_deterministic(self):
         inst = shell_bells(n_parts=5, seed=9)
         assert extract_family_features(inst) == extract_family_features(inst)
+
+
+# ---------------------------------------------------------------------------
+# M5 özellik ekleri (plaka_asan_ratio / log_n_total / solidity_proxy)
+# STRATEJI/ML_YENIDEN_YAPILANMA_PLANI_2026-08-18 §3.2/§6 M5 — ADDITIVE
+# ---------------------------------------------------------------------------
+
+class TestM5FrozenVectorsUnaffected:
+    """M5 eklerinin 20-temel ve 23-uzatılmış vektörleri BOZMADIĞI regresyonu."""
+
+    def test_base_still_20_after_m5_addition(self):
+        assert len(FEATURE_NAMES) == 20
+
+    def test_extended_still_23_after_m5_addition(self):
+        assert len(EXTENDED_FEATURE_NAMES) == 23
+
+    def test_full_prefix_equals_extended(self):
+        inst = random_boxes(n_parts=6, seed=3)
+        ext = extract_features_extended(inst)
+        full = extract_features_full(inst)
+        assert full.values[:23] == ext.values
+
+    def test_full_prefix_equals_base(self):
+        inst = random_boxes(n_parts=5, seed=1)
+        base = extract_features(inst)
+        full = extract_features_full(inst)
+        assert full.values[:20] == base.values
+
+
+class TestM5FeatureNames:
+    def test_m5_names_count_3(self):
+        assert len(M5_FEATURE_NAMES) == 3
+        assert M5_FEATURE_NAMES == [
+            "plaka_asan_ratio", "log_n_total", "solidity_proxy",
+        ]
+
+    def test_full_names_count_26(self):
+        assert len(FULL_FEATURE_NAMES) == 26
+        assert FULL_FEATURE_NAMES[23:] == M5_FEATURE_NAMES
+
+    def test_no_duplicates_in_full_names(self):
+        assert len(set(FULL_FEATURE_NAMES)) == len(FULL_FEATURE_NAMES)
+
+    def test_m5_feature_keys(self):
+        inst = random_boxes(n_parts=4, seed=0)
+        d = extract_m5_features(inst)
+        assert set(d.keys()) == {
+            "plaka_asan_ratio", "log_n_total", "solidity_proxy",
+        }
+
+    def test_full_values_all_finite(self):
+        import math
+        inst = shell_bells(n_parts=4, seed=1)
+        full = extract_features_full(inst)
+        for v in full.values:
+            assert math.isfinite(v)
+
+    def test_deterministic(self):
+        inst = random_boxes(n_parts=5, seed=7)
+        assert extract_m5_features(inst) == extract_m5_features(inst)
+
+
+class TestPlakaAsanRatio:
+    def test_all_parts_fit_ratio_zero(self):
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=300.0, depth_mm=300.0),
+            parts=[
+                PartSpec(id="p", name="p", qty=5, source="box",
+                         width_mm=50.0, depth_mm=40.0, height_mm=30.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        assert d["plaka_asan_ratio"] == 0.0
+
+    def test_oversized_rod_ratio_one(self):
+        """Konteynerden büyük çubuk (buyuk+orta ikisi de sığmıyor) -> oran 1.0."""
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=100.0, depth_mm=100.0),
+            parts=[
+                PartSpec(id="rod", name="rod", qty=3, source="box",
+                         width_mm=10.0, depth_mm=10.0, height_mm=500.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        # dims sorted: (10, 10, 500) -> orta=10, buyuk=500; 500 > 100 (pw) ve
+        # 500 > 100 (pd) -> hicbir eksende sigmiyor -> asan
+        assert d["plaka_asan_ratio"] == 1.0
+
+    def test_mixed_qty_weighted_ratio(self):
+        """3 sigan + 2 asan (qty agirlikli) -> oran 2/5."""
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=100.0, depth_mm=100.0),
+            parts=[
+                PartSpec(id="fit", name="fit", qty=3, source="box",
+                         width_mm=20.0, depth_mm=20.0, height_mm=20.0),
+                PartSpec(id="over", name="over", qty=2, source="box",
+                         width_mm=10.0, depth_mm=10.0, height_mm=500.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        assert d["plaka_asan_ratio"] == pytest.approx(2.0 / 5.0)
+
+    def test_diagonal_fit_not_flagged_as_oversized(self):
+        """buyuk<=pd ve orta<=pw eksen-hizali kombinasyonuyla sigan parca asan sayilmaz."""
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=50.0, depth_mm=200.0),
+            parts=[
+                PartSpec(id="p", name="p", qty=1, source="box",
+                         width_mm=40.0, depth_mm=150.0, height_mm=10.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        # dims sorted: (10, 40, 150) -> orta=40, buyuk=150
+        # (150<=pw=50? no) and (150<=pd=200 and 40<=pw=50) -> True -> sigar
+        assert d["plaka_asan_ratio"] == 0.0
+
+    def test_missing_container_dims_returns_zero(self):
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=0.0, depth_mm=0.0),
+            parts=[
+                PartSpec(id="rod", name="rod", qty=1, source="box",
+                         width_mm=10.0, depth_mm=10.0, height_mm=500.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        assert d["plaka_asan_ratio"] == 0.0
+
+    def test_empty_instance_ratio_zero(self):
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[],
+        )
+        d = extract_m5_features(inst)
+        assert d["plaka_asan_ratio"] == 0.0
+
+
+class TestLogNTotal:
+    def test_zero_parts_log_zero(self):
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[],
+        )
+        d = extract_m5_features(inst)
+        assert d["log_n_total"] == pytest.approx(0.0, abs=1e-9)  # log10(1+0)=0
+
+    def test_known_value_9_parts(self):
+        import math
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[
+                PartSpec(id="p", name="p", qty=9, source="box",
+                         width_mm=10.0, depth_mm=10.0, height_mm=10.0),
+            ],
+        )
+        d = extract_m5_features(inst)
+        assert d["log_n_total"] == pytest.approx(math.log10(10.0))  # log10(1+9)=1.0
+
+    def test_monotonic_with_more_parts(self):
+        small = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[PartSpec(id="p", name="p", qty=5, source="box",
+                            width_mm=10.0, depth_mm=10.0, height_mm=10.0)],
+        )
+        large = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[PartSpec(id="p", name="p", qty=500, source="box",
+                            width_mm=10.0, depth_mm=10.0, height_mm=10.0)],
+        )
+        d_small = extract_m5_features(small)["log_n_total"]
+        d_large = extract_m5_features(large)["log_n_total"]
+        assert d_large > d_small
+
+
+class TestSolidityProxy:
+    def test_solid_box_solidity_near_one(self):
+        inst = random_boxes(n_parts=6, min_dim=40.0, max_dim=80.0, seed=0)
+        d = extract_m5_features(inst)
+        assert abs(d["solidity_proxy"] - 1.0) < 1e-9
+
+    def test_matches_true_fill_mean_family_feature(self):
+        """solidity_proxy = FAMILY grubundaki true_fill_mean ile birebir (ayni tanim)."""
+        inst = shell_bells(n_parts=6, seed=0)
+        fam = extract_family_features(inst)
+        m5 = extract_m5_features(inst)
+        assert m5["solidity_proxy"] == pytest.approx(fam["true_fill_mean"])
+
+    def test_hollow_tubes_low_solidity(self):
+        inst = hollow_tubes(n_parts=6, seed=0)
+        d = extract_m5_features(inst)
+        assert d["solidity_proxy"] < 0.5
+
+    def test_solidity_uses_measured_true_fill_field(self):
+        """PartSpec.true_fill dolu geldiginde solidity_proxy onu kullanir (ham
+        hacim alani yok; K-62 delikli parca sinyali icin var olan alan yeterli)."""
+        inst = NestingInstance(
+            container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+            parts=[
+                PartSpec(id="hollow", name="hollow", qty=4, source="box",
+                         width_mm=20.0, depth_mm=20.0, height_mm=20.0,
+                         true_fill=0.1),
+            ],
+        )
+        d = extract_m5_features(inst)
+        assert d["solidity_proxy"] == pytest.approx(0.1)

@@ -56,6 +56,20 @@ holey_frames:
     tetik-doğruluğu ölçümleri bağımsız beklentiyi oradan türetir.
     Parametreler: stl_dir (zorunlu), mod ("kucuk"|"buyuk"|None=rastgele),
     n_towers, n_fillers, container, seed.
+
+mass_plate_rod_mix:
+    Yüksek-adet homojen ince-plaka kitlesi + az sayıda plaka-aşan dik-çubuk
+    karışımı (K-65 dağılımsal smoke prototipinin kalıcı jeneratörü —
+    `scripts/k65_dagilim_smoke.py` Aile B ile aynı geometrik tetik; tetik
+    aile-adına değil geometriye bağlıdır).  Az sayıda plaka MODELİ yüksek
+    adetle tekrarlanır (kitle homojen); az sayıda çubuk modeli, uzunluğu
+    konteynerin width/depth boyutundan TÜRETİLEREK (+pay), garanti şekilde
+    plakayı aşacak biçimde üretilir — NFV/heightmap mod-seçim tetiğinin
+    (K-65 "düz-yatışta sığmayan parça") sentetik karşılığı.
+    Parametreler: n_plate_models, qty_per_plate, plate_xy_min, plate_xy_max,
+    plate_thickness_min, plate_thickness_max, n_rod_models, qty_per_rod,
+    rod_cross_min, rod_cross_max, rod_overhang_min, rod_overhang_max,
+    container, seed.
 """
 
 from __future__ import annotations
@@ -512,6 +526,86 @@ def repeat_rod_mix(
         parts=parts,
         meta={"family": "repeat_rod_mix", "seed": seed,
               "n_rod_models": n_rod_models, "qty_per_rod": qty_per_rod},
+    )
+
+
+def mass_plate_rod_mix(
+    n_plate_models: int = 2,
+    qty_per_plate: int = 300,
+    plate_xy_min: float = 30.0,
+    plate_xy_max: float = 110.0,
+    plate_thickness_min: float = 3.0,
+    plate_thickness_max: float = 10.0,
+    n_rod_models: int = 3,
+    qty_per_rod: int = 3,
+    rod_cross_min: float = 8.0,
+    rod_cross_max: float = 20.0,
+    rod_overhang_min: float = 5.0,
+    rod_overhang_max: float = 125.0,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """Yuksek-adet ince-plaka kitlesi + plaka-asan cubuk karisimi (K-65 aile).
+
+    Az sayida plaka MODELI (n_plate_models) yuksek adetle (qty_per_plate)
+    tekrarlanir -> kitle homojen ve sayica baskin. Az sayida cubuk MODELI
+    (n_rod_models), uzunlugu konteynerin max(width_mm, depth_mm) degerinden
+    turetilerek (+rod_overhang payi) garanti sekilde duz-yatista plakaya
+    SIGMAYACAK olacak sekilde uretilir (sabit sayi gomulmez; tetik
+    `scripts/k65_dagilim_smoke.py` Aile B ile ayni geometrik tanimdadir).
+
+    Args:
+        n_plate_models:       Benzersiz ince-plaka modeli sayisi (az; 1-3).
+        qty_per_plate:        Her plaka modelinden adet (yuksek; 200-800
+                               bandi tipik).
+        plate_xy_min:         Plaka X/Y boyutu alt siniri (mm).
+        plate_xy_max:         Plaka X/Y boyutu ust siniri (mm).
+        plate_thickness_min:  Plaka kalinligi alt siniri (mm).
+        plate_thickness_max:  Plaka kalinligi ust siniri (mm).
+        n_rod_models:         Benzersiz cubuk modeli sayisi (az).
+        qty_per_rod:          Her cubuk modelinden adet.
+        rod_cross_min:        Cubuk kesit boyutu alt siniri (mm).
+        rod_cross_max:        Cubuk kesit boyutu ust siniri (mm).
+        rod_overhang_min:     Cubuk uzunlugunun konteyner max(w,d)'yi asma
+                               payi alt siniri (mm).
+        rod_overhang_max:     Ayni payin ust siniri (mm).
+        container:            Konteyner tanimi; None ise 300x300xNone.
+        seed:                 Deterministik uretim icin seed.
+
+    Returns:
+        NestingInstance
+    """
+    rng = random.Random(seed)
+    cnt = container or _default_container()
+    taban = max(float(cnt.width_mm), float(cnt.depth_mm))
+    parts: List[PartSpec] = []
+    for i in range(n_plate_models):
+        w = _uniform(rng, plate_xy_min, plate_xy_max)
+        d = _uniform(rng, plate_xy_min, plate_xy_max)
+        h = _uniform(rng, plate_thickness_min, plate_thickness_max)
+        parts.append(
+            _box_part(f"mprm_plate_{i+1:02d}", f"mprm_plate_{i+1:02d}",
+                      qty_per_plate, w, d, h)
+        )
+    for i in range(n_rod_models):
+        cx = _uniform(rng, rod_cross_min, rod_cross_max)
+        cy = _uniform(rng, rod_cross_min, rod_cross_max)
+        length = taban + _uniform(rng, rod_overhang_min, rod_overhang_max)
+        parts.append(
+            _box_part(f"mprm_rod_{i+1:02d}", f"mprm_rod_{i+1:02d}",
+                      qty_per_rod, cx, cy, length)
+        )
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={
+            "family": "mass_plate_rod_mix",
+            "seed": seed,
+            "n_plate_models": n_plate_models,
+            "qty_per_plate": qty_per_plate,
+            "n_rod_models": n_rod_models,
+            "qty_per_rod": qty_per_rod,
+        },
     )
 
 

@@ -56,7 +56,7 @@ from __future__ import annotations
 import math
 from typing import Dict, List, NamedTuple
 
-from src.nesting3d.instances.format import NestingInstance, PartSpec
+from src.nesting3d.instances.format import ContainerSpec, NestingInstance, PartSpec
 
 
 # ---------------------------------------------------------------------------
@@ -452,3 +452,84 @@ def extract_features_extended(instance: NestingInstance) -> FeatureVector:
         fam["wall_est"], fam["true_fill_mean"], fam["shell_score"],
     ]
     return FeatureVector(values=values, names=list(EXTENDED_FEATURE_NAMES))
+
+
+# ---------------------------------------------------------------------------
+# M5 özellik ekleri (ADDITIVE — STRATEJI/ML_YENIDEN_YAPILANMA_PLANI_2026-08-18
+# §3.2 / §6 M5): 20 temel + 3 aile (F1) vektörü DONMUŞ kalır; bu grup EXTENDED
+# desenini izleyerek SONA eklenir.  Mevcut extract_features /
+# extract_features_extended tüketicileri (seçim modeli, persistence) ETKİLENMEZ.
+#
+# solidity_proxy kararı: PartSpec.true_fill zaten "gerçek hacim / bbox hacmi"
+# (watertight ölçüm; bkz. format.py PartSpec.true_fill docstring'i) taşıyor —
+# ayrı bir ham hacim alanı (volume_mm3) YOK ve gerek de yok; solidity_proxy bu
+# alanın qty-ağırlıklı ortalamasıdır (_true_fill_mean ile birebir aynı hesap,
+# kod tekrarını önlemek için o fonksiyon yeniden kullanılır).
+
+M5_FEATURE_NAMES: List[str] = [
+    "plaka_asan_ratio",  # düz yatışta (büyük x orta taban) konteynere eksen-hizalı
+                         # sığmayan parçaların adet-ağırlıklı oranı (K-65 sinyalinin
+                         # sürekli hâli; bkz. adaptive_params._duz_yatista_sigmayan_parca)
+    "log_n_total",       # log10(1 + toplam parça adedi) — ölçek bandı
+    "solidity_proxy",    # true_fill'in adet-ağırlıklı ortalaması (K-62: ML delikli
+                         # parçayı GÖREMİYOR bulgusunun sürekli sinyali)
+]
+
+# Tam vektör: mevcut 20 + 3 (aile) + 3 (M5) = 26 (SONA eklenmiş).
+FULL_FEATURE_NAMES: List[str] = list(EXTENDED_FEATURE_NAMES) + list(M5_FEATURE_NAMES)
+
+
+def _plaka_asan_ratio(parts: List[PartSpec], container: ContainerSpec) -> float:
+    """Düz yatışta konteynere eksen-hizalı sığmayan parçaların adet-ağırlıklı oranı.
+
+    Mantık adaptive_params._duz_yatista_sigmayan_parca ile birebir aynıdır
+    (kopyalanmıştır — instances katmanı adaptive_params'a bağımlı olmamalı,
+    alt katman üst katmana bağımlılık kurmaz); farkı: ilk-bulunanı değil,
+    TÜM parçalar üzerinde adet-ağırlıklı ORANI döndürür.
+
+    Konteyner boyutu yoksa/geçersizse 0.0 (konservatif, tetik yok — eski
+    davranışla tutarlı).
+    """
+    pw = float(container.width_mm or 0.0)
+    pd = float(container.depth_mm or 0.0)
+    if pw <= 0.0 or pd <= 0.0:
+        return 0.0
+    total_qty = 0
+    asan_qty = 0
+    for p in parts:
+        w, d, h = _dims(p)
+        _mn, orta, buyuk = sorted((w, d, h))
+        fits = (buyuk <= pw and orta <= pd) or (buyuk <= pd and orta <= pw)
+        q = max(int(p.qty), 0)
+        total_qty += q
+        if not fits:
+            asan_qty += q
+    if total_qty == 0:
+        return 0.0
+    return asan_qty / total_qty
+
+
+def extract_m5_features(instance: NestingInstance) -> Dict[str, float]:
+    """Yalnızca M5 özellik grubunu döndür (isim->değer)."""
+    parts = instance.parts
+    n_total = sum(max(int(p.qty), 0) for p in parts)
+    return {
+        "plaka_asan_ratio": float(_plaka_asan_ratio(parts, instance.container)),
+        "log_n_total": float(math.log10(1.0 + n_total)),
+        "solidity_proxy": float(_true_fill_mean(parts)),
+    }
+
+
+def extract_features_full(instance: NestingInstance) -> FeatureVector:
+    """20 temel + 3 aile (F1) + 3 M5 özelliği (SONA eklenmiş) -> FeatureVector.
+
+    values[0:20] extract_features() ile BİREBİR aynıdır; [20:23] aile
+    (wall_est/true_fill_mean/shell_score); [23:26] M5
+    (plaka_asan_ratio/log_n_total/solidity_proxy).  names = FULL_FEATURE_NAMES.
+    """
+    ext = extract_features_extended(instance)
+    m5 = extract_m5_features(instance)
+    values = list(ext.values) + [
+        m5["plaka_asan_ratio"], m5["log_n_total"], m5["solidity_proxy"],
+    ]
+    return FeatureVector(values=values, names=list(FULL_FEATURE_NAMES))

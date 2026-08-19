@@ -59,6 +59,16 @@ MIN_INSTANCES: int = 6
 # Report dataclass
 # ---------------------------------------------------------------------------
 
+# TODO(EGITIM_EL_KITABI.md backlog #2, regret-raporu kismi): GenGapReport
+# su an regret_mm alani ICERMIYOR (yalnizca accuracy tabanli alanlar).
+# LOO-regret (mm) zaten model-parametrik olarak loo_regret() fonksiyonunda
+# mevcut (asagida) ve kNN/logistic gibi adaylarla calisiyor (bkz
+# tests/test_bagging.py, tests/test_height_reg.py, tests/test_regret_logistic.py,
+# scripts/mod_yarismasi.py). GenGapReport'a regret_mm alani eklemek --
+# yani compute_generalization_gap() cikisina loo_regret() sonucunu
+# entegre etmek -- additive bir sonraki adim; simdilik bilerek YAPILMADI
+# (mevcut GenGapReport.to_dict() sozlesmesini/testlerini bit-ozdes
+# korumak icin ayri iş olarak birakildi).
 @dataclass
 class GenGapReport:
     """Result of generalization gap analysis."""

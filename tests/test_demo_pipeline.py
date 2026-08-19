@@ -133,6 +133,26 @@ class TestSmokePipeline:
         run_pipeline(SMOKE_SCENARIO)
         assert REPORT_PATH.exists(), f"Rapor dosyası bulunamadı: {REPORT_PATH}"
 
+    def test_nfv_modu_kanopi_kablosu_tetiksiz_iz_ve_kapatma(self):
+        """K-62 v18 kablosu: nfv modunda kanopi zinciri DEFAULT devrede.
+
+        Kutu-parça (stl'siz) sette geometrik tetik yapısal ateşleyemez →
+        (a) telemetri izi düşer (tetik=False), (b) yükseklik bayrak
+        kapalı koşuyla BİREBİR (tek-taraflılık + sıfır-dokunuş),
+        (c) kanopi_zincir=False anahtar kabloyu tamamen kapatır (iz yok).
+        """
+        r_acik = run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "nfv"})
+        r_kapali = run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "nfv",
+                                 "kanopi_zincir": False})
+        for bid, nr in r_acik["nesting_results"].items():
+            if nr.get("n_parts", 0) > 0 and nr.get("note", "") == "":
+                kz = nr.get("kanopi_zincir")
+                assert kz is not None, "kanopi_zincir telemetrisi düşmedi"
+                assert kz["tetik"] is False and kz["secilen"] == "ref"
+                nr2 = r_kapali["nesting_results"][bid]
+                assert "kanopi_zincir" not in nr2
+                assert nr["height_mm"] == nr2["height_mm"]
+
     def test_report_has_required_sections(self):
         """Rapor bölümleri mevcut olmalı."""
         run_pipeline(SMOKE_SCENARIO)
@@ -1095,3 +1115,64 @@ def test_acik_nfv_quality_aile_onerisini_ezer(monkeypatch):
     sc["nfv_quality"] = "fast"
     run_pipeline(sc)
     assert yakalanan.get("quality") == "fast", yakalanan
+
+
+# ---------------------------------------------------------------------------
+# M1 (2026-08-18): telemetri v2 mod-duzeyi alan kablosu — STRATEJI/01_VERI.md
+# §5 semasindaki additive alanlarin (pitch_coarse, nfv_quality, peak_ram_mb,
+# n_orientations) demo_pipeline uretim yolunda GERCEKTEN append_run_v2'ye
+# ulastigini dogrular. append_run_v2 spy'lanir (gercek dosyaya yazilmaz) ve
+# PYTEST_CURRENT_TEST kasitli silinir (uretimde bu env yok; test bunu
+# taklit ederek normalde atlanan telemetri blogunu calistirir).
+# ---------------------------------------------------------------------------
+
+class TestTelemetryV2ModDuzeyiKablo:
+
+    def _spy(self, monkeypatch):
+        import src.nesting3d.telemetry as telemetry_mod
+        captured: list = []
+
+        def _fake(path, **kwargs):
+            captured.append(kwargs)
+            return {"schema": 2, **kwargs}
+
+        monkeypatch.setattr(telemetry_mod, "append_run_v2", _fake)
+        monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+        return captured
+
+    def test_heightmap_yolu_yeni_alanlar_akiyor(self, monkeypatch):
+        captured = self._spy(monkeypatch)
+        run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "heightmap"})
+        assert captured, "telemetri v2 hic cagrilmadi (heightmap yolu)"
+        for kw in captured:
+            assert kw["mode"] == "heightmap"
+            # additive alanlar KEY olarak var (None olabilir ama eksik degil)
+            assert "pitch_coarse" in kw
+            assert "peak_ram_mb" in kw
+            assert "nfv_quality" in kw
+            assert kw["nfv_quality"] is None  # heightmap yolunda nfv kalitesi yok
+            assert kw["n_orientations"] == SMOKE_SCENARIO["n_orientations"]
+
+    def test_nfv_yolu_nfv_quality_akiyor(self, monkeypatch):
+        captured = self._spy(monkeypatch)
+        run_pipeline({**SMOKE_SCENARIO, "nesting_mode": "nfv", "nfv_quality": "fast"})
+        assert captured, "telemetri v2 hic cagrilmadi (nfv yolu)"
+        for kw in captured:
+            assert kw["mode"] == "nfv"
+            assert kw["nfv_quality"] == "fast"
+            assert "peak_ram_mb" in kw
+
+    def test_eski_cagri_imzasi_hala_calisir(self, tmp_path):
+        """Geriye-uyum: yeni parametreler verilmeden append_run_v2 eski
+        cagiranlar (kxx_telemetri/backfill_v2 tarzi) icin BIREBIR calismali."""
+        from src.nesting3d.telemetry import append_run_v2
+
+        row = append_run_v2(
+            tmp_path / "v2.jsonl", kaynak="pipeline", instance_id="X",
+            mode="heightmap", height_mm=100.0, n_placed=1, n_total=1,
+            min_clearance_mm=2.0, n_locked=0,
+        )
+        assert row["legal_height_mm"] == 100.0
+        assert row["pitch_coarse"] is None
+        assert row["nfv_quality"] is None
+        assert row["peak_ram_mb"] is None

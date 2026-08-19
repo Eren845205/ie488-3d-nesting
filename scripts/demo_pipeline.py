@@ -899,13 +899,18 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             nesting_mode = "heightmap"
             auto_reason = f"auto basarisiz ({_auto_exc}) -> heightmap (guvenli dusus)"
 
-    # K-56g DAL ZORLAMASI: motor kisitlari varken nfv modu c2f'e cevrilir
-    # (pitch de asagida heightmap kuralindan turer). Kisit yokken bu blok
-    # hic tetiklenmez -> mod karari bit-ozdes.
-    if _kisit_var and nesting_mode == "nfv":
+    # K-56g DAL ZORLAMASI (2026-08-16 Eren karari ile DARALTILDI): yalniz
+    # PINNED kisit nfv modunu c2f'e cevirir (NFV decode pinned'i reddeder —
+    # K-56 guard). ORIENTATION kilidi artik NFV KALITE yolunda tasinir
+    # (solve_nfv_kalite orientation_overrides parametresi; kanit: plan7 a2
+    # duruş-kilitli 488.4 LEGAL ayni cozucuyle alindi). Onceki davranis
+    # "kisit=her turlu -> kolay yol" urun vaadini bosaltiyordu: agent notu
+    # cikarir, kisit EN IYI algoritmanin icinde uygulanir. Kisit yokken bu
+    # blok hic tetiklenmez -> mod karari bit-ozdes.
+    if _mk_pins and nesting_mode == "nfv":
         nesting_mode = "heightmap"
         auto_reason = ((auto_reason + " | ") if auto_reason else "") + \
-            "kisit_yonlendirme: nfv->c2f (motor_kisitlari NFV dalinda tasinamaz)"
+            "kisit_yonlendirme: nfv->c2f (pinned_placements NFV dalinda tasinamaz)"
 
     try:
         # K-19 OPT-IN: wall_aware_pitch True + kabuk-ailesi + guven kapisi -> cidar
@@ -1025,12 +1030,23 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             # kilitliyse exit_guard'la yeniden kosulur (p2'de 532-INVALID ->
             # 544.5-legal). solve KENDI voxelize'ini yapar (voxel_parts gereksiz).
             from src.nesting3d.nfv_solve import solve_nfv_kalite
+            # K-56g/2026-08-16: orientation kilidi NFV yolunda TASINIR
+            # (pinned bu dala hic gelmez — yukaridaki dal zorlamasi c2f'e
+            # cevirir). Kisitsizken _mk_orient=None -> cagri bit-ozdes.
+            if _mk_orient:
+                _instr["kisit_yonlendirme"] = {
+                    "dal": "nfv",
+                    "orient_kilit": sorted(_mk_orient),
+                    "n_pin": 0,
+                    "tuner_atlandi": False,
+                }
             _c2f_result, _nfv_tel = solve_nfv_kalite(
                 instance,
                 plate_w_mm=float(container["width_mm"]),
                 plate_d_mm=float(container["depth_mm"]),
                 clearance_mm=WEB_MIN_CLEARANCE_MM,
                 no_go_bounds=no_go_bounds,
+                orientation_overrides=_mk_orient,
                 n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
                 quality=(nfv_quality or "fast"),  # None = oneri dolmadi (explicit "nfv" modu)
                 seed=seed,
@@ -1048,6 +1064,41 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                              # butce 1200s; tek-tarafli.
             )
             _instr["nfv_kalite"] = _nfv_tel  # recete izi (ham/guard kilit + secim + r11)
+            # K-62 v18 KANOPI ZINCIRI KABLOSU (Eren karari 2026-08-15):
+            # kalite modunda geometrik-tetikli kanopi aramasi. Tetik yoksa
+            # SIFIR maliyet + sonuc AYNEN (tek-tarafli); tetikliyse zincir
+            # kazanani ancak TAM A2 (clearance + kilit/rot) + ref'ten iyi
+            # ise kabul (geri-dusus deseni zorunlu bilesen — kapi-v3).
+            # Kanit: k62_kapi plan1 otomatik 129.00 LEGAL (fix'li motor).
+            # kanopi_zincir=False ile kapatilabilir (payload/scenario).
+            # Kanopi zinciri orientation-kilidi BILMEZ — kilitli koşuda zincir
+            # kazanani kilidi ihlal edebilir; kisitli partide guvenli atlama
+            # (tek-tarafli; kisitsiz davranis birebir). 2026-08-16.
+            if _mk_orient and payload.get("kanopi_zincir", True):
+                _instr["kanopi_zincir"] = {
+                    "atlandi": "orientation_overrides (kilit korumasi)"}
+            if payload.get("kanopi_zincir", True) and not _mk_orient:
+                from src.nesting3d.kanopi_zincir import kanopi_zinciri_uretim
+                _r11i = (_nfv_tel.get("r11") or {})
+                _ref_eff = (_r11i.get("height_mm")
+                            if _r11i.get("uygulandi") else None)
+                _kz_res, _kz_tel = kanopi_zinciri_uretim(
+                    instance,
+                    plate_w_mm=float(container["width_mm"]),
+                    plate_d_mm=float(container["depth_mm"]),
+                    no_go_bounds=no_go_bounds,
+                    clearance_mm=WEB_MIN_CLEARANCE_MM,
+                    seed=seed,
+                    quality="fast",  # olculen recete (k62 zinciri fast'ta)
+                    ref_res=_c2f_result,
+                    ref_height_mm=_ref_eff)
+                _instr["kanopi_zincir"] = _kz_tel
+                if _kz_res is not _c2f_result:
+                    _c2f_result = _kz_res
+                    # ref'in R11 dz'si kanopi sahnesine UYGULANMAZ (dz eski
+                    # yerlesime aittir); kanopi kazanani zaten A2-legal ham.
+                    _nfv_tel.pop("r11", None)
+                    _nfv_tel["secilen"] = "kanopi_zincir"
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD or _kisit_var:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
@@ -1371,9 +1422,15 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             n_locked=_n_locked,
             family_f1=_fam, family_conf=_fam_conf,
             source=str(payload.get("kaynak", "pipeline")),
+            pitch_coarse=(float(getattr(_c2f_result, "coarse_pitch", None))
+                          if getattr(_c2f_result, "coarse_pitch", None) is not None
+                          else None),
             pitch_fine=float(_cl_pitch),
+            n_orientations=n_orient,
+            nfv_quality=(nfv_quality if nesting_mode == "nfv" else None),
             seed=int(seed),
             duration_s=round(t_nest_elapsed, 3),
+            peak_ram_mb=_process_peak_rss_mb(),
             clearance_req_mm=WEB_MIN_CLEARANCE_MM,
             winning_config=str(winner_config),
             # K-50 kablosu: r11 uygulandiysa mesh-duzeyi ekstra dusme izi
@@ -1596,6 +1653,24 @@ def _detect_cores() -> int:
     if not n:
         n = os.cpu_count()
     return int(n) if n and n > 0 else 2
+
+
+def _process_peak_rss_mb() -> Optional[float]:
+    """Su anki surecin RSS'ini (MB) dondur; okunamazsa None.
+
+    NOT (M1, 2026-08-18): Windows'ta gercek "peak" izleme (resource.getrusage
+    POSIX-only, surekli-orneklemeli izleme buyuk mimari degisiklik) yok; bu
+    telemetri noktasi (nesting cozumu BITTIKTEN hemen sonra, en RAM-agir
+    fazin ardindan) surecin O ANKI RSS'ini YAKLASIK-peak olarak kaydeder.
+    Dogru degil ama ucuz bir alt-sinir/yaklasim — dogru peak izleme icin
+    ayri bir is (orneklemeli arka-plan thread) gerekir; STRATEJI 01_VERI §5
+    peak_ram_mb alani icin bu yaklasim yeterli kabul edildi (buyuk mimari
+    degisiklik degil)."""
+    try:
+        import psutil  # type: ignore
+        return psutil.Process().memory_info().rss / (1024 ** 2)
+    except Exception:
+        return None
 
 
 def _available_ram_gb() -> Optional[float]:
@@ -1915,6 +1990,10 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             "pricing_rules": scenario["pricing_rules"],
             "nesting_mode": scenario.get("nesting_mode", "auto"),
             "nfv_quality": scenario.get("nfv_quality"),  # None -> aile onerisi (K-53c)
+            # K-62 v18: kanopi zinciri (kalite modu; geometrik tetik +
+            # A2-kapili tek-tarafli). True default — tetiksiz sette sifir
+            # maliyet; False acikca kapatir.
+            "kanopi_zincir": scenario.get("kanopi_zincir", True),
             "no_go_bounds": no_go_bounds,  # K-45: yasak bolge (plaka ozelligi)
             # K-56g: soft no-go ilani (None = kablo kapali, bit-ozdes).
             # Aktifken no_go_bounds ZATEN soft dikdortgene esitlenmis durumda;

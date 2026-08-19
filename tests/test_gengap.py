@@ -22,7 +22,9 @@ from src.nesting3d.selection.gengap import (
     GenGapReport,
     compute_generalization_gap,
     compute_from_telemetry,
+    _loo_cv_accuracy,
 )
+from src.nesting3d.selection.model import AlgorithmSelector
 
 
 # ---------------------------------------------------------------------------
@@ -549,3 +551,118 @@ class TestBoundaryMinInstances:
         report = compute_generalization_gap(table)
         assert report.overfit_flag is False
         assert report.train_acc == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# model_factory parametrization (M2, EGITIM_EL_KITABI.md backlog #2)
+#
+# Kanit iki yonlu:
+#   1. Ozel bir fake factory verilince ONUN kullanildigi (kayitli cagri +
+#      farkli sonuc) kanitlanir.
+#   2. model_factory verilmeyince (default) davranis eski davranisla
+#      (explicit AlgorithmSelector ile) BIREBIR ayni kalir.
+# ---------------------------------------------------------------------------
+
+def _make_never_matching_factory():
+    """Fake model_factory: her predict() cagrisinda hicbir winner ile
+    eslesmeyecek sabit bir etiket doner. Cagri sayisini da kaydeder --
+    boylece factory'nin gercekten kullanildigi (yok sayilmadigi) kanitlanir.
+    """
+    counter = {"n": 0}
+
+    class _NeverMatchingModel:
+        def fit(self, rows):  # noqa: D401 -- fake fit, no-op
+            self._rows = rows
+
+        def predict(self, feature_vector):
+            return ("__FAKE_WINNER_ASLA_ESLESMEZ__", 0.0)
+
+    def factory():
+        counter["n"] += 1
+        return _NeverMatchingModel()
+
+    return factory, counter
+
+
+class TestModelFactoryParametrization:
+    """_loo_cv_accuracy / compute_generalization_gap model-parametrik mi?"""
+
+    def test_loo_cv_accuracy_uses_custom_factory(self):
+        table = _make_healthy_table()  # default 1-NN LOO acc yuksek olur
+        default_acc = _loo_cv_accuracy(table)
+
+        fake_factory, counter = _make_never_matching_factory()
+        fake_acc = _loo_cv_accuracy(table, model_factory=fake_factory)
+
+        assert counter["n"] > 0, "fake factory hic cagrilmadi -- parametre yok sayildi"
+        assert fake_acc == pytest.approx(0.0), (
+            "fake factory hicbir zaman dogru tahmin uretmemeli -> LOO acc 0.0"
+        )
+        assert fake_acc != pytest.approx(default_acc), (
+            "fake factory kullanildiginin kaniti: sonuc default'tan farkli olmali"
+        )
+
+    def test_loo_cv_accuracy_default_matches_explicit_algorithmselector(self):
+        """model_factory verilmezse davranis explicit AlgorithmSelector ile
+        BIREBIR (bit-ozdes) ayni olmali -- geriye-uyum garantisi."""
+        table = _make_overfit_table()
+        acc_default = _loo_cv_accuracy(table)
+        acc_explicit = _loo_cv_accuracy(table, model_factory=AlgorithmSelector)
+        assert acc_default == pytest.approx(acc_explicit, abs=0.0)
+
+    def test_compute_generalization_gap_uses_custom_factory(self):
+        table = _make_healthy_table()
+        report_default = compute_generalization_gap(table)
+
+        fake_factory, counter = _make_never_matching_factory()
+        report_fake = compute_generalization_gap(table, model_factory=fake_factory)
+
+        assert counter["n"] > 0, "fake factory hic cagrilmadi -- parametre yok sayildi"
+        assert report_fake.cv_acc == pytest.approx(0.0)
+        assert report_fake.train_acc == pytest.approx(0.0)
+        assert report_fake.cv_acc != pytest.approx(report_default.cv_acc)
+
+    def test_compute_generalization_gap_default_bit_identical_to_explicit(self):
+        """Eski davranis (parametre yokken) ile yeni parametreli cagrinin
+        explicit AlgorithmSelector ile sonucu BIREBIR (bit-ozdes) ayni olmali."""
+        for table in (_make_overfit_table(), _make_healthy_table()):
+            r_default = compute_generalization_gap(table)
+            r_explicit = compute_generalization_gap(table, model_factory=AlgorithmSelector)
+            assert r_default.to_dict() == r_explicit.to_dict()
+
+    def test_compute_from_telemetry_still_uses_default_factory(self, tmp_path: Path):
+        """compute_from_telemetry additive wrapper -- model_factory parametresi
+        eklenmedigi icin default (AlgorithmSelector) yolunu kullanmaya devam
+        etmeli (geriye-uyum, public sozlesme kirilmadi)."""
+        from src.nesting3d.instances.features import FEATURE_NAMES
+
+        p = tmp_path / "runs.jsonl"
+        lines = []
+        for i in range(10):
+            iid = f"inst_{i:03d}"
+            for cozucu, height, winner_flag in [
+                ("dblf", 110.0, False),
+                ("sa3d", 100.0, True),
+            ]:
+                row = {
+                    "ts": 1.0,
+                    "kaynak": "benchmark",
+                    "instance_id": iid,
+                    "aile": "test",
+                    "feature_names": list(FEATURE_NAMES),
+                    "feature_vector": [float(i)] + [0.0] * (len(FEATURE_NAMES) - 1),
+                    "cozucu": cozucu,
+                    "pitch": 5.0,
+                    "budget": 100,
+                    "seed": 42,
+                    "height_mm": height,
+                    "density": 0.5,
+                    "time_s": 1.0,
+                    "winner_flag": winner_flag,
+                }
+                lines.append(json.dumps(row))
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        report = compute_from_telemetry(p)
+        assert isinstance(report, GenGapReport)
+        assert 0.0 <= report.cv_acc <= 1.0

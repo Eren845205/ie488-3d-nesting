@@ -72,3 +72,29 @@ def test_v2_clearance_req_parametrik(tmp_path):
     assert ok["legal_height_mm"] is not None
     bad = _base(tmp_path, min_clearance_mm=1.5, clearance_req_mm=2.0)
     assert bad["legal_height_mm"] is None
+
+
+# ---------------------------------------------------------------------------
+# M1 (2026-08-18): additive alanlar — pitch_coarse, nfv_quality, peak_ram_mb
+# (STRATEJI/01_VERI.md §5). v1/eski v2 cagri imzasi DONUK kalir (None-default).
+# ---------------------------------------------------------------------------
+
+def test_v2_yeni_alanlar_verilmezse_none(tmp_path):
+    """Eski cagri imzasi (yeni parametreler gecilmeden) hala calisir; yeni
+    alanlar satirda None olarak gorunur (eksik anahtar degil)."""
+    row = _base(tmp_path)
+    assert row["pitch_coarse"] is None
+    assert row["nfv_quality"] is None
+    assert row["peak_ram_mb"] is None
+
+
+def test_v2_yeni_alanlar_verilince_satira_yazilir(tmp_path):
+    row = _base(tmp_path, pitch_coarse=4.0, nfv_quality="max", peak_ram_mb=812.5)
+    assert row["pitch_coarse"] == 4.0
+    assert row["nfv_quality"] == "max"
+    assert row["peak_ram_mb"] == 812.5
+    # dosyaya da GERCEKTEN yazilmis mi (JSONL round-trip)
+    rows = load_telemetry(tmp_path / "v2.jsonl")
+    assert rows[-1]["pitch_coarse"] == 4.0
+    assert rows[-1]["nfv_quality"] == "max"
+    assert rows[-1]["peak_ram_mb"] == 812.5

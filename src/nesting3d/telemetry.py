@@ -151,10 +151,13 @@ def append_run_v2(
     family_f1: Optional[str] = None,
     family_conf: Optional[float] = None,
     source: Optional[str] = None,        # "mail" | "manuel" | jenerator adi
+    pitch_coarse: Optional[float] = None,
     pitch_fine: Optional[float] = None,
     n_orientations: Optional[int] = None,
+    nfv_quality: Optional[str] = None,   # "fast" | "max" | None (heightmap yolunda)
     seed: Optional[int] = None,
     duration_s: Optional[float] = None,
+    peak_ram_mb: Optional[float] = None,
     clearance_req_mm: float = 1.0,
     **extra: Any,
 ) -> dict:
@@ -163,6 +166,11 @@ def append_run_v2(
     legal_height_mm bu fonksiyonda TUREY: uc sart (tam yerlesim + clearance +
     0 kilit) saglaniyorsa height, aksi None + invalid_reason (ANAYASA A2).
     Olculemeyen bileşen (None) = INVALID ('kanitsizlik gecer not degildir').
+
+    pitch_coarse / nfv_quality / peak_ram_mb: additive v2 alanlari (STRATEJI
+    01_VERI §5, 2026-08-18 M1 tamamlanmasi). None verilirse satira None olarak
+    yazilir (eski cagiranlar parametre gecmeden calismaya devam eder — geriye
+    uyum; v1 pitch_fine deseninin aynisi).
     """
     reasons = []
     if n_placed != n_total:
@@ -194,10 +202,13 @@ def append_run_v2(
         "family_f1": family_f1,
         "family_conf": family_conf,
         "source": source,
+        "pitch_coarse": (float(pitch_coarse) if pitch_coarse is not None else None),
         "pitch_fine": (float(pitch_fine) if pitch_fine is not None else None),
         "n_orientations": n_orientations,
+        "nfv_quality": nfv_quality,
         "seed": seed,
         "duration_s": (float(duration_s) if duration_s is not None else None),
+        "peak_ram_mb": (float(peak_ram_mb) if peak_ram_mb is not None else None),
     }
     row.update(extra)
     path = Path(path)
