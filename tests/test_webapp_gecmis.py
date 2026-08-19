@@ -171,11 +171,24 @@ class TestGecmisDedupOtomatik:
         silinen = store.sil(kayit_id)
         assert silinen["_idem_keys"] == ["hash-1", "hash-2"]
 
-    def test_manuel_kayitta_idem_keys_yazilmaz(self, app_with_llm):
-        """kaynak=manuel ise _idem_keys asla yazilmaz (yalniz otomatik/poller)."""
+    def test_mail_bagli_kayitta_idem_keys_kaynaktan_bagimsiz_yazilir(self, app_with_llm):
+        """SOZLESME DEGISIMI 2026-08-18 (Eren istegi: 'gecmisten silinince
+        tekrar islesin' park/adet-gir yolunda da calissin): _idem_keys VARSA
+        kaynak ne olursa olsun kayda yazilir. Mail'e bagli olmayan kosularda
+        anahtar zaten uretilmez -> alan yine yok (eski sekil bit-ozdes)."""
         fn = app_with_llm.config["GECMIS_KAYDET_FN"]
         result = self._make_fake_result(["ZIP-AABB1122"])
         result["_idem_keys"] = ["hash-1"]
+        fn(result, mod="auto", kaynak="mail-not-onay")
+        store = app_with_llm.config["OTONOM_GECMIS"]
+        kayit_id = store.liste()[0]["id"]
+        silinen = store.sil(kayit_id)
+        assert silinen.get("_idem_keys") == ["hash-1"]
+
+    def test_anahtarsiz_kayitta_idem_keys_alani_yok(self, app_with_llm):
+        """Mail'e bagli olmayan kosu (_idem_keys uretilmemis) -> alan yazilmaz."""
+        fn = app_with_llm.config["GECMIS_KAYDET_FN"]
+        result = self._make_fake_result(["ZIP-AABB1122"])
         fn(result, mod="auto", kaynak="manuel")
         store = app_with_llm.config["OTONOM_GECMIS"]
         kayit_id = store.liste()[0]["id"]

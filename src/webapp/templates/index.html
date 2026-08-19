@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Ana Sayfa &mdash; Konteyner Nesting Sistemi{% endblock %}
+{% block title %}Dashboard &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 
 <div class="hero-section">
-    <h2>Konteyner Nesting Sistemi</h2>
+    <h2>3D Nesting &amp; Batch Planning</h2>
     <p>
-        Bu demo, additive manufacturing (AM) ortaminda birden fazla musteri siparisini
-        oncelik siralamasina gore partilere ayirir, 3D nesting ile konteyner icinde
-        optimal yerlesim hesaplar ve parti basi fiyat dokumu cikartir.
+        Additive manufacturing ortamında gelen müşteri siparişlerini öncelik
+        sırasına göre partilere ayırır, 3D nesting ile plaka içinde optimal
+        yerleşimi hesaplar ve parti başına maliyet dökümü çıkarır.
     </p>
 
     <!-- Havuz ozeti -->
@@ -76,45 +76,45 @@
 
 <!-- Senaryo ozeti -->
 <div class="card">
-    <div class="card-title">Senaryo Ozeti</div>
+    <div class="card-title">Scenario Summary</div>
 
     <div class="info-grid">
         <div class="info-item">
-            <div class="info-label">Konteyner Genisligi</div>
+            <div class="info-label">Plate Width</div>
             <div class="info-value">{{ container.get('width_mm', '-') }} mm</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Konteyner Derinligi</div>
+            <div class="info-label">Plate Depth</div>
             <div class="info-value">{{ container.get('depth_mm', '-') }} mm</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Makine Sayisi</div>
+            <div class="info-label">Machines</div>
             <div class="info-value">{{ capacity.get('num_machines', '-') }}</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Maks. Hacim / Parti</div>
+            <div class="info-label">Max Volume / Batch</div>
             <div class="info-value">{{ "{:,.0f}".format(capacity.get('max_volume_per_batch_cm3', 0)) }} cm3</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Parti Suresi</div>
-            <div class="info-value">{{ capacity.get('batch_duration_hours', '-') }} saat</div>
+            <div class="info-label">Batch Duration</div>
+            <div class="info-value">{{ capacity.get('batch_duration_hours', '-') }} h</div>
         </div>
         <div class="info-item">
-            <div class="info-label">Siparis Sayisi</div>
+            <div class="info-label">Orders</div>
             <div class="info-value">{{ orders | length }}</div>
         </div>
     </div>
 
-    <div class="card-title" style="margin-top: 16px;">Siparis Havuzu</div>
+    <div class="card-title" style="margin-top: 16px;">Order Pool</div>
     <div class="table-wrapper">
         <table>
             <thead>
                 <tr>
-                    <th>Siparis ID</th>
-                    <th>Musteri</th>
-                    <th>Termin</th>
-                    <th>Oncelik</th>
-                    <th>Parca Sayisi</th>
+                    <th>Order ID</th>
+                    <th>Customer</th>
+                    <th>Deadline</th>
+                    <th>Priority</th>
+                    <th>Parts</th>
                 </tr>
             </thead>
             <tbody>
@@ -141,7 +141,7 @@
 {% if llm_active %}
 <!-- Otonom Mod Bolumu (yalnizca LLM aktifse goster) -->
 <div class="card" id="otonom-card">
-    <div class="card-title">Otonom Mod &mdash; Mailleri Cek ve Isleyin</div>
+    <div class="card-title">Mail Intake &mdash; Mailleri Çek ve İşle</div>
     <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:12px;">
         Sistem mailleri kendisi ceker, LLM ile siparislere donusturur,
         onceliklendirir, nesting ve fiyat hesaplar.
@@ -161,6 +161,23 @@
             <span>Maksimum kalite (daha çok oryantasyon &mdash; en kısa istif, en yavaş; güçlü donanım)</span>
         </label>
     </div>
+    <!-- Not-onay anahtari: notlu siparis onaya dussun mu? (mail + Auto Mode ortak) -->
+    <form method="POST" action="/ayar/not-onay" id="not-onay-form"
+          style="margin: 4px 0 12px; font-size: 13px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <label style="cursor: pointer; display: inline-flex; align-items: flex-start; gap: 8px;">
+            <input type="checkbox" name="not_onay_iste" value="1"
+                   {% if not_onay_acik %}checked{% endif %}
+                   onchange="document.getElementById('not-onay-form').submit()"
+                   style="margin-top: 2px;">
+            <span>
+                <strong>Sipariş notları için onay iste</strong> &mdash; notlu sipariş
+                önce onayınıza düşer, onay verince otomatik koşulur.
+                <span style="color: var(--color-text-muted);">Kapatılırsa sormaz:
+                yalnız yüksek güvenli istekler kendiliğinden uygulanır.</span>
+            </span>
+        </label>
+    </form>
     <button
         id="otonom-btn"
         class="btn btn-primary"
@@ -195,7 +212,7 @@
 
 <!-- Otomatik Mod karti: sistem kendi kendine periyodik tarar (manuel butonun ALTERNATIFI) -->
 <div class="card" id="otomatik-card">
-    <div class="card-title">Otomatik Mod &mdash; Sistem Kendi Tarasın</div>
+    <div class="card-title">Auto Mode &mdash; Sistem Kendi Tarasın</div>
     <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:14px;">
         Açıkken sistem gelen kutusunu <strong>periyodik tarar</strong> ve <strong>yeni</strong>
         siparişleri otomatik işler (çek &rarr; nesting &rarr; fiyat). Aynı mail iki kez işlenmez;
@@ -222,45 +239,95 @@
 </div>
 {% endif %}
 
-{% if llm_active %}
-<!-- Mail Parser Bolumu (yalnizca LLM aktifse goster) -->
-<div class="card" id="mail-parser-card">
-    <div class="card-title">Siparis Mailini Yapistir &mdash; LLM Okusun</div>
+<!-- Manuel yukleme: bilgisayardan STL sec -> tara -> (not varsa) onay -> kos -->
+<div class="card" id="manuel-card">
+    <div class="card-title">Manual Intake &mdash; Bilgisayardan Sipariş Yükle</div>
     <p style="font-size:14px; color:var(--color-text-muted); margin-bottom: 12px;">
-        Daginik bir siparis maili veya serbest metin yapistirin.
-        Sistem LLM ile siparis yapisini cikarir; onay verdikten sonra
-        havuza ekleyebilir veya direkt pipeline'a besleyebilirsiniz.
+        STL dosyalarını (veya klasörü) seçin. Sistem parçaları tarar —
+        yazılı sipariş notlarını <strong>ve parça üstündeki kabartma etiketleri</strong>
+        yapay zekâ ile okur. Not bulursa önce <strong>onayınızı ister</strong>,
+        onay verince nesting'i kendisi koşar.
     </p>
-    <textarea
-        id="mail-text-input"
-        rows="6"
-        placeholder="Orn: FORD icin 4 adet braket, 80x60x30mm, termin 2026-07-10..."
-        style="width:100%; padding:8px; font-family:inherit; font-size:14px;
-               border:1px solid var(--color-border); border-radius:4px;
-               resize:vertical; background:var(--color-bg); color:var(--color-text);"
-    ></textarea>
-    <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button
-            id="parse-btn"
-            class="btn btn-primary"
-            onclick="parseMail()"
-        >Maili Oku (LLM)</button>
-        <span id="parse-spinner" style="display:none; font-size:14px; color:var(--color-text-muted);">
-            Isleniyor...
-        </span>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <input type="file" id="man-dosyalar" accept=".stl,.txt" multiple style="display:none">
+        <input type="file" id="man-klasor" webkitdirectory style="display:none">
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('man-dosyalar').click()">
+            STL Dosyaları Seç
+        </button>
+        <button type="button" class="btn" onclick="document.getElementById('man-klasor').click()">
+            Klasör Seç
+        </button>
+        <span id="man-secim" style="font-size:13px; color:var(--color-text-muted);">Henüz dosya seçilmedi.</span>
     </div>
-    <div id="parse-result" style="margin-top:14px; display:none;">
-        <div id="parse-hata" style="color:#c0392b; display:none; margin-bottom:8px; font-size:14px;"></div>
-        <div id="parse-uyari" style="color:#e67e22; display:none; margin-bottom:8px; font-size:14px;"></div>
-        <div id="parse-eksik" style="color:#7f8c8d; display:none; margin-bottom:8px; font-size:13px;"></div>
-        <div id="parse-siparis-kutu" style="display:none; background:var(--color-bg-alt,#f8f8f8);
-             border:1px solid var(--color-border); border-radius:4px; padding:12px;">
-            <strong style="font-size:14px;">Cikan Siparis:</strong>
-            <pre id="parse-siparis-json" style="margin:8px 0 0; font-size:13px; overflow-x:auto; white-space:pre-wrap;"></pre>
+    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        <input type="text" id="man-musteri" placeholder="Müşteri adı (opsiyonel)"
+               style="flex:0 1 220px; padding:8px; font-family:inherit; font-size:13px;
+                      border:1px solid var(--color-border); border-radius:4px;
+                      background:var(--color-bg); color:var(--color-text);">
+        <textarea id="man-not" rows="2"
+                  placeholder="Sipariş notu (opsiyonel) — örn: 288101642-a2 6 adet - Konumu değişmeyecek."
+                  style="flex:1 1 320px; padding:8px; font-family:inherit; font-size:13px;
+                         border:1px solid var(--color-border); border-radius:4px;
+                         resize:vertical; background:var(--color-bg); color:var(--color-text);"></textarea>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+        <label for="man-mod" style="font-size:12px; color:var(--color-text-muted);">Koşu modu:</label>
+        <select id="man-mod"
+                style="font-size:12px; padding:6px 8px; border:1px solid var(--color-border);
+                       border-radius:4px; background:var(--color-bg); color:var(--color-text);"
+                title="Boş = sistem otomatik seçer. NFV: gerçek geometrik arama — yavaş ama genelde daha kısa istif.">
+            <option value="">Otomatik (önerilen)</option>
+            <option value="nfv">NFV kalite (yavaş, en kısa istif hedefi)</option>
+            <option value="heightmap">Heightmap (hızlı)</option>
+        </select>
+        <button id="man-yukle-btn" class="btn btn-primary" onclick="manuelYukle()" disabled>
+            Yükle ve Tara
+        </button>
+        <span id="man-spinner" style="display:none; font-size:13px; color:var(--color-text-muted);">Yükleniyor ve taranıyor…</span>
+    </div>
+    <div id="man-durum" style="display:none; margin-top:14px; padding:12px 14px; border-radius:8px;
+         border:1px solid var(--color-border); background:var(--color-surface,#fff); font-size:13px;"></div>
+
+    {% if llm_active %}
+    <details style="margin-top:16px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--color-text-muted); font-weight:600;">
+            Alternatif: sipariş mailini metin olarak yapıştır (LLM okur)
+        </summary>
+        <div style="margin-top:10px;">
+            <textarea
+                id="mail-text-input"
+                rows="5"
+                placeholder="Orn: FORD icin 4 adet braket, 80x60x30mm, termin 2026-07-10..."
+                style="width:100%; padding:8px; font-family:inherit; font-size:14px;
+                       border:1px solid var(--color-border); border-radius:4px;
+                       resize:vertical; background:var(--color-bg); color:var(--color-text);"
+            ></textarea>
+            <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button
+                    id="parse-btn"
+                    class="btn btn-primary"
+                    onclick="parseMail()"
+                >Maili Oku (LLM)</button>
+                <span id="parse-spinner" style="display:none; font-size:14px; color:var(--color-text-muted);">
+                    Isleniyor...
+                </span>
+            </div>
+            <div id="parse-result" style="margin-top:14px; display:none;">
+                <div id="parse-hata" style="color:#c0392b; display:none; margin-bottom:8px; font-size:14px;"></div>
+                <div id="parse-uyari" style="color:#e67e22; display:none; margin-bottom:8px; font-size:14px;"></div>
+                <div id="parse-eksik" style="color:#7f8c8d; display:none; margin-bottom:8px; font-size:13px;"></div>
+                <div id="parse-notlar" style="display:none; margin-bottom:8px; padding:8px 10px; border-radius:6px;
+                     background:#fff7ed; border-left:3px solid #dd5b17; font-size:13px;"></div>
+                <div id="parse-siparis-kutu" style="display:none; background:var(--color-bg-alt,#f8f8f8);
+                     border:1px solid var(--color-border); border-radius:4px; padding:12px;">
+                    <strong style="font-size:14px;">Cikan Siparis:</strong>
+                    <pre id="parse-siparis-json" style="margin:8px 0 0; font-size:13px; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+            </div>
         </div>
-    </div>
+    </details>
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- Yukleniyor overlay -->
 <div id="loading-overlay">
@@ -403,7 +470,9 @@
             hataDiv.style.display = 'block';
             document.getElementById('otonom-detay-link').style.display = 'none';
         } else if (bitti) {
-            document.getElementById('otonom-detay-link').style.display = 'block';
+            // Onay-bekleyen bitis: eski sonuc linkini gosterme (kafa karistirir)
+            document.getElementById('otonom-detay-link').style.display =
+                (data.durum === 'onay_bekliyor') ? 'none' : 'block';
         }
 
             // Agent asamalari timeline — detay balonlari dahil
@@ -514,6 +583,24 @@
                         html += '<div class="agent-detail-balloon agent-explain-balloon" style="margin-top:6px;background:#f0f4ff;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;">';
                         html += '<div style="font-size:11px;font-weight:600;color:#4338ca;margin-bottom:3px;">Neden bu algoritma?</div>';
                         html += '<div style="font-size:12px;color:#374151;line-height:1.5;">' + escapeHtml(detay.aciklama_md) + '</div>';
+                        html += '</div>';
+                    }
+                    // Not-Onayi: siparis notu onay kapisi balonu
+                    if (adName === 'Not-Onayi') {
+                        html += '<div class="agent-detail-balloon" data-notonay="1" style="margin-top:6px;background:#fff7ed;border-left:3px solid #dd5b17;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                        html += '<div style="font-size:11px;font-weight:600;color:#9a3412;margin-bottom:3px;">Insan onay kapisi &mdash; onay verilince siparis OTOMATIK kosulur</div>';
+                        if (detay && detay.bekleyenler) {
+                            detay.bekleyenler.forEach(function(b) {
+                                html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                                html += '<span style="font-weight:600;">' + escapeHtml(b.order_id || '') + '</span>';
+                                (b.notlar || []).forEach(function(n) {
+                                    html += '<div style="font-style:italic;color:#6b7280;padding-left:10px;">&ldquo;' + escapeHtml(n) + '&rdquo;</div>';
+                                });
+                                html += '</div>';
+                            });
+                        }
+                        html += '<a href="/kisit-onay" style="font-size:12px;font-weight:600;color:#dd5b17;">Onay ekranini ac &rarr;</a>';
+                        html += '<span id="notonay-durum" style="font-size:12px;font-weight:600;color:#15803d;margin-left:10px;"></span>';
                         html += '</div>';
                     }
                     // Teklif-Taslagi: onay kapisi balonu
@@ -819,6 +906,19 @@
                     eksikDiv.textContent = 'Eksik alanlar: ' + data.eksik_alanlar.join(', ');
                     eksikDiv.style.display = 'block';
                 }
+                // Not taramasi (Kapi-0): yapistirilan metinde siparis notu var mi?
+                var notlarDiv = document.getElementById('parse-notlar');
+                if (notlarDiv && data.not_adaylari && data.not_adaylari.length > 0) {
+                    var nHtml = '<strong>&#128221; ' + data.not_adaylari.length + ' sipariş notu tespit edildi:</strong>';
+                    data.not_adaylari.forEach(function(n) {
+                        nHtml += '<div style="font-style:italic; padding-left:10px;">&ldquo;' + escapeHtml(n.satir) + '&rdquo; <span style="color:#9a3412;">(' + escapeHtml(n.kaynak) + ')</span></div>';
+                    });
+                    nHtml += '<div style="font-size:12px; color:#6b7280; margin-top:4px;">Not-kısıt onayı, sipariş dosyalarla (STL) yüklendiğinde uygulanır.</div>';
+                    notlarDiv.innerHTML = nHtml;
+                    notlarDiv.style.display = 'block';
+                } else if (notlarDiv) {
+                    notlarDiv.style.display = 'none';
+                }
                 siparisJson.textContent = JSON.stringify(data.siparis, null, 2);
                 siparisKutu.style.display = 'block';
             } else if (data.status === 'llm_yok') {
@@ -837,6 +937,135 @@
             hataDiv.style.display = 'block';
         });
     }
+
+    // ---- Manuel yukleme: dosya sec -> tara -> (not varsa) onay -> kos ----
+    var manDosyalar = [];
+
+    function manDosyaTopla(fileList) {
+        // Klasor seciminde .stl/.txt disindakiler ayiklanir.
+        manDosyalar = [];
+        for (var i = 0; i < fileList.length; i++) {
+            var f = fileList[i];
+            var ad = (f.name || '').toLowerCase();
+            if (ad.endsWith('.stl') || ad.endsWith('.txt')) manDosyalar.push(f);
+        }
+        var stlSay = manDosyalar.filter(function (f) {
+            return f.name.toLowerCase().endsWith('.stl');
+        }).length;
+        var secim = document.getElementById('man-secim');
+        var btn = document.getElementById('man-yukle-btn');
+        if (stlSay > 0) {
+            secim.textContent = stlSay + ' STL secildi'
+                + (manDosyalar.length > stlSay ? ' (+not dosyasi)' : '') + '.';
+            btn.disabled = false;
+        } else {
+            secim.textContent = 'Secimde .stl dosyasi yok.';
+            btn.disabled = true;
+        }
+    }
+
+    document.getElementById('man-dosyalar').addEventListener('change', function () {
+        manDosyaTopla(this.files);
+    });
+    document.getElementById('man-klasor').addEventListener('change', function () {
+        manDosyaTopla(this.files);
+    });
+
+    function manDurumGoster(html) {
+        var d = document.getElementById('man-durum');
+        d.innerHTML = html;
+        d.style.display = 'block';
+    }
+
+    var manPollTimer = null;
+    function manKosuIzle(orderId, onayBekliyor) {
+        if (manPollTimer) clearInterval(manPollTimer);
+        manPollTimer = setInterval(function () {
+            fetch('/api/kosu-durum/' + encodeURIComponent(orderId))
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (v) {
+                    if (!v) return;
+                    if (v.kosu === 'kosuyor') {
+                        manDurumGoster('<strong style="color:#15803d;">✓ Onay alındı</strong> · '
+                            + '<span style="color:#b45309;">⚙ İşleniyor — nesting yapılıyor…</span> '
+                            + '<span style="color:#6b7280;">(süre parça sayısına göre dakikalar alabilir)</span>');
+                    } else if (v.kosu === 'bitti') {
+                        clearInterval(manPollTimer);
+                        manDurumGoster('<strong style="color:#15803d;">✓ Tamamlandı.</strong> '
+                            + '<a href="/sonuc" class="btn btn-primary" style="font-size:12px; padding:5px 12px; margin-left:8px;">Sonucu Gör →</a> '
+                            + '<span style="color:#6b7280;">İş Geçmişi\'ne de kaydedildi.</span>');
+                    } else if (v.kosu && v.kosu.indexOf('hata') === 0) {
+                        clearInterval(manPollTimer);
+                        manDurumGoster('<strong style="color:#c0392b;">Koşu hata verdi.</strong> '
+                            + '<a href="/adet-gir">Adet Girişi</a>\'nden yeniden deneyebilirsiniz.');
+                    }
+                }).catch(function () {});
+        }, 4000);
+    }
+
+    function manuelYukle() {
+        var stlVar = manDosyalar.some(function (f) {
+            return f.name.toLowerCase().endsWith('.stl');
+        });
+        if (!stlVar) return;
+        var btn = document.getElementById('man-yukle-btn');
+        var spin = document.getElementById('man-spinner');
+        btn.disabled = true;
+        spin.style.display = 'inline';
+        manDurumGoster('<span style="color:#b45309;">⚙ Yüklendi, taranıyor — yazılı notlar + parça üstü kabartma etiketler okunuyor…</span> <span style="color:#6b7280;">(büyük setlerde birkaç dakika sürebilir; sayfayı kapatmayın)</span>');
+
+        var fd = new FormData();
+        manDosyalar.forEach(function (f) { fd.append('stl_dosyalar', f, f.name); });
+        fd.append('not_metni', document.getElementById('man-not').value || '');
+        fd.append('musteri', document.getElementById('man-musteri').value || '');
+        fd.append('kosu_modu', (document.getElementById('man-mod') || {}).value || '');
+
+        fetch('/manuel-yukle', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': '{{ csrf_token }}' },
+            body: fd
+        })
+        .then(function (r) {
+            // 413 vb. JSON olmayan yanitlar okunabilir mesaja cevrilir
+            if (r.status === 413) {
+                throw new Error('Dosyalar sunucu yükleme sınırını aşıyor. Sunucuyu güncel sürümle yeniden başlatıp tekrar deneyin.');
+            }
+            return r.json().catch(function () {
+                throw new Error('Sunucu beklenmeyen yanıt verdi (HTTP ' + r.status + ').');
+            });
+        })
+        .then(function (data) {
+            btn.disabled = false;
+            spin.style.display = 'none';
+            if (data.durum === 'onay_bekliyor') {
+                var h = '<strong>&#128221; ' + data.notlar.length + ' sipariş notu bulundu:</strong>';
+                data.notlar.forEach(function (n) {
+                    h += '<div style="font-style:italic; padding-left:10px;">&ldquo;' + escapeHtml(n.satir) + '&rdquo; <span style="color:#9a3412;">(' + escapeHtml(n.kaynak) + ')</span></div>';
+                });
+                h += '<div style="margin-top:8px;"><strong style="color:#b45309;">Onay bekleniyor</strong> — '
+                   + '<a href="/kisit-onay/' + encodeURIComponent(data.order_id) + '" class="btn btn-primary" style="font-size:12px; padding:5px 12px;">İncele ve Onayla →</a> '
+                   + '<span style="color:#6b7280;">Onay verdiğinizde sipariş otomatik koşulacak.</span></div>';
+                manDurumGoster(h);
+                manKosuIzle(data.order_id, true);
+            } else if (data.durum === 'kosuyor') {
+                manDurumGoster('Not bulunmadı · <span style="color:#b45309;">⚙ İşleniyor — nesting yapılıyor…</span>');
+                manKosuIzle(data.order_id, false);
+            } else {
+                manDurumGoster('<strong style="color:#c0392b;">Hata:</strong> ' + escapeHtml(data.mesaj || 'Yükleme başarısız.'));
+            }
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            spin.style.display = 'none';
+            manDurumGoster('<strong style="color:#c0392b;">Ağ hatası:</strong> ' + escapeHtml(String(err)));
+        });
+    }
+
+    // Baloncuktan onay verildiginde otonom panodaki Not-Onayi adimini guncelle
+    window.addEventListener('nfNotOnay', function (e) {
+        var el = document.getElementById('notonay-durum');
+        if (el) el.textContent = '✓ Onay alındı — sipariş koşuluyor…';
+    });
 
     function otonomTaslakOnayla() {
         var btn = document.getElementById('otonom-onayla-btn');

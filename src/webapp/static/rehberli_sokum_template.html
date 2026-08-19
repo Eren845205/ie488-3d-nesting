@@ -138,7 +138,24 @@
     <span class="rozet" id="rozet-clearance">clearance: -</span>
     <span class="rozet vurgu" id="rozet-dondurmeli" style="display:none;">dondurmeli: -</span>
     <span class="rozet" id="rozet-not" style="display:none;"></span>
+    <button type="button" id="kapat-btn" title="Bu sayfayi kapatip uygulamaya don"
+            style="margin-left:auto; font-size:13px; font-weight:700; padding:7px 14px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink); cursor:pointer;">
+      &#10005;&nbsp; Kapat
+    </button>
   </div>
+  <script>
+    // Kapat: sekme script/target=_blank ile acildiysa window.close calisir;
+    // calismazsa (file:// cift-tik) gecmise don; o da yoksa ipucu goster.
+    document.getElementById('kapat-btn').addEventListener('click', function () {
+      window.close();
+      setTimeout(function () {
+        if (window.history.length > 1) { window.history.back(); return; }
+        var b = document.getElementById('kapat-btn');
+        b.textContent = 'Sekmeyi elle kapatin (Ctrl+W)';
+        b.disabled = true;
+      }, 150);
+    });
+  </script>
 
   <div id="sahne-kutu">
     <canvas id="sahne"></canvas>

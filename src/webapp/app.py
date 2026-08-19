@@ -509,6 +509,18 @@ def create_app(
     # Yuklem buyuklugu siniri — yükleme DoS'a karsi (Bulgu 1)
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
 
+    # Manuel STL yuklemesi ISTISNASI (2026-08-16 hoca-demo bulgusu): gercek
+    # siparis STL'leri 5MB'i kat kat asar (plan7 tek dosya 9-191MB olculdu;
+    # 5MB tavani /manuel-yukle'yi 413 ile kiriyordu). Yalniz bu route yuksek
+    # tavana cikar (Flask 3.1 per-request override); DIGER TUM rotalarda
+    # Bulgu-1'in 5MB korumasi aynen surer. Route ayrica login + CSRF +
+    # 10/dk rate-limit arkasinda.
+    _MANUEL_YUKLE_TAVAN = 2 * 1024 * 1024 * 1024  # 2 GB
+    @app.before_request
+    def _manuel_yukle_boyut_istisnasi():
+        if request.path == "/manuel-yukle":
+            request.max_content_length = _MANUEL_YUKLE_TAVAN
+
     # Session cookie guvenlik bayraklari (FIX 4). HTTPONLY: JS erisimini
     # engeller (XSS ile cookie calinmasini zorlastirir). SAMESITE=Lax: CSRF
     # savunmasini destekler. SECURE: varsayilan KAPALI (localhost HTTP demo
@@ -967,7 +979,12 @@ def _register_routes(
                     "asamalar": _asama_ozet,
                     "order_ids": _order_ids,
                     **(ekstra or {}),
-                    **({"_idem_keys": _idem_keys} if kaynak == "otomatik" and _idem_keys else {}),
+                    # 2026-08-18: kaynak kisiti kaldirildi — park-yolu kayitlari
+                    # (mail-not-onay / manuel adet-gir'e dusen mail siparisleri)
+                    # da _idem_keys tasiyabilir; "gecmisten sil -> yeniden
+                    # islensin" onlarda da calissin. Anahtar yoksa alan yok
+                    # (eski kayit sekli bit-ozdes).
+                    **({"_idem_keys": _idem_keys} if _idem_keys else {}),
                 },
                 dedup_key=_dedup_key,
             )
@@ -1185,6 +1202,18 @@ def _register_routes(
     _scan_lock = threading.Lock()
     app.config["OTONOM_SCAN_LOCK"] = _scan_lock
 
+    # P6 (hoca istegi 2026-08-18): kosu ilerleme + hata bildirimi deposu.
+    # Yuzde TAHMINIDIR (gecen/beklenen sure; EWMA ogrenir) — UI "tahmini"
+    # etiketiyle gosterir. Hata kayitlari baloncukta kalici gorunur.
+    from src.webapp.kosu_ilerleme import KosuIlerleme
+    from src.runtime.not_onay import ayar_yaz as _ki_ayar_yaz
+    from src.runtime.not_onay import ayarlari_oku as _ki_ayar_oku
+    _kosu_ilerleme = KosuIlerleme(
+        ayar_oku=_ki_ayar_oku,
+        ayar_yaz=(None if app.config.get("TESTING") else _ki_ayar_yaz),
+    )
+    app.config["KOSU_ILERLEME"] = _kosu_ilerleme
+
     # OTOMATIK MOD POLITIKASI — F5 ASAMA-2 ROLLOUT (kullanici karari 2026-07-05):
     # gozcu artik aile-farkindali OTOMATIK modda kosar (nesting_mode="auto" +
     # auto_family_routing=True); nfv_quality=max KORUNUR (auto'nun NFV dali
@@ -1225,7 +1254,13 @@ def _register_routes(
     )
     app.config["MAIL_POLLER"] = _poller
 
-    # Otomatik baslat: MAIL_POLL_ENABLED=1 (testte baslamaz)
+    # Otomatik baslat: MAIL_POLL_ENABLED=1 (testte baslamaz).
+    # 2026-08-18 karar gecmisi: default-ACIK denendi, Eren AYNI GUN geri
+    # aldirdi ("otomatik acik olmasin") — gozcu operator kontrolunde kalir
+    # (UI /poll/baslat veya env). Sabahki "islemiyor" karisikliginin asil
+    # kokleri ayrica cozuldu: (a) park-yolu kayitlari _idem_keys tasimiyordu
+    # ("gecmisten sil -> yeniden islensin" bosugu), (b) operator gozcunun
+    # kapali oldugunu goremiyordu (gorunur uyari backlog'da).
     _poll_auto = os.environ.get("MAIL_POLL_ENABLED", "").strip().lower()
     if _poll_auto in ("1", "true", "yes", "on") and not app.config.get("TESTING"):
         _poller.start()
@@ -1299,6 +1334,102 @@ def _register_routes(
         out["detail"] = detail
         return jsonify(out), (200 if ok else 503)
 
+    # Not kaynagi -> insan-okur kisa etiket (Eren istegi 2026-08-15:
+    # "nereden aldigini ufaktan belirten bir not olsun").
+    _NOT_KAYNAK_ETIKET = {
+        "govde": "mail gövdesi",
+        "txt": "mail eki (TXT)",
+        "adet_satiri_kuyrugu": "mail adet satırı",
+        "parca_label": "parça üstü kabartma",
+    }
+
+    def _not_kaynak_etiketi(aday):
+        et = _NOT_KAYNAK_ETIKET.get(str(aday.get("kaynak") or ""),
+                                    "mail notu")
+        no = aday.get("satir_no")
+        return f"{et}, satır {no}" if no else et
+
+    def _kisit_ozet_metni(k, adaylar=None):
+        """Kisit onerisini insan-okur tek satira indir (bildirim kutusu).
+
+        adaylar verilirse kaynak_satir eslesmesinden kisa kaynak eki eklenir:
+        '... — kaynak: mail govdesi, satir 3'.
+        """
+        deger = k.get("deger") or {}
+        val = deger.get("yon") if isinstance(deger, dict) else None
+        if val is None:
+            val = json.dumps(deger, ensure_ascii=False)
+        guven = k.get("nihai_guven") or k.get("guven") or "?"
+        metin = (f"{k.get('parca_adi', '?')} icin '{val}' yerlesim istegi "
+                 f"({k.get('tip', '?')}, guven: {guven})")
+        ks = k.get("kaynak_satir")
+        if adaylar and ks:
+            for a in adaylar:
+                if a.get("satir") == ks:
+                    metin += f" — kaynak: {_not_kaynak_etiketi(a)}"
+                    break
+        return metin
+
+    def _yapistirma_notlari(metin):
+        """Yapistirilan mail metninde deterministik not taramasi (Kapi-0)."""
+        try:
+            from src.runtime.note_detector import extract_note_candidates
+            return extract_note_candidates(metin, "", []).get("adaylar") or []
+        except Exception:
+            logger.debug("yapistirma not taramasi atlandi", exc_info=True)
+            return []
+
+    def _not_bildirim_listesi():
+        """Notlu bekleyen siparisleri baloncuk-bildirim listesine indir.
+
+        K-61 revizyon (Eren istegi 2026-08-16): buyuk sayfa-ici kutular
+        yerine sag-alt kose baloncuklari — base.html bu listeyi
+        /api/not-bildirimleri'nden periyodik ceker, onay yine
+        /kisit-onay POST'undan gecer (insan kapisi degismez).
+        """
+        out = []
+        kosular = app.config.get("NOT_KOSU") or {}
+        for m in _pending_store.list():
+            if not m.get("not_adaylari"):
+                continue
+            adaylar = m["not_adaylari"]
+            out.append({
+                "order_id": m.get("order_id"),
+                "customer": m.get("customer", ""),
+                "satirlar": [{"metin": a.get("satir", ""),
+                              "kaynak": _not_kaynak_etiketi(a)}
+                             for a in adaylar],
+                "oneriler": [_kisit_ozet_metni(k, adaylar)
+                             for k in (m.get("kisit_onerileri") or [])],
+                "onayli": bool(m.get("motor_kisitlari")),
+                # Not-onay kapisi: adetleri belli park -> onay sonrasi
+                # OTOMATIK kosulur (baloncuk metni buna gore degisir).
+                "hazir": bool(m.get("not_onay_quantities")),
+                "kosu": kosular.get(m.get("order_id")),
+                "kaynak_tip": m.get("kaynak_tip") or "mail",
+            })
+        return out
+
+    @app.route("/ayar/not-onay", methods=["POST"])
+    def ayar_not_onay():
+        """'Siparis notlari icin onay iste' anahtari (varsayilan ACIK).
+
+        Kapatilirsa notlu siparisler onaya dusmeden kosulur ve kisit hatti
+        golge yerine otomatik moda gecer (yalniz yuksek guvenli istekler).
+        """
+        from src.runtime.not_onay import ayar_yaz
+        ayar_yaz("not_onay_iste", request.form.get("not_onay_iste") == "1")
+        return redirect(url_for("index"))
+
+    @app.route("/api/not-bildirimleri", methods=["GET"])
+    def api_not_bildirimleri():
+        """Baloncuk bildirimleri icin canli veri (base.html poll eder)."""
+        try:
+            return jsonify({"bildirimler": _not_bildirim_listesi()})
+        except Exception:
+            logger.exception("api_not_bildirimleri okunamadi")
+            return jsonify({"bildirimler": []})
+
     @app.route("/", methods=["GET"])
     def index():
         """Ana sayfa: uygulama tanitimi + havuz ozeti + calistir dugmesi."""
@@ -1320,6 +1451,7 @@ def _register_routes(
         capacity = demo.get("capacity", {})
         display_orders = pool_orders if pool_orders else demo.get("orders", [])
 
+        from src.runtime.not_onay import not_onay_iste as _noi
         return render_template(
             "index.html",
             orders=display_orders,
@@ -1329,6 +1461,7 @@ def _register_routes(
             pool_count=pool_count,
             pool_is_custom=bool(pool_orders),
             scenario_type=scenario_type,
+            not_onay_acik=_noi(),
         )
 
     @app.route("/run", methods=["POST"])
@@ -1440,11 +1573,78 @@ def _register_routes(
             llm_ozet_hata=None,
             sohbet=_sohbet,
             used_demo=used_demo,
+            not_istekleri=result.get("not_istekleri"),
             has_portfolio=any(
                 nesting_results.get(b.batch_id, {}).get("portfolio") is not None
                 for b in batches
             ),
         )
+
+    @app.route("/sonuc/rehberli-sokum", methods=["GET"])
+    def sonuc_rehberli_sokum():
+        """SON kosunun REHBERLI SOKUM HTML'i (Eren istegi 2026-08-16).
+
+        /gecmis/<id>/rehberli-sokum ile ayni cikti; fark: kaynak LAST_RESULT
+        (kalici detay degil) ve GLB istek aninda uretilir. Boylece operator
+        /sonuc ekranindan, gecmis kaydina gitmeden sokum rehberini acar.
+        Parti secimi ?bid= ile; verilmezse sokum verisi olan ilk parti.
+        """
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin."}), 404
+        nesting_results = result.get("nesting_results", {}) or {}
+        bid = request.args.get("bid")
+        if bid is None or bid not in nesting_results:
+            bid = next(
+                (b for b, nr in nesting_results.items()
+                 if (nr or {}).get("sokum_sirasi")),
+                next(iter(nesting_results), None),
+            )
+        nr = nesting_results.get(bid) or {}
+        if not nr.get("sokum_sirasi"):
+            return jsonify({
+                "hata": "Bu parti icin sokum sirasi verisi yok — "
+                        "rehberli sokum uretilemez.",
+            }), 404
+        placements = nr.get("placements")
+        voxel_parts = nr.get("voxel_parts")
+        pitch = nr.get("pitch_mm") or nr.get("pitch")
+        if not placements or not voxel_parts or not pitch:
+            return jsonify({
+                "hata": "3D verisi hazir degil — rehberli sokum uretilemez.",
+            }), 404
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene, scene_to_glb_bytes,
+            )
+            # Kalici GLB ile AYNI recete (merge_by_type + r11 dz) — gecmis
+            # kaydindaki rehberli sokum ile birebir ayni sahne.
+            scene = build_result_scene(
+                placements, voxel_parts, pitch=float(pitch),
+                merge_by_type=True, dz=nr.get("r11_dz") or None)
+            glb_bytes = scene_to_glb_bytes(scene)
+        except Exception as exc:
+            logger.warning("sonuc rehberli-sokum GLB hatasi (bid=%s): %s",
+                           bid, exc)
+            return jsonify({"hata": "3D sahne uretilemedi."}), 500
+
+        from src.runtime.rehberli_sokum import build_rehberli_sokum_html
+        from src.runtime.sokum_veri import sokum_veri_hazirla
+
+        # sokum_veri_hazirla "kayit" olarak etiket/zaman bekler — son kosuda
+        # kalici kayit olmayabilir; parti musterisinden turetilir.
+        _musteri = next(
+            (getattr(b, "customer", None) or (b.get("customer")
+             if isinstance(b, dict) else None)
+             for b in (result.get("batches") or [])
+             if (getattr(b, "batch_id", None)
+                 or (b.get("batch_id") if isinstance(b, dict) else None)) == bid),
+            None,
+        )
+        kayit_gibi = {"musteri": _musteri or f"Parti {bid}", "zaman": ""}
+        veri = sokum_veri_hazirla(kayit_gibi, nr)
+        html = build_rehberli_sokum_html(veri, glb_bytes)
+        return Response(html, mimetype="text/html")
 
     @app.route("/ozet", methods=["POST"])
     @_limit("10 per minute")
@@ -2006,6 +2206,13 @@ def _register_routes(
                 "siparis": parse_result.order_dict,
                 "eksik_alanlar": parse_result.eksik_alanlar or [],
                 "injection_suphesi": parse_result.injection_suphesi,
+                # 2026-08-16: yapistirma yolunda da not taramasi (Kapi-0,
+                # mail akisiyla ayni deterministik agent hatti).
+                "not_adaylari": [
+                    {"satir": a.get("satir", ""),
+                     "kaynak": _not_kaynak_etiketi(a)}
+                    for a in (_yapistirma_notlari(mail_text))
+                ],
             }), 200
 
         except Exception as exc:
@@ -2123,6 +2330,7 @@ def _register_routes(
         parsed_orders: List[Dict[str, Any]] = []
         parse_hatalar: List[str] = []
         parse_eksik: List[Dict[str, Any]] = []  # ZIP var, adet yok -> operator girmeli
+        parse_not_onay: List[Dict[str, Any]] = []  # notlu TAM siparis -> onay kapisi
         parse_karantina: List[str] = []
         # FIX 2(a): pipeline BASARISI sonrasi mark edilecek order-ureten mailler
         # (at-least-once: gecici hata olursa mark ETME -> tekrar denenir).
@@ -2216,12 +2424,33 @@ def _register_routes(
                     # notsuz order / kisit_modu=kapali -> LLM'e SIFIR dokunus,
                     # order aynen doner).
                     from src.runtime.note_pipeline import analyze_order_notes
+                    from src.runtime.not_onay import (
+                        efektif_kisit_modu, not_onay_gerekli,
+                        notlu_siparisi_beklet)
                     order = analyze_order_notes(
                         order,
                         llm_components.get("kisit_role"),
                         llm_components.get("kisit_hakem_role"),
-                        mode=llm_components.get("kisit_modu", "kapali"),
+                        mode=efektif_kisit_modu(
+                            llm_components.get("kisit_modu", "kapali")),
                     )
+
+                    # NOT-ONAY KAPISI (2026-08-16, Eren istegi): notlu TAM
+                    # siparis pipeline'a sokulmaz — bekleyen onaya park edilir;
+                    # operator onayi sonrasi OTOMATIK kosulur. Park edilemezse
+                    # (STL okunamadi vb.) siparis normal akista devam eder.
+                    if not_onay_gerekli(order):
+                        _park_id = notlu_siparisi_beklet(
+                            _pending_store, order, mail)
+                        if _park_id:
+                            parse_not_onay.append({
+                                "order_id": _park_id,
+                                "gonderen": mail.gonderen,
+                                "notlar": [a.get("satir", "") for a in
+                                           (order.get("not_adaylari") or [])],
+                            })
+                            _mark_mail(mail)
+                            continue
 
                     parsed_orders.append(order)
                     _order_mails.append(mail)  # mark yalniz pipeline basarisi sonrasi
@@ -2265,9 +2494,11 @@ def _register_routes(
             parse_cikti += f" — {len(parse_hatalar)} basarisiz"
         if parse_eksik:
             parse_cikti += f" — {len(parse_eksik)} eksik bilgi (adet yok)"
+        if parse_not_onay:
+            parse_cikti += f" — {len(parse_not_onay)} not-onayi bekliyor"
         asamalar.append({
             "ad": "Parse",
-            "durum": parse_durum,
+            "durum": parse_durum if (n_parsed or not parse_not_onay) else "tamam",
             "cikti": parse_cikti,
             "detay": {
                 "siparis_sayisi": n_parsed,
@@ -2276,6 +2507,28 @@ def _register_routes(
                 "kaynak_sayac": parse_kaynak_sayac,
             },
         })
+
+        # NOT-ONAY asamasi: park edilen siparisler operatore gorunur sekilde
+        # "onay bekleniyor" der; onay sonrasi kosu otomatik baslar.
+        if parse_not_onay:
+            asamalar.append({
+                "ad": "Not-Onayi",
+                "durum": "bekliyor",
+                "cikti": (f"{len(parse_not_onay)} siparis ONAY BEKLIYOR — "
+                          "siparis notu tespit edildi. Constraint Approval "
+                          "ekranindan (veya sag-alt baloncuktan) onaylayin; "
+                          "onay verilince siparis OTOMATIK kosulacak."),
+                "detay": {"bekleyenler": parse_not_onay},
+            })
+
+        if n_parsed == 0 and parse_not_onay:
+            # Tum siparisler onay kapisinda — bu bir HATA degil, beklenen
+            # insan-onay duragi. Zincir "bekliyor" ozetiyle temiz biter.
+            return {
+                "asamalar": asamalar,
+                "durum": "onay_bekliyor",
+                "onay_bekleyen": parse_not_onay,
+            }, 200
 
         if n_parsed == 0:
             # Eksik-bilgi siparisi varsa operatore net mesaj ver (genel "parse
@@ -3044,6 +3297,22 @@ def _register_routes(
         html = build_rehberli_sokum_html(veri, glb_bytes)
         return Response(html, mimetype="text/html")
 
+    @app.route("/gecmis/arsiv/<dosya>", methods=["GET"])
+    def gecmis_arsiv(dosya: str):
+        """Hoca-paketi ARSIV rehberli-sokum HTML'lerini servis et (salt-okunur).
+
+        Kaynak: data/otonom_gecmis/arsiv/*.html — script-tabanli sampiyon
+        kosularin (gecmis_arsiv_yukle.py) kendi-icinde HTML'leri. Dosya adi
+        siki whitelist regex'inden gecer (yol ayraci/nokta-nokta imkansiz)
+        ve yalnizca arsiv klasoru icinden okunur.
+        """
+        if not _re.fullmatch(r"[A-Za-z0-9_\-]+\.html", dosya or ""):
+            return jsonify({"hata": "Gecersiz arsiv dosyasi adi."}), 404
+        yol = _gecmis_root / "arsiv" / dosya
+        if not yol.is_file():
+            return jsonify({"hata": "Arsiv dosyasi bulunamadi."}), 404
+        return send_file(yol, mimetype="text/html")
+
     @app.route("/gecmis/<kayit_id>/teklif", methods=["POST"])
     @_limit("10 per minute")
     def gecmis_teklif(kayit_id: str):
@@ -3305,49 +3574,76 @@ def _register_routes(
             islenen=request.args.get("islenen"),
         )
 
-    @app.route("/adet-gir/<order_id>", methods=["POST"])
-    def adet_gir_isle(order_id):
-        """Operatorun girdigi adetlerle siparisi yeniden kur + pipeline kos.
+    def _bekleyen_siparisi_kos(order_id, quantities, *, gecmis_kaynak="manuel"):
+        """Bekleyen siparisi kos + P6 ilerleme/hata defteri (sarmalayici).
 
-        Form: her STL icin 'qty_<ad>' alani. Adet>0 olan STL'ler dahil edilir;
-        bos/0 birakilanlar atlanir (operator parcayi cikarmis sayilir). En az bir
-        gecerli adet yoksa hata ile geri doner.
+        Asil is _bekleyen_siparisi_kos_ic'te; burasi yalniz KOSU_ILERLEME
+        yasam dongusunu isler (baslat -> bitti/hata) ki her cikis yolu tek
+        noktadan kayda gecsin.
+        """
+        _meta0 = _pending_store.get(order_id) or {}
+        _n = sum(int(v) for v in (quantities or {}).values() if v)
+        _kosu_ilerleme.baslat(
+            order_id, _n,
+            kaynak=_meta0.get("kaynak_tip") or gecmis_kaynak)
+        # GOZCU PANELI CANLI GORUNUM (2026-08-18 Eren istegi: "is kosarken
+        # dussun, neyi nesting yaptigini da belirtsin"): mail-kaynakli parkli
+        # siparis onay sonrasi kosarken gozcu panelinde "⚙ <siparis> nesting
+        # kosuyor — N parca (dokum)" gorunur (poller'in kendi inflight
+        # alanlari; panel zaten render ediyor). Kosu bitince temizlenir.
+        _p_canli = (app.config.get("MAIL_POLLER")
+                    if _meta0.get("kaynak_tip") == "mail" else None)
+        if _p_canli is not None:
+            try:
+                _dokum = ", ".join(
+                    f"{k}x{v}" for k, v in list((quantities or {}).items())[:6])
+                _p_canli.state.inflight = True
+                _p_canli.state.inflight_detail = (
+                    f"{order_id} nesting kosuyor — {_n} parca ({_dokum})")[:200]
+            except Exception:
+                logger.debug("gozcu canli-gorunum yazilamadi", exc_info=True)
+        try:
+            ok, hata_kodu = _bekleyen_siparisi_kos_ic(
+                order_id, quantities, gecmis_kaynak=gecmis_kaynak)
+        except Exception:
+            _kosu_ilerleme.hata(order_id, "beklenmeyen")
+            raise
+        finally:
+            if _p_canli is not None:
+                try:
+                    _p_canli.state.inflight = False
+                    _p_canli.state.inflight_detail = ""
+                except Exception:
+                    pass
+        if ok:
+            _kosu_ilerleme.bitti(order_id)
+        else:
+            _kosu_ilerleme.hata(order_id, hata_kodu or "bilinmeyen")
+        return ok, hata_kodu
+
+    def _bekleyen_siparisi_kos_ic(order_id, quantities, *, gecmis_kaynak="manuel"):
+        """Bekleyen siparisi verilen adetlerle kur + pipeline kos.
+
+        adet-gir formu VE not-onay sonrasi otomatik devam ORTAK bu makineyi
+        kullanir. Donus: (True, None) basari; (False, hata_kodu) — kodlar
+        adet-gir'in redirect ?hata= degerleriyle ayni.
         """
         from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
         from src.nesting3d.instances.stl_order_loader import build_instance_from_order
 
         meta = _pending_store.get(order_id)
         if meta is None:
-            return redirect(url_for("adet_gir") + "?hata=bulunamadi")
-
-        # Guvenlik (path traversal, Bulgu FIX1): store.get() ic. _safe_id
-        # kullanir ama sanitize edilmis degeri route'a geri dondurmez — ham
-        # order_id asagida dizin adinda kullanilirsa (ozellikle Windows'ta
-        # backslash basename() tarafindan ayrildigindan get() gecebilir ama
-        # ham deger _persist_dir'i proje kokunun disina tasiyabilir) traversal
-        # olusur. Bu noktadan itibaren SADECE sanitize edilmis id kullanilir.
+            return False, "bulunamadi"
         order_id = _safe_order_id(order_id)
 
         stl_map = _pending_store.load_stl_map(order_id)
         if not stl_map:
             _pending_store.remove(order_id)
-            return redirect(url_for("adet_gir") + "?hata=stl_kayip")
+            return False, "stl_kayip"
 
-        # Form adetlerini topla (qty_<ad>); adet>0 olanlar dahil.
-        quantities: Dict[str, int] = {}
-        for name in stl_map:
-            raw = (request.form.get(f"qty_{name}") or "").strip()
-            if not raw:
-                continue
-            try:
-                q = int(float(raw.replace(",", ".")))
-            except ValueError:
-                continue
-            if q > 0:
-                quantities[name] = q
-
+        quantities = {k: v for k, v in (quantities or {}).items() if v > 0}
         if not quantities:
-            return redirect(url_for("adet_gir") + "?hata=adet_yok")
+            return False, "adet_yok"
 
         # Plaka politikasi (cekirdek) — UI plakasi > siparis container > otomatik.
         from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
@@ -3364,14 +3660,14 @@ def _register_routes(
             logger.warning(
                 "adet-gir: guvenlik ihlali (path containment) order_id=%s", order_id
             )
-            return redirect(url_for("adet_gir") + "?hata=guvenlik")
+            return False, "guvenlik"
         res = build_instance_from_order(
             stl_map, quantities,
             container_w_mm=_pw, container_d_mm=_pd, container_h_mm=_ph,
             persist_dir=_persist_dir,
         )
         if not res.instance.parts:
-            return redirect(url_for("adet_gir") + "?hata=parca_yok")
+            return False, "parca_yok"
 
         parts = [
             {
@@ -3401,6 +3697,20 @@ def _register_routes(
         scenario = {**RICH_SCENARIO, "orders": [order]}
         # adet-giris yolu da aile-yonlendirmeli (F5 asama-2 rollout 2026-07-05)
         scenario["auto_family_routing"] = True
+        # Kalite politikasi gozcuyle AYNI (_POLL_SCENARIO: auto + nfv max).
+        # Onceden bu yol nfv_quality tasimiyordu -> ayni siparis parktan devam
+        # ederken sessizce "fast"e dusuyordu (politika tutarsizligi; 2026-08-18
+        # Eren karari: bekleyen-onay devami da max kosar).
+        scenario["nfv_quality"] = "max"
+        # Operator mod tercihi (2026-08-18 Eren istegi): aile-yonlendirme
+        # "auto"da heightmap'e itebiliyor; operator park/manuel yolunda
+        # acikca nfv/heightmap ZORLAYABILIR. Meta'da tercih yoksa davranis
+        # birebir eski (auto + aile-yonlendirme).
+        _kmod = str(meta.get("kosu_modu") or "").strip().lower()
+        if _kmod in ("nfv", "heightmap"):
+            scenario["nesting_mode"] = _kmod
+            scenario["auto_family_routing"] = False
+        _kosu_ilerleme.asama(order_id, "yerlesim hesaplaniyor")
         if _pw and _pd:
             scenario["container"] = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
         else:
@@ -3410,14 +3720,53 @@ def _register_routes(
             result = run_pipeline(scenario)
         except Exception as exc:
             logger.exception("adet-gir: pipeline hatasi: %s", exc)
-            return redirect(url_for("adet_gir") + "?hata=pipeline")
+            return False, "pipeline"
 
+        _kosu_ilerleme.asama(order_id, "sonuc isleniyor")
         result["used_demo"] = False
+        # "Gecmisten sil -> yeniden islensin" (2026-07-05 karari; 2026-08-18
+        # park-yolu bosluk fix'i): mail kaynakli parkli siparislerde mailin
+        # idempotency anahtari meta'dan sonuca tasinir ki gecmis kaydi
+        # _idem_keys tasisin ve gecmis_sil maili yeniden islenebilir kilsin.
+        if meta.get("mail_idem_key"):
+            result["_idem_keys"] = [meta["mail_idem_key"]]
+        # K-61 NOT BILDIRIMI: notlu siparis kosulduysa sonuc ekraninda
+        # "siparis su isteklere gore kosuldu" kutusu icin ozet tasi.
+        if meta.get("not_adaylari"):
+            result["not_istekleri"] = {
+                "order_id": order["order_id"],
+                "satirlar": [{"metin": a.get("satir", ""),
+                              "kaynak": _not_kaynak_etiketi(a)}
+                             for a in meta["not_adaylari"]],
+                "onaylanan": [_kisit_ozet_metni(k, meta["not_adaylari"])
+                              for k in (meta.get("onaylanan_kisitlar") or [])],
+                "uygulandi": bool(meta.get("motor_kisitlari")),
+            }
         app.config["LAST_RESULT"] = result
 
         # R1 #5: operator adet-girisi de kalici gecmise duser (denetim izi) —
         # durum (bitti/kismi/hata) + hata notlari _gecmis_kaydet icinde cozulur.
-        _gecmis_kaydet(result, mod="auto", kaynak="manuel")
+        _kayitlar = _gecmis_kaydet(result, mod="auto", nfv_quality="max",
+                                   kaynak=gecmis_kaynak)
+        # GOZCU PANELI SAYACI (2026-08-18 Eren istegi: "onay verince islendi
+        # diye gozuksun auto kisminda"): mail-kaynakli parkli siparis onay
+        # sonrasi kosulunca gozcu panelinde islenmis sayilir + "Son isin
+        # detaylarini gor" linki bu kosuya isaret eder. Manuel yuklemeler
+        # gozcu isi degildir -> sayaca girmez.
+        if meta.get("kaynak_tip") == "mail":
+            try:
+                _p = app.config.get("MAIL_POLLER")
+                if _p is not None:
+                    _p.state.last_processed = 1
+                    _p.state.total_processed += 1
+                if isinstance(_kayitlar, list) and _kayitlar:
+                    app.config["SON_GECMIS_ID"] = _kayitlar[-1].get("id")
+                    app.config["SON_GECMIS_KAYITLAR"] = [
+                        {"id": k.get("id"), "musteri": k.get("musteri"),
+                         "order_ids": k.get("order_ids") or []}
+                        for k in _kayitlar if k.get("id")]
+            except Exception:
+                logger.debug("gozcu sayaci guncellenemedi", exc_info=True)
 
         # R1 #1 (CRITICAL): bekleyen kayit + STL byte'lari YALNIZ gecerli
         # nesting sonucu varsa silinir. Sifir-sonucta pending KORUNUR —
@@ -3430,11 +3779,233 @@ def _register_routes(
                 "adet-gir: nesting sonuc uretmedi — bekleyen siparis %s "
                 "KORUNDU (silinmedi), operator yeniden deneyebilir.", order_id,
             )
-            return redirect(url_for("adet_gir") + "?hata=nesting")
+            return False, "nesting"
 
-        # Basariyla islendi -> bekleyen kayidi temizle, sonuc ekranina git.
+        # Basariyla islendi -> bekleyen kayidi temizle.
         _pending_store.remove(order_id)
+        return True, None
+
+    @app.route("/adet-gir/<order_id>", methods=["POST"])
+    def adet_gir_isle(order_id):
+        """Operatorun girdigi adetlerle siparisi yeniden kur + pipeline kos.
+
+        Form: her STL icin 'qty_<ad>' alani. Adet>0 olan STL'ler dahil edilir;
+        bos/0 birakilanlar atlanir (operator parcayi cikarmis sayilir). En az bir
+        gecerli adet yoksa hata ile geri doner. Kosu makinesi ortak:
+        `_bekleyen_siparisi_kos` (not-onay otomatik devam da ayni yolu kullanir).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("adet_gir") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        stl_map = _pending_store.load_stl_map(order_id)
+        quantities: Dict[str, int] = {}
+        for name in stl_map:
+            raw = (request.form.get(f"qty_{name}") or "").strip()
+            if not raw:
+                continue
+            try:
+                q = int(float(raw.replace(",", ".")))
+            except ValueError:
+                continue
+            if q > 0:
+                quantities[name] = q
+
+        ok, hata = _bekleyen_siparisi_kos(order_id, quantities)
+        if not ok:
+            return redirect(url_for("adet_gir") + f"?hata={hata}")
         return redirect(url_for("sonuc"))
+
+    def _not_onay_devam(order_id):
+        """Onay sonrasi OTOMATIK devam: park edilen siparisi arka planda kos.
+
+        Durum app.config["NOT_KOSU"] uzerinden yuzeye cikar (baloncuk +
+        /kisit-onay + manuel panel poll eder): kosuyor -> bitti | hata:<kod>.
+        """
+        durumlar = app.config.setdefault("NOT_KOSU", {})
+        durumlar[order_id] = "kosuyor"
+        try:
+            meta = _pending_store.get(order_id) or {}
+            q = {k: int(v) for k, v in
+                 (meta.get("not_onay_quantities") or {}).items()}
+            kaynak = ("manuel" if meta.get("kaynak_tip") == "manuel"
+                      else "mail-not-onay")
+            ok, hata = _bekleyen_siparisi_kos(
+                order_id, q, gecmis_kaynak=kaynak)
+            durumlar[order_id] = "bitti" if ok else f"hata:{hata}"
+            logger.info("not-onay devam: %s -> %s", order_id, durumlar[order_id])
+        except Exception:
+            logger.exception("not-onay devam: beklenmeyen hata (%s)", order_id)
+            durumlar[order_id] = "hata"
+
+    @app.route("/manuel-yukle", methods=["POST"])
+    @_limit("10 per minute")
+    def manuel_yukle():
+        """Manuel siparis yukleme: bilgisayardan STL sec (+ opsiyonel not).
+
+        Akis (Eren istegi 2026-08-16, mail akisiyla AYNI agent taramasi):
+        dosyalar alinir -> adetler dosya adi/STL icinden cikarilir (yoksa 1)
+        -> notlar taranir (metin Kapi-0 + .txt eki + parca-ustu kabartma) ->
+        bekleyen depoya park. Not VARSA operator onayina duser (onay sonrasi
+        OTOMATIK kosulur); not YOKSA dogrudan arka planda kosulur. Canli
+        durum /api/kosu-durum'dan izlenir.
+        """
+        import hashlib as _hl
+
+        dosyalar = request.files.getlist("stl_dosyalar")
+        stl_map: Dict[str, bytes] = {}
+        txt_metin = ""
+        for f in dosyalar:
+            ad = Path(f.filename or "").name
+            if not ad:
+                continue
+            if ad.lower().endswith(".stl"):
+                # Anahtar STEM olmali (mail akisiyla ayni sozlesme):
+                # PendingOrderStore.add() ada ".stl" ekleyerek yazar — uzantili
+                # anahtar cift-uzantili dosya ("x.stl.stl") uretiyor ve
+                # load_stl_map anahtari adetlerle eslesmeyip kosuyu
+                # "parca_yok" ile dusuruyordu (2026-08-16 plan7 canli bulgusu).
+                stl_map[Path(ad).stem] = f.read()
+            elif ad.lower().endswith(".txt") and not txt_metin:
+                try:
+                    txt_metin = f.read().decode("utf-8", errors="replace")
+                except Exception:
+                    txt_metin = ""
+        if not stl_map:
+            return jsonify({"durum": "hata",
+                            "mesaj": "Hic .stl dosyasi secilmedi."}), 400
+
+        not_metni = (request.form.get("not_metni") or "").strip()
+        musteri = (request.form.get("musteri") or "").strip() or "Manuel"
+
+        # Adetler: dosya adi / STL binary-header (mail yoluyla ayni kurallar);
+        # cikarilamayan 1 kabul edilir (operator kisit-onay/adet-gir'de duzeltir).
+        from src.runtime.mail_ingest import _qty_from_stl_name_and_bytes
+        quantities: Dict[str, int] = {}
+        for nm, blob in stl_map.items():
+            try:
+                q, _src, celiski = _qty_from_stl_name_and_bytes(nm, blob)
+            except Exception:
+                q, celiski = None, None
+            quantities[Path(nm).stem] = int(q) if (q and not celiski) else 1
+
+        # .txt eki / not metnindeki "parca N adet" satirlari dosya-adi
+        # cikarimini EZER — mail akisiyla ayni parser (plan7 gercek deseni:
+        # STL adlari adetsiz, adetler ayri txt listesinde; 2026-08-16).
+        try:
+            from src.runtime.quantity_text_parser import parse_quantities
+            _metin_adet = parse_quantities(
+                "\n".join(t for t in (txt_metin, not_metni) if t))
+        except Exception:
+            logger.warning("manuel-yukle: metin adet parse atlandi",
+                           exc_info=True)
+            _metin_adet = {}
+        if _metin_adet:
+            _stems = {st.casefold(): st for st in quantities}
+            for ad, q in _metin_adet.items():
+                st = _stems.get(str(ad).casefold())
+                if st and int(q) > 0:
+                    quantities[st] = int(q)
+
+        # NOT TARAMASI — mail akisiyla ayni agent hatti:
+        # (1) Kapi-0 deterministik metin taramasi (not metni + .txt dosyasi)
+        from src.runtime.note_detector import extract_note_candidates
+        _scan = extract_note_candidates(
+            not_metni, txt_metin, sorted(stl_map))
+        adaylar = list(_scan.get("adaylar") or [])
+        # (2) parca-ustu kabartma (kanal-3; config-anahtarli, hata sessiz)
+        try:
+            from src.runtime.kabartma import kabartma_acik, kabartma_not_adaylari
+            if kabartma_acik():
+                adaylar += kabartma_not_adaylari(stl_map)
+        except Exception:
+            logger.warning("manuel-yukle: kabartma taramasi atlandi",
+                           exc_info=True)
+
+        _imza = "|".join(f"{nm}:{len(stl_map[nm])}" for nm in sorted(stl_map))
+        _hex = _hl.sha256(_imza.encode("utf-8")).hexdigest()[:8].upper()
+        order_id = f"MAN-{_hex}"
+
+        from src.runtime.not_onay import NOT_ONAY_REASON
+        try:
+            park_id = _pending_store.add(
+                order_id=order_id,
+                customer=musteri,
+                sender="manuel-yukleme",
+                deadline="",
+                priority_class=2,
+                konu="Manuel yukleme",
+                stl_map=stl_map,
+                review_reason=NOT_ONAY_REASON if adaylar else "manuel_yukleme",
+                not_adaylari=adaylar or None,
+                govde_metni=not_metni or None,
+            )
+            # Operator mod tercihi (opsiyonel; bos = auto/aile-yonlendirme)
+            _kmod = (request.form.get("kosu_modu") or "").strip().lower()
+            _pending_store.update_meta(
+                park_id,
+                not_onay_quantities=quantities,
+                kaynak_tip="manuel",
+                kosu_modu=_kmod if _kmod in ("nfv", "heightmap") else None,
+            )
+        except Exception as exc:
+            logger.exception("manuel-yukle: kayit hatasi: %s", exc)
+            return jsonify({"durum": "hata",
+                            "mesaj": "Siparis kaydedilemedi."}), 500
+
+        if adaylar:
+            # Onay kapisi: baloncuk + Constraint Approval'a duser.
+            return jsonify({
+                "durum": "onay_bekliyor",
+                "order_id": park_id,
+                "stl_sayisi": len(stl_map),
+                "notlar": [{"satir": a.get("satir", ""),
+                            "kaynak": _not_kaynak_etiketi(a)}
+                           for a in adaylar],
+            })
+
+        # Not yok -> dogrudan arka planda kos (durum canli izlenir).
+        import threading
+        threading.Thread(
+            target=_not_onay_devam, args=(park_id,), daemon=True,
+        ).start()
+        return jsonify({
+            "durum": "kosuyor",
+            "order_id": park_id,
+            "stl_sayisi": len(stl_map),
+            "notlar": [],
+        })
+
+    @app.route("/api/kosu-durum/<order_id>", methods=["GET"])
+    def api_kosu_durum(order_id):
+        """Onay-sonrasi otomatik kosunun canli durumu (UI poll eder)."""
+        order_id = _safe_order_id(order_id)
+        durum = (app.config.get("NOT_KOSU") or {}).get(order_id)
+        bekliyor = _pending_store.get(order_id) is not None
+        return jsonify({"order_id": order_id, "kosu": durum,
+                        "bekliyor": bekliyor})
+
+    @app.route("/api/kosu-ilerleme", methods=["GET"])
+    def api_kosu_ilerleme():
+        """P6: aktif kosularin tahmini ilerlemesi + son kosu hatalari.
+
+        base.html baloncugu periyodik yoklar: aktifler ilerleme cubugu,
+        hatalar kalici kirmizi baloncuk olur. Gozcu (poller) hatasi da
+        buradan yuzeye cikar (mail tarafi patlarsa da operator gorur).
+        """
+        veri = {
+            "aktif": _kosu_ilerleme.aktifler(),
+            "hatalar": _kosu_ilerleme.son_hatalar(),
+        }
+        try:
+            _p = app.config.get("MAIL_POLLER")
+            _le = _p.state.snapshot().get("last_error") if _p else None
+            if _le:
+                veri["gozcu_hatasi"] = str(_le)[:300]
+        except Exception:
+            pass
+        return jsonify(veri)
 
     # -----------------------------------------------------------------------
     # K-56g Kisit Onayi: siparis notlarindan uretilen kisit onerilerinin
@@ -3446,16 +4017,31 @@ def _register_routes(
 
     @app.route("/kisit-onay", methods=["GET"])
     def kisit_onay_liste():
-        """Notlu bekleyen siparisleri listele."""
+        """Notlu bekleyen siparisleri listele (otomatik/manuel AYRIK).
+
+        Otomatik grup = mail akisinin not-onay parki (adetler belli; onay
+        sonrasi OTOMATIK kosulur). Manuel grup = adet bekleyen / elle
+        yuklenen isler (onay sonrasi Adet Girisi'nden kosulur).
+        """
+        from src.runtime.not_onay import NOT_ONAY_REASON
         bekleyenler = [m for m in _pending_store.list()
                        if m.get("not_adaylari")]
+        oto = [m for m in bekleyenler
+               if m.get("review_reason") == NOT_ONAY_REASON
+               and m.get("kaynak_tip") != "manuel"]
+        manuel = [m for m in bekleyenler if m not in oto]
         return render_template(
             "kisit_onay.html",
             notlu_bekleyenler=bekleyenler,
+            oto_bekleyenler=oto,
+            manuel_bekleyenler=manuel,
+            kosular=app.config.get("NOT_KOSU") or {},
             detay=None, oneriler=None, analiz_hata=None,
             n_ornekleme=0,
             hata=request.args.get("hata"),
             kaydedildi=request.args.get("kaydedildi"),
+            kosuluyor=request.args.get("kosuluyor"),
+            silindi=request.args.get("silindi"),
         )
 
     @app.route("/kisit-onay/<order_id>", methods=["GET"])
@@ -3470,48 +4056,83 @@ def _register_routes(
             return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
         order_id = _safe_order_id(order_id)
 
-        oneriler = None
-        analiz_hata = None
-        n_orn = 0
-        kisit_role = (llm_components or {}).get("kisit_role")
-        if kisit_role is None:
-            analiz_hata = "LLM aktif degil (Ollama kapali olabilir)"
-        else:
-            try:
-                from src.runtime.note_pipeline import analyze_order_notes
-                sahte_order = {
-                    "order_id": order_id,
-                    "not_adaylari": meta["not_adaylari"],
-                    "stl_names": meta.get("stl_names") or [],
-                    "container": meta.get("container"),
-                }
-                sahte_order = analyze_order_notes(
-                    sahte_order, kisit_role,
-                    (llm_components or {}).get("kisit_hakem_role"),
-                    mode="golge",  # oneri uretimi — uygulama karari operatorde
-                )
-                na = sahte_order.get("not_analizi") or {}
-                if na.get("hata"):
-                    analiz_hata = na["hata"]
-                elif na.get("injection_suphesi"):
-                    analiz_hata = ("injection suphesi — oneriler guvenilmez, "
-                                   "maili elle inceleyin")
-                else:
-                    oneriler = na.get("kisitlar") or []
-                    n_orn = na.get("n_ornekleme", 0)
-                    _pending_store.update_meta(
-                        order_id, kisit_onerileri=oneriler)
-            except Exception as exc:
-                logger.exception("kisit-onay: analiz hatasi: %s", exc)
-                analiz_hata = str(exc)
-
+        # 2026-08-16 "Incele bug" fix: LLM analizi burada SENKRON kosuluyordu
+        # (olculen 15-60sn) — baloncuktan tiklayan operator "hicbir sey
+        # olmuyor" saniyordu. Artik sayfa ANINDA acilir; analiz yoksa sablon
+        # "analiz suruyor" gosterip /api/kisit-analiz'i cagirir, sonuc meta'ya
+        # kaydedildigi icin reload deterministik formu basar.
+        analiz_bekliyor = "kisit_onerileri" not in meta
+        oneriler = meta.get("kisit_onerileri")
         return render_template(
             "kisit_onay.html",
             notlu_bekleyenler=None,
-            detay=meta, oneriler=oneriler, analiz_hata=analiz_hata,
-            n_ornekleme=n_orn,
+            oto_bekleyenler=None, manuel_bekleyenler=None,
+            kosular={}, kosuluyor=None,
+            detay=meta, oneriler=oneriler, analiz_hata=None,
+            analiz_bekliyor=analiz_bekliyor,
+            n_ornekleme=meta.get("kisit_n_ornekleme", 0),
             hata=None, kaydedildi=None,
         )
+
+    @app.route("/api/kisit-analiz/<order_id>", methods=["GET"])
+    @_limit("10 per minute")
+    def kisit_analiz_api(order_id):
+        """Notlari LLM ile analiz et, onerileri meta'ya kaydet (JSON).
+
+        kisit_onay_detay'in eski senkron govdesi — sayfa acilisini bloklamasin
+        diye API'ye tasindi (2026-08-16). Basarili analizde kisit_onerileri +
+        kisit_n_ornekleme meta'ya yazilir; POST tarafi ayni listeden calisir.
+        ?force=1 mevcut onerileri yeniden uretir.
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None or not meta.get("not_adaylari"):
+            return jsonify({"analiz_hata": "Siparis bulunamadi."}), 404
+        order_id = _safe_order_id(order_id)
+        if "kisit_onerileri" in meta and request.args.get("force") != "1":
+            return jsonify({
+                "oneriler": meta.get("kisit_onerileri") or [],
+                "analiz_hata": None,
+                "n_ornekleme": meta.get("kisit_n_ornekleme", 0),
+            }), 200
+
+        kisit_role = (llm_components or {}).get("kisit_role")
+        if kisit_role is None:
+            return jsonify({
+                "analiz_hata": "LLM aktif degil (Ollama kapali olabilir)",
+            }), 200
+        try:
+            from src.runtime.note_pipeline import analyze_order_notes
+            sahte_order = {
+                "order_id": order_id,
+                "not_adaylari": meta["not_adaylari"],
+                "stl_names": meta.get("stl_names") or [],
+                "container": meta.get("container"),
+            }
+            sahte_order = analyze_order_notes(
+                sahte_order, kisit_role,
+                (llm_components or {}).get("kisit_hakem_role"),
+                mode="golge",  # oneri uretimi — uygulama karari operatorde
+            )
+            na = sahte_order.get("not_analizi") or {}
+            if na.get("hata"):
+                return jsonify({"analiz_hata": na["hata"]}), 200
+            if na.get("injection_suphesi"):
+                return jsonify({
+                    "analiz_hata": ("injection suphesi — oneriler guvenilmez, "
+                                    "maili elle inceleyin"),
+                }), 200
+            oneriler = na.get("kisitlar") or []
+            n_orn = na.get("n_ornekleme", 0)
+            _pending_store.update_meta(
+                order_id, kisit_onerileri=oneriler,
+                kisit_n_ornekleme=n_orn)
+            return jsonify({
+                "oneriler": oneriler, "analiz_hata": None,
+                "n_ornekleme": n_orn,
+            }), 200
+        except Exception as exc:
+            logger.exception("kisit-analiz: analiz hatasi: %s", exc)
+            return jsonify({"analiz_hata": str(exc)}), 200
 
     @app.route("/kisit-onay/<order_id>", methods=["POST"])
     def kisit_onay_isle(order_id):
@@ -3538,16 +4159,53 @@ def _register_routes(
             plate_w_mm=cont.get("width_mm"), plate_d_mm=cont.get("depth_mm"),
             n_orientations=URETIM_N_ORIENTATIONS,
         )
+        # Operator mod tercihi (opsiyonel; bos/auto = aile-yonlendirme)
+        _kmod = (request.form.get("kosu_modu") or "").strip().lower()
         _pending_store.update_meta(
             order_id,
             motor_kisitlari=derlenen.motor_kisitlari or None,
             onaylanan_kisitlar=secili or None,
+            kosu_modu=_kmod if _kmod in ("nfv", "heightmap") else None,
         )
         logger.info(
             "kisit-onay: %s icin %d kisit onaylandi (motor: %s)",
             order_id, len(secili),
             list((derlenen.motor_kisitlari or {}).keys()) or "yok")
+
+        # NOT-ONAY DEVAMI (2026-08-16): mail akisinin park ettigi siparis
+        # (adetleri belli) onay aninda OTOMATIK kosulur — operator ekstra
+        # adim atmaz; durum baloncukta + listede "kosuluyor" olarak gorunur.
+        if meta.get("not_onay_quantities"):
+            import threading
+            threading.Thread(
+                target=_not_onay_devam, args=(order_id,), daemon=True,
+            ).start()
+            return redirect(url_for("kisit_onay_liste")
+                            + f"?kaydedildi=1&kosuluyor={order_id}")
         return redirect(url_for("kisit_onay_liste") + "?kaydedildi=1")
+
+    @app.route("/kisit-onay/<order_id>/sil", methods=["POST"])
+    def kisit_onay_sil(order_id):
+        """Siparisin ONAY BEKLEME durumunu kaldir (yalniz kuyruktan cikar).
+
+        SADECE not/oneri alanlari meta'dan dusurulur — siparisin kendisi,
+        STL'leri ve varsa onaylanmis kisitlari AYNEN KALIR (siparis
+        silme isi /gecmis ve /siparisler'de; burasi degil). Liste filtresi
+        not_adaylari'na baktigi icin kayit bu sayfadan kaybolur; siparis
+        Adet Girisi'nden normal islenebilir.
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+        _pending_store.update_meta(
+            order_id,
+            not_adaylari=None, kisit_onerileri=None,
+            kisit_n_ornekleme=None, govde_metni=None,
+        )
+        logger.info("kisit-onay: %s onay bekleme kuyrugundan cikarildi "
+                    "(siparis + STL'ler duruyor)", order_id)
+        return redirect(url_for("kisit_onay_liste") + "?silindi=1")
 
     # -----------------------------------------------------------------------
     # Oncelik Plani rotasi (deterministik, LLM gerektirmez)
@@ -3610,6 +4268,25 @@ def _register_routes(
     # form rotalaridir. flask-wtf CSRF token eklenmesi template degisikliği
     # gerektirir ve localhost demo'yu kırabilir.
     # ERTELENDI: localhost demo — SaaS fazinda flask-wtf CSRFProtect ekle.
+
+    @app.route("/demo-not-yukle", methods=["POST"])
+    def demo_not_yukle():
+        """Tek tikla NOTLU demo siparislerini yukle (hoca-demo vitrini).
+
+        scripts.demo_not_ornegi_seed.tohumla_hepsi -> bekleyen depoya iki
+        notlu siparis (basit 'dik' notu + hocanin gercek kupon notu);
+        ana sayfa bildirim kutusu aninda dolar. Idempotent (ustune yazar).
+        """
+        try:
+            from scripts.demo_not_ornegi_seed import tohumla_hepsi
+            eklenen = tohumla_hepsi(_pending_store)
+            adlar = ", ".join(sid for sid, _n in eklenen)
+            logger.info("demo-not-yukle: %s tohumlandi", adlar)
+            return redirect(url_for("index"))
+        except Exception as exc:
+            logger.exception("demo-not-yukle hatasi: %s", exc)
+            return redirect(url_for("siparisler",
+                                    errors=f"Demo yuklenemedi: {exc}"))
 
     @app.route("/siparisler", methods=["GET"])
     def siparisler():

@@ -1,12 +1,29 @@
 {% extends "base.html" %}
 
-{% block title %}Siparis Havuzu &mdash; Konteyner Nesting Sistemi{% endblock %}
+{% block title %}Order Pool &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 
 <a href="/" class="back-link">&larr; Ana Sayfaya Don</a>
 
-<h2 class="section-heading">Siparis Havuzu</h2>
+<h2 class="section-heading">Order Pool</h2>
+
+<div style="margin-bottom:14px; padding:12px 14px; border-radius:8px;
+            background:#f0f7ff; border:1px solid #7aa7d9; font-size:14px;
+            display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+    <form method="POST" action="/demo-not-yukle" style="margin:0;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary">
+            &#128233; Notlu Demo Sipari&#351;lerini Y&#252;kle
+        </button>
+    </form>
+    <span style="color:#444;">
+        Tek t&#305;kla iki notlu &#246;rnek sipari&#351; gelir (basit
+        &ldquo;dik bas&#305;ls&#305;n&rdquo; notu + ger&#231;ek kupon notu)
+        &mdash; sistem notlar&#305; okur, ana sayfada bildirim &#231;&#305;kar,
+        istekler onaya d&#252;&#351;er.
+    </span>
+</div>
 
 <!-- Bilgi / hata mesajlari -->
 {% if info %}

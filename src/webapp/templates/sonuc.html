@@ -1,17 +1,50 @@
 {% extends "base.html" %}
 
-{% block title %}Sonuclar &mdash; Konteyner Nesting Sistemi{% endblock %}
+{% block title %}Results &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 
 <a href="/" class="back-link">&larr; Ana Sayfaya Don</a>
 
-<h2 class="section-heading">Pipeline Sonuclari</h2>
+<h2 class="section-heading">Pipeline Results</h2>
 
 {% if used_demo %}
 <div class="alert alert-warning" style="margin-bottom: 16px;">
     Demo senaryosu kullanildi &mdash; kendi siparislerinizi
     <a href="/siparisler">/siparisler</a> ekranindan girin.
+</div>
+{% endif %}
+
+{% if not_istekleri %}
+<div style="margin-bottom:16px; padding:14px 16px; border-radius:8px;
+            background:#f0fff2; border:1px solid #7dbf8a;
+            border-left:5px solid #2e9e4f; font-size:14px;">
+    <div style="font-size:15px; margin-bottom:6px;">
+        <strong>&#128221; Sipari&#351; notlar&#305; dikkate al&#305;nd&#305;</strong>
+        &mdash; {{ not_istekleri.order_id }}
+    </div>
+    <div style="color:#444; margin-bottom:8px;">
+        {% for s in not_istekleri.satirlar %}
+        <div style="padding-left:10px; border-left:2px solid #c5e8cd; margin:3px 0;">
+            &ldquo;{{ s.metin }}&rdquo;
+            <span style="color:#8aa592; font-size:12px;">({{ s.kaynak }})</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% if not_istekleri.uygulandi and not_istekleri.onaylanan %}
+    <div>
+        <strong>Bu ko&#351;u, operat&#246;r&#252;n onaylad&#305;&#287;&#305; &#351;u isteklere g&#246;re yap&#305;ld&#305;:</strong>
+        <ul style="margin:4px 0 4px 18px;">
+            {% for o in not_istekleri.onaylanan %}<li>{{ o }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div style="color:#555;">
+        Notlardan &#231;&#305;kar&#305;lan istekler bu ko&#351;uda uygulanmad&#305;
+        (operat&#246;r onay&#305; verilmedi) &mdash; analiz kayd&#305; raporun
+        &ldquo;Not Analizi&rdquo; b&#246;l&#252;m&#252;nde.
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -225,6 +258,11 @@
         <div class="gd-viewer-bar">
             <span class="gd-viewer-tag">{{ nr.get('n_parts', 0) }} parça &middot; {{ nr.get('pitch_mm', '?') }} mm voxel</span>
             <span style="display:flex; gap:8px; pointer-events:auto;">
+                {% if nr.get('sokum_sirasi') %}
+                <a class="gd-fs-btn" style="text-decoration:none;" href="/sonuc/rehberli-sokum?bid={{ batch.batch_id }}" target="_blank" rel="noopener" title="Bu yerleşime özel adım adım rehberli söküm planı (3D, yeni sekme)">
+                    &#128203; Söküm Planı
+                </a>
+                {% endif %}
                 <button type="button" class="gd-fs-btn" data-bid="{{ batch.batch_id }}" title="Tam ekranda incele — çıkmak için ESC">
                     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
                     Tam ekranda incele

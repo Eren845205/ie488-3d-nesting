@@ -657,8 +657,20 @@ footer.site-footer {
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes riseIn {
     from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
+    /* Son kare transform:none olmali (translateY(0) DEGIL): fill-mode "both"
+       son kareyi kalici uyguladigindan kartta transform kaliyordu ve
+       transform'lu ata, icindeki position:fixed tam-ekran viewer'i karta
+       HAPSEDIYORDU (2026-08-17 "yerlesim tam ekranda gozukmuyor" bulgusu).
+       Gorsel fark yok — translateY(0) == none. */
+    to   { opacity: 1; transform: none; }
 }
+
+/* Emniyet kemeri: tam-ekran acikken kart animasyonu/transformu her kosulda
+   etkisiz — fixed overlay viewport'a oturur (yukaridaki fix'in savunmasi). */
+body.gd-fs-open .card { animation: none; transform: none; }
+/* Tam ekranda ust menu gizlenir: sticky header overlay'in ustunde cizilip
+   "X Kapat" dugmesini ortuyordu; gercek tam-ekran deneyimi menusuzdur. */
+body.gd-fs-open .site-header { display: none; }
 
 /* === Forge Pipeline — asenkron otonom CANLI ilerleme paneli ===
    Konsept: sicak-metal akis hatti. Calisirken durum seridi amber nabzar +
@@ -939,3 +951,125 @@ body.gd-fs-open { overflow: hidden; }
     font-family: inherit; position: absolute; top: 14px; right: 16px; z-index: 4;
 }
 .gd-fs-exit:hover { background: rgba(30, 41, 59, 0.9); }
+
+/* --- K-61 not baloncuklari (2026-08-16) ----------------------------------
+   Siparis notu bildirimi: sag-alt kose baloncuk yigini. Koyu "forge" paneli
+   acik kagit zemine kontrast verir; amber ray + nabiz noktasi canli-vardiya
+   hissi tasir. z-index 950: tam-ekran viewer (1000) ustte kalir. */
+.nf-toast-kok {
+    position: fixed; right: 18px; bottom: 18px; z-index: 950;
+    display: flex; flex-direction: column-reverse; gap: 10px;
+    width: min(392px, calc(100vw - 24px));
+    pointer-events: none;
+}
+.nf-toast {
+    pointer-events: auto;
+    background:
+        radial-gradient(120% 90% at 100% 0%, rgba(221, 91, 23, 0.10), transparent 55%),
+        linear-gradient(180deg, #1c2029 0%, #15181e 100%);
+    color: #e8e6df;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-left: 3px solid var(--accent);
+    border-radius: 9px;
+    padding: 12px 14px;
+    box-shadow: 0 14px 34px rgba(21, 24, 30, 0.42), 0 1px 0 rgba(221, 91, 23, 0.30);
+    animation: nfGel .5s cubic-bezier(.2, 1.05, .5, 1) both;
+}
+@keyframes nfGel {
+    from { opacity: 0; transform: translateX(30px) scale(.965); }
+    to   { opacity: 1; transform: none; }
+}
+.nf-toast.nf-gidiyor { animation: nfGit .3s ease both; }
+@keyframes nfGit { to { opacity: 0; transform: translateX(26px); } }
+
+/* P6 (2026-08-18): kosu ilerleme + hata baloncuklari */
+.nf-toast-hata { border-left-color: #d84343; }
+.nf-toast-hata .nf-toast-etiket { color: #ff7b6e; }
+.nf-kosu-asama { font-size: 12.5px; color: #cfd4dc; margin: 2px 0 8px; }
+.nf-kosu-alt { font-family: var(--font-mono); font-size: 11px; color: #8b93a2; margin-top: 6px; }
+.nf-ilerleme-cubuk {
+    height: 7px; border-radius: 4px; overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.nf-ilerleme-dolgu {
+    height: 100%; width: 2%; border-radius: 4px;
+    background: linear-gradient(90deg, #b8511b, var(--accent, #dd5b17));
+    transition: width .8s ease;
+}
+.nf-ilerleme-dolgu.nf-dolgu-tamam { background: linear-gradient(90deg, #1c7e43, #22a755); }
+
+.nf-toast-ust { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.nf-toast-nabiz {
+    flex: none; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); animation: forgePulse 2.2s ease-out infinite;
+}
+.nf-toast-etiket {
+    font-family: "Archivo", sans-serif; font-weight: 800; font-size: 11px;
+    letter-spacing: 0.15em; color: #ff9a5c; white-space: nowrap;
+}
+.nf-toast-id {
+    font-family: var(--font-mono); font-size: 12px; color: #a7b0bd;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.nf-toast-kapat {
+    margin-left: auto; flex: none; background: none; border: 0; cursor: pointer;
+    color: #7d8595; font-size: 17px; line-height: 1; padding: 2px 6px;
+    border-radius: 5px; font-family: inherit;
+}
+.nf-toast-kapat:hover { color: #fff; background: rgba(255, 255, 255, 0.09); }
+
+.nf-toast-metin {
+    font-size: 13px; font-style: italic; color: #d8d5cc; line-height: 1.5;
+    border-left: 2px solid rgba(221, 91, 23, 0.45);
+    padding-left: 9px; margin-bottom: 4px;
+}
+.nf-toast-kaynak {
+    font-family: var(--font-mono); font-size: 11px; color: #7d8595;
+    margin-bottom: 9px; letter-spacing: 0.02em;
+}
+.nf-toast-istekler {
+    list-style: none; margin: 0 0 10px; padding: 7px 9px;
+    background: rgba(255, 255, 255, 0.045); border-radius: 6px;
+    font-size: 12.5px;
+}
+.nf-toast-istekler li { position: relative; padding: 2px 0 2px 15px; color: #ccd3dd; line-height: 1.45; }
+.nf-toast-istekler li::before { content: "▸"; position: absolute; left: 1px; color: var(--accent); }
+
+.nf-toast-eylem { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.nf-toast-btn {
+    display: inline-block; background: var(--accent); color: #fff;
+    border: 0; border-radius: 6px; cursor: pointer; text-decoration: none;
+    font-family: inherit; font-size: 12.5px; font-weight: 700;
+    padding: 6px 13px;
+    box-shadow: 0 2px 8px rgba(221, 91, 23, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transition: filter .15s ease, transform .12s ease;
+}
+.nf-toast-btn:hover { filter: brightness(1.08); transform: translateY(-1px); color: #fff; }
+.nf-toast-btn:disabled { filter: grayscale(.4) brightness(.8); cursor: default; transform: none; }
+.nf-toast-btn2 {
+    font-size: 12.5px; font-weight: 600; color: #ffb187; text-decoration: none;
+    padding: 6px 4px;
+}
+.nf-toast-btn2:hover { color: #ffd6c0; text-decoration: underline; }
+.nf-toast-ipucu { font-size: 11px; color: #7d8595; font-style: italic; }
+.nf-toast-ok { font-size: 13px; font-weight: 600; color: #6fd7a8; padding: 4px 2px; }
+.nf-toast.nf-onaylandi { border-left-color: var(--ok); }
+
+/* Nav rozeti: bekleyen notlu siparis sayaci (JS doldurur) */
+.nav-badge {
+    display: inline-block; min-width: 17px; margin-left: 6px; padding: 1px 5px;
+    border-radius: 9px; background: var(--accent); color: #fff;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+    text-align: center; line-height: 1.5; vertical-align: 1px;
+    box-shadow: 0 0 0 1px rgba(21, 24, 30, 0.5);
+}
+.nav-badge[hidden] { display: none; }
+
+@media (max-width: 720px) {
+    .nf-toast-kok { right: 8px; bottom: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .nf-toast, .nf-toast.nf-gidiyor { animation: none; }
+    .nf-toast-nabiz { animation: none; }
+}

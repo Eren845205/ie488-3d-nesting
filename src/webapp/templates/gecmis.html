@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}İş Geçmişi &mdash; Nesting Sistemi{% endblock %}
+{% block title %}Job History &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 
 <div class="hero-section">
-    <h2>İş Geçmişi</h2>
+    <h2>Job History</h2>
     <p>
         Daha önce otonom modda işlenen nesting işlerinin kalıcı kaydı &mdash; en yeni üstte.
         Mail çekme, parti planlama, yerleşim ve fiyatlandırma sonuçları burada saklanır;
@@ -51,6 +51,9 @@
             </thead>
             <tbody>
                 {% for k in kayitlar %}
+                {# Satir tiklamasi HER ZAMAN detay sayfasina gider (Eren istegi
+                   2026-08-17: arsiv kisayolu detayi atliyordu). Arsiv HTML'inin
+                   linki detay sayfasindaki "Rehberli Sokum" kartindadir. #}
                 <tr class="gecmis-row" onclick="location.href='/gecmis/{{ k.id }}'" title="Detay için tıklayın">
                     <td style="font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); white-space:nowrap;">
                         {{ (k.zaman or '') | replace('T', '&nbsp;&nbsp;') | safe }}
@@ -61,6 +64,8 @@
                             <br><span style="font-size:10px; color:var(--accent-ink); font-family:var(--font-mono);" title="Sistem otomatik işledi">&#9881; otomatik</span>
                         {% elif k.kaynak == 'manuel' %}
                             <br><span style="font-size:10px; color:var(--muted); font-family:var(--font-mono);" title="Operatör elle başlattı">&#9758; manuel</span>
+                        {% elif k.kaynak == 'arsiv' %}
+                            <br><span style="font-size:10px; color:var(--info); font-family:var(--font-mono);" title="{{ k.get('arsiv_not') or 'Script-tabanlı şampiyon koşusu (arşiv kaydı)' }}">&#128451; arşiv</span>
                         {% endif %}
                     </td>
                     <td>
@@ -85,11 +90,15 @@
                         {% else %}&mdash;{% endif %}
                     </td>
                     <td style="text-align:right; font-family:var(--font-mono);">
+                        {% if k.kaynak == 'arsiv' %}&mdash;{% else %}
                         <span style="color:var(--ok); font-weight:600;">{{ '%.2f'|format(k.toplam_fiyat or 0) }}</span> USD
+                        {% endif %}
                     </td>
                     <td style="text-align:right; font-family:var(--font-mono); color:var(--ink-soft);">
+                        {% if k.kaynak == 'arsiv' %}&mdash;{% else %}
                         {% set s = (k.sure_sn or 0) | float %}
                         {% if s >= 60 %}{{ (s // 60) | int }}:{{ '%02d'|format((s % 60) | int) }} dk{% else %}{{ '%.0f'|format(s) }} sn{% endif %}
+                        {% endif %}
                     </td>
                     <td>
                         {% if k.durum == 'bitti' %}

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Kısıt Onayı — Sipariş Notları{% endblock %}
+{% block title %}Constraint Approval &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 <div class="card">
-    <div class="card-title">Kısıt Onayı &mdash; Sipariş Notları</div>
+    <div class="card-title">Constraint Approval &mdash; Sipariş Notları</div>
     <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
         Sipariş mailinde <strong>parça notu</strong> tespit edildi ("dik üretilecek",
         "konumu değişmeyecek" gibi). Sistem notları analiz edip kısıt önerir;
@@ -16,9 +16,20 @@
     <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff0f0; border:1px solid #f0b7b7; font-size:13px;">
         Sipariş bulunamadı (zaten işlenmiş veya silinmiş olabilir).
     </div>
+    {% elif silindi %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:13px;">
+        ✓ Onay beklemesi kaldırıldı — sipariş ve dosyaları duruyor,
+        gerekirse <a href="/adet-gir">Adet Girişi</a>'nden işlenebilir.
+    </div>
+    {% elif kaydedildi and kosuluyor %}
+    <div id="kosu-banner" data-order="{{ kosuluyor }}"
+         style="margin:12px 0; padding:12px 14px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
+        <strong>✓ Onay alındı</strong> — sipariş <code>{{ kosuluyor }}</code>
+        şimdi <span id="kosu-banner-durum">otomatik koşuluyor… (nesting yapılıyor)</span>
+    </div>
     {% elif kaydedildi %}
     <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:13px;">
-        ✓ Onaylanan kısıtlar siparişe kaydedildi. Sipariş
+        ✓ Onay alındı — kısıtlar siparişe kaydedildi. Sipariş
         <a href="/adet-gir">Adet Girişi</a>'nden işlenirken uygulanacak.
     </div>
     {% endif %}
@@ -40,7 +51,17 @@
             {% endfor %}
         </ul>
 
-        {% if analiz_hata %}
+        {% if analiz_bekliyor %}
+        <div id="analiz-bekliyor" data-order="{{ detay.order_id }}"
+             style="margin:12px 0; padding:14px 16px; border-radius:8px; background:#eef6ff; border:1px solid #b7d4f0; font-size:13px;">
+            <span class="spinner" style="display:inline-block; width:14px; height:14px; border:2px solid #b7d4f0; border-top-color:#2b6cb0; border-radius:50%; vertical-align:-2px; margin-right:8px; animation:ka-spin 0.9s linear infinite;"></span>
+            <strong>Notlar analiz ediliyor…</strong> Yerel yapay zekâ 3 bağımsız
+            okuma + hakem oylaması yapıyor; bu <strong>15&ndash;60 saniye</strong> sürebilir.
+            Sonuç hazır olunca bu sayfa kendiliğinden yenilenir.
+            <div id="analiz-hata-kutu" style="display:none; margin-top:8px; color:#b00;"></div>
+        </div>
+        <style>@keyframes ka-spin { to { transform: rotate(360deg); } }</style>
+        {% elif analiz_hata %}
         <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fffbe6; border:1px solid #f0e0a0; font-size:13px;">
             Kısıt önerisi üretilemedi: {{ analiz_hata }}<br>
             Notları manuel değerlendirin; sipariş kısıtsız işlenebilir.
@@ -61,12 +82,16 @@
                 </thead>
                 <tbody>
                     {% for k in oneriler %}
-                    <tr style="border-bottom:1px solid var(--color-border); {% if k.derleme != 'derlendi' %}opacity:0.55;{% endif %}">
+                    <tr style="border-bottom:1px solid var(--color-border); {% if k.derleme != 'derlendi' %}opacity:0.7;{% endif %}">
                         <td style="padding:6px 8px;">
-                            {% if k.derleme == 'derlendi' %}
+                            {# Dusuk guven / derlenemeyen oneriler de ONAYLANABILIR
+                               (Eren istegi 2026-08-16: "belki dogrudur") — yalniz
+                               yuksek guvenliler varsayilan isaretli gelir.
+                               Derlenemeyen onay kayda gecer ama motor kisitina
+                               cevrilemez (asagidaki dipnot + title). #}
                             <input type="checkbox" name="onay_{{ loop.index0 }}"
-                                   {% if k.nihai_guven == 'yuksek' %}checked{% endif %}>
-                            {% else %}&mdash;{% endif %}
+                                   {% if k.derleme == 'derlendi' and k.nihai_guven == 'yuksek' %}checked{% endif %}
+                                   {% if k.derleme != 'derlendi' %}title="Bu öneri motor kısıtına çevrilemiyor — onaylarsanız kayda geçer ama koşuya kısıt olarak uygulanamaz"{% elif k.nihai_guven != 'yuksek' %}title="Düşük/orta güvenli öneri — doğruysa işaretleyip onaylayabilirsiniz"{% endif %}>
                         </td>
                         <td style="padding:6px 8px;"><code>{{ k.tip }}</code>{% if k.deger %} {{ k.deger }}{% endif %}</td>
                         <td style="padding:6px 8px; font-family:'IBM Plex Mono', monospace;">{{ k.parca_adi or "?" }}</td>
@@ -77,11 +102,29 @@
                 </tbody>
             </table>
             <p style="font-size:12px; color:var(--color-text-muted); margin:8px 0 12px;">
-                Yalnız işaretli kısıtlar kaydedilir. Soluk satırlar derlenemedi
-                (uygulanamaz) — bilgi için gösteriliyor.
+                Yalnız işaretli kısıtlar kaydedilir; yüksek güvenliler önceden
+                işaretli gelir, <strong>düşük/orta güvenlileri de doğruysanız
+                işaretleyebilirsiniz</strong>. Soluk satırlar motor kısıtına
+                çevrilemedi — onaylarsanız kayda geçer (sonuç raporunda görünür)
+                ama koşuya kısıt olarak uygulanamaz.
+            </p>
+            <p style="font-size:12px; margin:0 0 10px;">
+                <label for="kisit-kosu-modu" style="color:var(--color-text-muted);">Koşu modu:</label>
+                <select name="kosu_modu" id="kisit-kosu-modu"
+                        style="font-size:12px; padding:4px 8px;"
+                        title="Boş bırakılırsa sistem otomatik seçer (aile yönlendirme). NFV: gerçek geometrik arama — daha yavaş, genelde daha kısa istif.">
+                    <option value="">Otomatik (önerilen)</option>
+                    <option value="nfv">NFV kalite (yavaş, en kısa istif hedefi)</option>
+                    <option value="heightmap">Heightmap (hızlı)</option>
+                </select>
             </p>
             <button type="submit" class="btn btn-primary" style="font-size:14px; padding:9px 18px;">
                 Seçili Kısıtları Kaydet
+            </button>
+            <button type="button" id="yeniden-analiz" data-order="{{ detay.order_id }}"
+                    class="btn" style="font-size:12px; padding:9px 14px; margin-left:8px;"
+                    title="Notları yerel yapay zekâ ile yeniden analiz et (15-60 sn)">
+                &#8635; Yeniden analiz et
             </button>
         </form>
         {% else %}
@@ -92,25 +135,56 @@
     </div>
 
     {% else %}
-    {# ---------- Liste: notlu bekleyen siparişler ---------- #}
+    {# ---------- Liste: notlu bekleyen siparişler (otomatik/manuel AYRIK) ---------- #}
     {% if not notlu_bekleyenler %}
     <div style="margin:16px 0; padding:14px 16px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
         ✓ Notlu bekleyen sipariş yok.
     </div>
     {% else %}
-    {% for o in notlu_bekleyenler %}
-    <div style="margin:12px 0; padding:12px 16px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-surface, #fff); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+
+    {% macro bekleyen_satir(o) %}
+    <div style="margin:10px 0; padding:12px 16px; border-radius:10px; border:1px solid var(--color-border); background:var(--color-surface, #fff); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
             <div style="font-weight:700; font-size:14px;">{{ o.customer or "Bilinmeyen müşteri" }}</div>
             <div style="font-size:12px; color:var(--color-text-muted);">
                 <code>{{ o.order_id }}</code> · {{ o.not_adaylari|length }} not
-                {% if o.motor_kisitlari %} · <strong style="color:#0a7d32;">kısıt onaylı</strong>{% endif %}
+                {% if o.motor_kisitlari %} · <strong style="color:#0a7d32;">✓ onay alındı</strong>{% endif %}
+                {% if kosular.get(o.order_id) == "kosuyor" %} · <strong style="color:#b45309;">⚙ koşuluyor…</strong>{% endif %}
             </div>
         </div>
-        <a class="btn btn-primary" style="font-size:13px; padding:7px 14px;"
-           href="/kisit-onay/{{ o.order_id }}">Notları İncele &rarr;</a>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <a class="btn btn-primary" style="font-size:13px; padding:7px 14px;"
+               href="/kisit-onay/{{ o.order_id }}">İncele ve Onayla &rarr;</a>
+            <form method="POST" action="/kisit-onay/{{ o.order_id }}/sil"
+                  style="display:inline; margin:0;"
+                  onsubmit="return confirm('{{ o.order_id }} onay bekleme listesinden kaldırılsın mı? (Sipariş ve dosyaları silinmez)')">
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger"
+                        style="font-size:13px; padding:7px 14px;"
+                        title="Onay beklemesini kaldır (sipariş silinmez)">Sil</button>
+            </form>
+        </div>
     </div>
-    {% endfor %}
+    {% endmacro %}
+
+    {% if oto_bekleyenler %}
+    <div style="margin-top:14px; font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-text-muted);">
+        Mail akışı (otomatik)
+        <span style="font-weight:400; text-transform:none; letter-spacing:0; font-style:italic;">
+            — onay verilince sipariş otomatik koşulur</span>
+    </div>
+    {% for o in oto_bekleyenler %}{{ bekleyen_satir(o) }}{% endfor %}
+    {% endif %}
+
+    {% if manuel_bekleyenler %}
+    <div style="margin-top:14px; font-weight:700; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-text-muted);">
+        Manuel / eksik bilgi
+        <span style="font-weight:400; text-transform:none; letter-spacing:0; font-style:italic;">
+            — manuel yükleme onay sonrası otomatik koşulur; adet bekleyenler <a href="/adet-gir">Adet Girişi</a>'nden</span>
+    </div>
+    {% for o in manuel_bekleyenler %}{{ bekleyen_satir(o) }}{% endfor %}
+    {% endif %}
+
     {% endif %}
     {% endif %}
 
@@ -120,4 +194,88 @@
         Analiz kapalıysa notlar yine burada görünür.
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if analiz_bekliyor %}
+<script>
+    // Async not analizi (2026-08-16 "Incele bug" fix): sayfa aninda acilir,
+    // analiz API'de kosulur; sonuc meta'ya kaydedildigi icin reload formu basar.
+    (function () {
+        var kutu = document.getElementById('analiz-bekliyor');
+        if (!kutu) return;
+        var oid = kutu.dataset.order;
+        fetch('/api/kisit-analiz/' + encodeURIComponent(oid))
+            .then(function (r) { return r.json(); })
+            .then(function (v) {
+                if (v && !v.analiz_hata) { location.reload(); return; }
+                var h = document.getElementById('analiz-hata-kutu');
+                h.textContent = 'Analiz basarisiz: '
+                    + ((v && v.analiz_hata) || 'bilinmeyen hata')
+                    + ' — notlari manuel degerlendirin; siparis kisitsiz islenebilir.';
+                h.style.display = 'block';
+                var sp = kutu.querySelector('.spinner');
+                if (sp) sp.style.display = 'none';
+            })
+            .catch(function () {
+                var h = document.getElementById('analiz-hata-kutu');
+                h.textContent = 'Analiz servisine ulasilamadi — sayfayi yenileyip tekrar deneyin.';
+                h.style.display = 'block';
+            });
+    })();
+</script>
+{% endif %}
+{% if oneriler %}
+<script>
+    // "Yeniden analiz et": mevcut onerileri zorla tazeler (force=1) ve yeniler.
+    (function () {
+        var btn = document.getElementById('yeniden-analiz');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            btn.textContent = 'Analiz ediliyor… (15-60 sn)';
+            fetch('/api/kisit-analiz/' + encodeURIComponent(btn.dataset.order) + '?force=1')
+                .then(function (r) { return r.json(); })
+                .then(function (v) {
+                    if (v && !v.analiz_hata) { location.reload(); return; }
+                    btn.disabled = false;
+                    btn.textContent = 'Yeniden analiz et (hata: '
+                        + ((v && v.analiz_hata) || '?').slice(0, 60) + ')';
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.textContent = 'Yeniden analiz et (servis hatasi)';
+                });
+        });
+    })();
+</script>
+{% endif %}
+{% if kosuluyor %}
+<script>
+    // Onay-sonrasi otomatik kosu canli izleme: bitti -> "Sonucu Gor" linki.
+    (function () {
+        var banner = document.getElementById('kosu-banner');
+        if (!banner) return;
+        var oid = banner.dataset.order;
+        var durumEl = document.getElementById('kosu-banner-durum');
+        var t = setInterval(function () {
+            fetch('/api/kosu-durum/' + encodeURIComponent(oid))
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (v) {
+                    if (!v) return;
+                    if (v.kosu === 'bitti') {
+                        durumEl.innerHTML = '<strong>tamamlandı</strong> — '
+                            + '<a href="/sonuc">Sonucu Gör →</a> '
+                            + '(İş Geçmişi\'ne de kaydedildi)';
+                        clearInterval(t);
+                    } else if (v.kosu && v.kosu.indexOf('hata') === 0) {
+                        durumEl.textContent =
+                            'hata verdi — Adet Girişi\'nden yeniden deneyin.';
+                        clearInterval(t);
+                    }
+                }).catch(function () {});
+        }, 4000);
+    })();
+</script>
+{% endif %}
 {% endblock %}

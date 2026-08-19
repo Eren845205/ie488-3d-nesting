@@ -108,7 +108,7 @@ class TestIndexRoute:
 
     def test_index_contains_app_title(self, client):
         html = client.get("/").data.decode("utf-8")
-        assert "Konteyner Nesting Sistemi" in html
+        assert "3D Nesting" in html
 
     def test_index_contains_run_button(self, client):
         html = client.get("/").data.decode("utf-8")
@@ -307,3 +307,169 @@ class TestAppFactory:
         provider = _make_fake_llm_provider()
         app = create_app(testing=True, llm_provider_override=provider)
         assert isinstance(app, Flask)
+
+
+# ---------------------------------------------------------------------------
+# /gecmis/arsiv/<dosya> — hoca paketi arsiv HTML servisi (2026-08-16)
+# ---------------------------------------------------------------------------
+
+
+class TestGecmisArsivRoute:
+
+    def test_gecersiz_dosya_adi_404(self, client):
+        """Whitelist regex: yol ayraci/encoded traversal reddedilir."""
+        assert client.get("/gecmis/arsiv/..%5Cgecmis.jsonl").status_code == 404
+        assert client.get("/gecmis/arsiv/a%2Fb.html").status_code == 404
+
+    def test_olmayan_dosya_404(self, client):
+        assert client.get("/gecmis/arsiv/olmayan.html").status_code == 404
+
+    def test_mevcut_arsiv_html_servis_edilir(self, app, client):
+        store = app.config["OTONOM_GECMIS"]
+        arsiv = Path(store._path).parent / "arsiv"
+        arsiv.mkdir(parents=True, exist_ok=True)
+        (arsiv / "test_ok.html").write_text(
+            "<html><body>ARSIV-ICERIK</body></html>", encoding="utf-8")
+        r = client.get("/gecmis/arsiv/test_ok.html")
+        assert r.status_code == 200
+        assert b"ARSIV-ICERIK" in r.data
+
+
+# ---------------------------------------------------------------------------
+# Async not analizi (2026-08-16 "Incele bug" fix)
+# ---------------------------------------------------------------------------
+
+
+def _notlu_siparis_ekle(app, order_id="T-NOT-1", **meta_ekstra):
+    ps = app.config["PENDING_STORE"]
+    ps.add(
+        order_id=order_id, customer="Test Musteri", sender="t@example.com",
+        deadline="", priority_class=1, konu="test",
+        stl_map={"parca_a": b"solid a\nendsolid a\n"},
+        not_adaylari=[{"satir": "parca dik basilsin", "kaynak": "mail",
+                       "parca_adaylari": ["parca_a"]}],
+    )
+    if meta_ekstra:
+        ps.update_meta(order_id, **meta_ekstra)
+    return order_id
+
+
+class TestKisitAnalizAsync:
+
+    def test_detay_get_aninda_acilir_analiz_bekliyor(self, app, client):
+        """Detay GET artik LLM'i SENKRON cagirmaz — bekleme kutusu basar."""
+        oid = _notlu_siparis_ekle(app)
+        r = client.get(f"/kisit-onay/{oid}")
+        assert r.status_code == 200
+        assert b"analiz-bekliyor" in r.data
+
+    def test_detay_get_onerili_metada_form_basar(self, app, client):
+        """Meta'da kisit_onerileri varsa form direkt gelir (bekleme yok)."""
+        oid = _notlu_siparis_ekle(
+            app, kisit_onerileri=[{
+                "tip": "orientation_lock", "deger": "dik",
+                "parca_adi": "parca_a", "oy": 3, "hakem": "onay",
+                "nihai_guven": "yuksek", "gerekce": "test",
+                "derleme": "derlendi",
+            }], kisit_n_ornekleme=3)
+        r = client.get(f"/kisit-onay/{oid}")
+        assert r.status_code == 200
+        assert b"analiz-bekliyor" not in r.data
+        assert b'name="onay_0"' in r.data
+
+    def test_dusuk_guven_ve_derlenmeyen_de_onaylanabilir(self, app, client):
+        """Eren istegi 2026-08-16: dusuk guven / derlenemeyen onerilerde de
+        onay kutusu bulunur (yalniz yuksek guven varsayilan isaretli)."""
+        oid = _notlu_siparis_ekle(
+            app, order_id="T-NOT-4", kisit_onerileri=[
+                {"tip": "orientation_lock", "deger": "dik",
+                 "parca_adi": "parca_a", "oy": 1, "hakem": "ret",
+                 "nihai_guven": "dusuk", "gerekce": "t",
+                 "derleme": "derlendi"},
+                {"tip": "grup_bolme", "parca_adi": "parca_a", "oy": 2,
+                 "hakem": "onay", "nihai_guven": "orta", "gerekce": "t",
+                 "derleme": "derlenemedi", "derleme_sebep": "sema-disi"},
+            ], kisit_n_ornekleme=3)
+        r = client.get(f"/kisit-onay/{oid}")
+        assert r.status_code == 200
+        assert b'name="onay_0"' in r.data  # dusuk guven: kutu var
+        assert b'name="onay_1"' in r.data  # derlenemeyen: kutu var
+        # hicbiri yuksek degil -> checked yok
+        assert b"checked" not in r.data
+
+    def test_analiz_api_llm_kapali_hata_json(self, app, client):
+        oid = _notlu_siparis_ekle(app, order_id="T-NOT-2")
+        r = client.get(f"/api/kisit-analiz/{oid}")
+        assert r.status_code == 200
+        assert "LLM aktif degil" in (r.get_json() or {}).get("analiz_hata", "")
+
+    def test_analiz_api_olmayan_siparis_404(self, client):
+        assert client.get("/api/kisit-analiz/YOK-1").status_code == 404
+
+    def test_analiz_api_mevcut_onerileri_dondurur(self, app, client):
+        """Oneri zaten meta'daysa LLM'e gitmeden ayni listeyi doner."""
+        oid = _notlu_siparis_ekle(
+            app, order_id="T-NOT-3",
+            kisit_onerileri=[{"tip": "orientation_lock"}],
+            kisit_n_ornekleme=3)
+        v = client.get(f"/api/kisit-analiz/{oid}").get_json()
+        assert v["analiz_hata"] is None
+        assert v["oneriler"] == [{"tip": "orientation_lock"}]
+        assert v["n_ornekleme"] == 3
+
+
+# ---------------------------------------------------------------------------
+# /kisit-onay/<id>/sil — onay beklemesini kaldirma (2026-08-18 operator istegi)
+# ---------------------------------------------------------------------------
+
+
+class TestKisitOnaySil:
+
+    def test_onay_beklemesi_kalkar_siparis_kalir(self, app, client):
+        """POST sil -> not/oneri alanlari dusuruldu; siparis + STL DURUYOR."""
+        oid = _notlu_siparis_ekle(
+            app, order_id="T-SIL-1",
+            kisit_onerileri=[{"tip": "orientation_lock"}],
+            kisit_n_ornekleme=3)
+        r = client.post(f"/kisit-onay/{oid}/sil")
+        assert r.status_code == 302
+        assert "silindi=1" in r.headers["Location"]
+        meta = app.config["PENDING_STORE"].get(oid)
+        assert meta is not None                       # siparis silinMEdi
+        assert "not_adaylari" not in meta             # kuyruktan cikti
+        assert "kisit_onerileri" not in meta
+        assert app.config["PENDING_STORE"].load_stl_map(oid)  # STL duruyor
+        # Onay-bekleme listesinde artik gorunmez
+        assert oid.encode() not in client.get("/kisit-onay").data
+
+    def test_olmayan_siparis_bulunamadi(self, client):
+        r = client.post("/kisit-onay/YOK-SIL/sil")
+        assert r.status_code == 302
+        assert "hata=bulunamadi" in r.headers["Location"]
+
+    def test_onaylanmis_kisitlar_korunur(self, app, client):
+        """Sil yalniz beklemeyi kaldirir — onceden onaylanan kisitlar kalir."""
+        oid = _notlu_siparis_ekle(
+            app, order_id="T-SIL-2",
+            motor_kisitlari={"locked_orientations": {"parca_a": 0}})
+        client.post(f"/kisit-onay/{oid}/sil")
+        meta = app.config["PENDING_STORE"].get(oid)
+        assert meta and meta.get("motor_kisitlari")
+
+    def test_listede_sil_butonu_gorunur(self, app, client):
+        oid = _notlu_siparis_ekle(app, order_id="T-SIL-3")
+        r = client.get("/kisit-onay")
+        assert r.status_code == 200
+        assert f"/kisit-onay/{oid}/sil".encode() in r.data
+
+
+# ---------------------------------------------------------------------------
+# /sonuc/rehberli-sokum (2026-08-16 SOKUM plani linki)
+# ---------------------------------------------------------------------------
+
+
+class TestSonucRehberliSokum:
+
+    def test_kosu_yokken_404(self, client):
+        r = client.get("/sonuc/rehberli-sokum")
+        assert r.status_code == 404

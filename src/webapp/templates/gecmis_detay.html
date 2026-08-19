@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}İş Detayı &mdash; {{ k.musteri }} &mdash; Nesting Sistemi{% endblock %}
+{% block title %}Job Detail &mdash; {{ k.musteri }} &mdash; NESTING.FORGE{% endblock %}
 
 {% block content %}
 
@@ -132,6 +132,23 @@
         </div>
     </div>
 </div>
+
+{% if k.get('arsiv_html') %}
+{# Arşiv kaydı (hoca paketi şampiyonu): koşu-anı detay JSON'u yok ama
+   kendi-içinde rehberli söküm HTML'i var — belirgin kartla sunulur. #}
+<div class="card">
+    <div class="card-title">Rehberli Söküm Planı</div>
+    <p style="font-size:13px; color:var(--muted); margin:0 0 12px;">
+        Bu yerleşimin adım adım, 3D rehberli söküm planı hazır
+        {% if k.get('arsiv_not') %}&mdash; {{ k.arsiv_not }}{% endif %}.
+        İnternetsiz çalışır; yeni sekmede açılır.
+    </p>
+    <a class="btn btn-primary" style="text-decoration:none; display:inline-block;"
+       href="/gecmis/arsiv/{{ k.arsiv_html }}" target="_blank" rel="noopener">
+        &#128203; Söküm Planını Aç (3D, HTML) &rarr;
+    </a>
+</div>
+{% endif %}
 
 {% if detay %}
 {# ================================================================
