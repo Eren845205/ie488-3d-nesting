@@ -7,8 +7,14 @@
 ## Her oturum başı ZORUNLU
 1. `STRATEJI/00_ANAYASA.md` oku (A1-A11) — özellikle **A11 tek-veri
    geliştirme yasağı**.
-2. Motor işine dokunmadan önce `MOTOR/YONTEM_HARITASI_DATA_BASE.md` §2+§5;
-   her deney sonrası §3'e kayıt + **A11 karnesi** (şablon §0'da).
+2. **`STRATEJI/RUNBOOK_CALISMA_DISIPLINI.md` = TEK GİRİŞ KAPISI**
+   (2026-08-20): dosya haritası §0, durum-bazlı prosedürler P-1..P-10,
+   süreç dersleri §D. Her durum (yeni veri, hata, koşu, rapor, eğitim,
+   dış iletişim, terfi) ORADAKİ prosedürle yürür; şerh-yaşlanma taraması
+   (P-10.2) oturum başında yapılır.
+3. Motor işine dokunmadan önce `MOTOR/YONTEM_HARITASI_DATA_BASE.md` §2+§5;
+   her deney sonrası §3'e kayıt + **A11 karnesi** (şablon §0'da) +
+   `MOTOR/MEKANIZMA_KATALOGU.md` durum güncellemesi.
 
 ## A11 — HER geliştirmede bilerek uygulanır
 - **Tetik geometrik/aile-koşullu yazılır; kodda veri-adı (plan1, deneme4...)
