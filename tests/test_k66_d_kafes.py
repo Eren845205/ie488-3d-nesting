@@ -70,3 +70,14 @@ def test_pin_listesi_sayim_ve_cakismasizlik():
         assert p["x_mm"] + plan["rod"]["w"] <= 335.0 + 1e-6
     for p in kitle:
         assert p["x_mm"] + plan["cell"][0] <= 335.0 + 1e-6
+
+
+def test_durus_koru_oryantasyon_kisiti():
+    # ozel liste verilince yalniz o duruslardan secilir (geldigi+yaw)
+    ozel = [((32.0, 90.0, 9.6), "geldigi"), ((90.0, 32.0, 9.6), "yaw90")]
+    plan = kafes_plani((10.0, 95.0, 399.6), 54, (32.0, 90.0, 9.6), 520,
+                       335.0, 335.0, 2.0, pitch=2.0,
+                       oryantasyonlar_ozel=ozel)
+    assert plan["uygun"] is True
+    assert plan["oryantasyon"] in ("geldigi", "yaw90")
+    assert plan["cell"][2] == 9.6  # yukselik GELDIGI gibi (dik'e donmedi)

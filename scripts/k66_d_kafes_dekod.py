@@ -108,7 +108,8 @@ def eksen_rot_bul(mesh_extents: Tuple[float, float, float],
 def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
                 kitle_dims: Tuple[float, float, float], n_kitle: int,
                 plate_w: float, plate_d: float, clear: float,
-                pitch: Optional[float] = None) -> Dict:
+                pitch: Optional[float] = None,
+                oryantasyonlar_ozel: Optional[List] = None) -> Dict:
     """Jenerik kafes plani: cubuk satirlari + arada kitle kanallari.
 
     Cubuk: footprint = iki kucuk boyut (buyugu x'e), yukseklik = en buyuk.
@@ -130,11 +131,16 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
 
     r0, r1, r2 = sorted(rod_dims)
     k0, k1_, k2_ = sorted(kitle_dims)
-    oryantasyonlar = [
-        ((k2_, k1_, k0), "duz"),   # en ince boyut yukari
-        ((k2_, k0, k1_), "yan"),
-        ((k1_, k0, k2_), "dik"),
-    ]
+    if oryantasyonlar_ozel is not None:
+        # M66_DURUS_KORU: kitle yalniz GELDIGI durusta (+yaw) — cagiran
+        # taraf [(w,d,h),"geldigi"], [(d,w,h),"yaw90"] gecer.
+        oryantasyonlar = oryantasyonlar_ozel
+    else:
+        oryantasyonlar = [
+            ((k2_, k1_, k0), "duz"),   # en ince boyut yukari
+            ((k2_, k0, k1_), "yan"),
+            ((k1_, k0, k2_), "dik"),
+        ]
     en_iyi = None
     for rod_w, rod_d in ((r0, r1), (r1, r0)):  # footprint yonelimi taranir
         if rod_w > plate_w:
@@ -334,10 +340,23 @@ def main() -> int:
         pitch = float(pitch)
         log(f"pitch (sabitlendi): {pitch:.2f}mm ({_pn})")
 
+    durus_koru = os.environ.get("M66_DURUS_KORU") == "1"
+    oryant_ozel = None
+    if durus_koru:
+        # Kisit-uyumlu mod: kitle GELDIGI durusta (+yaw), cubuk geldigi gibi.
+        kw, kd, kh = modeller[kitle_ad]["dims"]
+        oryant_ozel = [((kw, kd, kh), "geldigi"), ((kd, kw, kh), "yaw90")]
+        for ad, m in asanlar.items():
+            if abs(max(m["dims"]) - m["dims"][2]) > 0.75:
+                log(f"DURUS-KORU UYUMSUZ: asan model {ad} dik gelmemis "
+                    "(en buyuk boyut z degil) — kisit-uyumlu kafes kurulamaz")
+                return 1
+        log("DURUS-KORU MODU: kitle geldigi-durus+yaw; cubuk geldigi gibi")
+
     plan = kafes_plani(slot, n_rod,
                        modeller[kitle_ad]["dims"],
                        modeller[kitle_ad]["qty"], plate, plate, clear,
-                       pitch=pitch)
+                       pitch=pitch, oryantasyonlar_ozel=oryant_ozel)
     if not plan.get("uygun"):
         log(f"PLAN KURULMADI: {plan.get('sebep')}")
         return 1
@@ -414,7 +433,8 @@ def main() -> int:
            "serh": ("A11 tek-sinif on-olcum PROTOTIPI; kazanc ilani "
                     "degildir; kablo = dagilimsal + sifir-dokunus sonrasi"),
            "ayarlar": {"plate": plate, "clear": clear, "quality": quality,
-                       "seed": seed},
+                       "seed": seed, "pitch": pitch,
+                       "durus_koru": durus_koru},
            "plan": plan, "n_pins": len(pins),
            "sonuc": {"height_mm": h, "n_placed": n_placed,
                      "n_total": n_total, "a2": a2},
