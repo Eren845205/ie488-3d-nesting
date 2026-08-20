@@ -562,3 +562,16 @@ bölme ataması "model-bazlı/tek-tip plan" = referansın gerçek pratiği
 kademeli yuvalama (yuvalama-derinliği gerçek geometriden ölçülür; bu
 parçada ~17mm). (d) S1'den kalan TEK soru: çubuklar hangi planda, hangi
 duruşta (bu dosyada çubuk planı yok) + "her plan tek-tip mi" teyidi.
+
+## 2026-08-20 (3) — PLAN8 XY deseni: ŞİNDİL (diyagonal yuvalama) — anatomi TAMAMLANDI
+
+Son ölçüm (xy-merkez analizi): dikey yuva-kolonu YOK (118 parça 118 farklı
+xy). Desen: hepsi AYNI yönelim (118/118, x-boyu 75,5) · 4 x-kolonu
+(x≈45/123/208/286) · her kolonda **(Δy≈16mm, Δz≈17mm) sabit adımla ŞİNDİL
+dizisi** (parça 79mm derin — %80 bindirmeli; kiremit/istiflenmiş-sandalye
+deseni). 4 kolon × ~16-17 parçalık diyagonal dizi = 118 parça @284mm
+(düz istif ~400 olurdu). K-67 mekanizma tanımı buna göre netleşti:
+"aynı-xy kule" değil, SABİT (Δy,Δz)-adımlı diyagonal yuvalama; adım çifti
+parça geometrisinden ölçülür (kopya-kaydırma çakışmasızlık taraması).
+PLAN8 anatomisi bu kayıtla TAM. Kalan bilinmeyen yalnız diğer planlar
+(dosyada yok): çubuk duruşu + her-plan-tek-tip-mi + neden-8-plan.
