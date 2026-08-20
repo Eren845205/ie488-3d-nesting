@@ -159,9 +159,14 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
     return en_iyi
 
 
-def pin_listesi(plan: Dict, rod_ad: str, n_rod: int, kitle_ad: str,
-                rod_rot, kitle_rot, clear: float) -> List[Dict]:
-    """Plani mm-koordinatli pin listesine coz (alt-sol kose semantigi)."""
+def pin_listesi(plan: Dict, rod_pinler: List[Tuple[str, object]],
+                kitle_ad: str, kitle_rot, clear: float) -> List[Dict]:
+    """Plani mm-koordinatli pin listesine coz (alt-sol kose semantigi).
+
+    rod_pinler: [(ad, rot), ...] — HER cubuk kopyasi icin bir giris (coklu
+    asan-model destegi: slotlar sirayla model-model tuketilir; slot boyutu
+    plan['rod'] = modellerin maksimumu, kucuk model buyuk slota sigar).
+    """
     pins = []
     rod = plan["rod"]
     cw, cd, ch = plan["cell"]
@@ -177,16 +182,16 @@ def pin_listesi(plan: Dict, rod_ad: str, n_rod: int, kitle_ad: str,
         y += rod["d"] + clear
     bolgeler.append(("kanal", y))
 
-    kalan_rod = n_rod
+    rod_kuyruk = list(rod_pinler)
     kitle_sayac = plan["kapasite"]
     for tur, yb in bolgeler:
         if tur == "rod":
             for j in range(rod["rows_x"]):
-                if kalan_rod <= 0:
+                if not rod_kuyruk:
                     break
-                pins.append({"ad": rod_ad, "x_mm": j * (rod["w"] + clear),
-                             "y_mm": yb, "z_mm": 0.0, "rot": rod_rot})
-                kalan_rod -= 1
+                ad, rrot = rod_kuyruk.pop(0)
+                pins.append({"ad": ad, "x_mm": j * (rod["w"] + clear),
+                             "y_mm": yb, "z_mm": 0.0, "rot": rrot})
         else:
             for kat in range(plan["katman"]):
                 for satir in range(m):
@@ -261,12 +266,20 @@ def main() -> int:
     # Siniflandirma (GEOMETRIK)
     asanlar = {ad: m for ad, m in modeller.items()
                if asan_mi(m["dims"], plate, plate, clear)}
-    kitle_ad = max(modeller, key=lambda a: modeller[a]["qty"])
-    if modeller[kitle_ad]["qty"] < kitle_pay * n_total:
-        log(f"TETIK YOK: en yuksek adetli model payi "
-            f"{modeller[kitle_ad]['qty']}/{n_total} < {kitle_pay} — "
-            "kafes dekodu uygulanmaz (sifir-dokunus)")
+    # Kitle tanimi (2026-08-20 duzeltme): mekanizma TEK modele degil TEKRARLI
+    # kitleye bakar — tekrar-modelleri (adet >= max(20, %5)) TOPLAMI esikle
+    # kiyaslanir; kafes EN YUKSEK adetli modele kurulur (digerleri NFV'ye).
+    tekrar_esigi = max(20, int(0.05 * n_total))
+    tekrarlar = {ad: m for ad, m in modeller.items()
+                 if m["qty"] >= tekrar_esigi and ad not in asanlar}
+    tekrar_toplam = sum(m["qty"] for m in tekrarlar.values())
+    if not tekrarlar or tekrar_toplam < kitle_pay * n_total:
+        log(f"TETIK YOK: tekrar-kitle payi {tekrar_toplam}/{n_total} < "
+            f"{kitle_pay} — kafes dekodu uygulanmaz (sifir-dokunus)")
         return 0
+    kitle_ad = max(tekrarlar, key=lambda a: tekrarlar[a]["qty"])
+    log(f"tekrar-kitle: {sorted(tekrarlar)} toplam={tekrar_toplam}"
+        f" (esik {tekrar_esigi}); kafes modeli={kitle_ad}")
     if kitle_ad in asanlar:
         log("TETIK YOK: kitle modeli plaka-asan — desen disi")
         return 0
@@ -274,20 +287,21 @@ def main() -> int:
         log("NOT: plaka-asan yok; kafes yalniz-kitle modunda ANLAMSIZ "
             "(duz kafes zaten heightmap isi) — cikiliyor")
         return 0
-    rod_ad = max(asanlar, key=lambda a: asanlar[a]["qty"])
     n_rod = sum(m["qty"] for m in asanlar.values())
+    # Slot boyutu = asan modellerin eksen-bazli MAKSIMUMU (kucuk model
+    # buyuk slota sigar; pinler model-model tuketilir — coklu-model destegi)
+    slot = tuple(max(sorted(m["dims"])[i] for m in asanlar.values())
+                 for i in range(3))
     if len(asanlar) > 1:
-        log(f"NOT: {len(asanlar)} asan model var; kolon plani en yuksek "
-            f"adetli ({rod_ad}) boyutuyla kurulur, digerleri ayni siniftaysa "
-            "pinlenir (boyut-tol 1mm), degilse serbest havuza kalir")
+        log(f"NOT: {len(asanlar)} asan model; slot={tuple(round(s,1) for s in slot)}")
 
-    plan = kafes_plani(asanlar[rod_ad]["dims"], n_rod,
+    plan = kafes_plani(slot, n_rod,
                        modeller[kitle_ad]["dims"],
                        modeller[kitle_ad]["qty"], plate, plate, clear)
     if not plan.get("uygun"):
         log(f"PLAN KURULMADI: {plan.get('sebep')}")
         return 1
-    log(f"PLAN: rod={rod_ad} n={n_rod} rows_x={plan['rod']['rows_x']} "
+    log(f"PLAN: rod_slot={tuple(round(s,1) for s in slot)} n={n_rod} rows_x={plan['rod']['rows_x']} "
         f"n_rows={plan['rod']['n_rows']} h={plan['rod']['h']:.1f} | "
         f"kitle={kitle_ad} oryant={plan['oryantasyon']} m={plan['m']} "
         f"katman={plan['katman']} kapasite={plan['kapasite']}/"
@@ -302,9 +316,10 @@ def main() -> int:
 
     # Rotasyon matrisleri (mesh extent -> hedef)
     import trimesh
+    hedef_adlar = set(asanlar) | {kitle_ad}
     ornek = {}
     for p in inst.parts:
-        if p.name in (rod_ad, kitle_ad) and p.name not in ornek:
+        if p.name in hedef_adlar and p.name not in ornek:
             if getattr(p, "stl_path", None):
                 ornek[p.name] = tuple(
                     trimesh.load(str(p.stl_path), force="mesh").extents)
@@ -312,15 +327,24 @@ def main() -> int:
                 ornek[p.name] = (float(p.width_mm), float(p.depth_mm),
                                  float(p.height_mm))
     rod = plan["rod"]
-    rod_rot = eksen_rot_bul(ornek[rod_ad], (rod["w"], rod["d"], rod["h"]))
+    # Slot yonelimi: plan.rod.w slotun kucuk mu buyuk mu boyutu? Her modelin
+    # kendi sorted-dims'i ayni yonelimle hedeflenir (dar-x veya genis-x).
+    dar_x = abs(rod["w"] - slot[0]) < abs(rod["w"] - slot[1])
+    rod_pinler: List[Tuple[str, object]] = []
+    for ad in sorted(asanlar):
+        m0, m1, m2 = sorted(asanlar[ad]["dims"])
+        hedef = (m0, m1, m2) if dar_x else (m1, m0, m2)
+        rrot = eksen_rot_bul(ornek[ad], hedef)
+        if rrot is None:
+            log(f"HATA: rotasyon bulunamadi (asan model {ad})")
+            return 1
+        rod_pinler.extend([(ad, rrot)] * asanlar[ad]["qty"])
     kitle_rot = eksen_rot_bul(ornek[kitle_ad], tuple(plan["cell"]))
-    if rod_rot is None or kitle_rot is None:
-        log(f"HATA: rotasyon bulunamadi (rod={rod_rot is not None}, "
-            f"kitle={kitle_rot is not None})")
+    if kitle_rot is None:
+        log("HATA: rotasyon bulunamadi (kitle)")
         return 1
 
-    pins = pin_listesi(plan, rod_ad, n_rod, kitle_ad, rod_rot, kitle_rot,
-                       clear)
+    pins = pin_listesi(plan, rod_pinler, kitle_ad, kitle_rot, clear)
     log(f"pin sayisi: {len(pins)} (rod {n_rod} + kitle {plan['kapasite']})")
 
     from src.nesting3d.nfv_solve import solve_nfv

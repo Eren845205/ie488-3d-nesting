@@ -53,7 +53,7 @@ def test_kafes_plani_sigmaz_durumda_uygun_degil():
 def test_pin_listesi_sayim_ve_cakismasizlik():
     plan = kafes_plani((95.0, 10.0, 399.6), 54, (32.0, 90.0, 9.6), 520,
                        335.0, 335.0, 2.0)
-    pins = pin_listesi(plan, "rod", 54, "kitle", None, None, 2.0)
+    pins = pin_listesi(plan, [("rod", None)] * 54, "kitle", None, 2.0)
     rods = [p for p in pins if p["ad"] == "rod"]
     kitle = [p for p in pins if p["ad"] == "kitle"]
     assert len(rods) == 54
