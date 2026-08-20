@@ -1944,6 +1944,15 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **A11 karnesi:** tetik=geometrik KANITLI (24/24) | kapı=FAIL (1 yfp) | sıfır-dokunuş=N/A (kablo yok) | held-out bakış YOK.
 - **Kanıt:** `results/k66_dagilim_smoke.json` (D+OneDrive).
 
+### [K-66-d DURUŞ-KORU fsm610] KISIT-UYUMLU kafes — 🏆 **400,00 LEGAL (teorik tabanın 0,4mm üstü) — kısıt-ekseni ÇÖZÜLDÜ + yeni fsm610 tek-plaka şampiyonu**
+
+- **Tarih:** 2026-08-20 · **Koşu:** M66_DURUS_KORU=1 @pitch 2,0 (34,8dk): çubuklar geldiği gibi DİK (54 kolon), plakalar geldiği gibi YATIK (yalnız yaw90; 297'si kanallara 33 katman), kalan 223 plaka + 36 braket NFV.
+- **SONUÇ:** h=**400,00** / 610-610 / clearance **2,0** / 5-yön kilit **0** → **LEGAL.** Kural gereği taban 399,6 (dik çubuk) → tavana 0,4mm: bu eksende motor OPTİMUMDA. Eski kısıtlı 691,2-INVALID'e karşı **−291,2mm (−%42) ve artık LEGAL.**
+- **BEKLENMEDİK DERS:** kısıt-uyumlu 400,0 < kısıtsız-kafes 458,4! Kafes plan-seçicisi "kanal KAPASİTESİ maksimize" ediyor (dik-plaka 324 seçmişti) ama doğru hedef "beklenen FİNAL YÜKSEKLİK" — yatık-ince katman (297 kanal + NFV'ye bol araboşluk) kazandı. K-66-d v2 iyileştirme notu: plan skoru = kapasite değil yükseklik-tahmini. Ayrıca kısıtsız eksenin gerçek en-iyisi de artık ≤400,0 (kısıt-uyumlu çözüm kısıtsızda da geçerli).
+- **Tablo (fsm610 tek-plaka):** kısıtlı-eski 691,2 INVALID → kısıt-uyumlu kafes **400,00 LEGAL** (yeni şampiyon) · kısıtsız-kafes 458,4 LEGAL (artık geride) · referans 8-plan pratiği: yalnız PLAN8=284, toplamı >>400 + 8 kurulum → **toplam-maliyette tek-plaka 400 ezici.**
+- **A11 karnesi: ŞERHLİ** — tek-set ölçüm (iddia fsm610-özel: "kurala uyarak ne yapılabiliyor" cevabı; genelleme iddiası yok); kablo hâlâ BEKLEMEDE (seed2 clearance kenarı açık); duruş-koru yorumu (yaw serbest) mühendis teyidi bekliyor (mail S3).
+- **Kanıt:** `results/k66_d_kafes_dekod_duruskoru.json` (D+OneDrive).
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;
