@@ -576,9 +576,10 @@ parça geometrisinden ölçülür (kopya-kaydırma çakışmasızlık taraması)
 PLAN8 anatomisi bu kayıtla TAM. Kalan bilinmeyen yalnız diğer planlar
 (dosyada yok): çubuk duruşu + her-plan-tek-tip-mi + neden-8-plan.
 
-## 2026-08-20 (4) — Hoca önerisi: Bees Algorithm (Eren aktarımı)
+## 2026-08-20 (4) — Bees Algorithm (hocadan sohbette DUYULDU — öneri değil; Eren düzeltmesi)
 
-Hoca Bees Algorithm'dan bahsetti. Değerlendirme (YONTEM §5 K-68):
+Eren, hocanın Bees Algorithm'dan bahsettiğini duydu (bize yönelik
+öneri/direktif YOK; cevap borcu doğurmaz). Değerlendirme (YONTEM §5 K-68):
 SA/GA/PSO ailesi arama-sarmalayıcısı; kanıt arşivimiz (Ikonen GA
 kapı-RED, K-62 5-eksen plato) darboğazın sarmalayıcı değil DEKOD
 SEMANTİĞİ (mekanizmalar + rotasyon) olduğunu gösteriyor. Alınan kısım:
