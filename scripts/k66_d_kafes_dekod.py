@@ -120,7 +120,10 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
     # katina YUKARI yuvarlanir — pin gridine oturur, gercek bosluk >= clear
     # garanti kalir. pitch=None -> ham mm (eski davranis, test paritesi).
     def eff(d: float) -> float:
-        ham = d + clear
+        # 0.01mm muhendislik toleransi: mesh bbox mikron tozu (95.00003 gibi)
+        # ceil'i bir tam hucre sisiriyordu (12.000007/2.4 -> 6 hucre) ve
+        # kafes plakadan tasiyordu. Bosluk garantisi >= clear - 0.01mm kalir.
+        ham = round(d + clear, 2)
         if pitch is None or pitch <= 0:
             return ham
         return math.ceil(ham / pitch - 1e-9) * pitch
@@ -317,13 +320,19 @@ def main() -> int:
     # pitch'in katina yuvarlanir, ayni pitch solve'a fine_pitch gecilir —
     # aksi halde pin yuvarlamasi komsu hucreleri clearance-altina sokar
     # (ilk sentetik kosunun INVALID 1,046 dersi, 2026-08-20).
-    from src.nesting3d.nfv_solve import suggest_nfv_pitch
-    from src.nesting3d.capabilities import probe_capabilities
-    pitch, _fizibil, _pn = suggest_nfv_pitch(
-        inst, plate_w_mm=plate, plate_d_mm=plate,
-        ram_bytes=probe_capabilities().ram_bytes, margin=1)
-    pitch = float(pitch)
-    log(f"pitch (sabitlendi): {pitch:.2f}mm ({_pn})")
+    pitch_env = os.environ.get("M66_PITCH")
+    if pitch_env:
+        pitch = float(pitch_env)
+        log(f"pitch (env override): {pitch:.2f}mm — RAM sorumlulugu "
+            "operatorde (kaba auto-pitch kafes adimlarini sisiriyordu)")
+    else:
+        from src.nesting3d.nfv_solve import suggest_nfv_pitch
+        from src.nesting3d.capabilities import probe_capabilities
+        pitch, _fizibil, _pn = suggest_nfv_pitch(
+            inst, plate_w_mm=plate, plate_d_mm=plate,
+            ram_bytes=probe_capabilities().ram_bytes, margin=1)
+        pitch = float(pitch)
+        log(f"pitch (sabitlendi): {pitch:.2f}mm ({_pn})")
 
     plan = kafes_plani(slot, n_rod,
                        modeller[kitle_ad]["dims"],
