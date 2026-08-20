@@ -1936,6 +1936,14 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **A11 karnesi: ŞERHLİ.** tetik=geometrik (tekrar-kitle+aşan; kodda veri-adı yok) | kapı=BEKLİYOR (çok-seed dağılımsal + dev-set sıfır-dokunuş + K-65/kanopi etkileşim ölçümü) | sözleşme=DEĞİL | held-out bakış YOK (fsm610 dev'e terfili). Üretim kablosu KARARI kapı sonrası Eren'de.
 - **Kanıt:** `results/k66_d_kafes_dekod.json` (D+OneDrive) + detach log. Katalog: MEKANIZMA_KATALOGU MK-03.
 
+### [K-66-d DAĞILIMSAL KAPI] 12-seed @2,0 — ❌ KAPI FAIL (1 korrektlik kenarı) ama mekanizma NÖTR-POZİTİF; kablo BEKLEMEDE
+
+- **Tarih:** 2026-08-20 · İki tur: @2,4 → 11W/0T/1L (LOSS=seed9 cl 1,908; K-38 pitch≠clearance tanısı seed9 @2,0 replayı ile DOĞRULANDI: 2,03 LEGAL+WIN) → resmî tur @2,0 (59dk): **tetik 12/12 + kontrol 12/12 KUSURSUZ; A/B 2W/9T/1L.**
+- **Okuma:** kafes 12/12 seed'de daha alçak (tutarlı ~2mm) ama %0,5 eşiğinde → küçük-ölçekte NÖTR-pozitif; **büyük kazanç fsm-ölçeğinde** (tek-set −57,6/−%11,2) — kazanç kitle/çubuk oranıyla ölçekleniyor.
+- **AÇIK KORREKTLİK KENARI:** seed2 kafes clearance **1,642 INVALID @2,0** — K-38 dışı bir sızıntı (şüphe: kafes-pin + serbest-NFV/settle etkileşimi). **Kapı FAIL; kablo bağlanMAZ** (yanlış-pozitif üreten mekanizma üretime giremez). Teşhis işi: seed2 minimum-çift analizi.
+- **A11 karnesi:** tetik=geometrik KANITLI (24/24) | kapı=FAIL (1 yfp) | sıfır-dokunuş=N/A (kablo yok) | held-out bakış YOK.
+- **Kanıt:** `results/k66_dagilim_smoke.json` (D+OneDrive).
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;
