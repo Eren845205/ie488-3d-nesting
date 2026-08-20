@@ -1927,6 +1927,15 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **A11 karnesi:** K-66-d v2 = tek-seed şerhli ön-ölçüm; kapı=BEKLİYOR (çok-seed dağılımsal + fsm STL modu + sıfır-dokunuş); sözleşme=DEĞİL; held-out bakış YOK. S2 bulgusu = teşhis (kayıt HOCA_CEVAPLARI 2026-08-20).
 - **Kanıt:** `results/k66_d_kafes_dekod.json` (D) + fabbproject tarama çıktısı (HOCA_CEVAPLARI kaydı).
 
+### [K-66-d fsm610] Kafes-dekod fsm610 STL kolu — ✅ 458,40 LEGAL (−57,6mm / −%11,2; TEK-SET ŞERHLİ) — yeni fsm610 tek-plaka en-iyisi
+
+- **Tarih:** 2026-08-20 · **Koşu:** `k66_d_kafes_dekod` mode=stl @pitch 2,40 (M66_PITCH override; 32,7dk; D detached). Plan: 28×2 çubuk-satırı (54 dik kolon) + kanallara 324/520 dik-kafes plaka; NFV'ye 196 plaka + 36 braket.
+- **SONUÇ:** h=**458,40** / 610-610 / clearance **2,001** / 5-yön kilit **0** → **LEGAL** (rot denetimi gerekmedi). Önceki en-iyi 516,0 (NFV-max) → **−57,6mm (−%11,2).**
+- **Ders:** bbox-hücre LB (~496) gerçek-geometri için bağlayıcı DEĞİLMİŞ — serbest parçaların NFV'si kanal/ara hacimlere gerçek-geometriyle girip bbox tabanını da deldi; "K-66-d beklenti ~−25mm" tahmini fazla karamsar çıktı (aynı gün ikinci düzeltme: LB yalnız eksen-hizali bbox-paketleme sınıfı için geçerli).
+- **Yol zinciri (aynı gün):** v1 INVALID 1,046 (kuantizasyonsuz kafes — K-38 yeniden) → kuantize-adım + fine_pitch fix → sentetik LEGAL +6,9 → auto-pitch 9,6 şişmesi → M66_PITCH override → mikron-toz ceil fix → fsm610 LEGAL 458,40.
+- **A11 karnesi: ŞERHLİ.** tetik=geometrik (tekrar-kitle+aşan; kodda veri-adı yok) | kapı=BEKLİYOR (çok-seed dağılımsal + dev-set sıfır-dokunuş + K-65/kanopi etkileşim ölçümü) | sözleşme=DEĞİL | held-out bakış YOK (fsm610 dev'e terfili). Üretim kablosu KARARI kapı sonrası Eren'de.
+- **Kanıt:** `results/k66_d_kafes_dekod.json` (D+OneDrive) + detach log. Katalog: MEKANIZMA_KATALOGU MK-03.
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;
