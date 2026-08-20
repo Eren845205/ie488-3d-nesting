@@ -1903,6 +1903,23 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
   daha büyük olabilir — çubuk payı düşük instance'larda) ama fsm610'da
   beklenti ~-25mm ile sınırlı, "büyük kırılma" DEĞİL (A4 kâğıt-hükmü).
 
+### [M4 İLK PORTFÖY KOŞUSU] Karşı-olgusal mod etiketi — ✅ 24/24 instance, 0 hata, 0 invalid; KARAR YÜZEYİ GERÇEK (trivial değil)
+
+- **Tarih:** 2026-08-20 · **Koşu:** `m4_portfoy_kosu` (D, detached; 8 aile × 3 seed × {heightmap, nfv_fast, nfv_max}; kucuk ölçek, clearance 2,0; A2-legal = tam yerleşim + clearance + 5-YÖN kilit=0).
+- **Aile kırılımı (winner):** thin_plates **heightmap 3/3** · long_rods/random_boxes/few_large/high_qty nfv_max 3/3 · repeat_rod_mix nfv_max 2 + nfv_fast 1 · mass_plate_rod_mix **nfv_fast 3/3** · holey_frames nfv_max 2 + heightmap 1. Tüm 72 kol legal (kilit5=0, clearance>2).
+- **Dersler:** (1) "nfv-max hep kazanır" YANLIŞ — 24'ün 4'ünde heightmap, 4'ünde nfv_fast kazandı → KARAR-6 güvenli-atlama kapısının öğreneceği gerçek yüzey var; (2) heightmap'in kazandığı sınıf tam da el kuralının sınıfı (saf ince-plaka) — kural-baseline anlamlı; (3) mass_plate'te fast>max KÜÇÜK-ölçek bulgusu (qty=40) — fsm-ölçeğinde (qty 300+) tersine dönebilir, büyük-ölçek dalgası gerekir.
+- **ŞERHLER:** duration_s alanları kısmen suite-eşzamanlı (şişik; yükseklik/winner iterasyon-bütçeli, etkilenmez) · kucuk-ölçek ilk dalga (orta/buyuk ölçek + ek seed'ler append-only eklenecek) · sentetik-yalnız (dev-set kolları ayrı gece).
+- **Kanıt:** `results/m4_portfoy_etiket.jsonl` (24 satır) + `m4_portfoy_ozet.json` (D + OneDrive çift kopya); telemetri v2 satırları `source=m4:*`.
+- **A11 karnesi:** etiket üretimi (veri işi) — kazanç ilanı değil; tetik=N/A | held-out'a bakış YOK.
+
+### [MOD_YARISMASI İLK KOŞU] Model envanteri ilk kez yakıtla yarıştı — ✅ regret_logistic 9,66mm KAZANAN; KURAL 18,26mm (10 adayın 9'undan kötü)
+
+- **Tarih:** 2026-08-20 · **Tablo:** 49 instance (eski telemetri + M4 satırları; hijyen: 131 invalid + 74 özelliksiz satır dışlandı, 118 legal-kolsuz instance atlandı; held-out dışlama 0 — held-out satırı yoktu).
+- **Sıralama (LOO ort. regret / acc):** regret_logistic **9,66 / 0,837** · mini_bagging 9,81 · karar_agaci 10,22 / 0,714 · 1nn 11,64 · logistic=conformal 12,87 / 0,816 · knn 12,92 · argmin_knn 12,98 · **KURAL 18,26 / 0,510** · argmin_ridge 19,26. Overfit bayrağı: hiçbirinde yok.
+- **Dersler:** (1) ML karar katmanının değeri İLK KEZ SAYISAL: en iyi model kuralın regret'ini ~yarıya indiriyor (−8,6mm/instance); (2) **thin_shell'de KURAL (6,48) tüm modellerden İYİ** → challenger mimarisi (model ezer + kural fallback) veriyle doğrulandı — kural silinmez; (3) tube ailesi herkese zor (11-21mm) — özellik/etiket eksiği adayı (M15 ablasyon hedefi); (4) mixed_scale n=1 kötümser-ceza artefaktı (192mm) — tablo büyüyünce çözülür.
+- **ŞERH:** 49-instance küçük tablo, kucuk-ölçek M4 dalgası dahil; promote YOK (Y-1/Y-4 — artefakt yazılmadı); güven-kapısı eşiği seçimi (M6 kalanı) + Aşama-1 kapısı ayrı iş.
+- **Kanıt:** `results/mod_yarismasi.json` (D).
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;
