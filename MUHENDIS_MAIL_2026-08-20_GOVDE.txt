@@ -1,0 +1,32 @@
+Konu: Kisa 3 soru — 610 parcalik is (10 saniyede cevaplanabilir)
+
+Merhaba,
+
+Donusunuz icin tesekkurler; Aluteam davetiniz icin cok naziksiniz.
+Ancak bir sure Istanbul'a gelme imkanim olmayacak — bu donemde sureci
+uzaktan (mail ve gerekirse kisa telefon) yurutmemiz gerekecek. Ilk
+firsatta ziyareti kurulum planiyla birlestirecegim; o gune kadar mail
+uzerinden hizli soru-cevap bizim icin tek calisma kanali olacak.
+
+Bu arada bos durmadik: gonderdiginiz Netfabb dosyasini kendi
+araclarimizla inceledik. PLAN8'in 118 adet braketten olustugunu, tumunun
+yatik ve ~17 mm kademeli (ic ice yuvalanmis) dizildigini, 284 mm'nin bu
+plana ait oldugunu gorduk — guzel bir yerlesim, elinize saglik.
+
+Tam da uzaktan yurutecegimiz icin sorulari tek kelime/sayi ile
+cevaplanacak kadar kisa tuttum. Bu netlikler, sonuclarimizi sizin
+referansinizla ADIL karsilastirabilmemiz ve sistemimizin size en iyi
+sonucu uretebilmesi icin kritik — geri bildirimleriniz bizim icin
+cok degerli:
+
+1) 610 parcalik is TOPLAM kac plana bolundu? (tek sayi)
+
+2) 95x10x400 mm'lik cubuklar hangi planda ve durusu nedir?
+   (dik / yatik-capraz / egimli — tek kelime yeter)
+
+3) "Rotasyonlari degismeyecek" notunda: parcayi EGMEDEN, plaka
+   duzleminde cevirmek (saat yonunde dondurmek) serbest mi?
+   (evet / hayir)
+
+Simdiden tesekkurler; iyi calismalar,
+Eren Kutlu

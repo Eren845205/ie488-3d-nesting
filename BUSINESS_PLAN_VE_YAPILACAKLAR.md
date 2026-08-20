@@ -216,8 +216,11 @@ Eren İstanbul'dan ayrılacak; lab'a her zaman gidilemez. Seçenekler:
 
 ### P2b — ALUTEAM ZİYARETİ (2026-08-20: mühendis maili yüz-yüzeye kaydırdı)
 - Mühendis (farklı kişi) 6-sorulu maile: "uzun yazmışsın, net cevap yok,
-  Aluteam'e gel konuşalım" → kanal = YÜZ-YÜZE. Ziyaret P2 LAB KURULUMUYLA
-  BİRLEŞTİRİLİR (tek gidişte kurulum + cevaplar).
+  Aluteam'e gel konuşalım" → İLK plan yüz-yüzeydi; **GÜNCELLEME 2026-08-20
+  (Eren): bir süre Aluteam'e GELİNEMEYECEK → süreç UZAKTAN yürür (mail +
+  kısa telefon); ziyaret ileride kurulumla birleşir.** Cevap taslağı:
+  `MUHENDIS_MAIL_2026-08-20_GOVDE.txt` (ev-ödevi kanıtı + 3 tek-kelimelik
+  soru + uzaktan-kanal beyanı; gönderim Eren onayında/eliyle).
 - KISA ajanda (uzun liste YOK — ders alındı): (1) 610 parça kaç plana
   bölündü + plan-başına yükseklikler? (2) 399,6 çubuklar hangi planda,
   hangi duruşta? (3) İç-içe/söküm teyidi (rehberli söküm HTML CANLI
