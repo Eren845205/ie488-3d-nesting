@@ -1336,6 +1336,40 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     # #17/#19 gercek-mesh doluluk% (envelope = plaka x bu yukseklik).
     _set_volume_fill(height_mm)
+
+    # U1 v1a (2026-08-20, RAPOR-ONLY): plaka-yukseklik LB hakemi + bolme
+    # onerisi. KESIN hakem = gercek-hacim LB (hicbir yerlesim delemez);
+    # bbox-hucre yalniz TAHMIN (ders: 458,4 sonucu 496'lik bbox-LB'yi
+    # deldi). Bol-ve-kos YOK (v1b isi) — yalniz gorunurluk: "691 sessizce
+    # raporlandi" sinifi bir daha olamaz. Uretilemezse alan yok, cozum
+    # asla etkilenmez (tek-tarafli).
+    try:
+        from src.scheduling.plaka_bolme import (
+            ParcaOzeti, bolme_karari, rapor_alani)
+        _pb_parcalar = []
+        for _p in all_parts:
+            _w = float(_p.get("width_mm") or 0.0)
+            _d = float(_p.get("depth_mm") or 0.0)
+            _h = float(_p.get("height_mm") or 0.0)
+            _tf = _p.get("true_fill")
+            _gv = (_w * _d * _h if _p.get("source") == "box"
+                   else (_w * _d * _h * float(_tf) if _tf else None))
+            _pb_parcalar.append(ParcaOzeti(
+                ad=str(_p.get("name") or _p.get("id") or "?"),
+                qty=int(_p.get("qty") or 1), w_mm=_w, d_mm=_d, h_mm=_h,
+                gercek_hacim_mm3=_gv))
+        _pb_karar = bolme_karari(
+            _pb_parcalar, float(_cw), float(_cd),
+            (float(_ch) if _ch else None), WEB_MIN_CLEARANCE_MM)
+        _instr["plaka_bolme"] = rapor_alani(_pb_karar, float(height_mm))
+        if _instr["plaka_bolme"].get("asim_mm"):
+            logger.warning(
+                "nesting[%s]: PLAKA ASIMI %.1fmm (%s)", batch_id,
+                _instr["plaka_bolme"]["asim_mm"],
+                _instr["plaka_bolme"].get("asim_yorumu", ""))
+    except Exception as _pb_exc:
+        logger.warning("plaka_bolme raporu uretilemedi (uretim "
+                       "etkilenmez): %s", _pb_exc)
     # #22 ZAMAN BUTCESI izi: solve_nfv budget asiminda strategy'ye "budget_exceeded"
     # yazar; bu iz adaptive_reason'a tasinir. time_budget_sec None ise asla tetiklenmez
     # (bugünkü davranış birebir).
