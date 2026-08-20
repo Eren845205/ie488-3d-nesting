@@ -539,3 +539,26 @@ bölme) ürün-gerçeği olarak ÖNCELİK YÜKSELDİ.**
 plana bölündü + plan-başına yükseklikler? (2) Çubuklar (399,6mm) hangi
 planda, hangi duruşta? (3) İç-içe/söküm teyidi (rehberli söküm HTML
 gösterilerek). Ziyaret lab KURULUMUYLA birleştirilir (P2).
+
+## 2026-08-20 (2) — PLAN8 TAM ANATOMİSİ (fabbproject derin analizi): plan-başına TEK-TİP parça + KADEMELİ İÇ-İÇE istif
+
+XML mesh-bloklarından (her kabuğun bbox/hacim/alan alanları düz metin)
+PLAN8 final durumu çözüldü (118 kabuk, z 6→280,4):
+1. **Plan-başına TEK TİP parça:** PLAN8 yalnız braket (48×75,5×79;
+   hacim 61.010 = fsm610 '36 adet' parçasının BİREBİR aynısı). Karışık
+   istif yok. NOT: 118 > 36 → bu proje fsm610 mailinden BÜYÜK bir işin
+   parçası görünüyor (aynı parçanın büyük partisi) — kapsam teyidi
+   Aluteam'de.
+2. **118/118 eksen-hizalı YATIK** (48 yukarı); dik/eğik yok.
+3. **KADEMELİ İÇ-İÇE İSTİF:** taban-z katmanları 6,23,40,56,73,90,107...
+   (aralık ~17mm; parça 48mm) → çanak-form kabuklar birbirine yuvalanmış;
+   parça-başı z ~17 (düz istifin ~%35'i). 284 = ~17 kademeli katman.
+
+**SONUÇLAR:** (a) "iç-içe geçmesin" beyanı fiilen ÇÖZÜLDÜ — mühendis
+aynı-parça iç-içe istifi bizzat yapıyor; beyan "çıkarılamaz kilit olmasın"
+demek; A2 söküm-kanıtlı semantiğimiz referans pratiğiyle AYNI. (b) U1
+bölme ataması "model-bazlı/tek-tip plan" = referansın gerçek pratiği
+(gözlem, tahmin değil). (c) Yeni mekanizma adayı K-67: aynı-parça
+kademeli yuvalama (yuvalama-derinliği gerçek geometriden ölçülür; bu
+parçada ~17mm). (d) S1'den kalan TEK soru: çubuklar hangi planda, hangi
+duruşta (bu dosyada çubuk planı yok) + "her plan tek-tip mi" teyidi.
