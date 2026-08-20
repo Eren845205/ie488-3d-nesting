@@ -507,3 +507,35 @@ istemiyor) yoksa "çıkarılamaz olmasın" vurgusu mu, teyit gerekiyor.
 Teyide kadar mevcut A2 semantiği (söküm-kanıtlı iç-içe serbest) geçerli.
 Teyit araçları: rehberli söküm HTML demo'su + söküm planı örneği
 (hocanın endişesi pratik çıkarma — plan tam bunu adresliyor).
+
+## 2026-08-20 — Mühendis cevabı (FARKLI mühendis) + fabbproject ÖZ-ÖLÇÜMÜ: S2 ÇÖZÜLDÜ (referans ÇOK-PLAKA)
+
+**Mühendis cevabı (Eren aktarımı; 2026-08-18 6-sorulu maile):** "Mailine
+henüz bakabildim. Oldukça uzun yazmışsın. Her sorunun tam olarak net bir
+cevabı maalesef yok. Bir gün Aluteam'e geldiğinde bu maildeki konuları
+detaylı konuşalım." — Bu CEVAP YOK demek; kanal yüz-yüze Aluteam
+ziyaretine kaydı. DERS: mühendise mail KISA ve tek-soruluk yazılacak
+(uzun mail cevapsız kalıyor).
+
+**ÖZ-ÖLÇÜM (aynı gün — beklemek yerine referans DOSYASI ölçüldü):**
+`Veriler/fsm610_2026-08-17/000_17-08-2026.fabbproject` ikili taraması
+(kapalı format; isim-etiketi analizi):
+- Birleşik referans objesi **"PLAN8(2mm) 315x323x284mm"** — adında hem
+  2mm boşluk beyanı hem taban (315x323) hem yükseklik (284) var.
+- Obje **shell_001..shell_126** (+_c1 varyantlarıyla ~130) kabuğa ayrık —
+  2mm boşluklu birleşik nesnede kabuk = parça ⇒ **PLAN8 ~126-130 PARÇA
+  içeriyor, 610 DEĞİL.**
+- Adı "PLAN**8**" ⇒ iş EN AZ 8 plana bölünmüş; dosyada başka plan yok
+  (yalnız 8. gönderilmiş).
+
+**SONUÇ — S2 KAPANDI:** Referansın 284mm'si 610 parçanın tek-plaka
+yüksekliği DEĞİL; ~126 parçalık 8. planın yüksekliği. 516 (bizim,
+610-parça-tek-plaka) vs 284 kıyası ELMA-ARMUTMUŞ; "motor %45 geride"
+anlatısı tamamen düştü (K-66-a/b hacim analiziyle birlikte: bizim 516
+bbox-optimuma ~%4). **Referans pratiği = ÇOK-PLAKA ⇒ U1 (parti yükseklik
+bölme) ürün-gerçeği olarak ÖNCELİK YÜKSELDİ.**
+
+**Aluteam ziyareti için kalan KISA soru listesi:** (1) 610 parça kaç
+plana bölündü + plan-başına yükseklikler? (2) Çubuklar (399,6mm) hangi
+planda, hangi duruşta? (3) İç-içe/söküm teyidi (rehberli söküm HTML
+gösterilerek). Ziyaret lab KURULUMUYLA birleştirilir (P2).

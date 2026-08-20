@@ -214,6 +214,19 @@ Eren İstanbul'dan ayrılacak; lab'a her zaman gidilemez. Seçenekler:
       gizlenir; operatör akışı 3-4 ekran). Envanter çıkarılıp Eren'le
       hangi sekmelerin gizleneceği kararlaştırılır.
 
+### P2b — ALUTEAM ZİYARETİ (2026-08-20: mühendis maili yüz-yüzeye kaydırdı)
+- Mühendis (farklı kişi) 6-sorulu maile: "uzun yazmışsın, net cevap yok,
+  Aluteam'e gel konuşalım" → kanal = YÜZ-YÜZE. Ziyaret P2 LAB KURULUMUYLA
+  BİRLEŞTİRİLİR (tek gidişte kurulum + cevaplar).
+- KISA ajanda (uzun liste YOK — ders alındı): (1) 610 parça kaç plana
+  bölündü + plan-başına yükseklikler? (2) 399,6 çubuklar hangi planda,
+  hangi duruşta? (3) İç-içe/söküm teyidi (rehberli söküm HTML CANLI
+  gösterilir). + kurulum sırasında CUDA/parite koşusu (P3 aksiyonları).
+- NOT: S2 ZATEN ÖZ-ÖLÇÜMLE KAPANDI (fabbproject: PLAN8, ~126 parça,
+  ≥8 plan — HOCA_CEVAPLARI 2026-08-20) → ziyarette yalnız kalan boşluklar.
+- İLETİŞİM KURALI (kalıcı): mühendise mail = KISA, tek-konu, madde başına
+  1-2 satır; uzun teknik mail HOCAYA da özet + ek olarak gider.
+
 ### P7 — Süreç/operasyon
 - [ ] Pilot kullanım geri bildirim döngüsü: lab kullanıcıları sorunları
       nasıl bildirecek? (mail/WhatsApp/uygulama-içi "sorun bildir")

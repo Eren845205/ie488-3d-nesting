@@ -1920,6 +1920,13 @@ Teşhis adayı: şampiyon-reçete zincirini güncel sözleşmede adım-adım rep
 - **ŞERH:** 49-instance küçük tablo, kucuk-ölçek M4 dalgası dahil; promote YOK (Y-1/Y-4 — artefakt yazılmadı); güven-kapısı eşiği seçimi (M6 kalanı) + Aşama-1 kapısı ayrı iş.
 - **Kanıt:** `results/mod_yarismasi.json` (D).
 
+### [K-66-d v2 SENTETİK + S2 ÖZ-ÖLÇÜM] Kafes dekod LEGAL (+6,9mm tek-seed) + 🔴 REFERANS ÇOK-PLAKA KANITI (kıyas anlatısı düştü)
+
+- **Tarih:** 2026-08-20 · **K-66-d v2 (kuantize kafes):** mass_plate_rod_mix(s0, qty=120): kafes-dekod **414,29 / 249-249 / clearance 2,504 / kilit5=0 LEGAL** (teorik çubuk-tavanı 414,2'nin üstüne yalnız 0,1 — kanal-doldurma TAM çalıştı) vs pinsiz NFV 421,22 LEGAL → **kazanç +6,93mm (−%1,6), tek-seed ŞERHLİ.** v1→v2 dersi (K-38'in yeniden-doğrulaması): kafes adımları pitch-katına kuantize edilmeden pin yuvarlaması clearance'ı 1,046'ya düşürüyordu (INVALID); adım=ceil((boyut+boşluk)/pitch)×pitch + fine_pitch sabitleme fix'i → LEGAL. Ayrıca tetik düzeltmesi: tekrar-KİTLE TOPLAMI (tek-model payı değil) + çoklu aşan-model pin desteği (54-pin/27-kopya çökmesini önledi).
+- **🔴 S2 ÖZ-ÖLÇÜM (mühendis cevap vermedi — dosya ölçüldü):** fabbproject isim-analizi: referans objesi "PLAN8(2mm) 315x323x284mm", **~126-130 kabuk = ~126 parça; iş ≥8 plana bölünmüş.** 284 = 8. planın yüksekliği, 610 parçanın DEĞİL. **Kıyas elma-armut; K-66-a/b hacim analiziyle birleşince: motor eksen-hizalı bbox-optimuma ~%4 — "referanstan %45 geride" anlatısı TAMAMEN DÜŞTÜ.** Kalan gerçek işler: U1 çok-parti bölme (referans pratiği; öncelik YÜKSELDİ), çubuk-duruşu/iç-içe teyidi (Aluteam kısa-ajanda), profil-yuvalama potansiyeli (ince-pitch, lab 64GB).
+- **A11 karnesi:** K-66-d v2 = tek-seed şerhli ön-ölçüm; kapı=BEKLİYOR (çok-seed dağılımsal + fsm STL modu + sıfır-dokunuş); sözleşme=DEĞİL; held-out bakış YOK. S2 bulgusu = teşhis (kayıt HOCA_CEVAPLARI 2026-08-20).
+- **Kanıt:** `results/k66_d_kafes_dekod.json` (D) + fabbproject tarama çıktısı (HOCA_CEVAPLARI kaydı).
+
 ## §4 — LİTERATÜR ENVANTERİ (araştırıldı / reddedildi / koda eklendi / denendi)
 
 3 deep-research turu + 8 önceden-var PDF. Arşiv: `MOTOR/makaleler/`. Kapı: makale→tekniği kodla→benchmark;

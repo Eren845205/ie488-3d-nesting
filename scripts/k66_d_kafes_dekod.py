@@ -107,7 +107,8 @@ def eksen_rot_bul(mesh_extents: Tuple[float, float, float],
 
 def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
                 kitle_dims: Tuple[float, float, float], n_kitle: int,
-                plate_w: float, plate_d: float, clear: float) -> Dict:
+                plate_w: float, plate_d: float, clear: float,
+                pitch: Optional[float] = None) -> Dict:
     """Jenerik kafes plani: cubuk satirlari + arada kitle kanallari.
 
     Cubuk: footprint = iki kucuk boyut (buyugu x'e), yukseklik = en buyuk.
@@ -115,6 +116,15 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
     cubuk-yuksekligi altina EN COK kitle parcasi sigdirmak.
     Donen plan: rod satir y'leri + kitle hucre yerlesimleri (mm) + kapasite.
     """
+    # K-38 dersi (kuantizasyon): pitch verilirse her efektif adim pitch
+    # katina YUKARI yuvarlanir — pin gridine oturur, gercek bosluk >= clear
+    # garanti kalir. pitch=None -> ham mm (eski davranis, test paritesi).
+    def eff(d: float) -> float:
+        ham = d + clear
+        if pitch is None or pitch <= 0:
+            return ham
+        return math.ceil(ham / pitch - 1e-9) * pitch
+
     r0, r1, r2 = sorted(rod_dims)
     k0, k1_, k2_ = sorted(kitle_dims)
     oryantasyonlar = [
@@ -124,23 +134,23 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
     ]
     en_iyi = None
     for rod_w, rod_d in ((r0, r1), (r1, r0)):  # footprint yonelimi taranir
-        rods_x = int((plate_w + clear) // (rod_w + clear))
+        if rod_w > plate_w:
+            continue
+        rods_x = int((plate_w - rod_w) // eff(rod_w)) + 1
         if rods_x <= 0:
             continue
         n_rows = math.ceil(n_rod / rods_x)
         for (cw, cd, ch), oad in oryantasyonlar:
-            if cw + clear > plate_w:
+            if cw > plate_w or ch > r2:
                 continue
-            katman = int((r2 + clear) // (ch + clear))
-            if katman <= 0:
-                continue
-            cols_x = int((plate_w + clear) // (cw + clear))
-            if cols_x <= 0:
+            katman = int((r2 - ch) // eff(ch)) + 1
+            cols_x = int((plate_w - cw) // eff(cw)) + 1
+            if katman <= 0 or cols_x <= 0:
                 continue
             for m in range(1, 5):
-                ch_d = m * (cd + clear)
+                ch_d = m * eff(cd)
                 n_ch = n_rows + 1
-                d_gerek = (n_rows * (rod_d + clear)) + n_ch * (ch_d + clear)
+                d_gerek = n_rows * eff(rod_d) + n_ch * ch_d
                 if d_gerek > plate_d + clear:
                     continue
                 kap = cols_x * m * katman * n_ch
@@ -149,6 +159,9 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
                         "katman": katman, "n_ch": n_ch,
                         "kapasite": min(kap, n_kitle),
                         "d_kullanim": round(d_gerek, 1),
+                        "adim": {"rod_x": eff(rod_w), "rod_d": eff(rod_d),
+                                 "cell_x": eff(cw), "cell_d": eff(cd),
+                                 "cell_z": eff(ch)},
                         "rod": {"w": rod_w, "d": rod_d, "h": r2,
                                 "rows_x": rods_x, "n_rows": n_rows}}
                 if en_iyi is None or aday["kapasite"] > en_iyi["kapasite"]:
@@ -169,17 +182,22 @@ def pin_listesi(plan: Dict, rod_pinler: List[Tuple[str, object]],
     """
     pins = []
     rod = plan["rod"]
-    cw, cd, ch = plan["cell"]
     m = plan["m"]
-    ch_d = m * (cd + clear)
+    adim = plan.get("adim") or {"rod_x": rod["w"] + clear,
+                                "rod_d": rod["d"] + clear,
+                                "cell_x": plan["cell"][0] + clear,
+                                "cell_d": plan["cell"][1] + clear,
+                                "cell_z": plan["cell"][2] + clear}
+    ch_d = m * adim["cell_d"]
     # y-yerlesimi: [kanal, rod-satiri, kanal, rod-satiri, ..., kanal]
+    # (tum adimlar pitch-katina kuantize -> pin gridine tam oturur)
     y = 0.0
     bolgeler = []  # ("kanal"|"rod", y_basi)
     for i in range(rod["n_rows"]):
         bolgeler.append(("kanal", y))
-        y += ch_d + clear
+        y += ch_d
         bolgeler.append(("rod", y))
-        y += rod["d"] + clear
+        y += adim["rod_d"]
     bolgeler.append(("kanal", y))
 
     rod_kuyruk = list(rod_pinler)
@@ -190,7 +208,7 @@ def pin_listesi(plan: Dict, rod_pinler: List[Tuple[str, object]],
                 if not rod_kuyruk:
                     break
                 ad, rrot = rod_kuyruk.pop(0)
-                pins.append({"ad": ad, "x_mm": j * (rod["w"] + clear),
+                pins.append({"ad": ad, "x_mm": j * adim["rod_x"],
                              "y_mm": yb, "z_mm": 0.0, "rot": rrot})
         else:
             for kat in range(plan["katman"]):
@@ -199,9 +217,9 @@ def pin_listesi(plan: Dict, rod_pinler: List[Tuple[str, object]],
                         if kitle_sayac <= 0:
                             break
                         pins.append({"ad": kitle_ad,
-                                     "x_mm": j * (cw + clear),
-                                     "y_mm": yb + satir * (cd + clear),
-                                     "z_mm": kat * (ch + clear),
+                                     "x_mm": j * adim["cell_x"],
+                                     "y_mm": yb + satir * adim["cell_d"],
+                                     "z_mm": kat * adim["cell_z"],
                                      "rot": kitle_rot})
                         kitle_sayac -= 1
     return pins
@@ -295,9 +313,22 @@ def main() -> int:
     if len(asanlar) > 1:
         log(f"NOT: {len(asanlar)} asan model; slot={tuple(round(s,1) for s in slot)}")
 
+    # Pitch ONCE sabitlenir (K-38 kuantizasyon dersi): kafes adimlari bu
+    # pitch'in katina yuvarlanir, ayni pitch solve'a fine_pitch gecilir —
+    # aksi halde pin yuvarlamasi komsu hucreleri clearance-altina sokar
+    # (ilk sentetik kosunun INVALID 1,046 dersi, 2026-08-20).
+    from src.nesting3d.nfv_solve import suggest_nfv_pitch
+    from src.nesting3d.capabilities import probe_capabilities
+    pitch, _fizibil, _pn = suggest_nfv_pitch(
+        inst, plate_w_mm=plate, plate_d_mm=plate,
+        ram_bytes=probe_capabilities().ram_bytes, margin=1)
+    pitch = float(pitch)
+    log(f"pitch (sabitlendi): {pitch:.2f}mm ({_pn})")
+
     plan = kafes_plani(slot, n_rod,
                        modeller[kitle_ad]["dims"],
-                       modeller[kitle_ad]["qty"], plate, plate, clear)
+                       modeller[kitle_ad]["qty"], plate, plate, clear,
+                       pitch=pitch)
     if not plan.get("uygun"):
         log(f"PLAN KURULMADI: {plan.get('sebep')}")
         return 1
@@ -351,6 +382,7 @@ def main() -> int:
     from scripts.k62_v17_ripup import a2_olc
     t1 = time.perf_counter()
     res = solve_nfv(inst, plate_w_mm=plate, plate_d_mm=plate,
+                    fine_pitch=pitch,
                     seed=seed, quality=quality, clearance_mm=clear,
                     pinned_placements=pins, pin_3d=True)
     h = float(res.height_mm)
