@@ -575,3 +575,13 @@ deseni). 4 kolon × ~16-17 parçalık diyagonal dizi = 118 parça @284mm
 parça geometrisinden ölçülür (kopya-kaydırma çakışmasızlık taraması).
 PLAN8 anatomisi bu kayıtla TAM. Kalan bilinmeyen yalnız diğer planlar
 (dosyada yok): çubuk duruşu + her-plan-tek-tip-mi + neden-8-plan.
+
+## 2026-08-20 (4) — Hoca önerisi: Bees Algorithm (Eren aktarımı)
+
+Hoca Bees Algorithm'dan bahsetti. Değerlendirme (YONTEM §5 K-68):
+SA/GA/PSO ailesi arama-sarmalayıcısı; kanıt arşivimiz (Ikonen GA
+kapı-RED, K-62 5-eksen plato) darboğazın sarmalayıcı değil DEKOD
+SEMANTİĞİ (mekanizmalar + rotasyon) olduğunu gösteriyor. Alınan kısım:
+kâşif-toplayıcı BÜTÇE-TAHSİSİ fikri M12 (racing) hattına aşılanacak
+(umut veren başlangıçlara devam bütçesi). Tam Bees pilotu benchmark
+kapısına tabi (meta-ders #8); sırası mekanizma kuyruğunun arkasında.
