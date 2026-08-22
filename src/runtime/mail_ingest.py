@@ -768,9 +768,11 @@ def _extract_attachments(msg: email.message.Message) -> List[Attachment]:
 # ---------------------------------------------------------------------------
 
 _STRUCTURED_EXTENSIONS = {".xlsx", ".xls", ".xlsm", ".csv"}
-# Arsiv ekleri: .zip + .rar (2026-08-18 gercek musteri maili .rar ile geldi;
-# bicim ayrimi extract_stls icinde sihir baytlarindan yapilir — tek yol).
-_ZIP_EXTENSIONS = {".zip", ".rar"}
+# Arsiv ekleri: .zip + .rar (2026-08-18 gercek musteri maili .rar ile geldi)
+# + .fabbproject (2026-08-21: muhendisler Netfabb projesi gonderiyor; tip-
+# gruplu "parca{i}_{N}adet" STL'lerine acilir). Bicim ayrimi extract_stls
+# icinde sihir baytlarindan yapilir — tek yol.
+_ZIP_EXTENSIONS = {".zip", ".rar", ".fabbproject"}
 # Adet listesi eki: "Adet listesi.txt" gibi duz-metin adet kaynagi (Deneme4
 # gercek maili boyle geldi — govde + txt eki AYNI listeyi tasiyordu).
 _TXT_EXTENSIONS = {".txt"}

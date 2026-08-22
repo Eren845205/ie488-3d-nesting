@@ -256,11 +256,17 @@ def extract_stls(
     """
     max_total_bytes = max_total_mb * 1024 * 1024
 
-    # Bicim saptama: RAR sihir baytlari -> harici arac yolu; aksi halde ZIP
-    # yolu (PK olmayan bozuk veri zipfile.BadZipFile ile ayni sekilde bos
-    # dict'e duser — eski davranis birebir korunur).
+    # Bicim saptama: RAR sihir baytlari -> harici arac yolu; Netfabb
+    # fabbproject isareti -> mesh-cikarma yolu (tip-gruplu "parca{i}_{N}adet"
+    # anahtarlari, ayni sozlesme); aksi halde ZIP yolu (PK olmayan bozuk veri
+    # zipfile.BadZipFile ile ayni sekilde bos dict'e duser — eski davranis
+    # birebir korunur).
     if zip_bytes[:len(_RAR_MAGIC)] == _RAR_MAGIC:
         return _extract_stls_rar(zip_bytes, max_total_bytes)
+    from src.runtime.fabbproject_stl_extractor import (
+        extract_stls_fabbproject, is_fabbproject)
+    if is_fabbproject(zip_bytes):
+        return extract_stls_fabbproject(zip_bytes, max_total_mb=max_total_mb)
 
     sonuc: dict[str, bytes] = {}
 
