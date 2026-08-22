@@ -131,9 +131,24 @@ def _f_fsm610_gercek(seed, scale, stl_dir):
     return inst
 
 
+def _devset_builder(set_adi):
+    """Dev-set yukleyicisi (Asama-2 kampanyasi 2026-08-22): eval_gate'in
+    _load_instance'i — ayni STL/adet kaynagi. Serh: no-go/pin/rot uretim
+    kosullari TASINMAZ (karsi-olgusal kollar kendi iclerinde tutarli)."""
+    def yukle(seed, scale, stl_dir):
+        from scripts.eval_gate import _load_instance
+        return _load_instance(set_adi)
+    return yukle
+
+
 FAMILY_BUILDERS = {
     "thin_plates": _f_thin_plates,
     "fsm610_gercek": _f_fsm610_gercek,
+    "devset_plan1": _devset_builder("plan1"),
+    "devset_plan2": _devset_builder("plan2"),
+    "devset_plan3": _devset_builder("plan3"),
+    "devset_deneme4": _devset_builder("deneme4"),
+    "devset_deneme5": _devset_builder("deneme5"),
     "long_rods": _f_long_rods,
     "random_boxes": _f_random_boxes,
     "few_large_many_small": _f_few_large_many_small,
@@ -214,7 +229,11 @@ def scenario_kur(inst: NestingInstance, mode: str,
         if getattr(p, "stl_path", None):
             d["stl_path"] = str(p.stl_path)
         parts.append(d)
-    sc = {**rich_scenario, "seed": seed,
+    # Karsi-olgusal SAFLIK (2026-08-22, MK-03 kablosu uretime girince):
+    # nfv kollari kafes_zinciri KAPALI kosar — kafes ayri kol olarak
+    # olculuyor; acik kalsa nfv_kalite etiketi gizlice kafes sonucu tasir.
+    # (Eski etiketler kablo-oncesi oldugundan davranis geriye-uyumlu.)
+    sc = {**rich_scenario, "kafes_zinciri": False, "seed": seed,
           "orders": [{"order_id": order_id, "customer": "SYN",
                       "deadline": "2026-12-31", "priority_class": 2,
                       "parts": parts}],
