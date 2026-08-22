@@ -193,6 +193,37 @@ def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     return g
 
 
+def _dilate_kose(grid: np.ndarray, times: int) -> np.ndarray:
+    """KOSEGEN-guvensiz hucre dilation'i (seed2 dersi, 2026-08-20).
+
+    _dilate cekirdegi L1/arti-sekilli oldugundan HAM (dilation'siz) pin
+    damgasina karsi parcanin L1-margin'i KOSEGEN temasta clearance'i
+    garanti edemez: parca pin kosesine sqrt(ex^2+ey^2) < margin*pitch
+    mesafeye oturabilir (k66 seed2: 1,256mm < 2,0; pin-tarafi damga
+    denemesi eksen sozlesmesini bozdu — cozum PARCA cekirdegine ek).
+    Bu fonksiyon grid'i yalniz kosegen-guvensiz ofsetlerle buyutur:
+
+      S_diag = {(+-u,+-v): u,v>=1, u+v>times, (u-1)^2+(v-1)^2 < times^2}
+
+    Cagiran `_dilate(grid, times) | _dilate_kose(grid, times)` birlesimini
+    kullanir: eksen yuzleri L1 ile BIT-OZDES kalir (1x-margin HAM-pin
+    sozlesmesi), kosegen cepler parcanin kendi kose-hucreleriyle kapanir.
+    Pad ve origin kaymasi _dilate ile ayni (times hucre, xy).
+    """
+    if times <= 0:
+        return grid
+    g = np.pad(grid, ((times, times), (times, times), (0, 0)))
+    out = g.copy()
+    for u in range(1, times + 1):
+        for v in range(1, times + 1):
+            if u + v <= times or (u - 1) ** 2 + (v - 1) ** 2 >= times ** 2:
+                continue
+            for su in (u, -u):
+                for sv in (v, -v):
+                    out |= np.roll(np.roll(g, su, axis=0), sv, axis=1)
+    return out
+
+
 def _dilate_z_up(grid: np.ndarray, times: int) -> np.ndarray:
     """TEK-TARAFLI (yalnız +z / ÜST) binary dilation, `times` voxel.
 
@@ -401,8 +432,14 @@ def voxelize_part(
     allowed_orientations: Optional[Tuple[int, ...]] = None,
     rot_matrices: Optional[List[np.ndarray]] = None,
     extra_rot_matrices: Optional[List[np.ndarray]] = None,
+    kose_doldur: bool = False,
 ) -> VoxelPart:
     """Voxelize one model into a VoxelPart with per-orientation profiles.
+
+    kose_doldur (2026-08-20, k66 seed2 fix'i): margin dilation'ina
+    _dilate_kose kosegen hucreleri de eklenir — HAM-pin (pin_3d) yaninda
+    kosegen cep clearance sizintisini parca tarafinda kapatir. Yalniz
+    pinli cozum yollari True gecer; default False = BIT-OZDES.
 
     fill() is essential: surface-only grids would break both volume metrics
     and the bottom/top profiles (PLAN_3D.md risk #1).
@@ -479,7 +516,10 @@ def voxelize_part(
             origin = vg.indices_to_points(np.array([[0, 0, 0]]))[0]
 
         if margin > 0:
-            grid = _dilate(grid, margin)
+            if kose_doldur:
+                grid = _dilate(grid, margin) | _dilate_kose(grid, margin)
+            else:
+                grid = _dilate(grid, margin)
             origin = origin - np.array([margin * pitch, margin * pitch, 0.0])
 
         # TEK-TARAFLI z-dilation (yalnız +z / üst): iki parça arası dikey boşluk
@@ -549,6 +589,7 @@ def expand_quantities(
     orientation_overrides: Optional[dict] = None,
     extra_rot_overrides: Optional[dict] = None,
     kimlik_map: Optional[dict] = None,
+    kose_doldur: bool = False,
 ) -> List[VoxelPart]:
     """Voxelize each model ONCE, then expand to qty part instances.
 
@@ -600,6 +641,7 @@ def expand_quantities(
             display_mesh=display,
             allowed_orientations=overrides.get(name),
             extra_rot_matrices=extra_overrides.get(name),
+            kose_doldur=kose_doldur,
         )
 
     if _should_parallelize(model_set, pitch):

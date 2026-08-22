@@ -77,8 +77,13 @@ def asan_mi(dims: Tuple[float, float, float], plate_w: float,
 def eksen_rot_bul(mesh_extents: Tuple[float, float, float],
                   hedef: Tuple[float, float, float],
                   tol: float = 0.75) -> Optional[List[List[float]]]:
-    """24 eksen-hizali rotasyondan, mesh extentlerini hedefe esleyen ILK
-    matris (4x4 liste). Bulunamazsa None."""
+    """24 eksen-hizali rotasyondan, mesh extentlerini hedefe esleyen
+    EN IYI matris (4x4 liste; max eksen hatasi minimize). Bulunamazsa None.
+
+    NOT (seed2 dersi 2026-08-20): ILK-eslesme neredeyse-kare kesitte
+    (orn. 15,28 vs 14,97; fark < tol) identity'yi kabul edip x/y'yi takas
+    ediyordu -> parca plandaki slottan tol kadar tasar; kotu durumda
+    pin-pin boslugu clearance altina duser. En-iyi-eslesme bunu kapatir."""
     import numpy as np
     import trimesh.transformations as tt
 
@@ -98,24 +103,35 @@ def eksen_rot_bul(mesh_extents: Tuple[float, float, float],
                     matrisler.append(m)
     e = np.asarray(mesh_extents, dtype=float)
     h = np.asarray(hedef, dtype=float)
+    en_iyi = None
+    en_iyi_hata = None
     for m in matrisler:
         r = np.abs(m[:3, :3]) @ e
-        if np.all(np.abs(r - h) <= tol):
-            return m.tolist()
-    return None
+        hata = float(np.max(np.abs(r - h)))
+        if hata <= tol and (en_iyi_hata is None or hata < en_iyi_hata - 1e-9):
+            en_iyi, en_iyi_hata = m, hata
+    return en_iyi.tolist() if en_iyi is not None else None
 
 
 def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
                 kitle_dims: Tuple[float, float, float], n_kitle: int,
                 plate_w: float, plate_d: float, clear: float,
                 pitch: Optional[float] = None,
-                oryantasyonlar_ozel: Optional[List] = None) -> Dict:
+                oryantasyonlar_ozel: Optional[List] = None,
+                skor_v2: bool = False) -> Dict:
     """Jenerik kafes plani: cubuk satirlari + arada kitle kanallari.
 
     Cubuk: footprint = iki kucuk boyut (buyugu x'e), yukseklik = en buyuk.
-    Kitle: 3 yatis oryantasyonu x kanal-katsayisi m (1..4) taranir; hedef
-    cubuk-yuksekligi altina EN COK kitle parcasi sigdirmak.
+    Kitle: 3 yatis oryantasyonu x kanal-katsayisi m (1..4) taranir.
     Donen plan: rod satir y'leri + kitle hucre yerlesimleri (mm) + kapasite.
+
+    SKOR (K-66-d v2, 2026-08-21; 400<458 dersi "plan skoru kapasite degil
+    YUKSEKLIK-tahmini"): skor_v2=False (default) -> KAPASITE maksimize
+    (bit-ozdes eski secim). skor_v2=True -> en dusuk h_pred (esitlikte
+    kapasite buyuk) secilir; h_pred = r2 + kalan-kitle-yayilimi +
+    olu-bant x kanal-alan-orani (detay aday hesabindaki yorumda).
+    h_pred her adaya BILGI olarak yazilir (v1 secimini degistirmez).
+    Dagilimsal dogrulama (12-seed v2 A/B) ayri adim (A11 serhli).
     """
     # K-38 dersi (kuantizasyon): pitch verilirse her efektif adim pitch
     # katina YUKARI yuvarlanir — pin gridine oturur, gercek bosluk >= clear
@@ -173,7 +189,34 @@ def kafes_plani(rod_dims: Tuple[float, float, float], n_rod: int,
                                  "cell_z": eff(ch)},
                         "rod": {"w": rod_w, "d": rod_d, "h": r2,
                                 "rows_x": rods_x, "n_rows": n_rows}}
-                if en_iyi is None or aday["kapasite"] > en_iyi["kapasite"]:
+                # v2 yukseklik-tahmini (her adaya bilgi; secim yalniz
+                # skor_v2'de). Iki ceza terimi, ikisi de GEOMETRIDEN:
+                #  (1) kalan-kitle yayilimi: pinlenmeyen kitle bbox
+                #      hacminin plaka alanina yayilma yuksekligi;
+                #  (2) OLU BANT: kanal ustunde hucre-kuantizasyonunun
+                #      kullanilamaz biraktigi yukseklik x kanal-alan
+                #      orani (fsm dersi: dik 31,6mm olu vs yatik 3,6 —
+                #      458,4/400,0 farkinin ayirt edicisi; aday dokumu
+                #      YONTEM §3 v2 kaydi).
+                # eta/hacim_diger BILEREK kullanilmiyor (tek-vaka
+                # kalibrasyonu tuzagi; braket bbox sismesi yaniltici).
+                v_kitle = k0 * k1_ * k2_
+                alan = plate_w * plate_d
+                olu_bant = r2 - katman * eff(ch)
+                kanal_alan_orani = n_ch * ch_d / max(plate_d, 1e-9)
+                aday["h_pred"] = round(
+                    r2 + (n_kitle - aday["kapasite"]) * v_kitle / alan
+                    + olu_bant * kanal_alan_orani, 1)
+                if skor_v2:
+                    daha_iyi = (en_iyi is None
+                                or aday["h_pred"] < en_iyi["h_pred"] - 1e-9
+                                or (abs(aday["h_pred"] - en_iyi["h_pred"])
+                                    <= 1e-9
+                                    and aday["kapasite"] > en_iyi["kapasite"]))
+                else:
+                    daha_iyi = (en_iyi is None
+                                or aday["kapasite"] > en_iyi["kapasite"])
+                if daha_iyi:
                     en_iyi = aday
     if en_iyi is None:
         return {"uygun": False,
@@ -232,6 +275,97 @@ def pin_listesi(plan: Dict, rod_pinler: List[Tuple[str, object]],
                                      "rot": kitle_rot})
                         kitle_sayac -= 1
     return pins
+
+
+def kafes_coz_instance(inst, plate: float = 335.0, clear: float = 2.0,
+                       pitch: float = 2.0, quality: str = "fast",
+                       seed: int = 42, durus_koru: bool = False,
+                       kitle_pay: float = 0.5,
+                       plan_only: bool = False,
+                       skor_v2: bool = False) -> Dict:
+    """Instance'tan kafes cozumu — main() cozum yolunun PARAMETRIK hali.
+
+    M4 portfoy kollari (kafes / kafes_duruskoru) ve harness'lar icin ortak
+    giris (2026-08-20 gece; kablo DEGIL — deney/etiket yolu). Donen sozluk:
+      {"tetik": False, "sebep": str}                       — tetik yok
+      {"tetik": True, "hata": str}                         — kurulamadi
+      {"tetik": True, "plan": plan, "n_pins": n}           — plan_only
+      {"tetik": True, "plan": plan, "res": res,
+       "n_total": n, "n_pins": n}                          — cozum
+    """
+    modeller: Dict[str, Dict] = {}
+    for p in inst.parts:
+        mm = modeller.setdefault(p.name, {"qty": 0, "dims": (
+            float(p.width_mm), float(p.depth_mm), float(p.height_mm))})
+        mm["qty"] += int(p.qty)
+    n_total = sum(m["qty"] for m in modeller.values())
+    asanlar = {ad: m for ad, m in modeller.items()
+               if asan_mi(m["dims"], plate, plate, clear)}
+    tekrar_esigi = max(20, int(0.05 * n_total))
+    tekrarlar = {ad: m for ad, m in modeller.items()
+                 if m["qty"] >= tekrar_esigi and ad not in asanlar}
+    tekrar_toplam = sum(m["qty"] for m in tekrarlar.values())
+    if not tekrarlar or tekrar_toplam < kitle_pay * n_total:
+        return {"tetik": False, "sebep": "tekrar-kitle payi yetersiz"}
+    kitle_ad = max(tekrarlar, key=lambda a: tekrarlar[a]["qty"])
+    if kitle_ad in asanlar:
+        return {"tetik": False, "sebep": "kitle modeli plaka-asan"}
+    if not asanlar:
+        return {"tetik": False, "sebep": "plaka-asan yok"}
+    n_rod = sum(m["qty"] for m in asanlar.values())
+    slot = tuple(max(sorted(m["dims"])[i] for m in asanlar.values())
+                 for i in range(3))
+
+    oryant_ozel = None
+    if durus_koru:
+        kw, kd, kh = modeller[kitle_ad]["dims"]
+        oryant_ozel = [((kw, kd, kh), "geldigi"), ((kd, kw, kh), "yaw90")]
+        for ad, m in asanlar.items():
+            if abs(max(m["dims"]) - m["dims"][2]) > 0.75:
+                return {"tetik": False,
+                        "sebep": f"durus-koru uyumsuz: {ad} dik gelmemis"}
+
+    plan = kafes_plani(slot, n_rod, modeller[kitle_ad]["dims"],
+                       modeller[kitle_ad]["qty"], plate, plate, clear,
+                       pitch=pitch, oryantasyonlar_ozel=oryant_ozel,
+                       skor_v2=skor_v2)
+    if not plan.get("uygun"):
+        return {"tetik": True, "hata": f"plan kurulamadi: {plan.get('sebep')}"}
+    if plan_only:
+        return {"tetik": True, "plan": plan,
+                "n_pins": n_rod + plan["kapasite"]}
+
+    import trimesh
+    from src.nesting3d.nfv_solve import solve_nfv
+    hedef_adlar = set(asanlar) | {kitle_ad}
+    ornek = {}
+    for p in inst.parts:
+        if p.name in hedef_adlar and p.name not in ornek:
+            if getattr(p, "stl_path", None):
+                ornek[p.name] = tuple(
+                    trimesh.load(str(p.stl_path), force="mesh").extents)
+            else:
+                ornek[p.name] = (float(p.width_mm), float(p.depth_mm),
+                                 float(p.height_mm))
+    rod = plan["rod"]
+    dar_x = abs(rod["w"] - slot[0]) < abs(rod["w"] - slot[1])
+    rod_pinler: List[Tuple[str, object]] = []
+    for ad in sorted(asanlar):
+        m0, m1, m2 = sorted(asanlar[ad]["dims"])
+        hedef = (m0, m1, m2) if dar_x else (m1, m0, m2)
+        rrot = eksen_rot_bul(ornek[ad], hedef)
+        if rrot is None:
+            return {"tetik": True, "hata": f"rot bulunamadi: {ad}"}
+        rod_pinler.extend([(ad, rrot)] * asanlar[ad]["qty"])
+    kitle_rot = eksen_rot_bul(ornek[kitle_ad], tuple(plan["cell"]))
+    if kitle_rot is None:
+        return {"tetik": True, "hata": "rot bulunamadi: kitle"}
+    pins = pin_listesi(plan, rod_pinler, kitle_ad, kitle_rot, clear)
+    res = solve_nfv(inst, plate_w_mm=plate, plate_d_mm=plate,
+                    fine_pitch=pitch, seed=seed, quality=quality,
+                    clearance_mm=clear, pinned_placements=pins, pin_3d=True)
+    return {"tetik": True, "plan": plan, "res": res,
+            "n_total": n_total, "n_pins": len(pins)}
 
 
 # ---------------------------------------------------------------------------
@@ -353,10 +487,14 @@ def main() -> int:
                 return 1
         log("DURUS-KORU MODU: kitle geldigi-durus+yaw; cubuk geldigi gibi")
 
+    skor_v2 = os.environ.get("M66_PLAN_V2") == "1"
+    if skor_v2:
+        log("PLAN SKORU v2: yukseklik-tahmini secimi (kapasite degil)")
     plan = kafes_plani(slot, n_rod,
                        modeller[kitle_ad]["dims"],
                        modeller[kitle_ad]["qty"], plate, plate, clear,
-                       pitch=pitch, oryantasyonlar_ozel=oryant_ozel)
+                       pitch=pitch, oryantasyonlar_ozel=oryant_ozel,
+                       skor_v2=skor_v2)
     if not plan.get("uygun"):
         log(f"PLAN KURULMADI: {plan.get('sebep')}")
         return 1
@@ -427,6 +565,21 @@ def main() -> int:
             f"-> {'LEGAL' if a2['legal'] else 'INVALID'}")
     except Exception:
         log(f"[A2] OLCUM HATASI:\n{traceback.format_exc()}")
+
+    # M66_EXPORT_STL=path (2026-08-20 gece, muhendis-mail eki): yerlesimin
+    # tamami tek STL olarak yazilir (export_scene; mm-cerceve). Yalniz
+    # basarili cozumde; export hatasi kosuyu OLDURMEZ (sonuc JSON oncelikli).
+    exp = os.environ.get("M66_EXPORT_STL")
+    if exp:
+        try:
+            from src.nesting3d.export_stl import export_scene
+            yol = export_scene(list(res.placements), res.fine_voxel_parts,
+                               float(res.fine_pitch), Path(exp))
+            log(f"[EXPORT] yerlesim STL: {yol} "
+                f"({yol.stat().st_size / 1e6:.1f} MB)")
+        except Exception:
+            log(f"[EXPORT] HATA (kosu sonucu etkilenmez):\n"
+                f"{traceback.format_exc()}")
 
     doc = {"olcum": "k66_d_kafes_dekod", "mode": mode,
            "tarih": time.strftime("%Y-%m-%dT%H:%M:%S"),

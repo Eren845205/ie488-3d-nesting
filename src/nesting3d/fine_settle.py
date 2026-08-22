@@ -131,10 +131,14 @@ def _settle(raw, parts_by_id, plate_w_mm, plate_d_mm, pitch, margin,
         key = (part.name, oi)
         if key in fine_orients:
             continue
+        # kose_doldur (2026-08-20, k66 seed2): pinli (onyuk_raw) settle'da
+        # hareketli parca grid'leri kosegen-guvensiz hucreleri de tasir —
+        # coarse cozumle ayni sozlesme (HAM pin + parca-tarafi kose kapama);
+        # pinsiz settle BIT-OZDES.
         vp = voxelize_part(part.name, part.mesh, fine,
                            rot_matrices=[part.orientations[oi].rot_matrix],
                            margin=margin * scale, z_dilate=z_dilate * scale,
-                           method="slice")
+                           method="slice", kose_doldur=bool(onyuk_raw))
         fine_orients[key] = vp.orientations[0]
 
     occ = np.zeros((nxf, nyf, nzf), dtype=bool)

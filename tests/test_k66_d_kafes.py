@@ -32,6 +32,18 @@ def test_eksen_rot_bul_permutasyon():
     assert eksen_rot_bul((1.0, 2.0, 3.0), (5.0, 5.0, 5.0)) is None
 
 
+def test_eksen_rot_bul_en_iyi_eslesme():
+    """Neredeyse-kare kesit (seed2 dersi): fark < tol iken ILK-eslesme
+    identity'yi alip x/y'yi takas ediyordu; EN-IYI eslesme tam permutasyonu
+    secmeli (max hata ~0, takasli ~0.31 degil)."""
+    import numpy as np
+    rot = eksen_rot_bul((15.28, 14.97, 359.01), (14.97, 15.28, 359.01))
+    assert rot is not None
+    r = np.abs(np.asarray(rot)[:3, :3]) @ np.asarray((15.28, 14.97, 359.01))
+    assert np.max(np.abs(r - np.asarray((14.97, 15.28, 359.01)))) < 1e-6, \
+        f"takasli poz secildi: {r}"
+
+
 def test_kafes_plani_dar_kenar_yonelimi():
     """Cubuk dar kenari x'e donunce satir kapasitesi buyumeli (28/satir)."""
     plan = kafes_plani((95.0, 10.0, 399.6), 54, (32.0, 90.0, 9.6), 520,
@@ -70,6 +82,52 @@ def test_pin_listesi_sayim_ve_cakismasizlik():
         assert p["x_mm"] + plan["rod"]["w"] <= 335.0 + 1e-6
     for p in kitle:
         assert p["x_mm"] + plan["cell"][0] <= 335.0 + 1e-6
+
+
+def test_kafes_plani_v2_yukseklik_tahmini_secimi():
+    """K-66-d v2 (fsm dersi 400<458): skor_v2 kapasite yerine h_pred'e
+    bakar — fsm sayilarinda v1 dik/324 secerken v2 yatik-ince duz/297
+    secmeli (olu-bant 31,6 vs 3,6 ayirt edici); default v1 BIT-OZDES."""
+    rod = (95.0, 10.0, 399.6)
+    kitle = (32.0, 90.0, 9.6)
+    v1 = kafes_plani(rod, 54, kitle, 520, 335.0, 335.0, 2.0, pitch=2.0)
+    assert v1["oryantasyon"] == "dik" and v1["kapasite"] == 324
+    assert "h_pred" in v1                      # bilgi alani v1'de de var
+    v2 = kafes_plani(rod, 54, kitle, 520, 335.0, 335.0, 2.0, pitch=2.0,
+                     skor_v2=True)
+    assert v2["oryantasyon"] == "duz" and v2["kapasite"] == 297
+    assert v2["h_pred"] < v1["h_pred"]
+
+
+def test_kafes_plani_v2_durus_koru_korunur():
+    ozel = [((32.0, 90.0, 9.6), "geldigi"), ((90.0, 32.0, 9.6), "yaw90")]
+    p = kafes_plani((10.0, 95.0, 399.6), 54, (32.0, 90.0, 9.6), 520,
+                    335.0, 335.0, 2.0, pitch=2.0,
+                    oryantasyonlar_ozel=ozel, skor_v2=True)
+    assert p["uygun"] is True
+    assert p["oryantasyon"] in ("geldigi", "yaw90")
+
+
+def test_kafes_coz_instance_tetik_ve_plan_only():
+    """kafes_coz_instance (M4 kol girisi): tetikli ailede plan kurar
+    (plan_only cozumsuz-ucuz), tetiksiz ailede kol uretmez."""
+    from scripts.k66_d_kafes_dekod import kafes_coz_instance
+    from src.nesting3d.instances.format import ContainerSpec
+    from src.nesting3d.instances.synthetic import (
+        mass_plate_rod_mix, random_boxes)
+    cnt = ContainerSpec(width_mm=335.0, depth_mm=335.0, height_mm=None)
+    inst = mass_plate_rod_mix(container=cnt, seed=0, qty_per_plate=40)
+    r = kafes_coz_instance(inst, plan_only=True)
+    assert r["tetik"] is True
+    assert r["plan"]["uygun"] is True
+    assert r["n_pins"] > 0
+    # durus-koru modu da plan kurabilmeli (cubuklar dik uretiliyor)
+    rd = kafes_coz_instance(inst, durus_koru=True, plan_only=True)
+    assert rd["tetik"] is True and rd["plan"]["uygun"] is True
+    assert rd["plan"]["oryantasyon"] in ("geldigi", "yaw90")
+    # kontrol ailesi: tetik yok
+    rb = random_boxes(n_parts=16, container=cnt, seed=0)
+    assert kafes_coz_instance(rb, plan_only=True)["tetik"] is False
 
 
 def test_durus_koru_oryantasyon_kisiti():

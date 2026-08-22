@@ -273,6 +273,7 @@ def to_voxel_parts(
     allowed_orientations: Optional[tuple] = None,
     extra_rot_overrides: Optional[dict] = None,
     orientation_overrides: Optional[dict] = None,
+    kose_doldur: bool = False,
 ) -> list:
     """Kutu instance'larini trimesh box mesh -> VoxelPart listesine dönüştür.
 
@@ -392,6 +393,7 @@ def to_voxel_parts(
         orientation_overrides=overrides,
         extra_rot_overrides=extra,
         kimlik_map=kimlik_map,
+        kose_doldur=kose_doldur,
     )
 
 

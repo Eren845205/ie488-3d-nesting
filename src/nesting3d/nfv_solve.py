@@ -104,7 +104,7 @@ def _nfv_clearance_voxels(clearance_mm, pitch, margin):
 
 def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
                   allowed_orientations=None, clearance_mm=0.0,
-                  orientation_overrides=None):
+                  orientation_overrides=None, kose_doldur=False):
     """coarse_to_fine._voxelize_with_fallback mantığı + margin (o fonksiyon margin geçmiyor).
     İnce-duvar parça pitch'te kaybolursa (ValueError) pitch'i kıs, floor'a kadar dene. (parts, used).
     allowed_orientations verilirse (K-18p AX24) n_orientations yok sayılır.
@@ -124,7 +124,8 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
             return to_voxel_parts(instance, cur, n_orientations=n_orientations,
                                   margin=eff_margin, z_dilate=z_dilate,
                                   allowed_orientations=allowed_orientations,
-                                  orientation_overrides=orientation_overrides), cur
+                                  orientation_overrides=orientation_overrides,
+                                  kose_doldur=kose_doldur), cur
         except ValueError:
             nxt = cur / 1.5
             if nxt <= floor_pitch:
@@ -132,7 +133,8 @@ def _voxelize_nfv(instance, pitch, floor_pitch, n_orientations, margin,
                 return (to_voxel_parts(instance, floor_pitch, n_orientations=n_orientations,
                                        margin=fm, z_dilate=fz,
                                        allowed_orientations=allowed_orientations,
-                                       orientation_overrides=orientation_overrides), floor_pitch)
+                                       orientation_overrides=orientation_overrides,
+                                       kose_doldur=kose_doldur), floor_pitch)
             cur = nxt
 
 
@@ -199,10 +201,17 @@ def solve_nfv(instance, *, plate_w_mm, plate_d_mm, fine_pitch=None,
         else:
             n_orientations = NFV_DEFAULT_ORIENTATIONS
             n_reason = f"n={n_orientations} (default, 4subset8 garanti)"
+    # KOSE-DOLDUR (2026-08-20, k66 seed2 kok-sebep fix'i): HAM-pin (pin_3d)
+    # yaninda parcanin L1-margin'i KOSEGEN cebi kapatamiyordu (clearance
+    # 1,256mm olculdu; pin-tarafi damga denemesi eksen 1x-sozlesmesini
+    # bozdugundan cozum PARCA cekirdeginde). Yalniz pinli+pin_3d cozumlerde
+    # acilir -> pinsiz yollar BIT-OZDES (A11.3 sifir-dokunus yapisal).
+    _kose = bool(pinned_placements) and bool(pin_3d)
     parts, used_pitch = _voxelize_nfv(instance, fine_pitch, fine_pitch, n_orientations, margin,
                                       allowed_orientations=allowed_orients,
                                       clearance_mm=clearance_mm,
-                                      orientation_overrides=orientation_overrides)
+                                      orientation_overrides=orientation_overrides,
+                                      kose_doldur=_kose)
 
     # K-62 v8 (2026-08-04): NFV'ye pin destegi — MVP semantigi:
     # (a) pin donorleri cozum havuzundan DUSER (coklu-kopya, _pin_hazirla),
