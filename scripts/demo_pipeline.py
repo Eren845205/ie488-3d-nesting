@@ -1099,6 +1099,40 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     # yerlesime aittir); kanopi kazanani zaten A2-legal ham.
                     _nfv_tel.pop("r11", None)
                     _nfv_tel["secilen"] = "kanopi_zincir"
+            # MK-03 KAFES ZINCIRI KABLOSU (Eren karar paketi 2026-08-22):
+            # kalite modunda geometrik-tetikli kafes dekodu (kanopi deseni
+            # birebir: tetik yoksa SIFIR maliyet + sonuc AYNEN; tetikliyse
+            # aday ancak TAM A2 + ref'ten iyiyse kabul). Kanit: K-66-d kapi
+            # 12/12 + tetik 24/24 + plan-skoru v2 + fsm610 etiketi
+            # winner=kafes. kafes_zinciri=False ile kapatilabilir.
+            # Orientation-kilitli partide GUVENLI ATLAMA (kanopi ile ayni
+            # gerekce: kilit sozlesmesi zincir tarafinda modellenmedi).
+            if _mk_orient and payload.get("kafes_zinciri", True):
+                _instr["kafes_zinciri"] = {
+                    "atlandi": "orientation_overrides (kilit korumasi)"}
+            if payload.get("kafes_zinciri", True) and not _mk_orient:
+                from src.nesting3d.kafes_zincir import kafes_zinciri_uretim
+                # etkili ref: r11 hala gecerliyse (kanopi kazandiysa zaten
+                # pop edildi) r11-etkili yuksekligi esas al — kabul cıtası
+                # yukari cekilir (konservatif taraf).
+                _kf_ref_h = float(_c2f_result.height_mm)
+                _r11k = (_nfv_tel.get("r11") or {})
+                if _r11k.get("uygulandi") and _r11k.get("height_mm"):
+                    _kf_ref_h = min(_kf_ref_h, float(_r11k["height_mm"]))
+                _kf_res, _kf_tel = kafes_zinciri_uretim(
+                    instance,
+                    plate_w_mm=float(container["width_mm"]),
+                    plate_d_mm=float(container["depth_mm"]),
+                    clearance_mm=WEB_MIN_CLEARANCE_MM,
+                    seed=seed,
+                    ref_res=_c2f_result,
+                    ref_height_mm=_kf_ref_h)
+                _instr["kafes_zinciri"] = _kf_tel
+                if _kf_res is not _c2f_result:
+                    _c2f_result = _kf_res
+                    # r11 dz eski yerlesime aittir; kafes kazanani A2-legal ham.
+                    _nfv_tel.pop("r11", None)
+                    _nfv_tel["secilen"] = "kafes_zincir"
             tune_result = _c2f_result.tune_result
         elif estimated_n_parts > C2F_THRESHOLD or _kisit_var:
             # coarse_to_fine KENDİ voxelize'ını (kaba+ince) yapar → buradaki voxelize gereksiz.
