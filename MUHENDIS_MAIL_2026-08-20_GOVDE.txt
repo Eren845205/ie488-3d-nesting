@@ -1,4 +1,4 @@
-Konu: Kisa 3 soru — 610 parcalik is (10 saniyede cevaplanabilir)
+Konu: Kisa 4 soru + yerlesim onerimiz — 610 parcalik is
 
 Merhaba,
 
@@ -26,6 +26,16 @@ kadar kisa tuttum:
 3) "Rotasyonlari degismeyecek" notunda: parcayi EGMEDEN, plaka
    duzleminde cevirmek (saat yonunde dondurmek) serbest mi?
    (evet / hayir)
+
+Ayrica uygulamamizin ayni 610 parcalik is icin urettigi TEK-PLAKA
+yerlesiminin STL'ini asagidaki linkten indirebilirsiniz (boyut nedeniyle
+ek yerine link): 335x335 tablada toplam yukseklik 400 mm, tum parca
+aralari >= 2 mm, cubuklar geldigi gibi dik, plakalar geldigi gibi yatik
+(yalniz tabla duzleminde cevrilmis — 3. sorunun konusu).
+
+  [DRIVE-LINKI-BURAYA]
+
+4) Ekteki yerlesim sizce uretime uygun mu? (evet / hayir)
 
 Simdiden tesekkurler; iyi calismalar,
 Eren Kutlu

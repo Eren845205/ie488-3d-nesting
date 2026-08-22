@@ -66,8 +66,15 @@
 
 ### P3 — Donanım envanteri + AI model seçimi
 - [x] Envanter GELDİ (2026-08-18): lab "işistasyonu" **i9-9940X (14C/28T,
-      AVX-512) / 64GB / GTX 1080 8GB** + Dell Precision 3660 **i5-12600K
-      (10C) / 32GB / RTX 3070 8GB**. (Bizim referans: RTX 3060 6GB / 16GB.)
+      AVX-512) / 64GB / 3× GTX 1080 8GB** (kart sayısı düzeltmesi 2026-08-21,
+      Eren aktarımı: "bir bilgisayarda 3 tane 1080") + Dell Precision 3660
+      **i5-12600K (10C) / 32GB / RTX 3070 8GB**. (Bizim referans: RTX 3060
+      6GB / 16GB.) **3-kart notu:** tek koşuyu hızlandırmaz (cupy hattı
+      tek-GPU; VRAM havuzlanmaz), asıl kazanç proses-başına
+      `CUDA_VISIBLE_DEVICES` ile ~3× paralel GPU-işi (çok-seed kapılar /
+      M4 kolları / U1 bölümleri / set-paralel) — 64GB RAM ile birleşince
+      iş istasyonunun sunucu rolü güçlenir; CUDA kontrolü kart-başına
+      doğrulanmalı, süre-metrikli ölçümler yine münhasır (K-57a).
 - [x] **DEĞERLENDİRME (2026-08-20):**
       1. **Motor için asıl kazanç RAM: 64GB.** Bizim 16GB'de RAM-guard'a
          takılan her şey (fsm610 pitch-2.0 "22M hücre" uyarısı, K-57b/c

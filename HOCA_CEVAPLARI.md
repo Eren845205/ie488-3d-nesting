@@ -586,3 +586,17 @@ SEMANTİĞİ (mekanizmalar + rotasyon) olduğunu gösteriyor. Alınan kısım:
 kâşif-toplayıcı BÜTÇE-TAHSİSİ fikri M12 (racing) hattına aşılanacak
 (umut veren başlangıçlara devam bütçesi). Tam Bees pilotu benchmark
 kapısına tabi (meta-ders #8); sırası mekanizma kuyruğunun arkasında.
+
+## 2026-08-21 — Mühendis sözlü (Eren'e direkt): iş istasyonunda 3× GTX 1080
+
+Mühendis, lab iş istasyonunda **3 adet GTX 1080 (8GB)** olduğunu söyledi —
+2026-08-18 envanterindeki "1× GTX 1080" kaydı düzeltildi (BUSINESS_PLAN
+P3 güncellendi). Değerlendirme özeti: 3 kart TEK koşuyu hızlandırmaz
+(cupy hattı tek-GPU; VRAM havuzlanmaz), kazanç proses-başına
+`CUDA_VISIBLE_DEVICES` ile ~3× paralel bağımsız koşu (kapı ölçümleri /
+M4 / U1 bölümleri); 64GB RAM ile iş istasyonunun sunucu rolü güçlenir.
+Kıyas (mühendisin "3×1080 mü 1×3070 mü" sorusuna): tek-iş hızında 3070
+~2× önde (Ampere, güncel sürücü); toplu bağımsız koşu kampanyasında
+3×1080 ~1,5× önde. Rol paylaşımı: iş istasyonu = sunucu + paralel ölçüm,
+Dell/3070 = tek-iş hız makinesi. CUDA kontrolü kart-başına doğrulanmalı
+(CPU'ya sessiz düşme tuzağı); süre-metrikli ölçümler münhasır kalır.
