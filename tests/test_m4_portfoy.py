@@ -158,6 +158,34 @@ def test_arms_uc_kol():
     assert ARMS[2][1] == "nfv" and ARMS[2][2] == "max"
 
 
+def test_kafes_kollari_tanimli():
+    """Kafes kollari TETIKLI (uretim ARMS'ina girmez; pitch==clearance K-38)."""
+    from scripts.m4_portfoy_kosu import KAFES_ARMS, KAFES_PITCH
+    assert [a[0] for a in KAFES_ARMS] == ["kafes", "kafes_duruskoru"]
+    assert KAFES_ARMS[0][1] is False and KAFES_ARMS[1][1] is True
+    assert KAFES_PITCH == 2.0
+
+
+def test_kol_kafes_tetiksiz_ailede_none():
+    """Tetiksiz ailede _kol_kafes None doner (kol satira girmez) —
+    cozum kosulmadan, saf siniflandirmadan (ucuz)."""
+    from scripts.m4_portfoy_kosu import _kol_kafes
+    from src.nesting3d.instances.synthetic import random_boxes
+    inst = random_boxes(n_parts=16, container=ContainerSpec(
+        width_mm=335.0, depth_mm=335.0, height_mm=None), seed=0)
+    assert _kol_kafes(inst, False, 2.0) is None
+
+
+def test_etiket_kafes_kolu_winner_olabilir():
+    """etiket_hesapla kol-adi bagimsiz: kafes kolu legal + en alcaksa
+    winner_mode='kafes' doner (ML plani: mekanizma M4 portfoyune KOL)."""
+    arms = {"heightmap": _kol(h=120.0), "nfv_fast": _kol(h=100.0),
+            "kafes": _kol(h=90.0), "kafes_duruskoru": _kol(h=95.0)}
+    et = etiket_hesapla(arms, REQ)
+    assert et["winner_mode"] == "kafes"
+    assert et["regret_mm"]["kafes_duruskoru"] == pytest.approx(5.0)
+
+
 def test_box_aileleri_uretilebilir():
     for ad in ("thin_plates", "long_rods", "random_boxes",
                "few_large_many_small", "high_qty_repeat",

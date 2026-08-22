@@ -149,16 +149,73 @@ def _ascii(sonuc: dict) -> str:
     return "\n".join(c)
 
 
+def _m4_feature_resolver():
+    """m4 etiket satiri -> (values, names) | None. Instance ayni jenerator +
+    seed + scale ile yeniden uretilir (deterministik); ozellik seti telemetri
+    v2 satirlariyla AYNI (extract_features_extended, 23 boyut)."""
+    from scripts.m4_portfoy_kosu import FAMILY_BUILDERS
+    from src.nesting3d.instances.features import extract_features_extended
+    onbellek: Dict[tuple, Optional[tuple]] = {}
+
+    def resolve(satir: dict):
+        anahtar = (satir.get("aile"), satir.get("seed"), satir.get("scale"))
+        if anahtar in onbellek:
+            return onbellek[anahtar]
+        builder = FAMILY_BUILDERS.get(satir.get("aile"))
+        sonuc = None
+        if builder is not None:
+            try:
+                inst = builder(int(satir["seed"]), satir["scale"],
+                               _ROOT / "tmp" / "m4_stl")
+                fv = extract_features_extended(inst)
+                sonuc = (list(fv.values), list(fv.names))
+            except Exception as e:  # ozellik uretilemedi -> satir atlanir
+                print(f"UYARI m4 ozellik uretilemedi {anahtar}: "
+                      f"{type(e).__name__}: {e}")
+        onbellek[anahtar] = sonuc
+        return sonuc
+
+    return resolve
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", default=str(VARSAYILAN_JSON))
+    ap.add_argument("--m4-etiket",
+                    default=str(_ROOT / "results" / "m4_portfoy_etiket.jsonl"),
+                    help="M4 portfoy etiket jsonl (koprusuyle tabloya eklenir)")
+    ap.add_argument("--m4-kapali", action="store_true",
+                    help="M4 koprusunu devre disi birak (eski davranis)")
+    ap.add_argument("--kafes", action="store_true",
+                    help="kafes kollarini da tabloya al (Eren onayi "
+                         "2026-08-21; tur-5+)")
     args = ap.parse_args()
+    # detach_run arguman tasimaz -> env esdegeri (MY_KAFES=1)
+    import os
+    if os.environ.get("MY_KAFES") == "1":
+        args.kafes = True
     from src.nesting3d.telemetry import V2_DEFAULT_PATH, load_telemetry
     rows = load_telemetry(_ROOT / V2_DEFAULT_PATH)
     ist: dict = {}
     table = build_training_table_v2(
         rows, exclude_instance_ids=heldout_instance_ids(
             _ROOT / "data" / "registry.json"), istatistik=ist)
+    m4_yol = Path(args.m4_etiket)
+    if not args.m4_kapali and m4_yol.exists():
+        from src.nesting3d.selection.m4_koprusu import m4_training_rows
+        satirlar = [json.loads(s) for s in
+                    m4_yol.read_text(encoding="utf-8").splitlines()
+                    if s.strip()]
+        m4_rows = m4_training_rows(
+            satirlar, _m4_feature_resolver(),
+            kafes_dahil=args.kafes,
+            exclude_instance_ids=heldout_instance_ids(
+                _ROOT / "data" / "registry.json"),
+            mevcut_ids={r.instance_id for r in table},
+            istatistik=ist)
+        table = sorted(table + m4_rows, key=lambda r: r.instance_id)
+        print(f"M4 koprusu: +{len(m4_rows)} instance "
+              f"(toplam tablo {len(table)})")
     kural_map = {}
     rr = _ROOT / "results" / "regret_raporu.json"
     if rr.exists():

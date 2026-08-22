@@ -57,6 +57,13 @@ ARMS = (
     ("nfv_max", "nfv", "max"),
 )
 
+# Kafes kollari (2026-08-20 gece, Eren plani "kafes + durus-koru kollari
+# DAHIL"): TETIKLI harness kollari — kafes_coz_instance tetigi ateslemezse
+# kol satira GIRMEZ (etiket semasi bozulmaz; append-only eski satirlarla
+# uyumlu). Pitch == clearance (K-38 dersi; seed9 kaniti). M4_KAFES=0 kapatir.
+KAFES_ARMS = (("kafes", False), ("kafes_duruskoru", True))
+KAFES_PITCH = 2.0
+
 # mass_plate_rod_mix adet olcegi (fsm-SINIFI yogunluk; kucuk = smoke-ucuz)
 _MPRM_QTY = {"kucuk": 40, "orta": 120, "buyuk": 300}
 
@@ -116,8 +123,17 @@ def _f_holey_frames(seed, scale, stl_dir):
     return holey_frames(stl_dir=stl_dir, container=CNT, seed=seed)
 
 
+def _f_fsm610_gercek(seed, scale, stl_dir):
+    """fsm610 GERCEK siparisi (KARAR-1 terfi, Eren onayi 2026-08-21) —
+    k66 STL yolundan deterministik kurulum; seed/scale kullanilmaz."""
+    from scripts.k66_d_kafes_dekod import _instance_kur
+    inst, _ = _instance_kur("stl", PLATE)
+    return inst
+
+
 FAMILY_BUILDERS = {
     "thin_plates": _f_thin_plates,
+    "fsm610_gercek": _f_fsm610_gercek,
     "long_rods": _f_long_rods,
     "random_boxes": _f_random_boxes,
     "few_large_many_small": _f_few_large_many_small,
@@ -254,6 +270,54 @@ def _kol_kos(inst: NestingInstance, mode: str, nfv_quality: Optional[str],
     return kol
 
 
+def _kol_kafes(inst: NestingInstance, durus_koru: bool,
+               clearance_req: float) -> Optional[Dict[str, Any]]:
+    """Kafes harness kolunu kos; tetik yoksa None (kol eklenmez).
+
+    Legallik olcumu uretim kollariyla AYNI katmandan (min_clearance +
+    check_separability_5dir) — a2_olc'nin rot-sokum katmani BILEREK
+    kosulmaz (etikette 5-yon>0 = invalid, konservatif; _kol_kos ile ayni).
+    """
+    from scripts.k66_d_kafes_dekod import kafes_coz_instance
+    from src.nesting3d.accessibility import check_separability_5dir
+    from src.nesting3d.clearance import min_clearance
+    from src.nesting3d.export_stl import placed_meshes
+    n_total = sum(int(p.qty) for p in inst.parts)
+    t0 = time.time()
+    try:
+        r = kafes_coz_instance(inst, plate=PLATE, clear=clearance_req,
+                               pitch=KAFES_PITCH, quality="fast", seed=42,
+                               durus_koru=durus_koru)
+    except Exception as exc:
+        return {"n_total": n_total, "hata": str(exc),
+                "wall_s": round(time.time() - t0, 2)}
+    if not r.get("tetik"):
+        return None
+    kol: Dict[str, Any] = {"n_total": n_total}
+    if r.get("hata"):
+        kol["hata"] = r["hata"]
+    else:
+        res = r["res"]
+        kol["height_mm"] = float(res.height_mm)
+        kol["n_placed"] = int(res.n_placed)
+        kol["pitch_mm"] = float(res.fine_pitch)
+        kol["n_pins"] = int(r["n_pins"])
+        try:
+            meshes = placed_meshes(list(res.placements),
+                                   res.fine_voxel_parts,
+                                   float(res.fine_pitch))
+            kol["min_clearance_mm"] = round(
+                float(min_clearance(meshes).min_mm), 3)
+            kol["n_locked_5dir"] = int(check_separability_5dir(
+                list(res.placements), res.fine_voxel_parts).n_locked)
+        except Exception as exc:
+            kol["min_clearance_mm"] = None
+            kol["n_locked_5dir"] = None
+            kol["sokum_hata"] = str(exc)
+    kol["duration_s"] = kol["wall_s"] = round(time.time() - t0, 2)
+    return kol
+
+
 def main() -> int:
     seeds = int(os.environ.get("M4_SEEDS", "3"))
     scale = os.environ.get("M4_SCALE", "kucuk")
@@ -275,8 +339,11 @@ def main() -> int:
     log("=" * 70)
     log("M4 PORTFOY KOSUSU — karsi-olgusal mod etiketi (ML plan §2.1)")
     log(f"aileler={families}")
+    kafes_acik = os.environ.get("M4_KAFES", "1") != "0"
     log(f"seeds={seeds}  scale={scale}  clearance_req={clearance_req}mm")
-    log("kollar=" + ", ".join(a[0] for a in ARMS))
+    log("kollar=" + ", ".join(a[0] for a in ARMS)
+        + (f" + tetikli: {', '.join(a[0] for a in KAFES_ARMS)}"
+           f" @pitch{KAFES_PITCH}" if kafes_acik else " (kafes KAPALI)"))
     log("NOT: etiket uretimi — kazanc ilani DEGILDIR (A11); kilit karari")
     log("     5-yon metriginden, rot-sokum katmani kosulmaz (konservatif).")
     log("=" * 70)
@@ -312,6 +379,21 @@ def main() -> int:
                         f"kilitZ={kol.get('n_locked_z')}  "
                         f"kilit5={kol.get('n_locked_5dir')}  "
                         f"sure={kol['wall_s']:.0f}s")
+            if kafes_acik:
+                for ad, dk in KAFES_ARMS:
+                    kol = _kol_kafes(inst, dk, clearance_req)
+                    if kol is None:
+                        log(f"  {ad:16s}: tetik yok — kol atlandi")
+                        continue
+                    arms[ad] = kol
+                    if kol.get("hata"):
+                        n_hata += 1
+                        log(f"  {ad:16s}: KOSU HATASI {kol['hata']}")
+                    else:
+                        log(f"  {ad:16s}: h={kol['height_mm']:7.1f}  "
+                            f"cl={kol.get('min_clearance_mm')}  "
+                            f"kilit5={kol.get('n_locked_5dir')}  "
+                            f"sure={kol['wall_s']:.0f}s")
             et = etiket_hesapla(arms, clearance_req)
             satir = {"ts": time.time(), "instance_id": iid, "aile": aile,
                      "seed": s, "scale": scale, "n_total": n_total,

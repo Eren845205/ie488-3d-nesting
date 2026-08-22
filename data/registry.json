@@ -8,10 +8,16 @@
     "deneme5": {"rol": "dev",      "aile_f1": "tube",       "kaynak": "hoca-2026-07-07", "not": "K-44/47a tuning'de kullanildi -> dev (A3: held-out ILAN EDILEMEZ); 216x ince cubuk + kutular; aile_f1=classify_prelim(tube, conf 0.53) — Eren teyit edecek; SAMPIYON 214.64 R11-v4 (K-50, 2026-07-14; STL deneme5_r11v4_214.6mm.stl; eski 218.0 @1.0 ve 216.96 @2.0+R11 asildi — kayit duzeltmesi 2026-07-25)"},
     "deneme6": {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-08", "not": "DOGUSTAN held-out (01_VERI §3); 15 parca x1; referans 86.32 MANUEL; ILK KOR-TEST 2026-07-21: uretim 68.50 LEGAL (−%20.6 manuel-alti, 29sn) + max 65.50 (−%24.1); kanit results/deneme6_heldout_final.json (kayit duzeltmesi 2026-07-25: eski 'cozum HIC kosulmadi' notu bayatti)"},
     "plan7":   {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-07-20", "not": "DOGUSTAN held-out (01_VERI §3); 10 parca tipi / 345 adet; referans 595mm (S1 cevabi 2026-07-22: Magics+manuel karisik, bosluk firmaca bilinmiyor AMA 2mm mutabakati + no-go dahil -> A10 serhi buyuk olcude kalkti); ILK KOR-TEST 2026-07-21: uretim 488.40 LEGAL (−%17.9 manuel-alti, 103dk; kisitsiz) + max BIREBIR; mail kisiti 288101642-a2 = S2 cevabi 2026-07-22: pin DEGIL DURUS KILIDI (oryantasyon; z/x-y serbest; poz {0,1,4,5}); a2-kisitli yeniden-cozum BEKLIYOR (scripts/plan7_kisitli_cozum.py hazir, kosulmadi); ZIP D:\\ie488\\data\\plan7_gelen\\Plan7.zip"},
+    "fsm610":  {"rol": "dev",      "aile_f1": "mixed",      "kaynak": "muhendis-2026-08-17", "not": "KARAR-1 TERFI (Eren onayi 2026-08-21): held-out -> dev; fsm-SINIFI (520 plaka + 54 cubuk + 36 braket; sentetik esdegeri mass_plate_rod_mix). KAYIT ACIGI geri-dolduruldu: set registry'ye hic eklenmemisti, 3 bakis (08-18 E2E + kok-sebep + 08-20 kafes kosulari) bakislar'a islenmemisti — held-out vasfi fiilen asinmisti, terfi resmilestirme. STL: D:\\ie488\\results\\fsm610_stl_persist; sampiyon 400.00 durus-koru (yaw S3 teyidi bekler)"},
     "numune":  {"rol": "held-out", "aile_f1": "mixed",      "kaynak": "hoca-2026-05", "not": "eval_gate v1'de config yok — kosulamaz (bilincli)"},
     "boxy":    {"rol": "held-out", "aile_f1": "solid_bulk", "kaynak": "sentetik",     "not": "kutu stres seti"}
   },
   "bakislar": [
+    {
+      "setler": ["fsm610"],
+      "tarih": "2026-08-21T19:30:00",
+      "sebep": "KARAR-1 terfi kaydi (Eren onayi): held-out -> dev. Geri-doldurma: 2026-08-18 E2E testi + kok-sebep/ML-denetim analizi + 2026-08-20 K-66 kafes kosulari fiilen dev-kullanimiydi, bakis loglari atlanmisti (kayit acigi bugun kapatildi)."
+    },
     {
       "setler": ["plan7"],
       "tarih": "2026-07-21T15:20:00",
