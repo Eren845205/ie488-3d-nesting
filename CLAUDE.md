@@ -48,3 +48,9 @@
   commit/push, üretim default değişikliği, baseline güncelleme, hoca içeriği.
 - Her sonuç raporunda A11 statüsü görünür: şerhli mi, hangi kanıt adımları
   bekliyor.
+
+## Yedek disiplini (Eren kararı 2026-08-30 — HER değişiklik öncesi)
+- Algoritma/model/kablo/config'e dokunan her değişiklikten ÖNCE
+  `python -m scripts.yedekle --etiket <ne_oncesi>` (RUNBOOK P-11). Yedek
+  onaysız ve anındadır; commit yedeğin yerine geçmez. Geri dönüş yan
+  dizine açılır, yerinde üzerine yazılmaz; sonra test.

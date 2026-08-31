@@ -42,3 +42,7 @@ hocaya_sunum/
 _extract.py
 scripts/*.log
 scripts/zincir_stl/
+
+# Anlik yedekler (scripts/yedekle.py) — zip repoya GIRMEZ, INDEX.md girer
+yedekler/*.zip
+yedekler/geri_*/
