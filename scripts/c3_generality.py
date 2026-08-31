@@ -72,6 +72,24 @@ DATASETS = {
             "152000218": 7, "171600022": 4, "152000217": 7,
         },
     },
+    "deneme5": {  # tekrarli-orgu (216x ozdes cubuk + kutu karisimi; repeat_rod_mix
+        # kaynagi). KARAR-2 (2026-08-18) registry'de dev yapti ama DATASETS
+        # girisi UNUTULMUSTU (2026-08-31 kampanya v6 'INSTANCE KURULAMADI'
+        # bulgusu). Adetler data/mail_stl/deneme5/_adet_listesi.txt ile birebir
+        # (toplam 352); "_" onekli STL'ler (nogo alani) instance'a girmez.
+        "stl_dir": _ROOT / "data" / "mail_stl" / "deneme5", "plate": None,
+        "qty": {
+            "PO-TR267654-36602_P503839": 23, "PO-TR267654-36602_P503840": 23,
+            "PO-TR267654-36602_P503841": 21, "PO-TR267654-36602_P503842": 24,
+            "PO-TR268836-37054": 216,
+            "PO-TR270430-37109_P509598_1.2_+_Power_Button": 1,
+            "PO-TR271442-37314_P511862": 2, "PO-TR269630-37009_P507768": 3,
+            "PO-TR270371-37019_P509408": 30,
+            "Sekiz_Koseli_Yildiz_Bending_Testi_V2": 3,
+            "4_Koseli_Star_Shape_Bending_Test_V2": 3,
+            "Yonca_Sekli_Bending_Test_V2": 3,
+        },
+    },
     "deneme4": {  # ilk dış-müşteri seti (2026-07-03, FSM) — ince-cidarlı kabuk ailesi
         # (0.8-1.35mm çan-düğme + 2 dev ROBT plakası). Magics referansı 250.24mm
         # (plaka bilinmiyor -> otomatik; hoca plaka cevabı gelince "plate" doldurulacak).
