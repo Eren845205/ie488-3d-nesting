@@ -292,6 +292,14 @@ def main() -> int:
         satir = {"ts": time.time(), "instance_id": f"devset_{set_adi}",
                  "aile": aile, "seed": 42, "scale": "gercek",
                  "n_total": n_total, "clearance_req_mm": clearance_req,
+                 # KOSUL-IMZASI (P-6.5a / KARAR-F, 2026-09-01): sayilar hangi
+                 # deney kosulunun urunu — imzasiz sayi kiyasa girmez.
+                 "kosul_imzasi": {
+                     "yol": "run_pipeline (uretim)",
+                     "no_go": "config (soft ilanliysa soft)",
+                     "kafes_zinciri_nfv_kollarinda": False,
+                     "plaka": "335x335", "pitch_kurali": "K-38 clearance",
+                     "kod": "KARAR-G sonrasi (kollar quality'yi acik gecer)"},
                  "arms": arms, **et}
         OUT_ETIKET.parent.mkdir(exist_ok=True)
         with OUT_ETIKET.open("a", encoding="utf-8") as fh:

@@ -91,7 +91,7 @@ NOGO_SOFT = NOGO_STD
 # Faz-1: roller data/registry.json'dan (tek dogruluk kaynagi; 01_VERI §2).
 # Registry yoksa/bozuksa guvenli fallback sabitler.
 REGISTRY = _ROOT / "data" / "registry.json"
-_KOSULABILIR = {"plan1", "plan2", "plan3", "deneme4", "boxy", "plan7", "deneme6"}  # config'i olanlar
+_KOSULABILIR = {"plan1", "plan2", "plan3", "deneme4", "deneme5", "boxy", "plan7", "deneme6"}  # config'i olanlar
 
 
 def _load_roles():
