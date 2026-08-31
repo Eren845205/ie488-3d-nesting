@@ -285,7 +285,17 @@ def predict_nfv_benefit(
                 _arm, _gerekce = _sonuc
                 if _arm == "heightmap+wall_aware":
                     return ModeDecision("heightmap", _gerekce, wall_aware=True)
+                # H8 fix (denetim 2026-08-31): modelin kolu uretim kararina
+                # SEMANTIGIYLE cevrilir. Eski kod nfv_max'i quality=fast'e,
+                # kafes'i HEIGHTMAP'e dusuruyordu (plan2'de heightmap 0,001
+                # INVALID — modelin en iyi kolu en kotu kola gidiyordu).
+                if _arm == "nfv_max":
+                    return ModeDecision("nfv", _gerekce, nfv_quality="max")
                 if _arm.startswith("nfv"):
+                    return ModeDecision("nfv", _gerekce)
+                if _arm.startswith("kafes"):
+                    # kafes zinciri (MK-03) NFV dalinda geometrik tetigiyle
+                    # calisir — model karari NFV yoluna yonlendirir.
                     return ModeDecision("nfv", _gerekce)
                 return ModeDecision("heightmap", _gerekce)
         except Exception as _exc:

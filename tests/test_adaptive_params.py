@@ -414,3 +414,53 @@ def test_k65_net_kutu_dalini_etkilemez():
     dec = predict_nfv_benefit(_inst([_box("a", 40, 40, 40, 5)]))
     assert dec.mode == "heightmap"
     assert "kutu" in dec.reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# H8 (denetim 2026-08-31): mode_model arm -> ModeDecision cevirisi
+# nfv_max karari "fast"e, kafes karari HEIGHTMAP'e dusuyordu — modelin en
+# iyi kollari uretimde sessizce yanlis kola cevriliyordu.
+# ---------------------------------------------------------------------------
+
+class _SahteModel:
+    def __init__(self, arm):
+        self._arm = arm
+
+    def karar(self, features, aile):
+        return (self._arm, f"sahte:{self._arm}")
+
+
+def _h8_dec(arm):
+    from src.nesting3d.adaptive_params import predict_nfv_benefit
+    from src.nesting3d.instances.format import (
+        ContainerSpec, NestingInstance, PartSpec)
+    inst = NestingInstance(
+        container=ContainerSpec(width_mm=100.0, depth_mm=100.0),
+        parts=[PartSpec(id="a", name="a", qty=2, source="box",
+                        width_mm=20.0, depth_mm=20.0, height_mm=5.0)])
+    return predict_nfv_benefit(inst, mode_model=_SahteModel(arm))
+
+
+def test_h8_nfv_max_karari_quality_max_tasir():
+    dec = _h8_dec("nfv_max")
+    assert dec.mode == "nfv"
+    assert dec.nfv_quality == "max", (
+        f"model nfv_max secti ama uretime {dec.nfv_quality} gitti (H8)")
+
+
+def test_h8_kafes_karari_nfv_yoluna_gider():
+    # kafes zinciri (MK-03) NFV dalinda tetiklenir; heightmap'e dusurmek
+    # modelin en iyi kolunu en kotu kola cevirir (plan2 heightmap 0,001 INVALID)
+    dec = _h8_dec("kafes")
+    assert dec.mode == "nfv", (
+        f"model kafes secti ama uretim {dec.mode} kosacakti (H8)")
+
+
+def test_h8_nfv_kalite_fast_kalir():
+    dec = _h8_dec("nfv_kalite")
+    assert dec.mode == "nfv" and dec.nfv_quality == "fast"
+
+
+def test_h8_wall_aware_davranisi_korunur():
+    dec = _h8_dec("heightmap+wall_aware")
+    assert dec.mode == "heightmap" and dec.wall_aware is True
