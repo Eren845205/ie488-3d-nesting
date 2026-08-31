@@ -165,9 +165,12 @@ class ModeDecision:
     # NFV dali icin poz-seti ONERISI (K-53c, 2026-07-16): "fast" (n=8) |
     # "max" (AX24). Yalniz rot-sokum thin_shell dalinda "max" uretilir
     # (d4@AX24 231.5 = -%16.3 vs n=8 276.5, max-parite, sure LEHTE).
-    # DEFAULT "fast" = geriye uyum; tuketici acik nfv_quality/n_orientations
-    # verdiyse o KAZANIR (oneri yalniz default'u doldurur).
-    nfv_quality: str = "fast"
+    # KARAR-G (Eren 2026-09-01): ONERI-DEFAULT "max" — alan hep dolu geldigi
+    # icin tuketicilerdeki getattr-fallback'ler hic calismiyordu (plan2 kapi
+    # kosusu 521,18-fast kaniti). Tuketici acik nfv_quality/n_orientations
+    # verdiyse o KAZANIR; fast-recete kollari (model nfv_kalite/ham/guard)
+    # aciklikla "fast" gecirir.
+    nfv_quality: str = "max"
     # K-56b: ADIM -1 tilt-zorunlu kapisi tetiklendiginde parca ADI (yapisal
     # alan — reason-parse kirilgan olurdu). None = tetiklenmedi (geriye uyum).
     # Tuketici (eval_gate/demo_pipeline) bu adla hedefli_tilt_overrides kurar.
@@ -292,7 +295,8 @@ def predict_nfv_benefit(
                 if _arm == "nfv_max":
                     return ModeDecision("nfv", _gerekce, nfv_quality="max")
                 if _arm.startswith("nfv"):
-                    return ModeDecision("nfv", _gerekce)
+                    # nfv_kalite/ham/guard kollari FAST-recete olculumleridir
+                    return ModeDecision("nfv", _gerekce, nfv_quality="fast")
                 if _arm.startswith("kafes"):
                     # kafes zinciri (MK-03) NFV dalinda geometrik tetigiyle
                     # calisir — model karari NFV yoluna yonlendirir.

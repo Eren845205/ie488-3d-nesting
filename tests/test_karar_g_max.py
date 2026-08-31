@@ -39,3 +39,21 @@ def test_eval_gate_fallback_max():
     assert 'getattr(dec, "nfv_quality", "fast")' not in src, (
         "eval_gate kural-fallback hala fast (KARAR-G; baseline'lar MAX ile "
         "yenilenecek)")
+
+
+def test_karar_g_kural_onerisi_davranissal_max():
+    """DAVRANIS testi (kaynak-metin degil): kural katmani cavity-aday
+    instance icin nfv + quality=MAX onermeli (plan2 kapisi 521-fast kaniti
+    — getattr-fallback olu noktaydi)."""
+    from src.nesting3d.adaptive_params import predict_nfv_benefit
+    from src.nesting3d.instances.format import (
+        ContainerSpec, NestingInstance, PartSpec)
+    inst = NestingInstance(
+        container=ContainerSpec(width_mm=200.0, depth_mm=200.0),
+        parts=[PartSpec(id=f"k{i}", name=f"k{i}", qty=3, source="box",
+                        width_mm=20.0, depth_mm=20.0, height_mm=120.0)
+               for i in range(4)])
+    dec = predict_nfv_benefit(inst)
+    assert dec.mode == "nfv"
+    assert dec.nfv_quality == "max", (
+        f"kural onerisi {dec.nfv_quality} — KARAR-G'ye gore max olmali")

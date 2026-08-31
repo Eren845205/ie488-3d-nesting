@@ -344,16 +344,17 @@ def test_rot_sokum_thin_shell_ax24_onerisi():
     assert "ax24" in dec.reason.lower()
 
 
-def test_nfv_quality_diger_yollarda_fast():
-    """Oneri yalniz rot-sokum thin_shell'de: kutu/plaka/cavity-aday 'fast'."""
+def test_nfv_quality_diger_yollarda_max():
+    """KARAR-G A8 capa guncellemesi (Eren 2026-09-01): oneri-default MAX.
+    Eski davranis (fast) kaydi YONTEM [KARAR-G]. Oneri yalniz rot-sokum thin_shell'de: kutu/plaka/cavity-aday 'fast'."""
     kutu = predict_nfv_benefit(_inst([_box("a", 40, 40, 40, 5)]))
     cavity = predict_nfv_benefit(
         _inst([_box("c", 120, 40, 18, 3), _box("d", 90, 30, 22, 3)]))
     kabuk_eski = predict_nfv_benefit(_inst([_shell("sh", 100, 100, 80)]),
                                      family_routing=True, rot_sokum=False)
-    assert kutu.nfv_quality == "fast"
-    assert cavity.nfv_quality == "fast"
-    assert kabuk_eski.nfv_quality == "fast"
+    assert kutu.nfv_quality == "max"
+    assert cavity.nfv_quality == "max"
+    assert kabuk_eski.nfv_quality == "max"
 
 
 # ---------------------------------------------------------------------------
