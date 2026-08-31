@@ -206,3 +206,77 @@ def test_holey_frames_stl_uretir(tmp_path):
     assert len(stl_parts) == 1
     from pathlib import Path
     assert Path(stl_parts[0].stl_path).exists()
+
+# ---------------------------------------------------------------------------
+# A2 rot-sokum katmani (2026-08-30, Eren onayi): etiket hukmu eval_gate.legal_of
+# ile AYNI — 5-yon kilit>0 tek basina RED degil; rot kilit=0 -> sokum-planli
+# LEGAL. (plan1 dersi: 136,20 uretimde LEGAL iken etiket INVALID demisti.)
+# ---------------------------------------------------------------------------
+
+def test_5yon_kilit_rot_sifir_sokum_planli_legal():
+    assert kol_legal_mi(_kol(k5=12, n_locked_rot=0), REQ) is None
+
+
+def test_5yon_kilit_rot_pozitif_invalid_sebep_rot_tasir():
+    sebep = kol_legal_mi(_kol(k5=12, n_locked_rot=3), REQ)
+    assert sebep is not None and "12 kilit" in sebep and "rot-sokum 3" in sebep
+
+
+def test_5yon_kilit_rot_none_eski_davranis():
+    sebep = kol_legal_mi(_kol(k5=12, n_locked_rot=None), REQ)
+    assert sebep == "12 kilit (5-yon)"
+
+
+def test_rot_sifir_diger_sartlari_aklamaz():
+    # rot kilit=0 yalniz kilit sartini aklar; clearance ihlali yine INVALID
+    sebep = kol_legal_mi(_kol(k5=12, n_locked_rot=0, cl=1.5), REQ)
+    assert sebep is not None and "clearance" in sebep
+
+
+def test_etiket_sokum_planli_kol_kazanabilir():
+    arms = {"heightmap": _kol(h=171.7, k5=0),
+            "nfv_fast": _kol(h=136.2, k5=12, n_locked_rot=0),
+            "nfv_max": _kol(h=190.2, k5=0)}
+    et = etiket_hesapla(arms, REQ)
+    assert et["winner_mode"] == "nfv_fast" and et["n_legal"] == 3
+    assert et["regret_mm"]["heightmap"] == pytest.approx(35.5)
+    assert et["sokum_planli"] == {"heightmap": False, "nfv_fast": True,
+                                  "nfv_max": False}
+
+
+
+# ---------------------------------------------------------------------------
+# asama2 kampanya: sidecar yeniden-kullanim (olcum tekrar edilmez) — 2026-08-30
+# ---------------------------------------------------------------------------
+
+def _sidecar_yaz(dizin, ad, kol):
+    import json
+    (dizin / f"{ad}_20260830_120000.json").write_text(
+        json.dumps({"kol_ozet": kol}), encoding="utf-8")
+
+
+def test_sidecar_bul_tam_ve_hatasiz_kolu_alir(tmp_path, monkeypatch):
+    import scripts.asama2_devset_etiket as a2
+    monkeypatch.setattr(a2, "SIDECAR_DIR", tmp_path)
+    monkeypatch.setenv("A2_REUSE_SIDECAR", "1")
+    _sidecar_yaz(tmp_path, "asama2_planX_heightmap", _kol(h=100.0))
+    r = a2._sidecar_bul("asama2:planX", "heightmap", None)
+    assert r is not None and r["height_mm"] == 100.0 and r["yeniden_kullanildi"]
+
+
+def test_sidecar_bul_h0_veya_eksik_yerlesim_reddeder(tmp_path, monkeypatch):
+    import scripts.asama2_devset_etiket as a2
+    monkeypatch.setattr(a2, "SIDECAR_DIR", tmp_path)
+    monkeypatch.setenv("A2_REUSE_SIDECAR", "1")
+    _sidecar_yaz(tmp_path, "asama2_planX_nfv_fast", _kol(h=0.0, placed=0))
+    assert a2._sidecar_bul("asama2:planX", "nfv", "fast") is None
+    _sidecar_yaz(tmp_path, "asama2_planY_nfv_max", _kol(h=50.0, placed=4))
+    assert a2._sidecar_bul("asama2:planY", "nfv", "max") is None
+
+
+def test_sidecar_bul_kapali_env(tmp_path, monkeypatch):
+    import scripts.asama2_devset_etiket as a2
+    monkeypatch.setattr(a2, "SIDECAR_DIR", tmp_path)
+    monkeypatch.setenv("A2_REUSE_SIDECAR", "0")
+    _sidecar_yaz(tmp_path, "asama2_planX_heightmap", _kol(h=100.0))
+    assert a2._sidecar_bul("asama2:planX", "heightmap", None) is None

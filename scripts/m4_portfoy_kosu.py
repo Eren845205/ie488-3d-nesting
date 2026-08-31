@@ -168,8 +168,10 @@ def kol_legal_mi(kol: Dict[str, Any], clearance_req: float) -> Optional[str]:
 
     Kilit karari 5-YON metriginden (n_locked_5dir) — telemetrideki +Z-tek
     n_locked yalniz kayit. Olculemeyen bilesen (None) = INVALID (ANAYASA:
-    kanitsizlik gecer not degildir). Rot-sokum denetimi BURADA KOSULMAZ;
-    5-yon kilit>0 etikette invalid sayilir (konservatif taraf).
+    kanitsizlik gecer not degildir). 5-yon kilit>0 ise rot-sokum katmani
+    (n_locked_rot; _kol_kos hesaplar) kilitleri yeniden yargilar — uretim/
+    kapi (eval_gate.legal_of) ile AYNI semantik. n_locked_rot None = eski
+    konservatif davranis (kilit = invalid).
     """
     if kol.get("hata"):
         return f"kosu hatasi: {kol['hata']}"
@@ -184,7 +186,14 @@ def kol_legal_mi(kol: Dict[str, Any], clearance_req: float) -> Optional[str]:
     if n5 is None:
         return "5-yon sokum olculemedi"
     if int(n5) > 0:
-        return f"{int(n5)} kilit (5-yon)"
+        # A2 rot-sokum katmani (2026-08-30, Eren onayi; eval_gate.legal_of ile
+        # AYNI hukum — plan1 dersi: 136,20 uretimde sokum-planli LEGAL iken
+        # etiket 'INVALID' demisti): rot kilit=0 -> kilit sarti aklanir.
+        rot = kol.get("n_locked_rot")
+        if rot is None:
+            return f"{int(n5)} kilit (5-yon)"
+        if int(rot) > 0:
+            return f"{int(n5)} kilit (5-yon; rot-sokum {int(rot)} kilit)"
     return None
 
 
@@ -203,16 +212,22 @@ def etiket_hesapla(arms: Dict[str, Dict[str, Any]],
         sebepler[ad] = sebep
         if sebep is None:
             legal_h[ad] = float(kol["height_mm"])
+    sokum_planli = {ad: bool(ad in legal_h
+                             and int(kol.get("n_locked_5dir") or 0) > 0
+                             and kol.get("n_locked_rot") == 0)
+                    for ad, kol in arms.items()}
     if not legal_h:
         return {"winner_mode": None,
                 "regret_mm": {ad: None for ad in arms},
-                "invalid_reasons": sebepler, "n_legal": 0}
+                "invalid_reasons": sebepler, "n_legal": 0,
+                "sokum_planli": sokum_planli}
     winner = min(legal_h, key=lambda a: legal_h[a])
     h_win = legal_h[winner]
     regret = {ad: (round(legal_h[ad] - h_win, 2) if ad in legal_h else None)
               for ad in arms}
     return {"winner_mode": winner, "regret_mm": regret,
-            "invalid_reasons": sebepler, "n_legal": len(legal_h)}
+            "invalid_reasons": sebepler, "n_legal": len(legal_h),
+            "sokum_planli": sokum_planli}
 
 
 def scenario_kur(inst: NestingInstance, mode: str,
@@ -283,19 +298,83 @@ def _kol_kos(inst: NestingInstance, mode: str, nfv_quality: Optional[str],
                 kol["sokum_hata"] = str(exc)
         elif kol["n_placed"] == 0:
             kol["n_locked_5dir"] = None
+        # A2 rot-sokum katmani (Eren onayi 2026-08-30): yalniz 5-yon kilit
+        # varken kosar (K-42 maliyet dersi); eval_gate 'yeniden' yolu ile
+        # AYNI fonksiyon (kilit_rot_meshes, K-52 tabani). Hata/butce ->
+        # None = konservatif eski RED (kanitsizlik gecer not degil).
+        if kol.get("n_locked_5dir") and pls is not None and vps is not None:
+            _tr = time.time()
+            try:
+                from src.nesting3d.continuous_settle import kilit_rot_meshes
+                from src.nesting3d.export_stl import placed_meshes
+                meshes = placed_meshes(list(pls), vps,
+                                       float(nr.get("pitch_mm") or 1.0),
+                                       dz=nr.get("r11_dz"))
+                rep = kilit_rot_meshes(meshes)
+                kol["n_locked_rot"] = int(rep.n_locked)
+                kol["rot_cert"] = len(getattr(rep, "certificates", None)
+                                      or [])
+            except Exception as exc:
+                kol["n_locked_rot"] = None
+                kol["rot_hata"] = f"{type(exc).__name__}: {exc}"
+            kol["rot_s"] = round(time.time() - _tr, 2)
+        # HAM SIDECAR (2026-08-30 veri-kaybi dersi): yerlesimler + ozet D'ye
+        # yazilir -> hukum (legal/rot) degisirse OLCUM tekrar edilmez.
+        try:
+            kol["sidecar"] = _sidecar_yaz(kaynak, mode, nfv_quality, seed,
+                                          nr, kol)
+        except Exception as exc:
+            kol["sidecar_hata"] = f"{type(exc).__name__}: {exc}"
     except Exception as exc:
         kol["hata"] = str(exc)
     kol["wall_s"] = round(time.time() - t0, 2)
     return kol
 
 
+SIDECAR_DIR = _ROOT / "results" / "m4_kollar"
+
+
+def _sidecar_yaz(kaynak: str, mode: str, nfv_quality: Optional[str],
+                 seed: int, nr: Dict[str, Any], kol: Dict[str, Any]) -> str:
+    """Kolun ham ciktisini (placements + pitch + r11_dz + ozet) JSON'a yaz.
+    voxel_parts YAZILMAZ (buyuk; instance builder'dan deterministik yeniden
+    kurulur). Dosya adi: <kaynak>_<kol>_<zaman>.json (append-only)."""
+    SIDECAR_DIR.mkdir(parents=True, exist_ok=True)
+    pls = nr.get("placements") or []
+    ser = []
+    for p in pls:
+        if hasattr(p, "_asdict"):
+            d = dict(p._asdict())
+        elif hasattr(p, "__dict__"):
+            d = dict(vars(p))
+        else:
+            d = {"raw": list(p)}
+        ser.append({k: (v.tolist() if hasattr(v, "tolist") else v)
+                    for k, v in d.items()})
+    ad = f"{kaynak}_{mode}{('_' + nfv_quality) if nfv_quality else ''}"
+    ad = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in ad)
+    yol = SIDECAR_DIR / f"{ad}_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    yol.write_text(json.dumps({
+        "kaynak": kaynak, "mode": mode, "nfv_quality": nfv_quality,
+        "seed": seed, "pitch_mm": nr.get("pitch_mm"),
+        "r11_dz": nr.get("r11_dz"), "height_mm": nr.get("height_mm"),
+        "nesting_mode_used": nr.get("nesting_mode_used"),
+        "auto_mode_reason": nr.get("auto_mode_reason"),
+        "note": nr.get("note"), "kol_ozet": {k: v for k, v in kol.items()
+                                              if k != "sidecar"},
+        "placements": ser}, ensure_ascii=True), encoding="utf-8")
+    return str(yol)
+
+
 def _kol_kafes(inst: NestingInstance, durus_koru: bool,
-               clearance_req: float) -> Optional[Dict[str, Any]]:
+               clearance_req: float,
+               kaynak: str = "m4") -> Optional[Dict[str, Any]]:
     """Kafes harness kolunu kos; tetik yoksa None (kol eklenmez).
 
     Legallik olcumu uretim kollariyla AYNI katmandan (min_clearance +
-    check_separability_5dir) — a2_olc'nin rot-sokum katmani BILEREK
-    kosulmaz (etikette 5-yon>0 = invalid, konservatif; _kol_kos ile ayni).
+    check_separability_5dir) + A2 rot-sokum katmani (2026-08-30, _kol_kos
+    ile AYNI hukum — plan2 dersi: 42 kilit rot'suz yargilanip kol yakildi).
+    Ham sidecar da yazilir (olcum tekrar edilmez).
     """
     from scripts.k66_d_kafes_dekod import kafes_coz_instance
     from src.nesting3d.accessibility import check_separability_5dir
@@ -329,10 +408,31 @@ def _kol_kafes(inst: NestingInstance, durus_koru: bool,
                 float(min_clearance(meshes).min_mm), 3)
             kol["n_locked_5dir"] = int(check_separability_5dir(
                 list(res.placements), res.fine_voxel_parts).n_locked)
+            if kol["n_locked_5dir"]:
+                from src.nesting3d.continuous_settle import kilit_rot_meshes
+                _tr = time.time()
+                try:
+                    rep = kilit_rot_meshes(meshes)
+                    kol["n_locked_rot"] = int(rep.n_locked)
+                    kol["rot_cert"] = len(getattr(rep, "certificates",
+                                                  None) or [])
+                except Exception as exc:
+                    kol["n_locked_rot"] = None
+                    kol["rot_hata"] = f"{type(exc).__name__}: {exc}"
+                kol["rot_s"] = round(time.time() - _tr, 2)
         except Exception as exc:
             kol["min_clearance_mm"] = None
             kol["n_locked_5dir"] = None
             kol["sokum_hata"] = str(exc)
+        try:
+            _nr = {"placements": list(res.placements),
+                   "pitch_mm": float(res.fine_pitch),
+                   "height_mm": kol.get("height_mm")}
+            kol["sidecar"] = _sidecar_yaz(
+                kaynak, "kafes_duruskoru" if durus_koru else "kafes",
+                None, 42, _nr, kol)
+        except Exception as exc:
+            kol["sidecar_hata"] = f"{type(exc).__name__}: {exc}"
     kol["duration_s"] = kol["wall_s"] = round(time.time() - t0, 2)
     return kol
 
