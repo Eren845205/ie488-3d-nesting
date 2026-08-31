@@ -344,7 +344,9 @@ def test_run_champion_nfv_dali_uretim_paritesi(monkeypatch):
     assert r == "NFV_SONUC"
     assert tel == {"secilen": "ham"}  # telemetri kapiya akar (r11 dz olcumu)
     assert yakalanan["clearance_mm"] == 2.0
-    assert yakalanan["quality"] == "fast"          # uretim DEFAULT'u
+    # KARAR-G (Eren onayi 2026-09-01): uretim DEFAULT'u MAX (A8 capa
+    # guncellemesi; eski "fast" donemi kaydi YONTEM [KARAR-G FLIP])
+    assert yakalanan["quality"] == "max"
     assert yakalanan["no_go_bounds"] == eg.NOGO_STD
     # Uretim paritesi (2026-07-15): pipeline r11="auto" + rot_kabul="auto"
     # kosuyor ve dz-export (7add014) r11 kazancini musteri STL'ine yansitiyor

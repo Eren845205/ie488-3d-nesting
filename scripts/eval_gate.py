@@ -137,7 +137,9 @@ def _load_instance(name):
         plate = None  # sentetik stres seti: auto-plaka
     else:
         cfg = DATASETS[name]
-        stl_map = {f.stem: f.read_bytes() for f in sorted(cfg["stl_dir"].glob("*.stl"))}
+        stl_map = {f.stem: f.read_bytes()
+                   for f in sorted(cfg["stl_dir"].glob("*.stl"))
+                   if not f.stem.startswith("_")}  # _nogo_area vb. haric (d5)
         qty = cfg["qty"]
         plate = PLATE_STD  # v2 sozlesmesi: gercek yazici plakasi (config degil)
     kwargs = {"persist_dir": _ROOT / "data" / "mail_stl" / f"gen_{name}"}
@@ -216,7 +218,7 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
         # (rot-sokum thin_shell -> "max"/AX24) kapida da gecerli — pipeline
         # ile ayni default'la olculur. Override (int/"ax24") HER ZAMAN ezer.
         if n_orientations is None:
-            _quality = getattr(dec, "nfv_quality", "fast")
+            _quality = getattr(dec, "nfv_quality", "max")  # KARAR-G
         # K-56g NFV kolu (hoca S2 2026-07-22): siparis-notu durus kilidi
         # NFV dalinda da tasinir (per-model poz kisiti; pinned/tilt'ten
         # farkli — voxelize seviyesi, decode'a dokunmaz). None = bit-ozdes.

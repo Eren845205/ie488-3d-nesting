@@ -52,6 +52,12 @@ REPORT_FILENAME = "demo_pipeline_report.md"
 # Instance-Tuner demo bütçesi: demo süresi < ~15 s kalsın
 TUNER_BUDGET = 70
 
+# KARAR-G (Eren onayi 2026-09-01 00:55, "bundan sonra her sey MAX"):
+# uretim default NFV kalitesi = "max" (AX24; kanit: G-probe plan3 577,0
+# LEGAL, fast 607,5'ten -30,5mm; webapp mail/adet yollari zaten max'ti).
+# "fast" yalniz payload'da ACIKCA istenirse (hizli onizleme) kosar.
+NFV_QUALITY_DEFAULT = "max"
+
 # Coarse-to-fine otomatik tetik: bu kadar parçadan ÇOK olan siparişlerde
 # (gerçek-dünya ölçeği) kaba-optimize → ince-final kullanılır. Küçük demo
 # senaryoları doğrudan tek-çözünürlük tune ile koşar (zaten hızlı).
@@ -618,6 +624,11 @@ def _clearance_gate(placements, voxel_parts_dict, pitch: float,
         instr["min_clearance_mm"] = round(rep.min_mm, 3)
         instr["clearance_check_s"] = round(_t.perf_counter() - _t0, 2)
         if rep.min_mm < WEB_MIN_CLEARANCE_MM:
+            # AC-02 C3 (Eren karari 2026-08-31): sessiz not yerine ACIK bayrak;
+            # nesting sozlugune tasinir -> siparis onay kuyruguna duser (webapp
+            # entegrasyonu uygulama test-hazirligi adiminda). Kapinin ateslemesi
+            # C1 fix'i sonrasi 'yeni bug / gercek sigmazlik' alarmi sayilir.
+            instr["clearance_violation"] = True
             return (
                 f"UYARI: olculen parca-arasi min bosluk {rep.min_mm:.3f}mm < "
                 f"{WEB_MIN_CLEARANCE_MM:.1f}mm (hoca sarti) -> bu yerlesim "
@@ -889,7 +900,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
             # K-53c: aile poz-seti onerisi yalniz ACIK deger YOKKEN dolar
             # (payload nfv_quality=None); eski davranis "fast" korunur.
             if nfv_quality is None:
-                nfv_quality = getattr(_dec, "nfv_quality", "fast")
+                nfv_quality = getattr(_dec, "nfv_quality", NFV_QUALITY_DEFAULT)
             # Aile-ailesi onerisi (wall_aware) -> cidar-duyarli pitch'i (F3 kablosu) OTOMATIK
             # ac. Bayrak False iken wall_aware zaten hic uretilmez. Guvenli getattr okuma.
             if auto_family_routing and getattr(_dec, "wall_aware", False):
@@ -1011,10 +1022,20 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     # yolu (bu _web_margin'i kullanan) icin; c2f fine-pitch kendi kucuk dilation'i.
     if _web_margin > 0 and pitch > 0:
         _plate_min = min(float(container["width_mm"]), float(container["depth_mm"]))
-        _max_part = max(
-            (float(_v) for _p in all_parts
-             for _v in (_p.get("width_mm"), _p.get("depth_mm"), _p.get("height_mm"))
-             if _v), default=0.0)
+        # AC-02 C1 paritesi (2026-08-31): ham 3-eksen max DEGIL — dik
+        # durabilen parca cap'i tetiklemez (coarse_to_fine._cap_metrigi_mm
+        # ile ayni kural; kaynak "box" -> max(w,d), aksi -> orta boyut).
+        def _cap_m(_p):
+            _dims = [float(_v) for _v in (_p.get("width_mm"),
+                     _p.get("depth_mm"), _p.get("height_mm")) if _v]
+            if not _dims:
+                return 0.0
+            if str(_p.get("source", "")) == "box":
+                return max(float(_p.get("width_mm") or 0.0),
+                           float(_p.get("depth_mm") or 0.0))
+            return (sorted(_dims)[len(_dims) // 2]
+                    if len(_dims) == 3 else max(_dims))
+        _max_part = max((_cap_m(_p) for _p in all_parts), default=0.0)
         _fit_margin = int((_plate_min - _max_part) / (2.0 * pitch))
         if _fit_margin < _web_margin:
             _web_margin = max(0, _fit_margin)
@@ -1048,7 +1069,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                 no_go_bounds=no_go_bounds,
                 orientation_overrides=_mk_orient,
                 n_orientations=None,  # n=8 (fast) veya donanım-tavanı (max); ÖLÇÜM: 4⊂8 garanti
-                quality=(nfv_quality or "fast"),  # None = oneri dolmadi (explicit "nfv" modu)
+                quality=(nfv_quality or NFV_QUALITY_DEFAULT),  # KARAR-G: None -> MAX
                 seed=seed,
                 time_budget_sec=time_budget_sec,  # #22: None -> bugünkü davranış BİREBİR
                 r11="auto",  # K-50 kablosu: mesh-duzeyi son dusme (tek-tarafli;
@@ -1089,7 +1110,11 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     no_go_bounds=no_go_bounds,
                     clearance_mm=WEB_MIN_CLEARANCE_MM,
                     seed=seed,
-                    quality="fast",  # olculen recete (k62 zinciri fast'ta)
+                    # H9 (denetim 2026-08-31, KARAR-G cizgisi): payload'un
+                    # nfv_quality niyeti zincire de akar. None -> "fast" =
+                    # eski recete BIT-OZDES; mail/adet yollari "max" gecince
+                    # zincir alt-cozumleri de max kosar (kapi: 4set-max).
+                    quality=(nfv_quality or NFV_QUALITY_DEFAULT),
                     ref_res=_c2f_result,
                     ref_height_mm=_ref_eff)
                 _instr["kanopi_zincir"] = _kz_tel
@@ -1445,6 +1470,10 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
     # gercekten sagliyor mu? _cl_pitch = SONUCUN pitch'i (c2f/nfv fine_pitch veya
     # tuner input pitch). Ihlal -> note'a uyari (nest bozulmaz).
     _cl_pitch = _c2f_result.fine_pitch if _c2f_result is not None else pitch
+    # AC-02 C2: K-54 cap kisintisi artik SESSIZ degil — telemetriye tasinir.
+    if _c2f_result is not None:
+        _instr["clearance_capped"] = getattr(_c2f_result,
+                                             "clearance_capped", None)
     _clearance_note = _clearance_gate(
         winner_result.placements, voxel_parts_3d, _cl_pitch, _instr)
 
@@ -1625,6 +1654,7 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
         "n_parts": n_placed,
         "elapsed_sec": round(t_nest_elapsed, 3),
         "note": _clearance_note,
+        "clearance_violation": bool(_instr.get("clearance_violation")),
         "auto_mode_reason": auto_reason,  # "auto" seçimi gerekçesi (None=auto kullanılmadı)
         "nesting_mode_used": nesting_mode,  # auto çözüldükten sonra fiilen kullanılan mod
         # GLB/STL export placements'ı bu pitch'le mm'e çevirir → SONUCUN pitch'i şart:

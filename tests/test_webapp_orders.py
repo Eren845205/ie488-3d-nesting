@@ -575,7 +575,8 @@ class TestNestingModeOptIn:
         client_orders.post("/run", data={"nesting_mode": "nfv", "nfv_quality": "max"})
         assert captured["scenario"]["nfv_quality"] == "max"
 
-    def test_run_nfv_quality_defaults_fast(self, client_orders, monkeypatch):
+    def test_run_nfv_quality_defaults_max(self, client_orders, monkeypatch):
+        # KARAR-G (Eren 2026-09-01): default MAX; "fast" yalniz acikca istenirse
         captured = {}
 
         def fake_run_pipeline(scenario):
@@ -583,7 +584,19 @@ class TestNestingModeOptIn:
             return {"nesting_results": {}, "used_demo": True}
 
         monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
-        client_orders.post("/run", data={"nesting_mode": "nfv"})  # max işaretsiz
+        client_orders.post("/run", data={"nesting_mode": "nfv"})  # secim yok
+        assert captured["scenario"]["nfv_quality"] == "max"
+
+    def test_run_nfv_quality_acik_fast_secilebilir(self, client_orders, monkeypatch):
+        captured = {}
+
+        def fake_run_pipeline(scenario):
+            captured["scenario"] = scenario
+            return {"nesting_results": {}, "used_demo": True}
+
+        monkeypatch.setattr("scripts.demo_pipeline.run_pipeline", fake_run_pipeline)
+        client_orders.post("/run", data={"nesting_mode": "nfv",
+                                         "nfv_quality": "fast"})
         assert captured["scenario"]["nfv_quality"] == "fast"
 
 

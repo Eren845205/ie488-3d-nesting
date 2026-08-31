@@ -1491,7 +1491,8 @@ def _register_routes(
         _nm = request.form.get("nesting_mode", "auto")
         nesting_mode = _nm if _nm in ("auto", "nfv", "heightmap") else "auto"
         # NFV kalite seviyesi: "max" → donanım-tavanı oryantasyon (en kısa istif, en yavaş); default "fast" (n=8).
-        nfv_quality = "max" if request.form.get("nfv_quality") == "max" else "fast"
+        # KARAR-G: default MAX; "fast" yalniz operator ACIKCA hizli-onizleme isterse
+        nfv_quality = "fast" if request.form.get("nfv_quality") == "fast" else "max"
         # F5 ASAMA-2 (2026-07-05): aile-farkindali yonlendirme YALNIZ "auto" modda
         # acilir; nfv/heightmap bilincli secilirse False -> davranis birebir korunur.
         scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality,
@@ -3022,7 +3023,7 @@ def _register_routes(
         _body = request.get_json(silent=True) or {}
         _onm = _body.get("nesting_mode", "auto")
         _mode = _onm if _onm in ("auto", "nfv", "heightmap") else "auto"
-        _quality = "max" if _body.get("nfv_quality") == "max" else "fast"
+        _quality = "fast" if _body.get("nfv_quality") == "fast" else "max"  # KARAR-G
         return _mode, _quality
 
     @app.route("/otonom", methods=["POST"])
