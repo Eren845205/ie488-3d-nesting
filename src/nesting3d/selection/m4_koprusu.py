@@ -75,7 +75,7 @@ def m4_training_rows(
     ist = istatistik if istatistik is not None else {}
     for k in ("m4_n_satir", "m4_n_tekrar_satir", "m4_n_kafes_kol_atlandi",
               "m4_n_invalid_kol", "m4_n_legal_armsiz", "m4_n_heldout_dislanan",
-              "m4_n_id_cakisan", "m4_n_ozelliksiz"):
+              "m4_n_id_cakisan", "m4_n_ozelliksiz", "m4_n_karantina"):
         ist.setdefault(k, 0)
 
     secili: Dict[str, dict] = {}
@@ -93,6 +93,13 @@ def m4_training_rows(
         satir = secili[uid]
         if uid in exclude or satir.get("instance_id") in exclude:
             ist["m4_n_heldout_dislanan"] += 1
+            continue
+        # KARANTINA (2026-08-31 cozum plani Paket C): motor arizasi (AC-08)
+        # altinda olculen satirlar egitime girmez; ariza fix'i sonrasi taze
+        # kampanya satiri (bayraksiz) "son satir kazanir" ile bunu otomatik
+        # ezer — elle geri-alma gerekmez.
+        if satir.get("karantina"):
+            ist["m4_n_karantina"] += 1
             continue
         if uid in mevcut:
             ist["m4_n_id_cakisan"] += 1

@@ -154,3 +154,36 @@ class TestKimlikVeTekrar:
 
     def test_benzersiz_id_fonksiyonu(self):
         assert m4_benzersiz_id(_satir()) == "m4_thin_plates_s0@kucuk"
+
+
+class TestKarantina:
+    """2026-08-31 cozum plani Paket C: AC-08 altinda olculen satirlar
+    'karantina' alaniyla egitim-disi birakilir; taze (bayraksiz) satir
+    'son satir kazanir' kuraliyla karantinayi otomatik ezer."""
+
+    def test_karantinali_satir_tabloya_girmez(self):
+        ist = {}
+        rows = m4_training_rows(
+            [_satir(arms={"heightmap": {"height_mm": 30.0}},
+                    iid="devset_plan3", scale="gercek") | {
+                "karantina": "AC-08 NFV kollari olculemedi"}],
+            _resolver, istatistik=ist)
+        assert rows == []
+        assert ist["m4_n_karantina"] == 1
+
+    def test_taze_satir_karantinayi_ezer(self):
+        eski = _satir(iid="devset_plan3", scale="gercek",
+                      arms={"heightmap": {"height_mm": 811.0}}) | {
+            "karantina": "AC-08"}
+        taze = _satir(iid="devset_plan3", scale="gercek",
+                      arms={"heightmap": {"height_mm": 811.0},
+                            "nfv_max": {"height_mm": 607.5}})
+        rows = m4_training_rows([eski, taze], _resolver)
+        assert len(rows) == 1 and rows[0].winner == "nfv_max"
+
+    def test_karantinasiz_set_bayt_ozdes(self):
+        # karantina alani olmayan satirlarda davranis birebir eski
+        ist1, ist2 = {}, {}
+        r1 = m4_training_rows([_satir()], _resolver, istatistik=ist1)
+        assert len(r1) == 1
+        assert ist1.get("m4_n_karantina", 0) == 0
