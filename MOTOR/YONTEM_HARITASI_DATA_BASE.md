@@ -177,6 +177,34 @@ beklenti ~577-595 bandı) — p2-F4 bitince sırada. NOT: derin-arama süre bede
 
 ### 3.1 KALİTE
 
+### [KARAR-G-2 DÜZELTME] Kural-fallback ÖLÜ NOKTAYDI — öneri-default ModeDecision'da MAX yapıldı — 2026-09-01 05:40
+- **Yakalanış:** baseline-2 koşusunda plan2 521,18-fast çıktı (MAX 519,5
+  beklenirdi). Kök: `ModeDecision.nfv_quality` alanı HEP dolu ("fast")
+  geldiğinden tüketicilerdeki `getattr(..., MAX)` fallback'leri hiç
+  çalışmıyordu — ilk flip'in testleri kaynak-metin kontrolüydü, davranışı
+  yakalamadı (ders: çapa testleri DAVRANIŞSAL olmalı).
+- **Fix:** öneri-default `ModeDecision.nfv_quality="max"`; model fast-reçete
+  kolları (nfv_kalite/ham/guard) açıkça `nfv_quality="fast"` geçirir
+  (ölçüldükleri reçete). +1 davranışsal test (cavity-aday → max); eski
+  "diğer yollarda fast" çapası A8 gerekçeli max'a güncellendi. 37/37 +
+  93 hedefli yeşil; tam suite koşuda. Yedek `karar_g2_oneri_default_oncesi`.
+- Baseline-2 iptal edildi (yanlış default'la anchor yazmasın); suite
+  yeşilinde baseline-3 (5-set) yeniden başlar. plan1 kapı ilk sonucu not:
+  138,2 (eski 140,21; AC-02 kazancı) — baseline-3'te yeniden ölçülecek.
+### [COMMIT PAKETİ + BASELINE KOŞUSU] 2026-09-01 05:00
+- **9 commit PUSH'LU** (`fe7ff60..b2e30d5`): P-11 yedek · ölçüm altyapısı ·
+  etiket doğruluğu · AC-08 · H8 · AC-02 · KARAR-G(+H9+C2/C3) · deneme5+problar
+  · docs. Çalışma ağacı temiz (yalnız Veriler/ untracked).
+- **No-go bulmacası kapandı:** üretim run_pipeline no-go'yu config'ten çözüyor
+  ve `no_go_soft` İLANLI → efektif SOFT (y-üst 33) — harness koşuları da aynı
+  yoldan no-go'luydu ("no-go taşınmaz" şerhi YANLIŞMIŞ; plan1 136,20/133,20
+  birebirliği kanıt). Sert-vs-soft hipotezi de düştü; harness-vs-eval ~14mm
+  farkının kalan adayı zincir/ref davranışı — kampanya sidecar'larıyla
+  netleşecek (A4).
+- **Baseline yenileme KOŞUDA:** eval_gate 5-set (deneme5 _KOSULABILIR'e
+  eklendi — Paket H eksiği) --save-baseline, KARAR-G'li kodla (fallback MAX);
+  eski baseline `eval_gate_baseline_20260804_arsiv.json`. Bitince anchor
+  değişimleri A8 gerekçeli rapor edilir.
 ### [4SET-MAX GECE KOŞUSU TAMAM] KARAR-G kanıt tablosu — 2026-09-01 04:15
 İmza: [set @ solve_nfv_kalite | NOGO_STD | quality=MAX | zincirsiz | 335×335 | pitch 2,0]; kanıt `results/g_probe_4set_max.json` (çift kopya).
 | set | fast (eval kapı) | MAX probe | fark | süre | Magics |

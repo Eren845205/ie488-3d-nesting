@@ -328,3 +328,8 @@ d5 227,5 · d4 şerhli · p1 K-40 bilgisi). SABAH ONAY PAKETİ Eren'e sunuluyor:
 commit paketi · baseline yenileme · KARAR-F kampanyası · retrain+promote.
 Ayrıca: SkillSpector kuruldu + /skill-tara komutu (injection-korumalı).
 
+
+**05:45 (09-01): KARAR-G-2** — kural-fallback ölü noktaydı (plan2 kapı 521-fast
+yakaladı); öneri-default ModeDecision'da MAX yapıldı (davranışsal testli;
+commit push'lu). Baseline-2 iptal; suite yeşilinde baseline-3 (5-set) →
+kampanya v8 → retrain. plan1 kapı ara-bulgusu: 138,2 (AC-02 kazancı −2,0).

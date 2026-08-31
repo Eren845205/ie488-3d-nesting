@@ -108,7 +108,17 @@ Eren kararına bırakıldı (aşağıda önerilen sıra ile).
   öğretmemek); d5 kural-zafiyeti için bu bekleme üretimde risk yaratmıyor
   (bugünkü davranış zaten kural).
 - **KARAR-D:** plan3 811>600 → çok-plaka (U1) hoca ajandası önceliği.
-- **KARAR-F (2026-08-31 akşam, Eren'in plan3 itirazı üzerine):** etiket
+- **KARAR-F ✅ ONAYLI (Eren 2026-09-01) + TASARIM GÜNCELLEMESİ:** kampanya
+  KARŞI-OLGUSAL kalır (Eren şartı: "hangisi iyiyse o — nfv-max iyiyse o,
+  heightmap'se o"; her sette TÜM kollar ölçülür, kazanan etiketlenir).
+  Düzeltilmiş bilgi: harness meğer no-go'yu config'ten ZATEN alıyormuş
+  (soft-ilan); "no-go taşınmaz" şerhi yanlıştı. Kampanya v8: fix-sonrası
+  kodla, A2_REUSE_SIDECAR=0 (her kol taze), etiketlerde yeni `kosul_imzasi`
+  alanı; baseline-yenileme bitince sıralı başlar; kampanyanın ardından
+  **fsm610 etiketi de fix-sonrası kodla tazelenir** (`m4_portfoy_kosu`
+  M4_FAMILIES=fsm610_gercek koşusu — kafes 400,0 teyidi + KARAR-G'li nfv
+  kolları). Eski KARAR-F metni aşağıda.
+- **(eski) KARAR-F (2026-08-31 akşam, Eren'in plan3 itirazı üzerine):** etiket
   kampanyası kolları bugüne dek NO-GO'SUZ koştu ("kollar iç-tutarlı" şerhi) —
   ama no-go'suz kanopi zinciri HİÇ ateşleyemiyor ve sonuçlar üretim
   kalitesini temsil etmiyor (p3: harness 629 vs üretim kapısı 607,5 vs

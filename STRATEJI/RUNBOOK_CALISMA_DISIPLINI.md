@@ -112,6 +112,10 @@ kaynak değildir.
    deseni: az seed şimdi, kalanı sonraki pencere) — geç saatte
    tam-kapsam başlatılmaz.
 7. Üretim log/print SAF ASCII (cp1254); .bat CRLF.
+8a. **Uzun iş ASLA oturum-görevine bağlanmaz (2026-09-01 dersi):** suite dahil
+   >5 dk her koşu DETACHED başlar (`Start-Process`/`detach_run`) + izleyici;
+   oturum içi arka-plan görevleri dışarıdan durdurulabiliyor (bir günde 3 kez:
+   suite %92'de, fsm610 replay, suite-2 — hepsi kayıp zaman).
 8. **Koşu logu KALICI yere** (`D:\ie488\logs\` veya `results\`; `detach_run`
    artık `logs/detach_<modül>_<zaman>.out|.err` yazar) — Temp'e yazılan log
    kaybolmuş sayılır (08-22 kampanya dersi).
