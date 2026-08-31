@@ -79,6 +79,12 @@ kaynak değildir.
    (k59 deseni: tetik-doğruluğu + A/B kazanç + yanlış-pozitif).
 6. KAPI: 4-set dev + tetiksiz setlerde SIFIR-DOKUNUŞ kanıtı (A11.3).
 7. Kapı PASS → üretim kablosu Eren onayıyla; katalog durumu ilerletilir;
+8. **KABLO KAPISI (2026-08-31 denetim dersi):** hiçbir kayıt yalnız "✅ GO"
+   ile kapanamaz — her GO kaydında zorunlu alan: `üretim kablosu: BAĞLI
+   (dosya:satır) | AYRI-İŞ (tarih + tetik koşulu)`. AYRI-İŞ kalan şampiyon
+   P-10.2 şerh-yaşlanmasına girer (7 gün → KIRMIZI). Gerekçe: 30+ kayıt
+   "kablolama ayrı iş" diye devredilip öldü (K-62 v20 127,20 · K-66-d
+   duruş-koru 400,0 · K-67 şindil %86 — denetim raporu 2026-08-31).
    mekanizma **M4 portföyüne KOL olarak eklenir** (ML akışı, katalog §C).
 
 ### P-4 · HATA / KRİZ ANINDA (INVALID sonuç, çöken koşu, yanlış rapor)
@@ -106,6 +112,22 @@ kaynak değildir.
    deseni: az seed şimdi, kalanı sonraki pencere) — geç saatte
    tam-kapsam başlatılmaz.
 7. Üretim log/print SAF ASCII (cp1254); .bat CRLF.
+8. **Koşu logu KALICI yere** (`D:\ie488\logs\` veya `results\`; `detach_run`
+   artık `logs/detach_<modül>_<zaman>.out|.err` yazar) — Temp'e yazılan log
+   kaybolmuş sayılır (08-22 kampanya dersi).
+9. **ÖLÇÜM ile HÜKÜM ayrılır:** her kol/koşunun HAM çıktısı (yerleşimler +
+   pitch + dz + telemetri özeti) sidecar JSON'a yazılır (`results/m4_kollar/`);
+   etiket/legal hükmü ham veriden yeniden türetilebilir olmalı — hüküm
+   kriteri değişince ölçüm TEKRAR EDİLMEZ (plan1 rot-söküm dersi).
+11. **Uzun zincirde her ağır kol/set TAZE ALT-SÜREÇTE koşar** (`m4_kol_tek`
+   deseni): tek süreçte kol-kol bellek birikir (plan2'de 14,5 GB private →
+   MemoryError/takas); alt-süreç = bellek OS'a döner + tek kol çökmesi zinciri
+   öldürmez. RAM kapısı SET-başı değil KOL-başı.
+12. Ham sidecar varsa **ölçüm tekrar edilmez** (`A2_REUSE_SIDECAR`): yeniden
+   başlatmada tam-yerleşimli hatasız kollar sidecar'dan okunur.
+10. **Etiket hükmü = kapı hükmü:** harness'ların legal kriteri
+   `eval_gate.legal_of` ile aynı semantiği taşır (A2 rot-söküm katmanı
+   dahil); "konservatif" sapma yalnız kayıtlı ve Eren onaylı olur.
 
 ### P-6 · RAPOR YAZIMI (her sonuç raporu)
 1. **A11 statüsü görünür**: şerhli mi, hangi kanıt adımları bekliyor.
@@ -115,6 +137,9 @@ kaynak değildir.
    olunduğu belirtilir (5-yön / söküm-planlı).
 4. Dış iletişim metrikleri üretim semantiğiyle (rot_cert vs n_locked
    dersi — [[feedback-dis-iletisim-metrik-semantigi]]).
+5a. **KOŞUL-İMZASI ZORUNLU (2026-08-31):** her sayı `[set @ yol | no-go? |
+   quality | zincir? | plaka | pitch]` imzasıyla anılır; imzasız sayı rapor
+   ve kıyaslarda geçersizdir (YONTEM §2D — "uyumsuzluk" kökü buydu).
 5. Sonuçlar ONAYSIZ işlenir (YONTEM + katalog + memory); onay yalnız
    KARAR işlerinde (commit/push, üretim değişikliği, baseline, hoca
    içeriği).
@@ -162,6 +187,24 @@ kaynak değildir.
 5. Oturum sonu: RESUME/memory devam noktası güncel; koşan işlerin
    izleyicileri kurulu.
 
+### P-11 · YEDEK DİSİPLİNİ (Eren kararı 2026-08-30: "geri dönülemez duruma düşmeyelim")
+1. **Algoritmaya/modele/kablolara dokunan HER değişiklik öncesi anlık yedek**:
+   `python -m scripts.yedekle --etiket <ne_oncesi> --not "<kısa>"` →
+   `yedekler/<zaman>_<git>_<etiket>.zip` (repo) + `D:\ie488\yedekler\` (çift
+   kopya) + `yedekler/INDEX.md` satırı. Kapsam: src/ + scripts/*.py + tests/
+   + configs/ (local hariç) + mode_model/registry/selection_archive +
+   STRATEJI + MOTOR/*.md. Veri ve koşu çıktıları DEĞİL (git + D zaten).
+2. Zorunlu tetikler: retrain/promote öncesi · üretim kablosu/default
+   değişikliği öncesi · çok-dosyalı refactor öncesi · baseline/anchor
+   güncelleme öncesi · her commit paketi öncesi ("büyük iş" = yedek).
+3. Doğrulama: `--dogrula <zip>` (sha256); ne değişti: `--fark <zip>`.
+4. Geri dönüş YERİNDE üzerine yazmaz: `--geri-yukle <zip>` yan dizine açar
+   (`yedekler/geri_<ad>/`); geri alınacak dosyalar bilinçli kopyalanır,
+   ardından ilgili test + tam suite koşar; olay YONTEM §3'e "GERİ DÖNÜŞ"
+   kaydıyla işlenir (neden geri dönüldü = ders).
+5. Git tag/commit yedeğin YERİNE GEÇMEZ (commit Eren onaylı ve gecikmeli;
+   yedek anında ve onaysız). Zip'ler repoya girmez (.gitignore), INDEX girer.
+
 ---
 
 ## §D — SÜREÇ DERSLERİ (tarihli; her yeni ders buraya eklenir)
@@ -180,6 +223,10 @@ kaynak değildir.
 | 2026-08-20 | K-38 kuantizasyon dersi HER elle-yerleşimde geçerli: adımlar pitch-katına, toleranslar mühendislik-yuvarlamalı (mikron tozu ceil'i şişirir) | kafes v1 INVALID 1,046; toz bug'ı | P-3.4 |
 | 2026-08-20 | Alt-sınır iddiası SINIFINI belirtir: bbox-hücre LB gerçek-geometriye bağlayıcı değil | 496-LB'yi 458,4 deldi | P-6 |
 | 2026-08-20 | Analitik kâğıt-hüküm koşudan önce: 3 saniyelik hesap 55 dakikalık koşuyu yönlendirir | K-66-a/hacim analizi | P-3.3 |
+
+| 2026-08-30 | **Veri kaybı + yanlış etiket dersi**: (a) Temp'e yazılan detach logları yok oldu, kampanyanın ölüm sebebi 8 gün bilinmedi; (b) ham yerleşimler saklanmadığı için hüküm düzeltmesi tüm setlerin YENİDEN koşulmasını gerektirdi; (c) harness etiketi 5-yön kilidi INVALID sayıp üretimde LEGAL olan plan1 NFV 136,20'yi eledi, "heightmap kazandı" diye RAPOR EDİLDİ (yanlış) | plan1 etiketi vs v28 baseline; Eren: "veriler kayboluyor, sonuçlar yanlış" | P-5.8-10, P-6, P-4.3 |
+| 2026-08-30 | **Bellek birikimi dersi**: tek süreçte ardışık ağır kollar 14,5 GB'a şişti (plan2 nfv MemoryError/takas; 08-04 aynı set 1639 s'de koşmuştu) → kollar taze alt-süreçte + kol-başı RAM kapısı + sidecar yeniden-kullanım | kampanya v2 plan2, `Get-Process` private 14,5 GB / WS 0,5 GB | P-5.11-12 |
+| 2026-08-30 | **Yedek disiplini**: kod/model/kablo değişikliği öncesi anlık zip-yedek (P-11); geri dönüş yan dizine + test | Eren: "büyük değişiklikte geriye dönemeyecek duruma düşmeyelim" | P-11, P-7.5, P-9 |
 
 > Yeni ders ekleme kuralı: olay + kanıt + hangi prosedürü değiştirdiği.
 > Ders eklemek yetmez — ilgili P-maddesi de güncellenir (ders prosedüre

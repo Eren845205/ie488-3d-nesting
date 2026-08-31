@@ -29,7 +29,8 @@
 | # | Açık | Kanıt | Durum |
 |---|---|---|---|
 | AC-01 | Karar katmanı sensörlere bakmıyordu (mod-yönlendirici körlüğü) | fsm610 %21 kaybı | K-65 kablo + KARAR-6 polarite + M14 (model→üretim) İLERLİYOR |
-| AC-02 | Heightmap yolunda clearance-uygulama zafiyeti (1,004/0,131<2) | fsm610 iki koşu | AÇIK — teşhis sırada (K-45 kuantizasyon bağlantısı şüphesi) |
+| AC-02 | Heightmap yolunda clearance-uygulama zafiyeti (1,004/0,131<2; **plan2 0,001** 2026-08-30) | fsm610 iki koşu + **plan2 kampanya v2 (708,5/0,001, v1 ile birebir replikasyon)** | AÇIK — teşhis sırada (K-45 kuantizasyon bağlantısı şüphesi); artık 2 gerçek sette kanıtlı, öncelik YÜKSELDİ |
+| AC-08 | **Kanopi zinciri (v28) plan2'de bellek bombası**: `kanopi_zinciri_uretim→kanopi_zinciri_coz→solve_nfv→GPU FFT` aşamasında python private 14 GB / CPU≈0 (takas); eval_gate yolu (kanopisiz) 521,18'i 5,3 GB'da koşar. Üretim NFV yolu plan2'de tetiklenirse uygulama tıkanır — p2/d4 KIRMIZI şerhinin gerçek yüzü | kampanya v2/v3/v4 (py-spy yığını 2026-08-30 21:00) | **KAPALI-İZLEMEDE (2026-08-31):** kök = zincir fine_pitch=None→zehirli bant + cuFFT plan work-area birikimi; fix A1+A2+F4 (TDD, suite 3363); kanıt p2 535,0 / p3 629,0 uçtan uca LEGAL (tepe ≤10,7 GB) |
 | AC-03 | Batching'de yükseklik fizibilite kapısı yok (691 tek-parti raporu) | fsm610 | U1 v1 TASARIM HAZIR (LB hakemi + doğru-mod-önce + bölme son çare) |
 | AC-04 | Pitch/dilation ince boşlukları mühürlüyor (profil-yuvalama kör noktası) | K-66 teşhisi; kafes v1 INVALID dersi (K-38 yeniden) | KISMİ — kuantize-adım fix'i kodda; ince-pitch donanım bekler |
 | AC-05 | Kıyas-şartı doğrulanmadan referans sayısı hedef alındı ("%45 geride" yanılgısı) | PLAN8 öz-ölçümü | KAPANDI — ders: referans DOSYASI önce ölçülür (A10+A4) |

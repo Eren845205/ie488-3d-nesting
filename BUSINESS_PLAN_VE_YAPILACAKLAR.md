@@ -106,6 +106,16 @@
          türediğini doğrula (sabit 16GB varsayımı kalmış olabilir).
 
 ### P4 — Kod koruma / lisanslama (ters mühendisliğe karşı)
+- [x] **SkillSpector kuruldu (2026-09-01, Eren isteği):** NVIDIA'nın LLM'li kod
+      güvenlik/tedarik-zinciri tarayıcısı (v2.11.x; `skillspector scan <dir>`;
+      LLM'siz mod `--no-llm`; LLM'li mod için `SKILLSPECTOR_PROVIDER` — Claude
+      CLI sağlayıcısı anahtar gerektirmiyor). Kullanım yeri: pilot/lab teslimi
+      ÖNCESİ paket + bağımlılık güvenlik taraması (DENETIM_RAPORU hattının aracı).
+      İlk duman taraması (src/nesting3d/selection, --no-llm): 19×HIGH SC8 =
+      "__pycache__/bytecode pakete girmesin" (geliştirme ağacında normal;
+      TESLİM paketinde temizlenecek — lisans/paketleme adımına kural) + 1 TT2.
+      LLM'li derin tarama teslim-önü kapıda koşulacak (claude-cli sağlayıcısı
+      anahtarsız).
 - [ ] `docs/LISANS_UYGULAMA_PLANI.md` UYGULAMAYA ALINIR (plan hazır,
       ertelenmişti — artık tetiklendi: ilk teslimat geldi).
 - [x] EULA TASLAĞI YAZILDI (2026-08-18, Eren talebi: "sihirbazda I-agree

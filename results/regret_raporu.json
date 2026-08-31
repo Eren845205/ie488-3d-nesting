@@ -139,6 +139,41 @@
    "regret": 120.4,
    "en_iyi": 218.0,
    "kotumser_ceza": false
+  },
+  "devset_plan1@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=12.4, thin_plate=0.10): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_plan2@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=6.4, thin_plate=0.26): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_plan3@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=7.3, thin_plate=0.08): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_deneme4@gercek": {
+   "kural_arm": "nfv_max",
+   "kural_mode": "nfv",
+   "kural_quality": "max",
+   "kural_gerekce": "kabuk ailesi (thin_shell, guven=0.87) + rot-sokum dunyasi: NFV+rot yolu (K-46/K-52; kilit rot-kabul zinciriyle aklanir; poz seti AX24, K-53c)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_deneme5@gercek": {
+   "kural_arm": "heightmap",
+   "kural_mode": "heightmap",
+   "kural_quality": "fast",
+   "kural_gerekce": "ince-plaka dominant (thin_plate=0.62 > 0.6): duz zaten optimal, NFV uzatir -> heightmap",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
   }
  },
  "n_otonom_dislanan": 118
