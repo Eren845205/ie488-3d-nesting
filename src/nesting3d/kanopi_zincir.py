@@ -161,6 +161,7 @@ def kanopi_zinciri_coz(
     max_greedy: int = 6,
     ref_res=None,
     solve_kwargs: Optional[Dict[str, Any]] = None,
+    aday: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """K-62 zincirini kos: (en_iyi_result, telemetri) doner.
 
@@ -171,7 +172,14 @@ def kanopi_zinciri_coz(
     from src.nesting3d.nfv_solve import solve_nfv
 
     sk = dict(solve_kwargs or {})
-    sk.setdefault("fine_pitch", fine_pitch)
+    # A2 (2026-08-31, AC-08 ana fix): fine_pitch verilmezse CLEARANCE kullanilir
+    # (K-38 sampiyon kurali; referans yolu nfv_solve.py solve_nfv_kalite ve
+    # kafes_zincir ile ayni). None birakmak suggest_nfv_pitch'in plan2/3'te
+    # ZEHIRLI banda (~1,95) dusmesine ve 2x dilation + dev grid'lerle bellek
+    # bombasina yol aciyordu (py-spy kanitli; YONTEM 'M4-ETIKET DUZELTME').
+    sk.setdefault("fine_pitch",
+                  fine_pitch if fine_pitch is not None
+                  else float(clearance_mm))
     ortak = dict(plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
                  seed=seed, quality=quality, clearance_mm=clearance_mm,
                  no_go_bounds=no_go_bounds, **sk)
@@ -183,7 +191,10 @@ def kanopi_zinciri_coz(
     tel["adimlar"].append({"adim": "ref", "h": h_ref,
                            "n": int(ref.n_placed)})
 
-    aday = kanopi_adayi(inst, plate_w_mm, plate_d_mm, no_go_bounds)
+    # A1 (2026-08-31): uretim yolu adayi zaten taradi -> mesh'ler bir kez
+    # yuklenir (cift trimesh.load kaldirildi); aday verilmezse eski davranis.
+    if aday is None:
+        aday = kanopi_adayi(inst, plate_w_mm, plate_d_mm, no_go_bounds)
     if aday is None:
         return ref, tel
     # DIKKAT: ref tam yerleşememiş olsa da zincir DENENİR (kapı-1 dersi:
@@ -398,7 +409,7 @@ def kanopi_zinciri_uretim(
         inst, plate_w_mm=plate_w_mm, plate_d_mm=plate_d_mm,
         no_go_bounds=no_go_bounds, clearance_mm=clearance_mm, seed=seed,
         quality=quality, fine_pitch=fine_pitch, greedy_r1=greedy_r1,
-        max_greedy=max_greedy, ref_res=ref_res)
+        max_greedy=max_greedy, ref_res=ref_res, aday=aday)
     tel["zincir"] = ztel
     if kazanan is ref_res or ztel.get("etiket") == "ref":
         tel["sure_s"] = round(_time.perf_counter() - t0, 1)

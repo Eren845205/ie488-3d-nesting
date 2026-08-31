@@ -393,97 +393,120 @@ def decode_gpu(parts, nx, ny, pitch=2.0, return_placements=False, *,
     if cp is None:
         raise RuntimeError("cupy/GPU yok")
     try:
-        cp.fft.config.get_plan_cache().set_size(4)  # plan birikimi=OOM kaynağı; sayıca sınırla
+        _pc = cp.fft.config.get_plan_cache()
+        _pc.set_size(4)  # plan birikimi=OOM kaynağı; sayıca sınırla
+        # AC-08 F4 (2026-08-31, py-spy kanıtı): plan2 pinli solve'da 4 slot ×
+        # ~1,5GB work-area = WDDM commit'te ~6-9GB. Bayt tavanı: planlar
+        # SONUCU etkilemez (deterministik yeniden-hesap) -> bit-özdeş.
+        _pc.set_memsize(256 * 2 ** 20)
     except Exception:
         pass
     mempool = cp.get_default_memory_pool()
 
-    # K-57 kernel-spektrum LRU'su: decode-omurlu (id anahtari grid_cache
-    # referanslari canliyken guvenli); 0/None = KAPALI (eski yol birebir).
-    # DEFAULT KAPALI — 6GB VRAM'de ZARARLI OLCULDU (A/B 2026-07-18: +%137;
-    # canli spektrumlar cuFFT calisma tamponlarini sikistirip tahsis-thrash
-    # yaratiyor). Opt-in yalniz bol-VRAM ortami icin (super-bilgisayar).
-    _spec = None
-    if spec_cache_mb:
-        from src.nesting3d.fft_backend import SpecLRU
-        _spec = SpecLRU(float(spec_cache_mb) * 2 ** 20)
-
-    # occ_onyuk (K-62 v9): pin tepesi _nz_limit'i asabilir -> nz buyutulur.
-    _nz = _nz_limit(pitch)
-    _pin_tepe = 0
-    if occ_onyuk:
-        for _g, _px, _py, _pz in occ_onyuk:
-            _nz = max(_nz, _pz + np.asarray(_g).shape[2])
-    occ = cp.zeros((nx, ny, _nz), dtype=cp.bool_)  # RESIDENT
-    if no_go_mask is not None and np.asarray(no_go_mask).any():
-        # yasak kolonlar cihazda TAM yukseklik muhur (CPU ile ayni semantik);
-        # cur_max occupancy'den DEGIL yerlesimlerden izlenir -> zehirlenmez.
-        occ[cp.asarray(np.asarray(no_go_mask, dtype=bool))] = True
-    if occ_onyuk:
-        # CPU onyukle ile AYNI semantik: kirpmali damga + gercek dolu tepe.
-        for _g, _px, _py, _pz in occ_onyuk:
-            _gb = np.asarray(_g, dtype=bool)
-            fw, fd, fh = _gb.shape
-            gx0, gy0, gz0 = max(0, -_px), max(0, -_py), max(0, -_pz)
-            x0, y0, z0 = max(0, _px), max(0, _py), max(0, _pz)
-            x1, y1 = min(nx, _px + fw), min(ny, _py + fd)
-            if x1 <= x0 or y1 <= y0 or _pz + fh <= z0:
-                continue
-            sub = _gb[gx0:gx0 + (x1 - x0), gy0:gy0 + (y1 - y0), gz0:]
-            occ[x0:x1, y0:y1, z0:_pz + fh] |= cp.asarray(sub)
-            if sub.any():
-                zs = np.where(sub.any(axis=(0, 1)))[0]
-                _pin_tepe = max(_pin_tepe, z0 + int(zs[-1]) + 1)
+    # AC-08 A1 (2026-08-31): decode-omurlu GPU tahsisleri (occ, grid_cache,
+    # cuFFT plan calisma alanlari) donuste SURUCUYE iade edilir — WDDM'de
+    # havuzda kalan bloklar sistem commit'ine yazilip ardisik cozumlerde
+    # (kanopi zinciri 10-12 solve) 12-15 GB'a birikiyordu (py-spy kanitli).
+    # Temizlik yalniz DONUSTE -> yerlesim sonuclari BIT-OZDES.
     grid_cache = {}
+    try:
 
-    def _grids(orient):
-        k = id(orient)
-        g = grid_cache.get(k)
-        if g is None:
-            gb = cp.asarray(orient.grid, dtype=cp.bool_)
-            gf = cp.asarray(orient.grid[::-1, ::-1, ::-1], dtype=cp.float64)
-            g = (gb, gf, orient.grid.shape)
-            grid_cache[k] = g
-        return g
+        # K-57 kernel-spektrum LRU'su: decode-omurlu (id anahtari grid_cache
+        # referanslari canliyken guvenli); 0/None = KAPALI (eski yol birebir).
+        # DEFAULT KAPALI — 6GB VRAM'de ZARARLI OLCULDU (A/B 2026-07-18: +%137;
+        # canli spektrumlar cuFFT calisma tamponlarini sikistirip tahsis-thrash
+        # yaratiyor). Opt-in yalniz bol-VRAM ortami icin (super-bilgisayar).
+        _spec = None
+        if spec_cache_mb:
+            from src.nesting3d.fft_backend import SpecLRU
+            _spec = SpecLRU(float(spec_cache_mb) * 2 ** 20)
 
-    placements: List[RawPlacement] = []
-    cur_max = _pin_tepe  # pin yoksa 0 = BIT-OZDES; pinli: yukseklik durust
-    n_placed = 0
-    t0 = time.perf_counter()
-    for part in sorted(parts, key=_sira_anahtari(oncelik_ids)):
-        if time_budget_sec is not None and (time.perf_counter() - t0) >= time_budget_sec:
-            if budget_status is not None:
-                budget_status["budget_exceeded"] = True
-            break  # temiz kismi dusus
-        best_key = None; best = None
-        for oi, orient in enumerate(part.orientations):
-            _, gf, gshape = _grids(orient)
+        # occ_onyuk (K-62 v9): pin tepesi _nz_limit'i asabilir -> nz buyutulur.
+        _nz = _nz_limit(pitch)
+        _pin_tepe = 0
+        if occ_onyuk:
+            for _g, _px, _py, _pz in occ_onyuk:
+                _nz = max(_nz, _pz + np.asarray(_g).shape[2])
+        occ = cp.zeros((nx, ny, _nz), dtype=cp.bool_)  # RESIDENT
+        if no_go_mask is not None and np.asarray(no_go_mask).any():
+            # yasak kolonlar cihazda TAM yukseklik muhur (CPU ile ayni semantik);
+            # cur_max occupancy'den DEGIL yerlesimlerden izlenir -> zehirlenmez.
+            occ[cp.asarray(np.asarray(no_go_mask, dtype=bool))] = True
+        if occ_onyuk:
+            # CPU onyukle ile AYNI semantik: kirpmali damga + gercek dolu tepe.
+            for _g, _px, _py, _pz in occ_onyuk:
+                _gb = np.asarray(_g, dtype=bool)
+                fw, fd, fh = _gb.shape
+                gx0, gy0, gz0 = max(0, -_px), max(0, -_py), max(0, -_pz)
+                x0, y0, z0 = max(0, _px), max(0, _py), max(0, _pz)
+                x1, y1 = min(nx, _px + fw), min(ny, _py + fd)
+                if x1 <= x0 or y1 <= y0 or _pz + fh <= z0:
+                    continue
+                sub = _gb[gx0:gx0 + (x1 - x0), gy0:gy0 + (y1 - y0), gz0:]
+                occ[x0:x1, y0:y1, z0:_pz + fh] |= cp.asarray(sub)
+                if sub.any():
+                    zs = np.where(sub.any(axis=(0, 1)))[0]
+                    _pin_tepe = max(_pin_tepe, z0 + int(zs[-1]) + 1)
+
+        def _grids(orient):
+            k = id(orient)
+            g = grid_cache.get(k)
+            if g is None:
+                gb = cp.asarray(orient.grid, dtype=cp.bool_)
+                gf = cp.asarray(orient.grid[::-1, ::-1, ::-1], dtype=cp.float64)
+                g = (gb, gf, orient.grid.shape)
+                grid_cache[k] = g
+            return g
+
+        placements: List[RawPlacement] = []
+        cur_max = _pin_tepe  # pin yoksa 0 = BIT-OZDES; pinli: yukseklik durust
+        n_placed = 0
+        t0 = time.perf_counter()
+        for part in sorted(parts, key=_sira_anahtari(oncelik_ids)):
+            if time_budget_sec is not None and (time.perf_counter() - t0) >= time_budget_sec:
+                if budget_status is not None:
+                    budget_status["budget_exceeded"] = True
+                break  # temiz kismi dusus
+            best_key = None; best = None
+            for oi, orient in enumerate(part.orientations):
+                _, gf, gshape = _grids(orient)
+                fw, fd, fh = gshape
+                if fw > nx or fd > ny:
+                    continue
+                o = _blb_xybbox_gpu(cp, occ, gf, gshape, fast_len=fast_len,
+                                    spec_cache=_spec, _tel=_tel)
+                if o is None:
+                    continue
+                key = (max(o[2] + fh, cur_max), o[2] + fh, o[2], o[1], o[0], oi)
+                if best_key is None or key < best_key:
+                    best_key, best = key, (oi, o[0], o[1], o[2])
+            if best is None:
+                raise RuntimeError(f"GPU decode drop fallback gerekti (parça {part.id})")
+            oi, x, y, z = best
+            gb, _, gshape = _grids(part.orientations[oi])
             fw, fd, fh = gshape
-            if fw > nx or fd > ny:
-                continue
-            o = _blb_xybbox_gpu(cp, occ, gf, gshape, fast_len=fast_len,
-                                spec_cache=_spec, _tel=_tel)
-            if o is None:
-                continue
-            key = (max(o[2] + fh, cur_max), o[2] + fh, o[2], o[1], o[0], oi)
-            if best_key is None or key < best_key:
-                best_key, best = key, (oi, o[0], o[1], o[2])
-        if best is None:
-            raise RuntimeError(f"GPU decode drop fallback gerekti (parça {part.id})")
-        oi, x, y, z = best
-        gb, _, gshape = _grids(part.orientations[oi])
-        fw, fd, fh = gshape
-        occ[x:x + fw, y:y + fd, z:z + fh] |= gb  # in-device mutasyon (transfer YOK)
-        cur_max = max(cur_max, z + fh)
-        n_placed += 1
-        if return_placements:
-            placements.append((part.id, oi, x, y, z))
-        if n_placed % 4 == 0:
-            mempool.free_all_blocks()
+            occ[x:x + fw, y:y + fd, z:z + fh] |= gb  # in-device mutasyon (transfer YOK)
+            cur_max = max(cur_max, z + fh)
+            n_placed += 1
+            if return_placements:
+                placements.append((part.id, oi, x, y, z))
+            if n_placed % 4 == 0:
+                mempool.free_all_blocks()
+                try:  # F4: plan work-area'lari da periyodik iade (bit-özdeş)
+                    cp.fft.config.get_plan_cache().clear()
+                except Exception:
+                    pass
 
-    cp.cuda.Stream.null.synchronize()
-    h = cur_max * pitch
-    return (h, placements) if return_placements else h
+        cp.cuda.Stream.null.synchronize()
+        h = cur_max * pitch
+        return (h, placements) if return_placements else h
+    finally:
+        try:
+            grid_cache.clear()
+            mempool.free_all_blocks()
+            cp.fft.config.get_plan_cache().clear()
+        except Exception:
+            pass
 
 
 # --------------------------------------------------------------------------
