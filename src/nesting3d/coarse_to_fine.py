@@ -73,14 +73,46 @@ def clearance_to_voxels(clearance_mm: float, pitch: float):
 def _max_part_dim_mm(instance: NestingInstance) -> float:
     """Instance'taki EN BÜYÜK parça boyutu (mm; üç eksenin maksimumu).
 
-    K-54 graceful clearance-cap'in girdisi. Boyut metası yoksa 0.0 döner
-    (cap tetiklenmez -> davranış değişmez).
+    (Tarihsel yardımcı; K-54 cap'i artık _cap_metrigi_mm kullanır — AC-02.)
     """
     best = 0.0
     for p in instance.parts:
         for d in (p.width_mm, p.depth_mm, p.height_mm):
             if d is not None and float(d) > best:
                 best = float(d)
+    return best
+
+
+def _cap_metrigi_mm(instance: NestingInstance) -> float:
+    """K-54 cap girdisi — AC-02 fix'i (2026-08-31, Eren onaylı plan Paket B).
+
+    ESKİ metrik (üç eksenin ham max'ı) DİK DURABİLEN uzun parçayı (fsm610
+    çubukları 399,6mm; plan2 356,1mm > plaka 335) 'plakaya sığmaz' sanıp TÜM
+    instance'ın yatay margin'ini 0'a kelepçeliyordu → ölçülen boşluk 0,001mm
+    (sessiz ihlal, katalog AC-02). Doğru soru: 'parça hangi YATAY footprint
+    ile yerleşebilir?':
+      - source=="box" (yalnız z-rotasyon pozları): footprint sabit →
+        max(width, depth).
+      - diğer kaynaklar (STL; 8-poz master seti dik pozları içerir): en iyi
+        dikey seçim = en büyük boyut → yatay max = ORTA boyut.
+    Duruş-kilitli (orientation_overrides) uç durumda iyimser kalabilir; o
+    durumda dblf sığmazlık hatası eskisi gibi açık patlar (sessiz ihlalden
+    iyi — K-51d davranışı yatay-zorunlu parçalarda aynen korunur).
+    """
+    best = 0.0
+    for p in instance.parts:
+        dims = [float(d) for d in (p.width_mm, p.depth_mm, p.height_mm)
+                if d is not None]
+        if not dims:
+            continue
+        if str(getattr(p, "source", "")) == "box":
+            w = float(p.width_mm or 0.0)
+            d_ = float(p.depth_mm or 0.0)
+            m = max(w, d_)
+        else:
+            m = sorted(dims)[len(dims) // 2] if len(dims) == 3 else max(dims)
+        if m > best:
+            best = m
     return best
 
 
@@ -104,7 +136,7 @@ def cap_margin_to_plate(margin: int, pitch: float, instance: NestingInstance,
     if margin <= 0 or pitch <= 0 or plate_w_mm is None or plate_d_mm is None:
         return margin, False
     plate_min = min(float(plate_w_mm), float(plate_d_mm))
-    max_part = _max_part_dim_mm(instance)
+    max_part = _cap_metrigi_mm(instance)  # AC-02: dik-durabilen cap'i tetiklemez
     if max_part <= 0:
         return margin, False
     fit = int((plate_min - max_part) / (2.0 * pitch))
