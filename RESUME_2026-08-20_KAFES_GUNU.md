@@ -333,3 +333,22 @@ Ayrıca: SkillSpector kuruldu + /skill-tara komutu (injection-korumalı).
 yakaladı); öneri-default ModeDecision'da MAX yapıldı (davranışsal testli;
 commit push'lu). Baseline-2 iptal; suite yeşilinde baseline-3 (5-set) →
 kampanya v8 → retrain. plan1 kapı ara-bulgusu: 138,2 (AC-02 kazancı −2,0).
+
+## H. CLEAR-ÖNCESİ DEVİR (2026-09-01 ~09:30) — YENİ OTURUM BURADAN DEVAM EDER
+**KOŞAN İŞ:** baseline-3 (eval_gate 5-set, --save-baseline, DETACHED PID 33032;
+log `D:\ie488\logs\eval_max_baseline3.out`, json `results/eval_gate_max_baseline_20260901.json`).
+Biten setler: **plan1 138,2 (eski 140,21) · plan2 502,7 (eski 521,18; Magics'e %2,1!) ·
+plan3 577,0 (eski 607,5; Magics 593 GEÇİLDİ) · deneme4 215,87 (birebir)**;
+deneme5 KOŞUYOR (ilk baseline'ı oluşacak). Yeni oturum: prosesi
+`Get-Process -Id 33032` + log tail ile kontrol et; bitince A8 tablosunu YONTEM'e işle.
+**SONRAKİ ZİNCİR (Eren onaylı, sıralı):**
+1. Kampanya v8: `D:\ie488`'den detached, env `A2_SETS=plan1,plan2,plan3,deneme4,deneme5`
+   + `A2_REUSE_SIDECAR=0` ile `scripts.asama2_devset_etiket` (bekçili; log logs/).
+2. fsm610 tazeleme: `M4_FAMILIES=fsm610_gercek M4_SCALE=gercek M4_SEEDS=1` ile
+   `scripts.m4_portfoy_kosu` (env adlarını main()'den teyit et).
+3. `mod_yarismasi --kafes` → kapı raporu güncelle → RETRAIN+PROMOTE önerisi
+   Eren'e (H7 allowlist fix'i Paket D henüz YAPILMADI — retrain'den önce D!).
+4. Sonra: plan7 kör-test (Eren onayı) · plan1-açığı (şampiyon 127,20 kablosu).
+**Durum:** 13 commit push'lu (`5c13a64`); tüm suite'ler yeşil (son 3380);
+yedekler INDEX'te (son: karar_g2_oneri_default_oncesi). Uzun işler HEP
+detached (P-5.8a). Koşul-imzasız sayı kullanma (P-6.5a).
