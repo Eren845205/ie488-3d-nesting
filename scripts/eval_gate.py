@@ -207,8 +207,9 @@ def _run_champion(name, inst, seed, budget=None, n_orientations=None,
                 "extra_rot_overrides yalniz heightmap "
                 f"dalinda gecerli (K-56); {name} NFV'ye yonlendi")
         from src.nesting3d.nfv_solve import solve_nfv_kalite
-        print(f"    [{name}] routing: NFV kalite (uretim default: "
-              f"fast/2mm/nogo/r11-auto/rot-auto)", flush=True)
+        print(f"    [{name}] routing: NFV kalite (quality="
+              f"{getattr(dec, 'nfv_quality', '?')}/2mm/nogo/r11-auto/"
+              f"rot-auto)", flush=True)
         # Uretim paritesi (2026-07-15): pipeline r11="auto" + rot_kabul="auto"
         # kosuyor ve dz-export (7add014) r11 kazancini musteri STL/GLB'sine
         # yansitiyor — kapi da AYNI default'larla olcer. (Eski r11=False
