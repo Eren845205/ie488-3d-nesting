@@ -141,6 +141,42 @@ def _gpu_kullanim_mb() -> Optional[float]:
 BEKCI_PRIV_GB = float(os.environ.get("A2_BEKCI_PRIV_GB", "12"))
 BEKCI_TIKANMA_S = float(os.environ.get("A2_BEKCI_TIKANMA_S", "240"))
 BEKCI_TIKANMA_PRIV_GB = float(os.environ.get("A2_BEKCI_TIKANMA_PRIV_GB", "6"))
+# BEKCI DUMP (2026-09-02 p3-max dersi): 3600s'de 5,8GB -> 3720s'de 16,8GB
+# ani balon, bekci kor oldurdu -> faz bilinmiyor. Simdi: private > DUMP
+# esigi olunca BIR KEZ py-spy dump (results/pyspy_bekci_<pid>_uyari.txt),
+# oldurmeden hemen once ikinci dump (_olum). Teshis araci; kosuyu degistirmez.
+BEKCI_DUMP_GB = float(os.environ.get("A2_BEKCI_DUMP_GB", "8"))
+
+
+def _pyspy_yolu() -> Optional[str]:
+    import shutil
+    y = os.environ.get("A2_PYSPY") or shutil.which("py-spy")
+    if y:
+        return y
+    aday = (Path.home() / "AppData/Local/Packages"
+            / "PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0"
+            / "LocalCache/local-packages/Python313/Scripts/py-spy.exe")
+    return str(aday) if aday.exists() else None
+
+
+def _pyspy_dump(pid: int, etiket: str, priv_gb: float) -> None:
+    """py-spy dump -> results/pyspy_bekci_<pid>_<etiket>.txt (hata yutulur)."""
+    yol = _pyspy_yolu()
+    if not yol:
+        log(f"    [bekci-dump] py-spy bulunamadi (A2_PYSPY ile ver)")
+        return
+    hedef = _ROOT / "results" / f"pyspy_bekci_{pid}_{etiket}.txt"
+    try:
+        r = subprocess.run([yol, "dump", "--pid", str(pid), "--subprocesses"],
+                           capture_output=True, text=True, timeout=120)
+        cikti = (f"# priv={priv_gb:.1f}GB etiket={etiket} rc={r.returncode}\n"
+                 + (r.stdout or "")
+                 + (("\n[stderr]\n" + r.stderr) if r.stderr else ""))
+        hedef.write_text(cikti, encoding="utf-8")
+        log(f"    [bekci-dump] {etiket} priv={priv_gb:.1f}GB -> {hedef.name} "
+            f"(rc={r.returncode})")
+    except Exception as exc:
+        log(f"    [bekci-dump] {etiket} basarisiz: {type(exc).__name__}: {exc}")
 
 
 def _bekci(proc, etiket: str) -> Optional[str]:
@@ -157,6 +193,7 @@ def _bekci(proc, etiket: str) -> Optional[str]:
     son_cpu = 0.0
     son_cpu_t = t0
     son_nabiz = t0
+    uyari_dump = False
     while proc.poll() is None:
         time.sleep(15)
         try:
@@ -172,6 +209,9 @@ def _bekci(proc, etiket: str) -> Optional[str]:
             son_nabiz = time.time()
             log(f"    [nabiz {etiket}] {time.time()-t0:.0f}s priv={priv:.1f}GB "
                 f"ws={mi.rss/1e9:.1f}GB cpu={cpu:.0f}s")
+        if priv > BEKCI_DUMP_GB and not uyari_dump:
+            uyari_dump = True
+            _pyspy_dump(proc.pid, "uyari", priv)
         sebep = None
         if priv > BEKCI_PRIV_GB:
             sebep = (f"BEKCI: private {priv:.1f}GB > {BEKCI_PRIV_GB}GB "
@@ -183,6 +223,7 @@ def _bekci(proc, etiket: str) -> Optional[str]:
                      f"{time.time()-t0:.0f}s")
         if sebep:
             log(f"    {sebep}")
+            _pyspy_dump(proc.pid, "olum", priv)
             try:
                 for c in ps.children(recursive=True):
                     c.kill()
@@ -298,9 +339,23 @@ def main() -> int:
                      "yol": "run_pipeline (uretim)",
                      "no_go": "config (soft ilanliysa soft)",
                      "kafes_zinciri_nfv_kollarinda": False,
+                     "kanopi_zincir_kollarda": False,
                      "plaka": "335x335", "pitch_kurali": "K-38 clearance",
                      "kod": "KARAR-G sonrasi (kollar quality'yi acik gecer)"},
                  "arms": arms, **et}
+        # EKSIK-ANA-KOL OTOKARANTINASI (Eren 2026-09-02 "MAX varken fast'i
+        # traine alma - ben demeden engelle"): uretim kollarindan biri
+        # KOSAMADIYSA (hata/iptal) winner guvenilmez -> satir dogustan
+        # karantinali yazilir; taze tam-kollu satir gelince onu ezer.
+        _ana = ("heightmap", "nfv_fast", "nfv_max")
+        _eksik = [a for a in _ana
+                  if not isinstance(arms.get(a), dict) or arms[a].get("hata")]
+        if _eksik:
+            satir["karantina"] = (
+                "eksik-ana-kol otokarantinasi: "
+                + ",".join(_eksik)
+                + " olculemedi -> winner egitime girmez (Eren 2026-09-02)")
+            log(f"  KARANTINA(oto): eksik ana kol {_eksik}")
         OUT_ETIKET.parent.mkdir(exist_ok=True)
         with OUT_ETIKET.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(satir, ensure_ascii=False) + "\n")

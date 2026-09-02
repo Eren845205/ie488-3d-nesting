@@ -57,8 +57,11 @@ class TestCevirim:
         assert "nfv_max" in rows[0].per_solver_heights
 
     def test_esitlikte_alfabetik_winner(self):
+        # nfv_max da OLCULMUS olmali (eksik-ana-kol savunmasi 2026-09-02:
+        # ana kol yoksa satir egitime girmez); esitlik heightmap/nfv_fast'ta.
         arms = {"heightmap": {"height_mm": 28.0},
-                "nfv_fast": {"height_mm": 28.0}}
+                "nfv_fast": {"height_mm": 28.0},
+                "nfv_max": {"height_mm": 29.0}}
         rows = m4_training_rows([_satir(arms=arms)], _resolver)
         assert rows[0].winner == "heightmap"
         assert rows[0].is_easy is True
@@ -67,6 +70,7 @@ class TestCevirim:
         """kafes_dahil=True (Eren onayi 2026-08-21): kafes kollari tabloya
         girer, winner kafes olabilir."""
         arms = {"heightmap": {"height_mm": 30.0},
+                "nfv_fast": {"height_mm": 29.0},
                 "nfv_max": {"height_mm": 28.0},
                 "kafes": {"height_mm": 20.0},
                 "kafes_duruskoru": {"height_mm": 21.0}}
@@ -80,6 +84,7 @@ class TestCevirim:
     def test_kafes_kollari_girmez(self):
         """Etiketteki winner kafes olsa bile tablo uretim kollarindan kurulur."""
         arms = {"heightmap": {"height_mm": 30.0},
+                "nfv_fast": {"height_mm": 29.0},
                 "nfv_max": {"height_mm": 28.0},
                 "kafes": {"height_mm": 20.0},
                 "kafes_duruskoru": {"height_mm": 21.0}}
@@ -175,8 +180,10 @@ class TestKarantina:
         eski = _satir(iid="devset_plan3", scale="gercek",
                       arms={"heightmap": {"height_mm": 811.0}}) | {
             "karantina": "AC-08"}
+        # taze satir TAM-KOLLU olmali (eksik-ana-kol savunmasi 2026-09-02)
         taze = _satir(iid="devset_plan3", scale="gercek",
                       arms={"heightmap": {"height_mm": 811.0},
+                            "nfv_fast": {"height_mm": 629.0},
                             "nfv_max": {"height_mm": 607.5}})
         rows = m4_training_rows([eski, taze], _resolver)
         assert len(rows) == 1 and rows[0].winner == "nfv_max"

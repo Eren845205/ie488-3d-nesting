@@ -75,7 +75,8 @@ def m4_training_rows(
     ist = istatistik if istatistik is not None else {}
     for k in ("m4_n_satir", "m4_n_tekrar_satir", "m4_n_kafes_kol_atlandi",
               "m4_n_invalid_kol", "m4_n_legal_armsiz", "m4_n_heldout_dislanan",
-              "m4_n_id_cakisan", "m4_n_ozelliksiz", "m4_n_karantina"):
+              "m4_n_id_cakisan", "m4_n_ozelliksiz", "m4_n_karantina",
+              "m4_n_eksik_ana_kol"):
         ist.setdefault(k, 0)
 
     secili: Dict[str, dict] = {}
@@ -100,6 +101,19 @@ def m4_training_rows(
         # ezer — elle geri-alma gerekmez.
         if satir.get("karantina"):
             ist["m4_n_karantina"] += 1
+            continue
+        # EKSIK-ANA-KOL SAVUNMASI (Eren 2026-09-02): uretim kollarindan biri
+        # kosu-hatasiyla olculemedise winner guvenilmez — uretici bayragi
+        # unutulmus olsa bile satir egitime ALINMAZ (cifte emniyet;
+        # gecmis carpik satirlari da retroaktif dislar).
+        _inv0 = satir.get("invalid_reasons") or {}
+        _arms0 = satir.get("arms") or {}
+        def _ana_olculemedi(_k):
+            _v = _arms0.get(_k)
+            return ((not isinstance(_v, dict)) or bool(_v.get("hata"))
+                    or str(_inv0.get(_k) or "").startswith("kosu hatasi"))
+        if any(_ana_olculemedi(_k) for _k in uretim_kollari):
+            ist["m4_n_eksik_ana_kol"] = ist.get("m4_n_eksik_ana_kol", 0) + 1
             continue
         if uid in mevcut:
             ist["m4_n_id_cakisan"] += 1
