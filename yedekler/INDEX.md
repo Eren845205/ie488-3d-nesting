@@ -25,3 +25,4 @@
 | 20260902_1208 | b1bc5e8 | crlf_normalize_oncesi | 718 | 2.9 | 12 |  |
 | 20260902_1213 | b1bc5e8 | bekci_pyspy_dump_oncesi | 718 | 2.9 | 13 |  |
 | 20260902_1311 | b1bc5e8 | kavite_voxel_butcesi_oncesi | 718 | 2.9 | 14 |  |
+| 20260902_1729 | 058edde | ac10_uretim_aile_allowlist_oncesi | 720 | 2.9 | 0 |  |
