@@ -28,3 +28,4 @@
 | 20260902_1729 | 058edde | ac10_uretim_aile_allowlist_oncesi | 720 | 2.9 | 0 |  |
 | 20260902_2120 | f0f0b0a | m4_kol_tek_stl_dir_oncesi | 724 | 2.9 | 0 |  |
 | 20260902_2147 | fead61e | hollow_tubes_m4_ailesi_oncesi | 724 | 2.9 | 0 |  |
+| 20260902_2213 | ca0c0c4 | tube_rot_nfv_kurali_oncesi | 724 | 2.9 | 1 |  |
