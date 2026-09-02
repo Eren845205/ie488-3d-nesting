@@ -113,7 +113,7 @@ Saf-kutuda (boxy) %0 (cavity yoksa avantaj yok = doğası, overfit değil). Bede
 | plan2 | **521.18** (kapı-2 REKORU — eski 529.04'ü geçti) | 521.18 (= üretim) | üretim; eval_gate_baseline 2026-08-04 |
 | plan3 | 607.50 (soft bedeli +5.58 — bilinçli kabul, kapı-2) | **577.62** (K-49d R11-v4, 2026-07-13; clear 2.033, kilit 0) | şampiyon-reçete; STL plan3_r11d_577.6mm.stl (D) |
 | deneme4 | **215.87** (kapı-2 YENİ ŞAMPİYON — eski 220.69'u geçti) | 215.87 (= üretim) | üretim; eval_gate_baseline 2026-08-04 |
-| deneme5 | *(eval config'i yok)* | **214.64** (K-50 R11-v4, 2026-07-14) | şampiyon-reçete; STL deneme5_r11v4_214.6mm.stl (D) |
+| deneme5 | 343,80 [baseline-3 2026-09-01, üretim-rota heightmap; eval config VAR (80c4a71)] | **214.64** (K-50 R11-v4, 2026-07-14) · MAX-probe 227,5 LEGAL | şampiyon-reçete; STL deneme5_r11v4_214.6mm.stl (D); **AÇIK: kural tube→heightmap (343,8) vs MAX 227,5 — 2026-09-02 tube-kural kanıtı** |
 | deneme6 | **68.50** (kör-test) | 65.50 (max kolu) | held-out; deneme6_heldout_final.json |
 | plan7 | **488.40** (kör-test, kısıtsız) | 488.40 (max BİREBİR) | held-out; plan7_heldout_final.json |
 
@@ -147,7 +147,7 @@ Paket E yeniden-ölçümünde eklenir (KARAR-F ile birlikte).
 | plan2 | 521,18 [eval_gate, no-go'lu, zincirsiz] · zincirli üretim: AC-08-p2 AÇIK (bekçi 12,6 GB) | 521,18 (= üretim) | 0 (zincir açığı hariç) | p2 bellek teşhisi koşuda |
 | plan3 | 607,50 [eval_gate, no-go'lu, FAST] | **577,0 [G-probe 2026-09-01: üretim koşulları + MAX]** = şampiyon bandı; Magics 593'ü geçer | **KAPANDI: makas = quality seçimi** | Çözüm KARAR-G (default MAX) + H8 fix'i; kablo = seçici katman |
 | deneme4 | 215,87 [eval_gate] | 215,87 (= üretim) | 0 | temiz |
-| deneme5 | *(eval config yok)* | 214,64 [K-50 R11-v4] | ? | eval config eksiği Paket H temizlik listesinde |
+| deneme5 | 343,80 [baseline-3, üretim-rota heightmap (tube ailesi kuralı)] | 214,64 [K-50 R11-v4] · MAX 227,5 LEGAL | **116-129 mm** | eval config VAR (80c4a71; 08-31 notu bayattı); makas = tube ailesinde kural yanlış mod (AC-10 modeli tube'de susuyor) — kural kanıtı 2026-09-02 21:55 |
 
 **MAGICS KIYAS SÜTUNU (2026-08-31 gece; kaynak HOCA_CEVAPLARI §2 — hoca
 ölçümü, 335+NO-GO; boşluk değeri KAYITSIZ → A10 şerhli):** plan1 Magics
@@ -176,6 +176,14 @@ beklenti ~577-595 bandı) — p2-F4 bitince sırada. NOT: derin-arama süre bede
 ## §3 — DENENEN YÖNTEMLER ENVANTERİ
 
 ### 3.1 KALİTE
+
+### [deneme5 / TUBE AİLESİ: üretim rotası heightmap 343,8 vs MAX 227,5 (Magics 209) — kural değişikliği ŞERHLİ, dağılımsal kanıt YOK] — 2026-09-02 22:00
+İmza: [baseline-3 (09-01) deneme5 satırı + eğitim tablosu tube/thin_shell kırılımı (uretim_aile.satir_uretim_bilgisi) | §2C/§2D deneme5 satırları güncellendi (eval config VAR; 08-31 "yok" notu bayattı)]
+- **Bulgu:** deneme5 `classify_prelim` = tube; kural (`predict_nfv_benefit`, rot_sokum=True) tube'de "kanıtsız → eski yol" = heightmap → 343,8; MAX-probe 227,5 LEGAL (regret 116; Magics 209 hâlâ 18,5 önde). AC-10 modeli tube'de susar (güvenli-aile değil, n=2), yani bu makası model kapatamaz — kural işi.
+- **Dağılımsal kontrol (A11-2b):** tablodaki tube satırları: deneme5 (gerçek, 352 parça) NFV-MAX −116 mm; sentetik `syn_ht_s0..s7` (8 küçük tüp seti, h≈28-40 mm, telemetri 07-xx) heightmap 6/8 önde (+2 mm), nfv_kalite 2/8 (s1 −3, s2 −61); **nfv_max hiç ölçülmemiş**. thin_shell'de aynı desen: gerçek setlerde (p2/p3/d4) MAX net kazanır, sentetik `syn_sb` küçük kabuklarda heightmap 7/8. → "tube → NFV" tetiği ölçek/parça-sayısı koşullu olabilir; tek gerçek setle kural değişmez (A11-1/2).
+- **Sıradaki ucuz teşhis (A4):** B1 `hollow_tubes` jeneratörünü M4 portföyüne aile olarak ekle (orta/büyük ölçek, nfv_max dahil) → dağılımsal tetik-doğruluğu; kanıt gelirse rot-söküm dünyasında tube hükmü thin_shell gibi tersine döner (K-46/K-52 çizgisi), Eren onayıyla + 4-set kapı.
+- **Ölçmeden bıraktıklarım:** hollow_tubes M4 ailesi · held-out · gate-payı ayrık bellek.
+- **Karne (A11):** tetik=GEOMETRİK-ADAY (aile+ölçek) · kapı=BEKLİYOR (tek gerçek set) · sıfır-dokunuş=N/A (kural değişmedi) · sözleşme=DEĞİL · held-out=BEKLİYOR.
 
 ### [AC-09 DAĞILIMSAL KANIT (A11-2b): >60M voxel sınıfında 4 aile / 5 koşu balonsuz — kavite bütçesi genel] — 2026-09-02 21:40
 İmza: [scratchpad `kavite_dagilim_replay.py` (m4_kol_tek nfv_max, ebeveyn tepe-private ölçümü) + bugünkü kampanya koşuları | kod 2b0e43f+ | m4_kol_tek stl_dir fix]
