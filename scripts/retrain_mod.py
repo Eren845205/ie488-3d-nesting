@@ -55,8 +55,15 @@ def _arsivle(hedef: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--allowlist", required=True,
-                    help="virgullu guvenli-aile listesi (yarisma kaniti sart)")
+                    help="virgullu guvenli URETIM-aile listesi (classify_prelim "
+                         "adlari: thin_shell,tube,thin_plate,long_rod,solid_bulk,"
+                         "mixed_scale) VEYA 'auto' = kapili LOO'da model<=kural "
+                         "olan aileler (AC-10, 2026-09-02)")
     ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--min-n", type=int, default=3,
+                    help="auto allowlist: ailenin guvenli sayilmasi icin min satir")
+    ap.add_argument("--force", action="store_true",
+                    help="karar-probu OLU (konustu=0) olsa da yaz (varsayilan: RET)")
     ap.add_argument("--model", choices=sorted(MODELLER), default="logistic",
                     help="promote edilecek aday (tur-5 kaniti: logistic)")
     ap.add_argument("--m4-etiket",
@@ -93,6 +100,55 @@ def main():
         sys.exit(2)
 
     ModelCls = MODELLER[args.model]
+
+    # --- AC-10 (2026-09-02): URETIM-AILE semantigi -------------------------
+    # Uretim `karar(features, classify_prelim(instance))` ile sorar; allowlist
+    # ve kapili-karar olcumu de AYNI aile adlariyla yapilir. Her satir icin
+    # instance yeniden kurulur -> uretim ailesi + GERCEK uretim kural kolu
+    # (predict_nfv_benefit; uretim bayraklari family_routing=True,
+    # rot_sokum=True — demo_pipeline giris yollariyla ayni).
+    from scripts.m4_portfoy_kosu import FAMILY_BUILDERS, _devset_builder
+    from src.nesting3d.adaptive_params import predict_nfv_benefit
+    from src.nesting3d.instances.family import classify_prelim
+    from src.nesting3d.selection.uretim_aile import (
+        URETIM_AILELERI, guvenli_aileler_sec, kapili_loo, karar_probu,
+        satir_uretim_bilgisi)
+    kural_map = {}
+    rr = _ROOT / "results" / "regret_raporu.json"
+    if rr.exists():
+        rj = json.loads(rr.read_text(encoding="utf-8"))
+        kural_map = {iid: s["kural_arm"] for iid, s in rj["setler"].items()
+                     if s.get("kural_arm")}
+    bilgi = satir_uretim_bilgisi(
+        table, builders=FAMILY_BUILDERS, devset_builder=_devset_builder,
+        classify=classify_prelim,
+        kural_fn=lambda inst: predict_nfv_benefit(
+            inst, family_routing=True, rot_sokum=True),
+        kural_map=kural_map, stl_dir=_ROOT / "tmp" / "m4_stl")
+    kaynak_sayim = {}
+    for b in bilgi.values():
+        kaynak_sayim[b["kaynak"]] = kaynak_sayim.get(b["kaynak"], 0) + 1
+    print(f"uretim-bilgi kaynaklari: {kaynak_sayim}")
+    if len(allowlist) == 1 and allowlist[0].lower() == "auto":
+        guvenli, rapor0 = guvenli_aileler_sec(
+            table, bilgi, ModelCls, args.alpha, min_n=args.min_n)
+        allowlist = sorted(guvenli)
+        print(f"auto allowlist (kapili LOO, model<kural kesin, n>={args.min_n}): "
+              f"{allowlist}")
+    yabanci = [a for a in allowlist if a not in URETIM_AILELERI]
+    if yabanci:
+        print(f"HATA: allowlist uretim-aile adi degil: {yabanci} "
+              f"(gecerli: {sorted(URETIM_AILELERI)})")
+        sys.exit(2)
+    rapor = kapili_loo(table, bilgi, ModelCls, args.alpha, allowlist)
+    print(f"kapili-karar LOO (alpha={args.alpha}, esik={rapor['esik']:.3f}): "
+          f"regret model={rapor['regret_model']:.2f} kural="
+          f"{rapor['regret_kural']:.2f} | konustu {rapor['konustu']}/{rapor['n']} "
+          f"(isabet {rapor['isabet']}) | kural-bilinmeyen {rapor['kural_bilinmeyen']}")
+    for f, d in rapor["aile"].items():
+        print(f"   {f:12s} n={d['n']:3d} kural={d['kural_ort']:6.1f} "
+              f"model={d['model_ort']:6.1f} konustu={d['konustu']} isabet={d['isabet']}")
+
     model = ModelCls()
     model.fit(table)
     conf = ConformalSelector(ModelCls, alpha=args.alpha)
@@ -100,6 +156,27 @@ def main():
     print(f"model: {model.explain()}")
     print(f"conformal: n_skor={len(conf._skorlar)}  armlar={sorted(conf._armlar)}")
     print(f"allowlist: {allowlist}")
+
+    # KARAR-PROBU (RUNBOOK P-7, 2026-09-02): artefakt gecici yola yazilir,
+    # uretim yukleyicisiyle okunur, egitim satirlarinda uretim ailesiyle
+    # karar() sorulur. konustu=0 -> OLU promote -> RET (--force ile gecilir).
+    from src.nesting3d.selection.mode_model_io import load_mode_model
+    gecici = _ROOT / "tmp" / "mode_model.karar_probu.json"
+    gecici.parent.mkdir(parents=True, exist_ok=True)
+    meta_probu = {"surum": "karar-probu", "alpha": args.alpha}
+    save_mode_model(gecici, model, conf._skorlar, sorted(conf._armlar),
+                    allowlist, meta=meta_probu)
+    lm = load_mode_model(gecici)
+    probu = karar_probu(lm, table, bilgi) if lm else {"olu": True, "n": 0,
+                                                     "konustu": 0, "isabet": 0,
+                                                     "aileler": {}}
+    print(f"karar-probu: konustu {probu['konustu']}/{probu['n']} "
+          f"(isabet {probu['isabet']}) aileler={probu['aileler']}"
+          + ("  -> OLU" if probu["olu"] else ""))
+    if probu["olu"] and not args.force:
+        print("HATA: karar-probu OLU (model uretimde hic konusmaz) — promote "
+              "reddedildi (P-7). alpha/allowlist'i gozden gecir; --force ile ez.")
+        sys.exit(3)
 
     if args.dry_run:
         print("[dry-run] artefakt YAZILMADI")
@@ -110,14 +187,20 @@ def main():
         print(f"eski artefakt arsivlendi: {eski}")
     save_mode_model(
         hedef, model, conf._skorlar, sorted(conf._armlar), allowlist,
-        meta={"surum": f"asama2-yarisma3-2026-09-02-{args.model}",
+        meta={"surum": f"ac10-uretim-aile-2026-09-02-{args.model}",
               "alpha": args.alpha,
               "n_train": len(table),
-              "kanit": ("results/mod_yarismasi_20260902.json n=85 kafes-dahil "
-                        "(karar_agaci 8,88 flagli / mini_bagging 10,73 / "
-                        "regret_logistic 14,12 vs KURAL 25,06; "
-                        "fsm610+d5 model 0,0) + ASAMA2_KAPI_RAPORU EK"),
-              "onay": "Eren 2026-09-02 (eksik ne varsa yapilsin tamamlansin)"})
+              "allowlist_semantigi": "classify_prelim uretim ailesi (AC-10)",
+              "kapili_loo": {"regret_model": rapor["regret_model"],
+                             "regret_kural": rapor["regret_kural"],
+                             "konustu": rapor["konustu"], "n": rapor["n"],
+                             "isabet": rapor["isabet"], "esik": rapor["esik"],
+                             "aile": rapor["aile"]},
+              "karar_probu": probu,
+              "kanit": ("YONTEM 3.1 2026-09-02 16:10 (AC-10 kapili LOO) + "
+                        "results/mod_yarismasi_20260902.json (ham) + "
+                        "ASAMA2_KAPI_RAPORU EK"),
+              "onay": "Eren 2026-09-02 ('2 yi yap' -> secenek A)"})
     print(f"YAZILDI: {hedef}")
 
 

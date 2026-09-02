@@ -188,3 +188,7 @@ her biri P-3.8 kablo-kapısıyla ayrı iş olarak sahiplenilecek.
   n_legal=3, karantina YOK. §1 tablosundaki plan3 satırı (811 heightmap) artık
   TARİHSEL; güncel: **plan3 nfv_max 577,0** (Magics 593 geçildi). Retrain
   allowlist'e devset_plan3 dahil. AC-09 KAPALI-İZLEMEDE.
+- **AC-10 FIX (17:55, Eren "2 yi yap" → A):** allowlist üretim-aile semantiği
+  (`uretim_aile.py`), gerçek üretim kuralıyla kapılı LOO, karar-probu RET
+  kapısı; promote mini_bagging α=0,25 auto allowlist {long_rod, solid_bulk};
+  thin_shell/tube/thin_plate kuralda. Kapılı regret 29,4 → 26,0 (42 satır).
