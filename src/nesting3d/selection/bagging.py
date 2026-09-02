@@ -64,6 +64,18 @@ class MiniBaggingSelector:
             conf = min(conf, 0.49)
         return (kazanan, conf)
 
+    def predict_proba(self, features) -> dict:
+        """Oy dagilimi (arm -> oy_orani). ConformalSelector + mode_model_io
+        (E-genisletme 2026-09-02) bu dagilimi kullanir; predict ile tutarli."""
+        if not self._agaclar:
+            raise RuntimeError("MiniBaggingSelector.predict_proba(): once fit().")
+        oylar: dict = {}
+        for agac in self._agaclar:
+            ad, _ = agac.predict(features)
+            oylar[ad] = oylar.get(ad, 0) + 1
+        n = float(len(self._agaclar))
+        return {a: c / n for a, c in sorted(oylar.items())}
+
     def explain(self) -> str:
         return (f"MiniBaggingSelector | {self.n_trees} agac x depth<="
                 f"{self.max_depth} | seed={self.seed} | n_train={self.n_train}")

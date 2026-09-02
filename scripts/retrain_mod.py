@@ -31,8 +31,13 @@ from src.nesting3d.telemetry import V2_DEFAULT_PATH, load_telemetry
 # Asama-1 guncellemesi (2026-08-22): tur-5 kapi kaniti kazanani LOGISTIC
 # (karar_agaci overfit-bayrakli — plan §5.4). Model secimi CLI'da;
 # mode_model_io serilestirmesi iki sinifla da ayni alanlari kullanir.
+from src.nesting3d.selection.bagging import MiniBaggingSelector
+from src.nesting3d.selection.model import DecisionTreeSelector
+
 MODELLER = {"logistic": LogisticSelector,
-            "regret_logistic": RegretWeightedLogistic}
+            "regret_logistic": RegretWeightedLogistic,
+            "mini_bagging": MiniBaggingSelector,
+            "karar_agaci": DecisionTreeSelector}
 
 
 def _arsivle(hedef: Path):
@@ -105,14 +110,14 @@ def main():
         print(f"eski artefakt arsivlendi: {eski}")
     save_mode_model(
         hedef, model, conf._skorlar, sorted(conf._armlar), allowlist,
-        meta={"surum": f"asama1-tur5-2026-08-22-{args.model}",
+        meta={"surum": f"asama2-yarisma3-2026-09-02-{args.model}",
               "alpha": args.alpha,
               "n_train": len(table),
-              "kanit": ("results/mod_yarismasi.json tur-5 n=80 "
-                        "(logistic 8,72 bayraksiz vs KURAL 16,44; "
-                        "fsm610_gercek 0,0 vs 144,0) + "
-                        "STRATEJI/ASAMA1_KAPI_RAPORU_2026-08-21.md"),
-              "onay": "Eren 2026-08-22 (karar paketi 'Devam et')"})
+              "kanit": ("results/mod_yarismasi_20260902.json n=85 kafes-dahil "
+                        "(karar_agaci 8,88 flagli / mini_bagging 10,73 / "
+                        "regret_logistic 14,12 vs KURAL 25,06; "
+                        "fsm610+d5 model 0,0) + ASAMA2_KAPI_RAPORU EK"),
+              "onay": "Eren 2026-09-02 (eksik ne varsa yapilsin tamamlansin)"})
     print(f"YAZILDI: {hedef}")
 
 

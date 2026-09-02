@@ -22,9 +22,51 @@ MODE_MODEL_PATH = "data/mode_model.json"
 _SCHEMA = 2
 
 
+def _node_to_dict(n) -> dict:
+    """_DTNode -> saf-JSON (E-genisletme 2026-09-02)."""
+    if n.winner is not None:
+        return {"w": n.winner, "c": float(n.confidence), "n": int(n.n_samples)}
+    return {"f": int(n.feature_idx), "t": float(n.threshold),
+            "L": _node_to_dict(n.left), "R": _node_to_dict(n.right)}
+
+
+def _tree_walk(d: dict, features):
+    """Serilestirilmis agacta saf-stdlib gezinme -> (winner, confidence)."""
+    while "w" not in d:
+        xi = float(features[d["f"]]) if d["f"] < len(features) else 0.0
+        d = d["L"] if xi <= d["t"] else d["R"]
+    return d["w"], float(d["c"])
+
+
 def save_mode_model(path, logistic, skorlar: List[float], armlar: List[str],
                     allowlist: List[str], meta: dict) -> None:
-    """RegretWeightedLogistic (fit edilmis) + conformal kalibrasyonu ATOMIK yaz."""
+    """Fit edilmis secici + conformal kalibrasyon ATOMIK yaz.
+
+    Tip-dalli (E-genisletme 2026-09-02): Logistic ailesi eski alanlarla
+    BIREBIR; MiniBagging/DecisionTree agac-listesiyle. Schema ayni; eski
+    artefaktlar aynen okunur."""
+    tip = type(logistic).__name__
+    if tip in ("MiniBaggingSelector", "DecisionTreeSelector"):
+        koklar = ([a._root for a in logistic._agaclar]
+                  if tip == "MiniBaggingSelector" else [logistic._root])
+        row = {
+            "schema": _SCHEMA,
+            "model_tipi": tip,
+            "agaclar": [_node_to_dict(k) for k in koklar],
+            "n_train": int(getattr(logistic, "n_train", 0) or 0),
+            "conformal": {"alpha": meta.get("alpha", 0.1),
+                          "skorlar": [float(s) for s in sorted(skorlar)],
+                          "armlar": sorted(armlar)},
+            "guvenli_aileler": sorted(allowlist),
+            "meta": meta,
+        }
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(row, indent=1, ensure_ascii=True),
+                       encoding="utf-8")
+        os.replace(tmp, path)
+        return
     row = {
         "schema": _SCHEMA,
         "model_tipi": type(logistic).__name__,
@@ -53,12 +95,15 @@ class LoadedModeModel:
     """Artefakttan yuklenen cikarim modeli — stdlib softmax + conformal kapi."""
 
     def __init__(self, d: dict):
-        self.classes: List[str] = d["classes"]
-        self.W: List[List[float]] = d["W"]
-        self.b: List[float] = d["b"]
-        self.mu: List[float] = d["mu"]
-        self.sigma: List[float] = d["sigma"]
-        self.temperature: float = d["temperature"]
+        self.model_tipi: str = d.get("model_tipi", "LogisticSelector")
+        self.agaclar: List[dict] = d.get("agaclar") or []
+        if not self.agaclar:
+            self.classes: List[str] = d["classes"]
+            self.W: List[List[float]] = d["W"]
+            self.b: List[float] = d["b"]
+            self.mu: List[float] = d["mu"]
+            self.sigma: List[float] = d["sigma"]
+            self.temperature: float = d["temperature"]
         self.alpha: float = d["conformal"]["alpha"]
         self.skorlar: List[float] = d["conformal"]["skorlar"]
         self.armlar: Set[str] = set(d["conformal"]["armlar"])
@@ -66,6 +111,14 @@ class LoadedModeModel:
         self.meta: dict = d.get("meta", {})
 
     def proba(self, features: Sequence[float]) -> Dict[str, float]:
+        if self.agaclar:
+            # Bagging/agac dali (E-genisletme): oy dagilimi — saf stdlib (Y-3).
+            oylar: Dict[str, float] = {}
+            for kok in self.agaclar:
+                ad, _c = _tree_walk(kok, features)
+                oylar[ad] = oylar.get(ad, 0.0) + 1.0
+            n = float(len(self.agaclar))
+            return {a: c / n for a, c in sorted(oylar.items())}
         # LogisticSelector._norm ile birebir ayni normalizasyon
         xn = []
         for i in range(len(self.mu)):
