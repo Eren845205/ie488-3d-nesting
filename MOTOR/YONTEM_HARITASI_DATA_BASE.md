@@ -177,6 +177,14 @@ beklenti ~577-595 bandı) — p2-F4 bitince sırada. NOT: derin-arama süre bede
 
 ### 3.1 KALİTE
 
+### [d4 TAZE NFV ETİKETİ (REUSE=0): 403,4 / 269,0 / 230,0 — 08-31 sidecar şerhi KAPANDI; retrain aynı sonuç] — 2026-09-02 21:20
+İmza: [asama2_devset_etiket A2_SETS=deneme4 A2_REUSE_SIDECAR=0 R11_WORKERS=1 A2_BEKCI_DUMP_GB=8 | PID 44280 | log detach_asama2_devset_etiket_20260902_202822.out | 48,2 dk, hata/atlanan=0 | kod 2b0e43f (AC-09 kavite bütçesi dahil)]
+- **Sonuç:** heightmap 403,4 (cl 3,31, kilit 0, 54 s) · nfv_fast 269,0 (cl 2,02, kilit5 131 → rot 0, 14 dk) · **nfv_max 230,0 LEGAL** (cl 2,06, kilit5 368 → rot 0, 32 dk) · kafes ×2 tetik YOK. Winner nfv_max, n_legal 3, karantina yok. Üç kol da 08-31 sidecar değerleriyle BİREBİR → sidecar-yeniden-kullanım şerhi kapandı (taze kod = aynı sonuç, kanıtlandı). Bellek tepe nfv_fast 5,2 GB / nfv_max 4,0 GB (588 parça, kavite kapısı f=2 kaba pitch) — balon yok.
+- **Retrain (auto):** tablo 86 (d4 satırı yenilendi, değerler aynı) → aynı allowlist {long_rod, solid_bulk}, aynı kapılı LOO (29,38 → 25,97), karar-probu 27/86; artefakt D+C yeniden yazıldı (v4 arşiv = 17:55 artefaktı).
+- **RAM notu:** koşu öncesi Eren talimatıyla voice-agent oturumu + Steam/Epic/OneDrive kapatıldı; WSearch/SQL servisleri yönetici istedi; balon 3,8 → 5,0 GB.
+- **Ölçmeden bıraktıklarım:** dağılımsal kavite replay (mass_plate/holey) · held-out teyidi · deneme5 eval config.
+- **Karne (A11):** ölçüm-only (üretim değişmedi) · tetik=N/A · sıfır-dokunuş=YAPISAL · sözleşme=DEĞİL · held-out=N/A.
+
 ### [AC-10 FIX (seçenek A) UYGULANDI: allowlist üretim-aile semantiği + gerçek üretim kuralıyla kapılı LOO + karar-probu — mini_bagging α=0,25 PROMOTE] — 2026-09-02 17:55 (Eren: "2 yi yap")
 İmza: [yeni `src/nesting3d/selection/uretim_aile.py` (10 test) + `retrain_mod` (--allowlist auto|üretim-aile adları, --min-n, --force; karar-probu RET) | tablo 86 | instance-tabanlı üretim bilgisi 42 satır, telemetri-aile 44 (kural bilinmiyor → kıyas dışı) | yedek `ac10_uretim_aile_allowlist_oncesi`]
 - **Tasarım:** her eğitim satırı için instance yeniden kurulur (m4 builder / devset / fsm610) → `classify_prelim` üretim ailesi + **gerçek üretim kural kolu** (`predict_nfv_benefit(family_routing=True, rot_sokum=True)` → heightmap / nfv_kalite / nfv_max). Kapılı LOO artık üretim semantiğiyle ve gerçek kurala karşı ölçülür (16:10 kaydındaki "KURAL" 76 satırda heightmap-saman-adamdı — düzeltildi). Güvenli aile = LOO'da model_ort **<** kural_ort (kesin; eşitlik kanıt değil) ve n≥3. Promote öncesi karar-probu: artefakt üretim yükleyicisiyle okunur, satırlarda `karar()` konuşma sayısı 0 ise RET (exit 3).
