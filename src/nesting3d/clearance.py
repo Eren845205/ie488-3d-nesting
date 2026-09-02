@@ -52,6 +52,17 @@ class ClearanceReport:
 
 def _surface_samples(mesh: trimesh.Trimesh, n: int, seed: int) -> np.ndarray:
     pts, _face = trimesh.sample.sample_surface(mesh, n, seed=seed)
+    # R11-BELLEK DIYETI (2026-09-02, py-spy kaniti pyspy_olum_14668):
+    # sample_surface, mesh icinde area_faces + triangles_cross cache'i
+    # kurar (iri STL'de yuz-sayisi olceginde MB'lar). dogrula_ve_rafine
+    # her turda TUM mesh'leri kopyalayip yeniden ornekledigi icin bu
+    # cache'ler tek turda GB'lara ulasiyordu (p3-max 15,6GB bekci iptali).
+    # Ornekler alindiktan sonra cache'e ihtiyac yok — birak. Sonuc
+    # BIT-OZDES (cache icerik degil hiz); yalniz bellek profili degisir.
+    try:
+        mesh._cache.clear()
+    except Exception:
+        pass
     return np.asarray(pts)
 
 

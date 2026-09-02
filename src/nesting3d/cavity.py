@@ -107,6 +107,26 @@ def kapali_kavite_analizi(occ: np.ndarray, pitch_mm: float) -> Dict[str, float]:
     }
 
 
+def kaba_havuz(occ: np.ndarray, f: int) -> np.ndarray:
+    """Bool doluluk grid'ini f x f x f bloklarla ANY-havuzla (kaba pitch).
+
+    Bellek butcesi asilan buyuk gridlerde kapali-kavite TELEMETRISI icin
+    (2026-09-02 p3-max dersi: 0,5 mm'de ~540M voxel label -> 16,9 GB, 55 dk
+    cozum kaybi). ANY-havuz dolu=konservatif (ince duvarlar korunur, ince
+    bosluklar kapanabilir -> kavite hacmi UST tahmin). Kenar f'nin katina
+    False-pad (hava) ile tamamlanir. f<=1 -> aynen doner.
+    """
+    f = int(f)
+    if f <= 1:
+        return occ
+    occ = np.asarray(occ, dtype=bool)
+    pad = [(0, (-d) % f) for d in occ.shape]
+    if any(p1 for _, p1 in pad):
+        occ = np.pad(occ, pad, mode="constant", constant_values=False)
+    nx, ny, nz = (d // f for d in occ.shape)
+    return occ.reshape(nx, f, ny, f, nz, f).any(axis=(1, 3, 5))
+
+
 def occ_grid_from_placements(placements: Sequence[object], parts,
                              nx: int, ny: int,
                              nz: Optional[int] = None) -> np.ndarray:

@@ -248,7 +248,12 @@ def scenario_kur(inst: NestingInstance, mode: str,
     # nfv kollari kafes_zinciri KAPALI kosar — kafes ayri kol olarak
     # olculuyor; acik kalsa nfv_kalite etiketi gizlice kafes sonucu tasir.
     # (Eski etiketler kablo-oncesi oldugundan davranis geriye-uyumlu.)
-    sc = {**rich_scenario, "kafes_zinciri": False, "seed": seed,
+    # KANOPI de kollarda KAPALI (2026-09-01, py-spy: _a2_olc_meshes 226-parca
+    # rot-sertifika morfolojisi 14,8GB). Eval kapisi zincirsiz olcer ->
+    # etiket = cekirdek-kol, eval-parite imzasi. Kanopi kazanci 4-set
+    # kapisiyla ayrica kanitli; uretim yolu DEGISMEZ.
+    sc = {**rich_scenario, "kafes_zinciri": False, "kanopi_zincir": False,
+          "seed": seed,
           "orders": [{"order_id": order_id, "customer": "SYN",
                       "deadline": "2026-12-31", "priority_class": 2,
                       "parts": parts}],

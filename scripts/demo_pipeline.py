@@ -29,6 +29,8 @@ Kullanım:
 from __future__ import annotations
 
 import logging
+import math
+import os
 import sys
 import time
 from datetime import date
@@ -639,6 +641,12 @@ def _clearance_gate(placements, voxel_parts_dict, pitch: float,
     return ""
 
 
+# Kapali-kavite telemetrisi voxel butcesi (2026-09-02): butce ~ 335x335x535
+# @1mm; label bellegi ~30 B/voxel olculdu (540M -> 16,9 GB).
+KAVITE_VOXEL_BUTCE = int(os.environ.get("KAVITE_VOXEL_BUTCE", "60000000"))
+KAVITE_VOXEL_TAVAN = int(os.environ.get("KAVITE_VOXEL_TAVAN", "2000000000"))
+
+
 def _kapali_kavite_gate(placements, voxel_parts_dict, plate_w_mm: float,
                         plate_d_mm: float, pitch: float,
                         instr: Dict[str, Any]) -> None:
@@ -654,12 +662,50 @@ def _kapali_kavite_gate(placements, voxel_parts_dict, plate_w_mm: float,
     if not placements or pitch <= 0:
         return
     try:
-        from src.nesting3d.cavity import (kapali_kavite_analizi,
+        from src.nesting3d.cavity import (kaba_havuz, kapali_kavite_analizi,
                                           occ_grid_from_placements)
         nx = max(1, int(plate_w_mm // pitch))
         ny = max(1, int(plate_d_mm // pitch))
-        occ = occ_grid_from_placements(placements, voxel_parts_dict, nx, ny)
-        instr["kapali_kavite"] = kapali_kavite_analizi(occ, pitch)
+        # VOXEL BUTCESI (2026-09-02 p3-max dersi, py-spy kaniti
+        # results/pyspy_bekci_25276_uyari.txt): ince pitch'te tam-grid
+        # ndimage.label ~540M voxel'de 16,9 GB -> bekci/takas, 55 dk MAX
+        # cozumu sidecar'a yazilamadan OLDU. Telemetri karara baglanmaz;
+        # butce asilinca ANY-havuzla kaba pitch'te olculur (kaba_faktor
+        # raporlanir), tavan asilinca atlanir. Nesting cozumu BIT-OZDES.
+        # nz on-hesabi (tavan kontrolu bool grid KURULMADAN once); placement
+        # yapisi beklenmedikse (test cifti/mock) None -> eski yol + occ.size.
+        nz = None
+        try:
+            _lk = (voxel_parts_dict if isinstance(voxel_parts_dict, dict)
+                   else {p.id: p for p in voxel_parts_dict})
+            nz = 1
+            for _pl in placements:
+                _g = _lk[_pl.part_id].orientations[_pl.orientation_idx].grid
+                nz = max(nz, int(_pl.z) + int(_g.shape[2]))
+        except Exception:  # noqa: BLE001 — telemetri; on-hesap zorunlu degil
+            nz = None
+        n_vox = int(nx) * int(ny) * int(nz) if nz else 0
+        if n_vox > KAVITE_VOXEL_TAVAN:
+            instr["kapali_kavite"] = {
+                "atlandi": "voxel tavani", "n_voxel": n_vox,
+                "pitch_mm": float(pitch), "tavan": KAVITE_VOXEL_TAVAN}
+            logger.warning("kapali kavite telemetrisi atlandi: %d voxel > "
+                           "tavan %d (uretim etkilenmez)", n_vox,
+                           KAVITE_VOXEL_TAVAN)
+            return
+        occ = occ_grid_from_placements(placements, voxel_parts_dict, nx, ny,
+                                       nz=nz)
+        if not n_vox:
+            n_vox = int(getattr(occ, "size", 0) or 0)
+        f = 1
+        if n_vox > KAVITE_VOXEL_BUTCE:
+            f = int(math.ceil((n_vox / float(KAVITE_VOXEL_BUTCE)) ** (1 / 3)))
+            occ = kaba_havuz(occ, f)
+        rap = kapali_kavite_analizi(occ, pitch * f)
+        rap["pitch_mm"] = float(pitch * f)
+        rap["kaba_faktor"] = f
+        rap["n_voxel_ince"] = n_vox
+        instr["kapali_kavite"] = rap
     except Exception as _kk_exc:  # noqa: BLE001 — telemetri, uretimi bozamaz
         logger.warning(
             "kapali kavite analizi uretilemedi (uretim etkilenmez): %s",
@@ -1110,11 +1156,17 @@ def _process_batch(payload: Dict[str, Any]) -> Dict[str, Any]:
                     no_go_bounds=no_go_bounds,
                     clearance_mm=WEB_MIN_CLEARANCE_MM,
                     seed=seed,
-                    # H9 (denetim 2026-08-31, KARAR-G cizgisi): payload'un
-                    # nfv_quality niyeti zincire de akar. None -> "fast" =
-                    # eski recete BIT-OZDES; mail/adet yollari "max" gecince
-                    # zincir alt-cozumleri de max kosar (kapi: 4set-max).
-                    quality=(nfv_quality or NFV_QUALITY_DEFAULT),
+                    # KANOPI-FAST SABIT (Eren onayi 2026-09-01; A8 gerekce):
+                    # H9/KARAR-G "niyet zincire akar" satiri zincir ic
+                    # mini-solve'larini MAX'a kaydirdi; MAX-zincir HIC
+                    # olculmedi ve 226-parca sinifinda 13-17GB patlatti
+                    # (v8 kampanya; py-spy koku kanopi->cuFFT work-area).
+                    # Zincirin TUM kalite kanitlari fast-recete (AC-08 p2
+                    # 535,0 LEGAL 9,4GB; K-62 kablosu). Kafes zinciri gibi
+                    # kanopi zinciri de fast-recete sinifinda sabitlenir;
+                    # ana solve MAX kalir (KARAR-G bozulmaz). MAX-zincir
+                    # istenirse ayri olcum isi (work-area tavani) acilir.
+                    quality="fast",
                     ref_res=_c2f_result,
                     ref_height_mm=_ref_eff)
                 _instr["kanopi_zincir"] = _kz_tel
@@ -2092,6 +2144,13 @@ def run_pipeline(scenario: Dict[str, Any]) -> Dict[str, Any]:
             # A2-kapili tek-tarafli). True default — tetiksiz sette sifir
             # maliyet; False acikca kapatir.
             "kanopi_zincir": scenario.get("kanopi_zincir", True),
+            # KAFES-AKTARIM FIX (2026-09-01, py-spy suçüstü): scenario_kur
+            # karşı-olgusal saflık için "kafes_zinciri": False koyuyordu ama
+            # payload'a AKTARILMIYORDU -> m4 nfv kollari gizlice kafes zinciri
+            # kosturup 226-parca voxelize'da 14GB patliyordu. Default True =
+            # uretim davranisi BIT-OZDES; yalniz scenario acikca kapatirsa
+            # (m4 saflik) zincir kosulmaz.
+            "kafes_zinciri": scenario.get("kafes_zinciri", True),
             "no_go_bounds": no_go_bounds,  # K-45: yasak bolge (plaka ozelligi)
             # K-56g: soft no-go ilani (None = kablo kapali, bit-ozdes).
             # Aktifken no_go_bounds ZATEN soft dikdortgene esitlenmis durumda;

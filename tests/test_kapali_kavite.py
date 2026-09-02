@@ -11,7 +11,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.nesting3d.cavity import kapali_kavite_analizi, occ_grid_from_placements
+from src.nesting3d.cavity import (kaba_havuz, kapali_kavite_analizi,
+                                  occ_grid_from_placements)
 
 
 def _hollow_box(n: int = 5, hole: tuple | None = None) -> np.ndarray:
@@ -120,3 +121,81 @@ class TestOccGridFromPlacements:
         occ = occ_grid_from_placements(placements, parts, nx=3, ny=3, nz=3)
         assert occ.shape == (3, 3, 3)
         assert occ[2, 2, 0]
+
+
+class TestKabaHavuz:
+    """2026-09-02 p3-max dersi: buyuk gridde telemetri kaba pitch'te."""
+
+    def test_f1_aynen_doner(self):
+        occ = _hollow_box(5)
+        assert kaba_havuz(occ, 1) is occ
+
+    def test_any_havuz_ve_pad(self):
+        occ = np.zeros((5, 4, 3), dtype=bool)
+        occ[4, 0, 0] = True   # pad'e dusen kenar blogu
+        occ[0, 3, 2] = True
+        k = kaba_havuz(occ, 2)
+        assert k.shape == (3, 2, 2)
+        assert k[2, 0, 0] and k[0, 1, 1]
+        assert int(k.sum()) == 2
+
+    def test_kaba_grid_kapali_kutuyu_korur(self):
+        # 10^3 kutu, duvar 2 voxel, ic 6^3 bos -> f=2'de 5^3 kutu, ic 3^3
+        occ = np.ones((10, 10, 10), dtype=bool)
+        occ[2:-2, 2:-2, 2:-2] = False
+        rap = kapali_kavite_analizi(kaba_havuz(occ, 2), 2.0)
+        assert rap["n_bolge"] == 1
+        assert rap["hacim_mm3"] == pytest.approx(27 * 8.0)
+
+
+class TestKapaliKaviteGateButce:
+    """demo_pipeline._kapali_kavite_gate voxel butcesi (telemetri; uretim
+    cozumu degismez)."""
+
+    def _kur(self):
+        from types import SimpleNamespace
+
+        class _Orient:
+            def __init__(self, grid):
+                self.grid = grid
+
+        class _Part:
+            def __init__(self, grid):
+                self.orientations = [_Orient(grid)]
+
+        grid = np.ones((4, 4, 4), dtype=bool)
+        grid[1:-1, 1:-1, 1:-1] = False
+        parts = {"p1": _Part(grid)}
+        pls = [SimpleNamespace(part_id="p1", x=0, y=0, z=0,
+                               orientation_idx=0)]
+        return pls, parts
+
+    def test_butce_icinde_ince_olcum(self, monkeypatch):
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "KAVITE_VOXEL_BUTCE", 10 ** 9)
+        pls, parts = self._kur()
+        instr = {}
+        dp._kapali_kavite_gate(pls, parts, 8.0, 8.0, 1.0, instr)
+        rap = instr["kapali_kavite"]
+        assert rap["kaba_faktor"] == 1 and rap["pitch_mm"] == 1.0
+        assert rap["n_bolge"] == 1 and rap["hacim_mm3"] == pytest.approx(8.0)
+        assert rap["n_voxel_ince"] == 8 * 8 * 4
+
+    def test_butce_asilinca_kaba_faktor(self, monkeypatch):
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "KAVITE_VOXEL_BUTCE", 40)   # 256 voxel > 40
+        pls, parts = self._kur()
+        instr = {}
+        dp._kapali_kavite_gate(pls, parts, 8.0, 8.0, 1.0, instr)
+        rap = instr["kapali_kavite"]
+        assert rap["kaba_faktor"] == 2 and rap["pitch_mm"] == 2.0
+        assert "n_bolge" in rap and "atlandi" not in rap
+
+    def test_tavan_asilinca_atlanir(self, monkeypatch):
+        import scripts.demo_pipeline as dp
+        monkeypatch.setattr(dp, "KAVITE_VOXEL_TAVAN", 100)
+        pls, parts = self._kur()
+        instr = {}
+        dp._kapali_kavite_gate(pls, parts, 8.0, 8.0, 1.0, instr)
+        rap = instr["kapali_kavite"]
+        assert rap["atlandi"] == "voxel tavani" and rap["n_voxel"] == 256
