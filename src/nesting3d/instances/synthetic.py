@@ -301,11 +301,24 @@ def hollow_tubes_stl(
         yol = stl_dir / f"hollow_tube_s{seed}_{i+1:02d}.stl"
         mesh.export(yol)
         e = mesh.extents
+        # F1 taksonomi alanlari (stl_order_loader._wall_and_fill / _shell_partspec
+        # ile ayni tanim): true_fill = V/bbox, wall = 2V/A (kabuksa). Bunlar
+        # olmadan classify_prelim STL tupu 'unknown' sayar (2026-09-02 probu).
+        w, d, h = float(e[0]), float(e[1]), float(e[2])
+        bbox_vol = w * d * h
+        vol = abs(float(mesh.volume)) if mesh.is_watertight else None
+        area = float(mesh.area)
+        true_fill = wall_mm = None
+        if vol is not None and vol > 0.0 and bbox_vol > 0.0:
+            true_fill = vol / bbox_vol
+            if area > 0.0 and true_fill < 0.5:
+                wall_mm = 2.0 * vol / area
         parts.append(PartSpec(
             id=f"tube_{i+1:02d}", name=f"tube_{i+1:02d}", qty=qty,
             source="stl", stl_path=str(yol),
-            width_mm=round(float(e[0]), 3), depth_mm=round(float(e[1]), 3),
-            height_mm=round(float(e[2]), 3)))
+            width_mm=round(w, 3), depth_mm=round(d, 3), height_mm=round(h, 3),
+            wall_mm=(round(wall_mm, 4) if wall_mm is not None else None),
+            true_fill=(round(true_fill, 6) if true_fill is not None else None)))
     return NestingInstance(
         container=cnt,
         parts=parts,
