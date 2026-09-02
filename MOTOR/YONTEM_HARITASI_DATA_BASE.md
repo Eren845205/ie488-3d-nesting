@@ -177,6 +177,312 @@ beklenti ~577-595 bandı) — p2-F4 bitince sırada. NOT: derin-arama süre bede
 
 ### 3.1 KALİTE
 
+### [AC-10: C4 MODEL KAPISI ÜRETİMDE HİÇ ATEŞLEMEMİŞ — iki bağımsız kilit (conformal-tekil + allowlist aile-adı uyumsuzluğu); kapılı LOO taraması] — 2026-09-02 16:10
+İmza: [scratchpad `kapili_karar_loo2.py` (dış LOO taban + tam-tablo LOO conformal eşiği; ceza konvansiyonu mod_yarismasi) | tablo 86, kural_map 10 | classify_prelim probu 6 dev-set | A9 tekrar 16:05 koşuyor]
+- **Kapılı-karar LOO (metrik: üretim semantiği = conformal-tekil ∧ allowlist → model, aksi KURAL):**
+  | aday | eşik | regret_ort | acc | konuştu (isabet) | p2 / p3 regret |
+  |---|---|---|---|---|---|
+  | KURAL | – | **25,37** | 0,360 | – | 15,5 / 52,0 |
+  | v2 DEPLOYED `karar()` (tam-tablo) | 0,879 | 25,37 | – | **0/86** | 15,5 / 52,0 |
+  | mini_bagging α=0,10 / 0,15 | 1,000 | 25,37 | 0,360 | 0/86 | 15,5 / 52,0 |
+  | mini_bagging α=0,20 | 0,857 | 19,67 | 0,535 | 15/86 (15/15) | 15,5 / 52,0 |
+  | **mini_bagging α=0,25** | 0,714 | **18,02** | 0,593 | 28/86 (25/28) | 15,5 / **0,0** |
+  | mini_bagging α=0,30 | 0,571 | 18,45 | 0,721 | 46/86 (39/46) | **0,0 / 0,0** |
+  | karar_agaci α=0,10/0,20 | 1,000 | 25,37 | 0,360 | 0/86 | – |
+  | logistic α=0,10 | 0,908 | 25,37 | 0,360 | 0/86 | – |
+  | regret_logistic α=0,10 | 0,912 | 23,70 | 0,372 | 1/86 (1/1) | – |
+  fsm610 regret 413 her adayda (tek kafes-kazananı satır; LOO öğrenemez) · deneme4/5 116 (model konuşmuyor, kural kötü).
+- **Kilit-1 (conformal):** v2 lojistiğin tahmin kümesi 84/86 satırda ≥2 kol (tekil 2, ikisi de allowlist dışı) → v2 üretimde **hiç konuşmamış**. 2026-07-14 "regret_logistic 9,66 < kural 17,0" ilanı da ham `predict` ölçümüydü. Bagging'de kesikli oylar α≤0,15'te eşiği 1,0'a itiyor; α=0,25-0,30 ile 28-46 kararda %85-89 isabet.
+- **Kilit-2 (allowlist aile-adı):** `karar(features, aile)` üretimde `classify_prelim` ailesini alır: plan1 → mixed_scale, plan2/plan3/d4 → **thin_shell**, d5 → tube, fsm610 → thin_plate. Allowlist ise m4/devset etiket adları (devset_plan3, thin_plates, few_large_many_small…); üretim adlarıyla yalnız long_rod/solid_bulk kesişiyor. Sonuç: gerçek siparişte allowlist kilidi HİÇBİR modeli geçirmez — conformal düzelse bile kapı kapalı. Eğitim-aile ↔ üretim-aile sözleşmesi hiç kurulmamış (AC-10).
+- **Durum:** üretim = v2 (rollback) = fiilen KURAL (KARAR-G-2 MAX default). Promote/tasarım kararı Eren'de: (A) allowlist'i üretim-aile (classify_prelim) semantiğine taşı — her eğitim satırına classify_prelim ailesi hesaplanır, "güvenli aile" = LOO'da model≤kural olan üretim aileleri; (B) allowlist kilidini kaldır, yalnız conformal (bagging α=0,25); (C) statüko (model kapısı ölü, M4/ML hattı fiilen etkisiz).
+- **(A)/(B) senaryosu ÖLÇÜLDÜ (16:30, scratchpad `kapili_karar_uretim_aile.py`; her satıra classify_prelim ailesi; bagging):** üretim-aile kırılımı KURAL → model(B, allowlist'siz) α=0,25 | α=0,30: long_rod (n18) 15,5 → 3,2 | 0,0 · solid_bulk (n21) 19,9 → 2,6 | 0,1 · **thin_shell (n14: p2/p3/d4) 9,9 → 22,9 | 34,2 (ZARAR: p3 52→0 ama d4 0→173, p1-mixed 0→57)** · thin_plate (n17, fsm610 682 baskın) 41 → 41 · tube (n10) 30,5 → 30,5 · mixed_scale (n2) 96 → 125. (B) allowlist'siz ort 21,4 | 21,9; **(A) veri-güdümlü güvenli-aile allowlist** {long_rod, solid_bulk, tube} α=0,25 → **18,6**; +thin_plate α=0,30 → **17,2**; KURAL 25,4. Yorum: kazanç sentetik long_rod/solid_bulk'tan; gerçek sipariş sınıfı thin_shell'de model henüz güvenilir değil (n=14, aile-içi çelişki) → kural/KARAR-G-2 MAX kalır. 4 satırda builder imzası hatası (?TypeError/AttributeError, küçük; ihmal). Güvenli-aile seçimi aynı veriden (iyimser) — held-out teyidi gerekir.
+- **Ölçmeden bıraktıklarım:** güvenli-aile seçiminin held-out/çapraz teyidi · A9 tekrar (koşuyor) · d4 taze nfv · dağılımsal kavite replay.
+- **Karne (A11):** ölçüm-only (üretim değişmedi) · tetik=N/A · kapı=BEKLİYOR (Eren tasarım kararı) · sıfır-dokunuş=YAPISAL · sözleşme=**EĞİTİM-AİLE↔ÜRETİM-AİLE SÖZLEŞMESİ YOK (yeni bulgu)** · held-out=N/A.
+
+### [RETRAIN KOŞULDU → PROMOTE ÖLÜ ÇIKTI: mini_bagging conformal eşiği 1,0 (hep çekimser) — ROLLBACK v2 + kapılı-karar LOO taraması] — 2026-09-02 14:45
+İmza: [retrain_mod --model mini_bagging allowlist 12 aile (devset_plan3 dahil) | tablo 86 (karantina 0, eksik-ana-kol 0) | 7 ağaç×depth2 | conformal α=0,1 n=86 | doğrulama probu scratchpad]
+- **Retrain:** Eren talimatı ("sen koş, evde değilim") ile koşuldu; artefakt D'ye yazıldı, eski v2 arşivlendi. **Doğrulama probu** (P-7 gereği, promote sonrası ilk iş): `LoadedModeModel.karar()` 37/37 satırda **None**, `prediction_set` = 6 kolun tamamı. Sebep: LOO nonconformity skorlarının 13/86'sı = 1,0 (doğru kol LOO'da 0 oy) → α=0,1'de k=79. skor = 1,0 → eşik 1,0 → küme her zaman tüm kollar. Bagging'in kesikli oyları (7 ağaç → p∈{0,1/7,…}) lojistiğin yumuşak softmax'ının aksine eşiği dejenere ediyor; v2 lojistik eşiği 0,879 ve karar veriyor. Olasılıklar doğru yönde (p2/p3 → nfv_max 1,0; d4 0,86; d5 0,71; fsm610 → kafes 0,71) ama üretim kararı = HEP KURAL → promote **gerileme** (v2 konuşuyordu).
+- **Ölçüm boşluğu (süreç dersi):** yarışma-3 ham `predict` regret'ini ölçtü (bagging 10,73 < lojistik 14,12 < KURAL 25,06); üretim ise `karar()` = conformal-tekil + allowlist + kural-fallback. Kapılı kararın regret'i hiç ölçülmedi → "en iyi model" ilanı üretim semantiğinde geçersizdi. RUNBOOK P-7'ye madde: promote adayı KAPILI kararla (konuştu-oranı + fallback dahil) yarışır; retrain sonrası karar-probu zorunlu.
+- **Rollback (14:40):** D+C `data/mode_model.json` ← v2 lojistik (asama1-tur5); bagging artefaktı `data/selection_archive/mode_model.aday_mini_bagging_a010.json` (D+C). Üretim davranışı = önceki commit'li durum.
+- **Kapılı-karar LOO taraması KOŞUYOR** (scratchpad `kapili_karar_loo.py`): KURAL · v2 lojistik α=0,10 · regret_logistic α=0,10 · mini_bagging α∈{0,10;0,15;0,20;0,25;0,30} · karar_agaci α=0,20 — metrik: kapılı LOO regret + konuştu sayısı. Sonuca göre promote önerisi (α seçimi = kapsama garantisi 1−α; Eren kararı).
+- **A9 tam suite (14:15→14:56):** 3392 geçti / 2 kırmızı: (1) `TestKapaliKaviteGate.test_alan_eklenir` — nz ön-hesabı mock placement'ta patladı → ön-hesap try'a alındı, başarısızsa eski yol + `occ.size`; (2) `test_eski_lojistik_artefakt_geriye_uyum` — üretim artefaktının lojistik olduğunu varsayıyordu (`lm.mu`) → tip-bağımsız (v2 arşivi lojistik + üretim herhangi tip). 18/18 + 13/13; A9 tekrarı LOO taraması bitince (sıralı).
+- **Ölçmeden bıraktıklarım:** kapılı LOO (koşuyor) · A9 tekrar · d4 taze nfv · dağılımsal kavite replay.
+- **Karne (A11):** promote GERİ ALINDI (üretim değişmedi) · tetik=N/A · kapı=BEKLİYOR (kapılı LOO) · sıfır-dokunuş=YAPISAL (rollback) · sözleşme=DEĞİL · held-out=N/A.
+
+### [AC-09 KÖK SEBEP: kapalı-kavite TELEMETRİSİ balonu (label @0,5 mm 540M voxel = 16,9 GB) — VOXEL BÜTÇESİ FIX + 3. koşu] — 2026-09-02 13:15
+İmza: [p3-max tekrar PID 39300/25276 bekçi-dump'lı | uyarı-dump 10,7 GB @~3140 s · ölüm 16,9 GB @3258 s | `results/pyspy_bekci_25276_uyari.txt` + `_olum.txt` | fix yedek `kavite_voxel_butcesi_oncesi`]
+- **Stack (iki dump da aynı):** `ndimage.label ← kapali_kavite_analizi (cavity.py:76/86) ← _kapali_kavite_gate (demo_pipeline:662) ← _process_batch:1488 ← run_pipeline`. Yani çözüm BİTMİŞ, FAZ-1 kapalı-kavite telemetrisi (DENETIM 07-03 #21; "karara bağlanmaz") tam plakayı `_cl_pitch` (MAX'ta 0,5 mm) ile 3B ızgaraya döküp label çalıştırıyor: 670×670×~1200 ≈ 540M voxel; ölçülen ~30 B/voxel → 16,9 GB. R11-diyet doğruydu ama başka fazdı; 09-01 23:17 ve 09-02 11:06 ölümleri de aynı faz (nabız profili özdeş: solve ~55-60 dk 4,5-6 GB, sonra <2 dk balon).
+- **Neden üretim-kritik:** "üretimi bozamaz" except'i OOM/takası yakalayamaz → uygulama p3-MAX sınıfı siparişte 16 GB makinede çöker; sidecar gate'ten SONRA yazıldığı için 55 dk çözüm kaybolur (p2 nfv_max 09-01'in 9,4 GB tepesi de bu gate — 12 GB'ın altında kalmış).
+- **Fix (minimal, çözüm bit-özdeş):** `demo_pipeline._kapali_kavite_gate` voxel bütçesi: n_vox=nx·ny·nz hesaplanır; > `KAVITE_VOXEL_TAVAN` (2G) → `{"atlandi": "voxel tavani", ...}`; > `KAVITE_VOXEL_BUTCE` (60M ≈ 335×335×535 @1 mm) → `cavity.kaba_havuz` (f×f×f ANY-havuz, f=⌈∛(n/bütçe)⌉; dolu=konservatif → kavite hacmi ÜST tahmin) ile kaba pitch'te label; rapora `pitch_mm/kaba_faktor/n_voxel_ince`. p3 @0,5: f=3 → ~20M voxel ≈ 0,6 GB. Tüketiciler (telemetri v2 `kapali_kavite_hacmi_mm3`, sonuç `kapali_kavite`) alan-yokluğuna zaten dayanıklı. Testler: `tests/test_kapali_kavite.py` +6 (kaba_havuz ×3, gate bütçe/kaba/tavan ×3) → 27/27.
+- **3. koşu SONUÇ (14:11): nfv_max 577,0 LEGAL** (cl 2,033 · kilit5 28 → rot-söküm 0 kilit, 2 cert · pitch 0,5 · solve 3353 s; sidecar `asama2_plan3_nfv_max_20260902_141106.json`). Balon YOK; kampanya 58,8 dk hata/atlanan=0. Etiket satırı 54: **winner=nfv_max, regret {hm 234, fast 52, max 0}, n_legal=3, karantina YOK** → retrain allowlist'e `devset_plan3` GERİ girer. G-probe 09-01 577,0 ile birebir (Magics 593 geçildi). Telemetri v2 son satır: `kapali_kavite_hacmi_mm3`=574.607 (kaba pitch 1,5 mm, f=3) = kapı koştu, atlamadı. Eski 3 ölüm → fix sonrası ilk denemede geçiş = AC-09 KAPALI-İZLEMEDE.
+- **Ölçmeden bıraktıklarım:** any-havuz kavite hacminin ince ölçüme oranı (telemetri kalibrasyonu; hoca kavite cevabı gelince) · label'ın ~30 B/voxel maliyetinin scipy-yapı kaynağı (uint8/ chunk alternatifi) · A9 tam suite (p3 sonrası sıralı) · **dağılımsal kanıt (A11-2b):** etiket satırlarına göre >60M voxel sınıfı tek set değil — p2 heightmap 636M / p2 max 466M (tepe 9,4 GB) / mass_plate_rod_mix s0-s5 355-409M / holey_frames s0,s2 281M / d4-fast 242M / d5 204M / p1 max 171M; hepsi 12 GB bekçinin altında kalmış "görünmez bomba". Sıradaki: mass_plate_rod_mix + holey_frames sentetik replay'inde kaba_faktor tetik-doğruluğu + tepe bellek (gece dalgası).
+- **Karne (A11):** tetik=GEOMETRİK (voxel sayısı; set adı yok) · kapı=YOK (telemetri; nesting sonucu bit-özdeş — 27 test + kanıt koşusu) · sıfır-dokunuş=YAPISAL (bütçe altında birebir eski yol) · sözleşme=DEĞİL · held-out=N/A.
+
+### [p3-MAX TEKİL: R11-DİYET 60 dk TUTTU, SON FAZDA 5,8→16,8GB BALON — KORUMA CANLI KANITLANDI; bekçi-dump teşhis koşusu] — 2026-09-02 12:20
+İmza: [asama2_devset_etiket A2_SETS=plan3 REUSE=1 R11_WORKERS=1 | PID 40944 | log D:\ie488\logs\detach_asama2_devset_etiket_20260902_110608.out | jsonl satır 52]
+- **Sonuç:** nfv_max kolu 3720 s'de BEKÇİ iptali (private 16,8GB > 12GB). Nabız zinciri 600→3600 s: 6,3 / 4,7 / 5,1 / 4,8 / 4,6 / 5,8 GB — **diyet öncesi (09-01 23:17 koşusu) 2490 s'de 15,6GB ile ölmüştü; diyet kararlı-durum sızıntısını kesti** (60 dk 4,6-5,8 bandı). Ölüm artık **ani balon**: 3600 s'de 5,8GB → ≤120 s içinde 16,8GB = çözüm-sonu / rafine-sonu tek fazlı tahsis (örnekleme cache'i DEĞİL). Faz bilinmiyor: bekçi kör öldürdü, stack yok.
+- **Koruma canlı kanıt:** satır **otomatik karantinalı** yazıldı (`eksik-ana-kol otokarantinasi: nfv_max`), winner=nfv_fast n_legal=2 eğitime GİRMEZ (1. katman); köprü savunması 2. katman (m4_n_eksik_ana_kol). Retrain allowlist'inden `devset_plan3` ÇIKAR (taze tam-kollu satır gelene kadar).
+- **Teşhis adımı (A4 ucuz, aynı gün):** bekçiye iki aşamalı py-spy dump eklendi (`A2_BEKCI_DUMP_GB`=8 → `results/pyspy_bekci_<pid>_uyari.txt`; öldürmeden önce `_olum`; `--subprocesses`). Tekrar koşu **PID 39300/25276, log detach_asama2_devset_etiket_20260902_121501.out, ETA ~13:25**. Yedek `bekci_pyspy_dump_oncesi`. py-spy yolu: Store Python Scripts (`_pyspy_yolu`, `A2_PYSPY` override).
+- **Yan bulgular (commit paketi hazırlığı):** (a) 9 py dosyası çalışma kopyasında CRLF'e dönmüştü (index LF) → `git diff` 8.500 satır sahte; kök: Python `write_text` Windows'ta `\n`→`\r\n` çevirir. LF'e normalize edildi (yedek `crlf_normalize_oncesi`), gerçek diff 551+/21−; C↔D içerik-özdeş doğrulandı. (b) Eksik-ana-kol savunması `tests/test_m4_koprusu.py` 4 fixture'ını kırmıştı (02:45 "131 yeşil" alt-kümesi bu dosyayı içermiyormuş) → fixture'lar tam-kollu yapıldı, 29/29 + hedefli 113/113 yeşil.
+- **Ölçmeden bıraktıklarım:** balon fazı (koşuda) · d4 taze nfv (D adımı, p3 sonrası sıralı) · A9 tam suite commit-öncesi (kablo değişikliği yok, hedefli yeterli — P-9.2 gereği kablo dokunursa A9).
+- **Karne (A11):** ölçüm+teşhis (üretim yolu değişmedi; bekçi-dump teşhis aracı, davranış bit-özdeş) · tetik=N/A · kapı=YOK · sıfır-dokunuş=YAPISAL (dump yalnız >8GB'da tetiklenir) · sözleşme=DEĞİL · held-out=N/A.
+
+### [E-GENİŞLETME: mini_bagging/karar_agaci promote yolu AÇILDI + R11-DİYET uygulandı] — 2026-09-02 11:15 (Eren: "eksik ne varsa yapılsın")
+- **R11-BELLEK DİYETİ (üretim, bit-özdeş):** `clearance._surface_samples`
+  örnekleme sonrası trimesh cache'ini bırakır (py-spy kanıtı: area_faces/
+  triangles_cross iri-STL'de GB'lar; dogrula_ve_rafine 12-tur × kopya).
+  Hedefli 131/131 yeşil. Yedek `r11_bellek_diyeti_oncesi`. Canlı kanıt
+  koşusu: p3 tekil (PID 40944) nfv_max KOŞUDA.
+- **E-GENİŞLETME:** (1) `MiniBaggingSelector.predict_proba` (oy dağılımı);
+  (2) `mode_model_io` tip-dallı serileştirme — ağaç/bagging `agaclar`
+  JSON'u + saf-stdlib `_tree_walk` inference (Y-3), schema aynı, ESKİ
+  lojistik artefakt geriye-uyumlu (testli); (3) `retrain_mod` MODELLER +=
+  mini_bagging, karar_agaci + kanıt metası yarışma-3'e güncellendi.
+  Round-trip testi birebir; 13/13. Yedek `model_io_genisletme_oncesi`;
+  D-kopya 4 dosya. mini_bagging dry-run uçtan uca ÇALIŞTI.
+- **Promote önerisi GÜNCELLENDİ:** bayraksız en iyi = mini_bagging (10,73)
+  artık CLI'de — Eren'in `!` komutu regret_logistic yerine mini_bagging'e
+  çevrildi. karar_agaci (8,88) overfit-flag'li: promote ÖNERİLMEZ, CLI'de
+  araştırma için mevcut.
+
+### [MOD-YARIŞMASI-3 (kafes dahil, n=85) + RETRAIN DRY-RUN'LAR — PROMOTE ÖNERİSİ HAZIR] — 2026-09-02 04:30
+İmza: [mod_yarismasi --kafes | LOO-regret | 85 instance | koruma-sonrası tablo (karantina=1, eksik-ana-kol=0)]; kanıt `results/mod_yarismasi_20260902.json` + scratchpad `retrain_dryrun_A/B.txt`.
+| aday | ort regret | acc | not |
+|---|---|---|---|
+| karar_agaci | **8,88** | 0,753 | en iyi ama overfit_flag=True; CLI'de promote yolu YOK |
+| mini_bagging(deney) | 10,73 | 0,635 | bayraksız ikinci; CLI'de yol yok |
+| regret_logistic | 14,12 | 0,612 | CLI-destekli en iyi |
+| **KURAL (üretim)** | **25,06** | 0,365 | fsm610'da 413mm ıskalıyor |
+- Hedef vakalar: fsm610 → iyi adaylar **0,0** (kafes'i seçiyor) · deneme5 →
+  karar_agaci **0,0** (routing açığı çözülüyor) · plan1 çoğunda 57,3 (tek
+  örnek, allowlist-dışı kalmalı) · mixed_scale 192 herkes (özellik eksiği).
+- **Kök içgörü:** üretim modelinin `guvenli_aileler` listesinde dev-set
+  aileleri HİÇ YOK → model dev-setlerde devre dışı, kural fallback = d5/p1
+  açıklarının mimari nedeni.
+- **Dry-run A** (mevcut 8-aile allowlist) ve **Dry-run B** (+devset_plan2,
+  deneme4, deneme5) alındı — regret_logistic, n_train=85, conformal 6-arm,
+  ARTEFAKT YAZILMADI (Y-1: promote yalnız insan komutuyla).
+- **EREN'E PROMOTE ÖNERİSİ (sabah):** (1) hızlı yol = `retrain_mod
+  --model regret_logistic --allowlist <B-listesi>` (14,12; CLI hazır, tek
+  komut); (2) daha iyi ama iş isteyen yol = karar_agaci/mini_bagging için
+  CLI+IO genişletmesi (8,9-10,7; ayrı geliştirme+kapı). fsm610 tazelemesi
+  n_legal=5 (kafes 400,0 OTOMATİK yeniden-üretildi, el-ayarsız).
+
+### [PAKET D / H7 DOĞRULANDI-KAPALI — devir notu bayattı] — 2026-09-02 02:55
+- §H "Paket D henüz YAPILMADI" notu BAYAT çıktı: H7 deterministik
+  injection ön-taraması ZATEN uygulanmış ve canlı — `note_detector.
+  _INJECTION_KALIP` (TR/EN kalıplar + TR-fold) tek-kaynak; `mail_ingest`
+  iki noktadan bağlı (Kapi-0 not-tespiti :1111 + serbest-metin LLM-parse
+  önü :1482, eşleşen metin LLM'e HİÇ gitmez = denetim önerisi OR'dan
+  güçlü). Kanıt: `tests/test_h7_injection_pretaramasi.py` 4/4 + A9 3383
+  suite içinde yeşil. Retrain önündeki güvenlik ön-şartı SAĞLANMIŞ.
+- Ders (P-10.2 sınıfı): devir notları "yapılmadı" derken repo kanıtıyla
+  doğrulanmalı — bayat şerh gereksiz iş üretebilirdi.
+
+### [EKSİK-ANA-KOL KORUMASI (2 katman) + TAM DOSYA DENETİMİ] — 2026-09-02 02:45 (Eren talimatı "ben demeden engelle")
+- **Kural (kalıcı):** üretim kollarından (heightmap/nfv_fast/nfv_max) biri
+  koşu-hatasıyla ölçülemediyse winner GÜVENİLMEZ → eğitime giremez.
+- **Katman-1 üretici:** asama2_devset_etiket satırı DOĞUŞTAN karantinalı
+  yazar ("eksik-ana-kol otokarantinasi"). **Katman-2 köprü savunması:**
+  m4_koprusu bayraksız satırı da dışlar (`m4_n_eksik_ana_kol` sayacı;
+  RETROAKTİF — geçmiş çarpıklar da giremez). Testler
+  `test_eksik_ana_kol_egitime_giremez` (davranışsal) + kaynak çapası;
+  10/10. Yedek `eksik_kol_korumasi_oncesi`; D-kopya OK. İmzaya
+  `kanopi_zincir_kollarda: False` alanı eklendi (v12 gerçeği).
+- **Tam jsonl denetimi (50 satır → 36 final):** başka çarpık YOK. p3
+  karantinalı-tek; TUHAF-CL görünen 11 satır kaybeden-heightmap clearance
+  ihlalleri = winner'a zaten giremiyor (zararsız); d4 AC-02-öncesi sidecar
+  şerhi sayısal-makul (taze koşusu R11-diyet paketine). fsm610 eski satırı
+  koşan tazelemeyle ezilecek.
+
+### [A9 SUITE YEŞİL — fix paketi mührü] — 2026-09-02 02:40
+**3383/3383 passed** (37:45; eski 3380 + 3 yeni davranışsal test:
+kanopi-fast sabit · kafes-aktarım · m4-saflık). KANOPI-FAST üretim fix'i +
+2 harness fix'i suite-onaylı. Log scratchpad `a9_suite_20260902.log`.
+### [KAMPANYA v12 TAMAM — 5-set etiket seti TEMİZ; retrain ön-koşulu SAĞLANDI] — 2026-09-02 01:5x
+İmza: [m4 kolları @ run_pipeline | no-go config-soft | TAM-SAFLIK (kafes+kanopi zinciri KAPALI = eval-parite) | R11_WORKERS=1 | REUSE=1 | kod 5c13a64+3 harness-fix]; kanıt `results/m4_portfoy_etiket.jsonl` son 5 satır + log `logs/detach_asama2_devset_etiket_20260901_231702.out` (151dk, hata/atlanan=0).
+| set | winner | n_legal | legal kollar (mm) | not |
+|---|---|---|---|---|
+| plan1 | nfv_fast | 2 | (v8 satırı geçerli) | üretim heightmap-rotalı → routing-öğrenme verisi |
+| plan2 | **nfv_max 519,5** | **4** | 519,5/535/573/529 | **6. satırda İLK TEMİZ etiket** — Eren şartı ("en iyisi retraine girmeli") SAĞLANDI; 519,5=KARAR-G probu birebir |
+| plan3 | nfv_fast 629 | 2 | 811/629 | nfv_max R11-örnekleme belleğinde iptal; **RETRAIN ÖN-KOŞULU-2 (Eren 09-02): bu satır max'sız retrain'e GİRMEZ (karantina)** — gerçek en iyi 577-MAX (G-probe); fast-winner öğrenilirse KARAR-G geriler. R11-diyet → p3-max tekil → taze satır ezer |
+| deneme4 | nfv_max 230,0 | 3 | 403,4/269/230 | nfv sidecar'ları 08-31 00:44/01:34 = KARAR-G-flip ÖNCESİ kod → ŞERHLİ (bayat-sidecar tarih filtresi eksiği) |
+| deneme5 | **nfv_max 227,5** | 3 | 343,8/234,5/227,5 | üretim 343,8-heightmap'e karşı MAX 227,5 → d5 routing-açığının retrain verisi TAM |
+- Kafes sıfır-dokunuş: p3 ✓ d4 ✓ d5 ✓ (p2'de tetikli, kaybeden 573/529).
+- **Kalan tek bellek canavarı (üretim backlog #1):** R11 `dogrula_ve_rafine
+  → min_clearance → _surface_samples` mesh örnekleme cache'i — parça-boyu
+  duyarlı (p2-max 5,6GB geçti, p3-max 15,6GB iptal; py-spy arşiv
+  `pyspy_olum_14668.txt`). Fix adayı: örnekleme yoğunluğu/parça-başına
+  yaşam döngüsü diyeti → sonra p3-max tekil etiket.
+- Diğer backlog: `_sidecar_bul` tarih/kod-imza filtresi · RAM-guard
+  koruyucu terfisi · kol-başı RAM kapısı · detached çocuk stderr kaybı.
+- A11: etiketler karşı-olgusal ölçüm (kazanç ilanı değil); d4 şerhli.
+  Sıradaki: A9 suite (koşuda) → fsm610 tazeleme → mod_yarismasi → Paket D
+  → RETRAIN+PROMOTE önerisi Eren'e.
+
+### [4. KATMAN: kanopi zincirinin A2-ölçümü — m4 kolları TAM-SAFLIK'a alındı, v12] — 2026-09-01 23:20
+- **v11 nfv_fast ölüm stack'i (arşivli py-spy):** `kanopi_zinciri_uretim:424
+  → _a2_olc_meshes → kilit_rot_meshes → check_separability_rot →
+  _duz_cekilir → scipy binary_dilation` @14,8GB — kanopi zincirinin A2
+  rot-sertifika morfolojisi 226-parça mesh'lerinde patlıyor. (Kafes-aktarım
+  fix'i ÇALIŞTI: stack'te kafes yok; R11 de geçildi.)
+- **Fix (harness-yalnız):** `scenario_kur`'a `"kanopi_zincir": False` —
+  m4 kolları artık TAM zincirsiz çekirdek ölçer = **eval-parite imzası**
+  (eval kapısı da zincirsizdir); kanopi kazancı 4-set kapısıyla ayrıca
+  kanıtlı, üretim yolu DEĞİŞMEZ. Yedek `m4_kanopi_kapatma_oncesi`; test
+  `test_m4_kollari_zincirsiz_saflik` (8/8); D-kopya OK; **v12 başladı**
+  (PID 7788, R11_WORKERS=1 + REUSE=1).
+- **ÜRETİM BACKLOG (Eren'e kampanya-sonu):** kanopi-A2 ölçüm katmanı
+  üretim app yolunda da koşuyor → p2-sınıfı (çok-parça kilitli) sahnede
+  müşteri makinesinde 14GB+ bellek riski. Adaylar: rot-sertifika
+  morfolojisine bellek diyeti / parça-başına yaşam döngüsü / A2-ölçümü
+  RAM-kapılı atlama (telemetri şerhiyle). Lab 64GB'da rahat ama 16GB
+  kurulumlar için gerekli.
+- Katman özeti (4/4): kanopi-MAX ✔ fast'e sabit · R11 thread/veri ✔
+  workers=1 · kafes-aktarım ✔ payload fix · kanopi-A2 ✔ m4'te kapalı
+  (üretimde backlog). p3 dar-RAM native ölümleri ayrı sınıf (ortam).
+
+### [GERÇEK KÖK: kafes_zinciri scenario→payload AKTARIM EKSİĞİ — m4 nfv kolları gizlice kafes koşturuyordu] — 2026-09-01 22:25 (arşivli py-spy + kod kanıtı; FIX UYGULANDI)
+- **Suçüstü (v10 nfv_max ölüm-öncesi stack):** `_process_batch:1153 →
+  kafes_zinciri_uretim → kafes_coz_instance → solve_nfv → _pin_hazirla →
+  voxelize_part` — kol, 226 parçayı İKİNCİ kez voxel'leyen KAFES ZİNCİRİ
+  fazında 14,2GB'a şişti. Oysa scenario_kur karşı-olgusal saflık için
+  `"kafes_zinciri": False` koyuyordu ve etiket imzası False beyan ediyordu.
+- **Kod kanıtı:** payload kurulumunda `kanopi_zincir` scenario'dan
+  aktarılıyor ama `kafes_zinciri` aktarımı YOKTU → `payload.get(...,True)`
+  ile zincir hep açık. MK-03 kablosundan beri sessiz; patlamalar bu hafta
+  başladı çünkü kafes TETİĞİ p2'de yeni ateşliyor (v2'de tetiksizdi).
+- **Katmanlı kök zinciri (3 ayrı gerçek sorun, sırayla soyuldu):**
+  (1) KANOPI-FAST: zincir iç-solve MAX'a kaymıştı → fast sabitlendi
+  (nfv_max solve belleği 6-7,6→5,0GB). (2) R11 fazı: R11_WORKERS=1
+  ilacı fazı geçirtti (v9 4695s ölüm → v10 5175s'e ilerledi). (3) ASIL
+  bloker: kafes-zincir fazı (bu fix). p3'ün v8 sessiz ölümleri ise
+  ortam-bağımlı (dar-RAM native crash) — ayrı sınıf, RAM bolken geçti.
+- **FIX (Eren akışında; davranış-nötr):** payload kurulumuna
+  `"kafes_zinciri": scenario.get("kafes_zinciri", True)` — default True =
+  üretim BİT-ÖZDEŞ; yalnız m4 saflık scenario'su kapatır. Yedek
+  `kafes_zinciri_payload_fix_oncesi`; test `test_kafes_zinciri_scenario_aktarimi`;
+  hedefli 16/16 yeşil; D'ye md5-kopya. **v11 başlatıldı** (R11_WORKERS=1 +
+  REUSE=1) — p2 nfv kollarının İLK temiz ölçümü bekleniyor.
+- Not: eski etiketlerde `kosul_imzasi.kafes_zinciri_nfv_kollarinda=False`
+  beyanı MK-03'ten beri YANLIŞTI (gerçekte açık) — retrain öncesi bu
+  imza düzeltmesi/karantina değerlendirmesi kampanya-sonu raporuna.
+
+### [KÖK YAKALANDI: son-faz bellek patlaması = R11 sweep'inin scipy-thread fırtınası] — 2026-09-01 19:4x (py-spy SUÇÜSTÜ)
+- **Kanıt (canlı dump, p3/nfv_max bekçi-iptali öncesi son 30s):** MainThread
+  `uretim_r11 → continuous_z_settle/_sinirli_min (continuous_settle.py:151)`
+  ve `dogrula_ve_rafine → min_clearance (clearance.py:97)`; thread adları
+  **Thread-97033..97038** (60s önce 47647) → süreç ömründe ~97 BİN thread,
+  son dakikada ~800/sn. Mekanizma: `cKDTree.query(..., workers=N)` HER
+  çağrıda thread seti yaratıyor; R11 sweep'i on binlerce sorgu yapıyor →
+  thread yarat/öldür fırtınası Windows CRT heap/private'ı GB'larca şişiriyor
+  (p3 nfv_max: 5,5→15,9GB bekçi; p2 kolları 14-17GB aynı imza).
+- **Neden 'son faz':** R11 çözümden SONRA koşar; kafes kolları R11'siz →
+  hiç patlamadı. KANOPI-FAST fix'i ayrı ve gerçek bir kazançtı (nfv_max
+  solve belleği 6-7,6→5,0-5,5GB) ama R11 fırtınasına dokunmuyordu.
+- **Fix önerisi (ÜRETİM KODU — Eren onayı gerek):** R11-içi sorgularda
+  `workers=1`. K-55 sözleşmesi zaten "sonuç worker sayısından bağımsız
+  BIT-ÖZDEŞ" der → kalite/karar DEĞİŞMEZ; bedel R11 süresi (çok-çekirdek
+  hızı kaybolur; ölçülecek). Alternatif: scipy sorgularını sweep-başına
+  batch'lemek (büyük refactor, sonra). Doğrulama planı: fix'le tekil
+  p2/nfv_max kolu → priv tepe + r11_s kıyası + h birebirliği.
+- **Kampanya v9 ara durum:** p3 ETİKETİ İLK KEZ GERÇEK KOLLARLA:
+  **winner=nfv_fast 629,0 · n_legal=2** (heightmap 811,0; nfv_max R11'de
+  bekçi-iptal) + kafes p3'te tetik YOK (sıfır-dokunuş ✓). p3'ün v8 sessiz
+  ölümleri ortam-bağımlı doğrulandı (RAM bolken 2/3 kol geçti).
+
+### [KANOPI-FAST FIX UYGULANDI + v8 DURDURULDU + v9 BAŞLADI] — 2026-09-01 14:05 (Eren onaylı)
+- **Fix:** demo_pipeline kanopi zinciri `quality="fast"` SABİT (KARAR-G'nin
+  "niyet zincire akar" satırı geri alındı; ana solve MAX KALIR). Yedek
+  `kanopi_zincir_fast_oncesi`; davranışsal test `test_kanopi_zinciri_fast_sabit`
+  eklendi (6/6 + kanopi hedefli 22/22 yeşil, biri düzeltme sonrası). D'ye
+  kopya md5-doğrulandı.
+- **v8 durduruldu (Eren onayı):** p1 ✓ (winner=nfv_fast) · p2 ✗ (3 ana kol
+  MAX-zincir patlaması; etiket kafes-winner'lı ÇARPIK, tur-5 riski YONTEM'de)
+  · p3 ✗ (winner=None; 3 kol native-crash 720/165/15s, stderr İZSİZ) · d4
+  yarım (heightmap 403,4 OK) · d5 koşulmadı.
+- **p3 crash ORTAM-BAĞIMLI kanıtı:** aynı nfv_max kolu elle probda (RAM 6,2GB
+  boşken) 300s timeout'a dek SORUNSUZ koştu (EXIT=124=timeout) — kod
+  deterministik bozuk DEĞİL; ölümler gündüz RAM darlığında büyük-tahsis
+  anları (RAM-guard rapor-only, korumuyor).
+- **v9 BAŞLADI:** PID 20036, `A2_SETS=plan2,plan3,deneme4,deneme5`
+  REUSE=0, fix'li kod; log `logs/detach_asama2_devset_etiket_20260901_140259.*`.
+- **Harness-dayanıklılık backlog'u (A4):** (1) RAM-guard rapor-only →
+  koruyucu terfisi tartışılmalı, (2) kol-başı RAM kapısı yok (set-başı var),
+  (3) DETACHED ebeveynin çocuk stdout/stderr'i KAYIP → crash'ler izsiz
+  (Popen'a açık dosya handle'ı verilmeli), (4) `_bekci` istisna-break'i
+  rc=None bırakıyor (poll() eklenmeli).
+
+### [KÖK BULUNDU: plan2 kol-patlaması = KARAR-G'nin kanopi zincirine MAX akıtması] — 2026-09-01 13:50 (kod-kanıtlı)
+- **Kanıt zinciri:** (1) demo_pipeline:1117 `quality=(nfv_quality or
+  NFV_QUALITY_DEFAULT)` → KARAR-G ile kanopi zinciri None→**MAX** koşuyor
+  (eski davranış fast). (2) py-spy kökü zaten `kanopi_zinciri_coz → gpu_conv
+  → cuFFT work-area` idi (Paket A/F4 kaydı). (3) AC-08 doğrulaması
+  [fast-zincirli, KARAR-G ÖNCESİ] 9,4GB'da GEÇTİ (535,0 LEGAL); v8 kolları
+  [MAX-zincirli] 13,4-17,1GB PATLADI. (4) baseline-3 p2 GEÇTİ çünkü
+  eval_gate `_run_champion` zincirsiz solve çağırır — zincire hiç girmez.
+- **KRİTİK GENELLEME:** 4set-MAX gece ölçümleri İMZASI 'zincirsiz' —
+  MAX-default'un ZİNCİRLİ bellek profili hiç ölçülmemişti; kampanya ilk
+  ölçüm oldu ve patladı. Üretim app yolu (run_pipeline) zincirli → kanopi
+  tetikli setlerde (p2 kanıtlı) müşteri koşusu 13-17GB riski taşır.
+- **Öneri (ÜRETİM DEĞİŞİKLİĞİ → Eren onayı):** kanopi zincir quality'sini
+  fast'e sabitle (zincir reçetesi fast'le ölçülüp kanıtlandı: AC-08 535,0
+  LEGAL 9,4GB; KARAR-G'de kafes zinciri zaten bilerek kapsam dışıydı —
+  kanopi zinciri de aynı sınıfa alınır). Alternatif: MAX-zincir work-area
+  tavanı işi (pahalı, ölçüm ister). Onay sonrası: yedek → tek-satır fix →
+  davranışsal test → plan2 tekil koşu (eşik 14 muhtemelen gerekmez bile).
+- Not: rot-söküm/mesh şüphesi DÜŞTÜ (AC-08 koşusunda rot-söküm 9,4GB
+  altında koştu); bellek-fix v1 (gc) planı bu kök karşısında İKİNCİL.
+
+### [KAMPANYA v8 / plan2 ZEHİRLİ-ETİKET RİSKİ — RETRAIN ÖN-KOŞULU] — 2026-09-01 ~13:40
+- plan2'nin 3 ana kolu (heightmap/nfv_fast/nfv_max) son fazda bellek patlattı
+  (17,1 / 13,9 / 13,4GB > 12 bekçi) — şüpheli A2 rot-söküm katmanı
+  (`placed_meshes`+`kilit_rot_meshes`, 226 parça; kafes kolları rot-sökümsüz
+  ve PATLAMADI: 4,6GB). v2'de (08-30) görülmedi çünkü REUSE_SIDECAR=1 idi.
+- Etiket satırı (jsonl, ts 1788258928): winner=kafes_duruskoru 529,0 —
+  YANILTICI (gerçek kazanan nfv_max 502,7 baseline-kanıtlı; ana kollar
+  invalid_reasons'ta "kosu hatasi" ile dürüst kayıtlı, kosul_imzasi VAR).
+- Köprü analizi (`m4_koprusu.satirlar`): winner'ı LEGAL kollardan YENİDEN
+  hesaplar; `kafes_dahil` default False → standart retrain'de v8 satırı
+  legal-armsız düşer (zehir girmez, plan2 eğitimsiz); zehirli winner
+  yalnız tur-5 `kafes_dahil=True` koşusuna girer — v8 satırı KARANTİNASIZ,
+  risk duruyor.
+- **DÜZELTME (jsonl arkeolojisi):** plan2'nin 4 satırının HİÇBİRİNDE
+  ana-kol etiketi yok (08-31 iki satır: nfv kolları AYNI bekçi patlaması
+  14,9/14,1GB + heightmap 'clearance 0.001<2.0'; üçüncü satır Paket C
+  karantinalı "AC-08 fix sonrası yeniden ölçüm bekliyor"; v8 dördüncü).
+  Yani patlama KRONİK AC-08-p2 kalıntısı: A1/A2/F4 fix'leri EVAL yolunda
+  yetti (baseline-3 p2 502,7 GEÇTİ) ama KOL yolunda (m4_kol_tek) yetmedi.
+  Taze koşu plan2'nin İLK gerçek etiketi olacak — "v2 etiketi ezilir"
+  kaygısı geçersiz (ezilecek sağlam satır hiç yokmuş).
+- **RETRAIN ÖN-KOŞULU (Eren kararı 2026-09-01 "plan2'nin en iyi çözümü
+  retraine girmeli"):** kampanya bitince sıralı: (1) P-11 yedek, (2)
+  m4_portfoy_kosu bellek-fix'i (rot-söküm fazı öncesi solver belleği
+  bırakılır; ölçüm harness'ı, üretime dokunmaz) + duman testi, (3) plan2
+  tekil taze koşu `A2_SETS=plan2 A2_BEKCI_PRIV_GB=14` (münhasır+refakatli).
+  Taze satır "son satır kazanır" ile v8 çarpık satırını ezer → plan2
+  gerçek kazananı (nfv_max ~502 bandı) eğitime girer. Bu satır yazılmadan
+  retrain BAŞLATILMAZ; heightmap yine patlarsa etiket kaybeden-kol-eksik
+  şerhiyle kabul (winner sağlam).
+- Ayrıca A11: kafes tetiği p2'de ARTıK ateşliyor (v2'de tetiksizdi) ve
+  529/573 üretimden kötü → tetik yanlış-pozitif sinyali, K-59 verisi.
+- Kalıcı fix adayı (backlog): kol son-fazı öncesi solver belleğini bırakma
+  (m4_portfoy_kosu; yedek+test disipliniyle) → bekçi 12'ye geri döner.
+
+### [BASELINE-3 TAMAM] eval_gate 5-set YENİ BASELINE (KARAR-G+G-2 kodu) — 2026-09-01 10:05
+İmza: [eval_gate üretim-rotası | seed=42 | clearance_req=2,0 | MAX-default | kod `5c13a64` | 335×335]; kanıt `D:\ie488
+esults\eval_gate_max_baseline_20260901.json` + log `logs/eval_max_baseline3.out` (.err BOŞ, tepe RAM 10 558 MB, bekçisiz tamamlandı, ~4,0 saat).
+| set | eski baseline | YENİ | fark | rota | Magics | not |
+|---|---|---|---|---|---|---|
+| plan1 | 140,21 | **138,18** | −2,03 | heightmap | 110,41 | AC-02 kazancı; kilit=0 |
+| plan2 | 521,18 | **502,72** | **−18,46** | NFV max | 492,39 | Magics'e %2,1; kilit 42 → söküm-planlı (9 cert), r11 +14,54 |
+| plan3 | 607,50 | **577,00** | **−30,50** | NFV max | 593 | **Magics GEÇİLDİ**; kilit 92 → söküm-planlı (2 cert) |
+| deneme4 | 215,87 | 215,87 | 0 | NFV max | 250,24 | birebir; kilit 170 → söküm-planlı (17 cert) |
+| deneme5 | — (İLK) | **343,80** | ilk anchor | heightmap | 209 | clear 3,8; kilit=0 |
+- 5/5 LEGAL (invalid=None, min_clear ≥ 2,0); eski baseline arşivde (`eval_gate_baseline_20260804_arsiv.json`).
+- **AÇIK YÖN (aynı-gün ucuz teşhis yapıldı):** deneme5 üretim-rotası `predict_nfv_benefit(family_routing, mode_model, rot_sokum)` ile heightmap'e gidiyor → 343,8; oysa MAX-probe 227,5 LEGAL idi (fark ≈116mm; probe koşul-imzası FARKLI → kıyas ŞERHLİ). plan1-açığıyla aynı sınıf (routing/mode-model açığı). Kampanya v8 deneme5'in nfv kollarını etiketleyecek → retrain'in öğrenme adayı; ele alınış retrain-sonrası (Eren sırası).
+- A11 statüsü: baseline ölçümü 5-set (çok-set) → şerhsiz; yalnız deneme5-NFV kıyası şerhli (yukarıda). Sonraki zincir: kampanya v8 (BAŞLATILDI) → fsm610 tazeleme → mod_yarismasi → Paket D → retrain+promote önerisi.
+
 ### [KARAR-G-2 DÜZELTME] Kural-fallback ÖLÜ NOKTAYDI — öneri-default ModeDecision'da MAX yapıldı — 2026-09-01 05:40
 - **Yakalanış:** baseline-2 koşusunda plan2 521,18-fast çıktı (MAX 519,5
   beklenirdi). Kök: `ModeDecision.nfv_quality` alanı HEP dolu ("fast")
@@ -436,8 +742,7 @@ Sıradaki resmî adım: eval_gate 4-set BASELINE YENİLEME (MAX-default'la;
   küçük heightmap 16 s, sidecar yazıldı. Yedekler (P-11): `v0_asama2_oncesi` +
   `m4_harness_rot_sokum_oncesi`.
 - **KOŞU:** kampanya v2 pid 9436, setler plan1→plan2→plan3→deneme4→deneme5,
-  log `D:\ie488
-esultssama2_kampanya_20260830_v2.log`; iptal edilen v1
+  log `D:\ie488\results\asama2_kampanya_20260830_v2.log`; iptal edilen v1
   logu `_iptal_rot_oncesi.log` (plan2 heightmap kolu tamamlanmıştı, hüküm-öncesi).
 - **A11 STATÜSÜ:** etiket üretimi; kazanç ilanı DEĞİL. Şerh: kollar no-go/pin
   taşımaz (iç-tutarlı), tek seed (42); eski plan1 satırı jsonl'da kalır

@@ -158,3 +158,33 @@ P-5'e senkron-denetimi eklenecek). Bağlanmamış şampiyonlar: K-62 v20 (plan1
 127,20) · K-66-d duruş-koru (fsm610 400,0 — S3 mail bağımlı) · K-67 şindil —
 her biri P-3.8 kablo-kapısıyla ayrı iş olarak sahiplenilecek.
 
+
+---
+
+## EK — 2026-09-02 GECE GÜNCELLEMESİ (kampanya v12 + yarışma-3)
+
+- **Etiket seti YENİLENDİ (v12, tam-saflık imzası):** p2 winner=nfv_max 519,5
+  (n_legal=4, İLK temiz) · d4 nfv_max 230 · d5 nfv_max 227,5 · p1 nfv_fast ·
+  p3 KARANTİNALI (max kolu R11-örnekleme belleğine takıldı; taze koşu
+  R11-diyet fix'i sonrası). fsm610 tazelendi: n_legal=5, kafes 400,0
+  OTOMATİK yeniden-üretim.
+- **Koruma katmanı:** eksik-ana-kol satırları artık doğuştan karantinalı +
+  köprü savunması (m4_n_eksik_ana_kol) — çarpık winner eğitime giremez.
+- **Yarışma-3 (kafes dahil, n=85):** karar_agaci 8,88 (overfit-flag) ·
+  mini_bagging 10,73 · regret_logistic 14,12 · KURAL 25,06. fsm610/d5'te
+  model 0,0. Kanıt: results/mod_yarismasi_20260902.json.
+- **Retrain dry-run A/B alındı, artefakt YAZILMADI** — promote önerisi
+  Eren'de (detay: MOTOR/YONTEM §3.1 2026-09-02 04:30 kaydı).
+- **p3-max tekil (09-02 12:20):** R11-diyet kararlı sızıntıyı kesti (60 dk
+  4,6-5,8GB) ama 3600→3720 s'de 5,8→16,8GB ani balon → bekçi iptali; satır
+  OTOMATİK karantinalı (koruma canlı kanıt). Faz teşhisi: bekçi py-spy dump
+  ile tekrar koşu (PID 39300, ETA ~13:25). Retrain allowlist'i devset_plan3'süz.
+- **AC-09 KÖK SEBEP (13:15):** balon = kapalı-kavite TELEMETRİSİ (label
+  @0,5 mm, 540M voxel, 16,9 GB) — py-spy bekçi-dump kanıtı. Fix: voxel
+  bütçesi + any-havuz kaba pitch (çözüm bit-özdeş, 27 test). 3. koşu PID
+  6108, ETA ~14:10; başarılıysa p3 allowlist'e geri girer.
+- **p3 KAPANDI (14:11):** 3. koşu nfv_max **577,0 LEGAL** (cl 2,033, rot-söküm
+  0 kilit/2 cert), balon yok; satır 54 winner=nfv_max regret{hm 234, fast 52},
+  n_legal=3, karantina YOK. §1 tablosundaki plan3 satırı (811 heightmap) artık
+  TARİHSEL; güncel: **plan3 nfv_max 577,0** (Magics 593 geçildi). Retrain
+  allowlist'e devset_plan3 dahil. AC-09 KAPALI-İZLEMEDE.

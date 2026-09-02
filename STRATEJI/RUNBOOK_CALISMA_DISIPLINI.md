@@ -160,6 +160,11 @@ kaynak değildir.
 6. Dağıtım: kalibre güven eşiği + destek zarfı + kural-fallback (§3.5);
    zarf-dışı = çekimser = NFV-max konservatif yol (KARAR-6).
 7. Kör-test (plan7 vb.) eğitime ASLA girmez; sınav sonucu karneye.
+8. **Promote = kapılı karar** (2026-09-02 dersi): yarışma ham `predict`
+   regret'i yetmez; aday `karar()` semantiğiyle (conformal-tekil + allowlist +
+   kural-fallback) LOO'da yarışır, "konuştu oranı" raporlanır. Retrain sonrası
+   İLK İŞ karar-probu: dev-set satırlarında `karar()` None oranı; hepsi None ise
+   promote ÖLÜ → rollback (mini_bagging α=0,1 eşiği 1,0 vakası).
 
 ### P-8 · DIŞ İLETİŞİM (hoca / mühendis / müşteri)
 1. **Maile yazmadan önce**: "bu soru ELDEKİ dosyadan/veriden ölçülebilir
@@ -178,6 +183,14 @@ kaynak değildir.
    eder; anchor değişikliği gerekçeli (A8).
 3. Push ve üretim-default değişikliği Eren onayıyla.
 4. Veri (Veriler/, 100MB+ dosyalar) ve koşu logları repoya GİRMEZ.
+5. Commit öncesi `git ls-files --eol $(git diff --name-only)`: index LF /
+   çalışma CRLF uyumsuzluğu tam-dosya sahte diff üretir (2026-09-02: 9 py
+   dosyası, 8.500 satır). Python `write_text` Windows'ta CRLF yazar →
+   dosya yazımında `write_bytes`/`newline="
+"`; normalize edip stat'ı doğrula.
+6. "Hedefli test" = DEĞİŞEN MODÜLÜN KENDİ test dosyası + onu çağıranlar;
+   alt-küme yeşili tek başına kanıt değildir (2026-09-02: koruma katmanı
+   test_m4_koprusu 4 fixture'ı kırdı, "131 yeşil" onu içermiyordu).
 
 ### P-10 · OTURUM RİTMİ
 1. Oturum başı: ANAYASA + bu RUNBOOK bilinçli uygulanır (CLAUDE.md);
@@ -231,6 +244,10 @@ kaynak değildir.
 | 2026-08-30 | **Veri kaybı + yanlış etiket dersi**: (a) Temp'e yazılan detach logları yok oldu, kampanyanın ölüm sebebi 8 gün bilinmedi; (b) ham yerleşimler saklanmadığı için hüküm düzeltmesi tüm setlerin YENİDEN koşulmasını gerektirdi; (c) harness etiketi 5-yön kilidi INVALID sayıp üretimde LEGAL olan plan1 NFV 136,20'yi eledi, "heightmap kazandı" diye RAPOR EDİLDİ (yanlış) | plan1 etiketi vs v28 baseline; Eren: "veriler kayboluyor, sonuçlar yanlış" | P-5.8-10, P-6, P-4.3 |
 | 2026-08-30 | **Bellek birikimi dersi**: tek süreçte ardışık ağır kollar 14,5 GB'a şişti (plan2 nfv MemoryError/takas; 08-04 aynı set 1639 s'de koşmuştu) → kollar taze alt-süreçte + kol-başı RAM kapısı + sidecar yeniden-kullanım | kampanya v2 plan2, `Get-Process` private 14,5 GB / WS 0,5 GB | P-5.11-12 |
 | 2026-08-30 | **Yedek disiplini**: kod/model/kablo değişikliği öncesi anlık zip-yedek (P-11); geri dönüş yan dizine + test | Eren: "büyük değişiklikte geriye dönemeyecek duruma düşmeyelim" | P-11, P-7.5, P-9 |
+| 2026-09-02 | **Satır-sonu sahte diff**: 9 py dosyası CRLF'e dönmüş, commit paketi 8.500 satır görünüyordu; gerçek 551 | `git ls-files --eol` i/lf w/crlf; kök Python `write_text` | P-9.5 |
+| 2026-09-02 | **Hedefli test alt-kümesi tuzağı**: eksik-ana-kol savunması test_m4_koprusu'nda 4 fixture kırdı, alt-küme yeşili gizledi | pytest 3 failed/110 passed → fixture düzeltme 29/29 | P-9.6 |
+| 2026-09-02 | **Bekçi kör öldürmesin**: p3-max 5,8→16,8GB ani balonda stack yoktu → bekçiye >8GB uyarı-dump + ölüm-dump (py-spy) | log 110608 vs 121501 | P-5.5 (izleyici dump'lı) |
+| 2026-09-02 | **Ölü promote**: mini_bagging retrain'i yazıldı ama conformal eşiği 1,0 → `karar()` hep None (üretim = kural); yarışma ham tahmini ölçmüştü, kapılı kararı değil | doğrulama probu 37/37 None; v2 eşik 0,879 | P-7 (promote=kapılı karar + karar-probu) |
 
 > Yeni ders ekleme kuralı: olay + kanıt + hangi prosedürü değiştirdiği.
 > Ders eklemek yetmez — ilgili P-maddesi de güncellenir (ders prosedüre
