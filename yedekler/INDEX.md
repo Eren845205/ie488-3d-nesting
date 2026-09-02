@@ -26,3 +26,4 @@
 | 20260902_1213 | b1bc5e8 | bekci_pyspy_dump_oncesi | 718 | 2.9 | 13 |  |
 | 20260902_1311 | b1bc5e8 | kavite_voxel_butcesi_oncesi | 718 | 2.9 | 14 |  |
 | 20260902_1729 | 058edde | ac10_uretim_aile_allowlist_oncesi | 720 | 2.9 | 0 |  |
+| 20260902_2120 | f0f0b0a | m4_kol_tek_stl_dir_oncesi | 724 | 2.9 | 0 |  |

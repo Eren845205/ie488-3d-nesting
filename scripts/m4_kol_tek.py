@@ -49,7 +49,12 @@ def main() -> int:
                        encoding="utf-8")
         return 2
     try:
-        inst = builder(a.seed, a.scale, None)
+        # STL ureten aileler (holey_frames vb.) gecici dizin ister; kampanya
+        # ve mod_yarismasi resolver'i ile AYNI konum (2026-09-02 replay dersi:
+        # None -> 'argument should be a str or PathLike' ile kol kurulamadi).
+        stl_dir = _ROOT / "tmp" / "m4_stl"
+        stl_dir.mkdir(parents=True, exist_ok=True)
+        inst = builder(a.seed, a.scale, stl_dir)
     except Exception as exc:
         out.write_text(json.dumps({"kol": a.kol,
                                    "hata": f"instance kurulamadi: {exc}"}),

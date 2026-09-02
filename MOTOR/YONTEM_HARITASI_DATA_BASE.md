@@ -177,6 +177,21 @@ beklenti ~577-595 bandı) — p2-F4 bitince sırada. NOT: derin-arama süre bede
 
 ### 3.1 KALİTE
 
+### [AC-09 DAĞILIMSAL KANIT (A11-2b): >60M voxel sınıfında 4 aile / 5 koşu balonsuz — kavite bütçesi genel] — 2026-09-02 21:40
+İmza: [scratchpad `kavite_dagilim_replay.py` (m4_kol_tek nfv_max, ebeveyn tepe-private ölçümü) + bugünkü kampanya koşuları | kod 2b0e43f+ | m4_kol_tek stl_dir fix]
+| aile / set | n parça | pitch | voxel sınıfı | yükseklik | tepe bellek | süre |
+|---|---|---|---|---|---|---|
+| plan3 (thin_shell) | 109 | 0,5 | ~540M (f=3) | 577,0 (birebir G-probe) | <8 GB (dump tetiklenmedi; nabız ≤5,8) | 56 dk |
+| deneme4 (thin_shell) | 588 | 0,5 | ~242M (f=2) | 269,0 / 230,0 (birebir) | 5,2 / 4,0 GB | 14 / 32 dk |
+| mass_plate_rod_mix s0 orta | 249 | 0,5 | ~374M (f=2) | 416,5 (birebir) | **3,09 GB** | 258 s |
+| holey_frames s0 küçük | 12 | 0,5 | ~281M (f=2) | 313,5 (birebir) | 6,37 GB | 27 s |
+| holey_frames s2 küçük | 12 | 2,0 | ~4M (f=1) | 304,0 (birebir) | 4,94 GB | 97 s |
+- **Hüküm:** tetik geometrik (voxel sayısı); bütçe-üstü 4 farklı ailede kaba pitch devreye girdi, sonuçlar önceki etiketlerle BİREBİR (nesting çözümü bit-özdeş kanıtı), tepe bellek 3-6,4 GB (eski yol p3'te 16,9 GB'da kesiliyordu; küçük-ızgara probunda ~70 B/voxel). Kavite hacmi telemetride düşüyor (d4 2.400 mm³; plaka/çubuk/çerçeve ailelerinde 0 = kapalı kavite yok, beklenen). Yanlış-pozitif: bütçe-altı (holey s2, 4M voxel) f=1 eski yol → sıfır-dokunuş.
+- **Şerh:** tepe bellek ölçümü kolun tamamı (solve + söküm + gate) — gate'in payı ayrıca ölçülmedi (p3-boyut sentetik probu 2,15 GB); holey s0 6,4 GB'ın kaynağı NFV FFT olabilir, kavite değil.
+- **Yan fix:** `m4_kol_tek` stl_dir=None geçiyordu → STL üreten aileler (holey_frames) tek-kol koşamıyordu; `tmp/m4_stl` verildi (kampanya/resolver ile aynı). Yedek `m4_kol_tek_stl_dir_oncesi`.
+- **Ölçmeden bıraktıklarım:** gate-payı ayrık ölçüm · held-out (yeni gerçek sipariş) · deneme5 eval config.
+- **Karne (A11):** AC-09 için tetik=GEOMETRİK · kapı=**PASS (dağılımsal, 4 aile)** · sıfır-dokunuş=KANITLI (bütçe-altı birebir; bütçe-üstü sonuç birebir) · sözleşme=DEĞİL · held-out=BEKLİYOR.
+
 ### [d4 TAZE NFV ETİKETİ (REUSE=0): 403,4 / 269,0 / 230,0 — 08-31 sidecar şerhi KAPANDI; retrain aynı sonuç] — 2026-09-02 21:20
 İmza: [asama2_devset_etiket A2_SETS=deneme4 A2_REUSE_SIDECAR=0 R11_WORKERS=1 A2_BEKCI_DUMP_GB=8 | PID 44280 | log detach_asama2_devset_etiket_20260902_202822.out | 48,2 dk, hata/atlanan=0 | kod 2b0e43f (AC-09 kavite bütçesi dahil)]
 - **Sonuç:** heightmap 403,4 (cl 3,31, kilit 0, 54 s) · nfv_fast 269,0 (cl 2,02, kilit5 131 → rot 0, 14 dk) · **nfv_max 230,0 LEGAL** (cl 2,06, kilit5 368 → rot 0, 32 dk) · kafes ×2 tetik YOK. Winner nfv_max, n_legal 3, karantina yok. Üç kol da 08-31 sidecar değerleriyle BİREBİR → sidecar-yeniden-kullanım şerhi kapandı (taze kod = aynı sonuç, kanıtlandı). Bellek tepe nfv_fast 5,2 GB / nfv_max 4,0 GB (588 parça, kavite kapısı f=2 kaba pitch) — balon yok.
