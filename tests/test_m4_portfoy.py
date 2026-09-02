@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from scripts.m4_portfoy_kosu import (
     ARMS, FAMILY_BUILDERS, etiket_hesapla, kol_legal_mi, scenario_kur)
 from src.nesting3d.instances.format import ContainerSpec, NestingInstance, PartSpec
@@ -143,10 +145,29 @@ def test_scenario_stl_path_korunur():
 # ---------------------------------------------------------------------------
 
 def test_kabuk_aileleri_dislandi():
-    # shell_bells/hollow_tubes box-koprude ici-bos geometriyi kaybeder
-    # (synthetic.py uyarisi) — portfoye GIREMEZLER
+    # shell_bells box-koprude ici-bos geometriyi kaybeder (synthetic.py
+    # uyarisi) — portfoye GIREMEZ. hollow_tubes 2026-09-02'den itibaren
+    # STL varyantiyla (hollow_tubes_stl, source="stl") portfoyde.
     assert "shell_bells" not in FAMILY_BUILDERS
-    assert "hollow_tubes" not in FAMILY_BUILDERS
+    assert "hollow_tubes" in FAMILY_BUILDERS
+
+
+def test_hollow_tubes_stl_kaynakli(tmp_path):
+    """hollow_tubes ailesi gercek geometriyle (source=stl, dosya var, bbox
+    dolu) ve deterministik girer; orta olcek adet dokusu 1..2."""
+    b = FAMILY_BUILDERS["hollow_tubes"]
+    inst = b(1, "orta", tmp_path)
+    assert len(inst.parts) == 24 and inst.meta["family"] == "hollow_tubes"
+    for p in inst.parts:
+        assert p.source == "stl" and p.stl_path and Path(p.stl_path).exists()
+        assert p.width_mm > 0 and p.depth_mm > 0 and p.height_mm > 0
+        assert 1 <= p.qty <= 2
+    inst2 = b(1, "orta", tmp_path)
+    assert [(p.id, p.qty, p.width_mm) for p in inst2.parts] == \
+        [(p.id, p.qty, p.width_mm) for p in inst.parts]
+    # scenario koprusu stl_path'i korur (gercek geometri nesting'e gider)
+    sc = scenario_kur(inst, "nfv", "max", 42, "k", {})
+    assert all(pp.get("stl_path") for pp in sc["orders"][0]["parts"])
 
 
 def test_arms_uc_kol():

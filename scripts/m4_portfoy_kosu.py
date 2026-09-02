@@ -7,10 +7,11 @@ A2 legal-yukseklik turetilir (tam yerlesim + clearance >= esik + 5-YON
 kilit = 0; telemetrideki +Z-tek n_locked AYRICA kaydedilir ama legallik
 5-yonden gelir). Instance etiketi = winner_mode + kol-basi regret_mm.
 
-Kapsam notu: shell_bells / hollow_tubes AILELERI BILEREK DISLANDI —
-box-source kopruleri ici-bos geometriyi kaybeder (synthetic.py docstring
-uyarisi: "doluluk-yukseklik benchmark'inda kullanilirsa sonuc yaniltici").
-holey_frames source="stl" oldugu icin gercek geometriyle girer.
+Kapsam notu: shell_bells AILESI BILEREK DISLANDI — box-source koprusu
+ici-bos geometriyi kaybeder (synthetic.py docstring uyarisi: "doluluk-
+yukseklik benchmark'inda kullanilirsa sonuc yaniltici"). holey_frames ve
+hollow_tubes (2026-09-02, hollow_tubes_stl) source="stl" oldugu icin
+gercek geometriyle girer.
 
 Cikti:
   results/m4_portfoy_etiket.jsonl  (satir = instance; append-only)
@@ -123,6 +124,20 @@ def _f_holey_frames(seed, scale, stl_dir):
     return holey_frames(stl_dir=stl_dir, container=CNT, seed=seed)
 
 
+# hollow_tubes (2026-09-02, deneme5/tube acik yonu): GERCEK geometri
+# (source="stl") ile portfoye girer — eski `hollow_tubes` box-koprude ici-bos
+# geometriyi kaybettigi icin DISLANMISTI; STL varyanti o kisiti kaldirir.
+# Olcek: boru sayisi + adet dokusu (deneme5 352 parca tekrar-adetli tube).
+_HT_N = {"kucuk": (8, 1), "orta": (24, 2), "buyuk": (60, 4)}
+
+
+def _f_hollow_tubes(seed, scale, stl_dir):
+    from src.nesting3d.instances.synthetic import hollow_tubes_stl
+    n, qmax = _HT_N[scale]
+    return hollow_tubes_stl(stl_dir=stl_dir, n_parts=n, qty_max=qmax,
+                            container=CNT, seed=seed)
+
+
 def _f_fsm610_gercek(seed, scale, stl_dir):
     """fsm610 GERCEK siparisi (KARAR-1 terfi, Eren onayi 2026-08-21) —
     k66 STL yolundan deterministik kurulum; seed/scale kullanilmaz."""
@@ -156,6 +171,7 @@ FAMILY_BUILDERS = {
     "repeat_rod_mix": _f_repeat_rod_mix,
     "mass_plate_rod_mix": _f_mass_plate_rod_mix,
     "holey_frames": _f_holey_frames,
+    "hollow_tubes": _f_hollow_tubes,
 }
 
 

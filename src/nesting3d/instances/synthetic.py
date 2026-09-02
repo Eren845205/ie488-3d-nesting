@@ -260,6 +260,60 @@ def hollow_tubes(
     )
 
 
+def hollow_tubes_stl(
+    *,
+    stl_dir,
+    n_parts: int = 8,
+    qty_max: int = 1,
+    r_min: float = 8.0,
+    r_max: float = 18.0,
+    wall_min: float = 1.0,
+    wall_max: float = 2.0,
+    length_min: float = 90.0,
+    length_max: float = 180.0,
+    container: Optional[ContainerSpec] = None,
+    seed: int = 0,
+) -> NestingInstance:
+    """İnce cidarlı borular — GERÇEK geometriyle (source="stl"), M4 portföyü
+    için (2026-09-02, deneme5/tube açık yönü: box-köprü içi-boş geometriyi
+    kaybettiği için `hollow_tubes` portföye giremiyordu).
+
+    Her boru stl_dir/hollow_tube_s<seed>_<i>.stl olarak yazılır (C'ye büyük
+    dosya yazmama kuralı: çağıran D/scratch dizini vermeli). Parça bbox
+    boyutları dolu (holey_frames / stl_order_loader deseni). qty_max>1 ise
+    adet 1..qty_max (deneme5 tipi tekrar-adetli sipariş dokusu).
+    """
+    from pathlib import Path
+
+    rng = random.Random(seed)
+    cnt = container or _default_container()
+    stl_dir = Path(stl_dir)
+    stl_dir.mkdir(parents=True, exist_ok=True)
+    parts: List[PartSpec] = []
+    for i in range(n_parts):
+        r = _uniform(rng, r_min, r_max)
+        wall = _uniform(rng, wall_min, wall_max)
+        length = _uniform(rng, length_min, length_max)
+        qty = rng.randint(1, max(1, int(qty_max)))
+        r_inner = max(r - wall, r * 0.1)
+        mesh = trimesh.creation.annulus(r_min=r_inner, r_max=r, height=length)
+        mesh.apply_translation(-mesh.bounds[0])
+        yol = stl_dir / f"hollow_tube_s{seed}_{i+1:02d}.stl"
+        mesh.export(yol)
+        e = mesh.extents
+        parts.append(PartSpec(
+            id=f"tube_{i+1:02d}", name=f"tube_{i+1:02d}", qty=qty,
+            source="stl", stl_path=str(yol),
+            width_mm=round(float(e[0]), 3), depth_mm=round(float(e[1]), 3),
+            height_mm=round(float(e[2]), 3)))
+    return NestingInstance(
+        container=cnt,
+        parts=parts,
+        meta={"family": "hollow_tubes", "seed": seed, "n_parts": n_parts,
+              "qty_max": qty_max, "source": "stl"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Üreticiler
 # ---------------------------------------------------------------------------
