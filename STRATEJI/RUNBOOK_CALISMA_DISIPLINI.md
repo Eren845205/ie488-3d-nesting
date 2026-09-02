@@ -186,8 +186,7 @@ kaynak değildir.
 5. Commit öncesi `git ls-files --eol $(git diff --name-only)`: index LF /
    çalışma CRLF uyumsuzluğu tam-dosya sahte diff üretir (2026-09-02: 9 py
    dosyası, 8.500 satır). Python `write_text` Windows'ta CRLF yazar →
-   dosya yazımında `write_bytes`/`newline="
-"`; normalize edip stat'ı doğrula.
+   dosya yazımında `write_bytes`/`newline="\n"`; normalize edip stat'ı doğrula.
 6. "Hedefli test" = DEĞİŞEN MODÜLÜN KENDİ test dosyası + onu çağıranlar;
    alt-küme yeşili tek başına kanıt değildir (2026-09-02: koruma katmanı
    test_m4_koprusu 4 fixture'ı kırdı, "131 yeşil" onu içermiyordu).
