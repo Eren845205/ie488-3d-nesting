@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<!-- lang="en": CSS text-transform:uppercase Turkce yerelde ingilizce "i"yi
+     "İ" yapiyordu (MAİL İNTAKE). Basliklar ingilizce, Turkce etiketler ASCII
+     disiplininde — en yereli iki dil icin de dogru buyuk harf uretir. -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}NESTING.FORGE — 3D Nesting &amp; Batch Planning{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%2315181e'/%3E%3Crect x='6' y='16' width='8' height='9' rx='1' fill='%23dd5b17'/%3E%3Crect x='16' y='12' width='9' height='13' rx='1' fill='%23dd5b17' opacity='0.78'/%3E%3Crect x='9' y='7' width='7' height='7' rx='1' fill='%23dd5b17' opacity='0.55'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="brand">
+        <span class="brand-mark" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+                <rect x="1.5" y="1.5" width="23" height="23" rx="3" stroke="currentColor" stroke-width="1.6" opacity="0.45"/>
+                <rect x="5" y="13" width="7" height="7" rx="1" fill="currentColor"/>
+                <rect x="13.5" y="9.5" width="7.5" height="10.5" rx="1" fill="currentColor" opacity="0.78"/>
+                <rect x="8" y="6" width="6" height="6" rx="1" fill="currentColor" opacity="0.55"/>
+            </svg>
+        </span>
+        <span class="brand-text">
+            <span class="brand-title">NESTING<span class="brand-dot">.</span>FORGE</span>
+            <span class="header-subtitle">Additive Manufacturing · Batch Planning · 3D Nesting · Pricing</span>
+        </span>
+    </a>
+    <nav class="site-nav">
+        <a href="/" class="nav-link" data-path="/">Dashboard</a>
+        <a href="/oncelik" class="nav-link" data-path="/oncelik">Priority Plan</a>
+        <a href="/siparisler" class="nav-link" data-path="/siparisler">Order Pool</a>
+        <a href="/adet-gir" class="nav-link" data-path="/adet-gir">Quantity Entry</a>
+        <a href="/kisit-onay" class="nav-link" data-path="/kisit-onay">Constraint Approval<span class="nav-badge" id="kisit-onay-rozet" hidden>0</span></a>
+        <a href="/mail-ayar" class="nav-link" data-path="/mail-ayar">Mail Settings</a>
+        <a href="/plaka-ayar" class="nav-link" data-path="/plaka-ayar">Plate Setup</a>
+        <a href="/gecmis" class="nav-link" data-path="/gecmis">Job History</a>
+    </nav>
+</header>
+
+<main class="container">
+    {% block content %}{% endblock %}
+</main>
+
+<!-- K-61 not baloncuklari: siparis notu tespit edilince sag-alt kosede
+     mesaj balonu cikar; onay /kisit-onay insan kapisindan gecer. -->
+<div class="nf-toast-kok" id="not-baloncuk-kok" aria-live="polite"></div>
+
+<footer class="site-footer">
+    <span class="footer-tick">▸</span>
+    NESTING.FORGE — Deterministic pipeline: Order Intake <span class="footer-arrow">→</span> Scheduling
+    <span class="footer-arrow">→</span> 3D Nesting <span class="footer-arrow">→</span> Pricing
+</footer>
+
+<script>
+    // Aktif nav linkini isaretle (sayfa yoluna gore)
+    (function () {
+        var path = window.location.pathname.replace(/\/+$/, '') || '/';
+        document.querySelectorAll('.nav-link').forEach(function (a) {
+            var p = a.getAttribute('data-path');
+            if (p === path || (p !== '/' && path.indexOf(p) === 0)) {
+                a.classList.add('is-active');
+            }
+        });
+    })();
+</script>
+
+<script>
+    // ---- K-61 not baloncuklari ------------------------------------------
+    // /api/not-bildirimleri periyodik yoklanir; onaysiz notlu siparisler
+    // sag-alt kosede baloncuk olur. "Sonra" localStorage'a yazar (balon
+    // gizlenir, is nav rozetinde saymaya devam eder). Oneriler hazirsa
+    // balondan tek tikla toplu onay verilebilir (CSRF'li /kisit-onay POST).
+    (function () {
+        var kok = document.getElementById('not-baloncuk-kok');
+        var rozet = document.getElementById('kisit-onay-rozet');
+        if (!kok) return;
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrf = csrfMeta ? csrfMeta.content : '';
+        var LS = 'nfNotBaloncukKapatilan';
+        var acik = {};   // anahtar -> DOM dugumu
+
+        function kapatilan() {
+            try { return JSON.parse(localStorage.getItem(LS) || '{}'); }
+            catch (e) { return {}; }
+        }
+        function anahtar(b) {
+            var ilk = (b.satirlar[0] ? b.satirlar[0].metin : '').slice(0, 40);
+            return b.order_id + '|' + b.satirlar.length + '|' + ilk;
+        }
+        function kirp(s, n) {
+            s = s || '';
+            return s.length > n ? s.slice(0, n - 1) + '…' : s;
+        }
+        function el(etiket, sinif, metin) {
+            var d = document.createElement(etiket);
+            if (sinif) d.className = sinif;
+            if (metin != null) d.textContent = metin;
+            return d;
+        }
+
+        function baloncukYap(b, k, sira) {
+            var t = el('div', 'nf-toast');
+            t.style.animationDelay = (sira * 90) + 'ms';
+
+            var ust = el('div', 'nf-toast-ust');
+            ust.appendChild(el('span', 'nf-toast-nabiz'));
+            ust.appendChild(el('span', 'nf-toast-etiket',
+                b.kaynak_tip === 'manuel' ? 'ORDER NOTE · MANUEL' : 'ORDER NOTE · MAIL'));
+            ust.appendChild(el('span', 'nf-toast-id',
+                b.order_id + (b.customer ? ' · ' + b.customer : '')));
+            var kapat = el('button', 'nf-toast-kapat', '×');
+            kapat.title = 'Sonra (balonu gizle)';
+            kapat.onclick = function () {
+                var d = kapatilan(); d[k] = 1;
+                localStorage.setItem(LS, JSON.stringify(d));
+                sondur(t, k);
+            };
+            ust.appendChild(kapat);
+            t.appendChild(ust);
+
+            if (b.satirlar[0]) {
+                t.appendChild(el('div', 'nf-toast-metin',
+                    '“' + kirp(b.satirlar[0].metin, 110) + '”'));
+                var kaynak = b.satirlar[0].kaynak || '';
+                if (b.satirlar.length > 1) {
+                    kaynak += ' · +' + (b.satirlar.length - 1) + ' satır daha';
+                }
+                t.appendChild(el('div', 'nf-toast-kaynak', kaynak));
+            }
+
+            var eylem = el('div', 'nf-toast-eylem');
+            if (b.kosu === 'kosuyor') {
+                // Onay verilmis, kosu suruyor: eylem yerine canli durum goster.
+                t.classList.add('nf-onaylandi');
+                eylem.appendChild(el('span', 'nf-toast-ok',
+                    '✓ Onay alındı — ⚙ nesting koşuluyor…'));
+                t.appendChild(eylem);
+                return t;
+            }
+            if (b.oneriler.length) {
+                var ul = el('ul', 'nf-toast-istekler');
+                b.oneriler.slice(0, 2).forEach(function (o) {
+                    ul.appendChild(el('li', null, kirp(o, 100)));
+                });
+                if (b.oneriler.length > 2) {
+                    ul.appendChild(el('li', null,
+                        '+' + (b.oneriler.length - 2) + ' istek daha'));
+                }
+                t.appendChild(ul);
+                var onayBtn = el('button', 'nf-toast-btn',
+                    'Onayla (' + b.oneriler.length + ' istek)');
+                onayBtn.onclick = function () { topluOnay(b, t, k, onayBtn); };
+                eylem.appendChild(onayBtn);
+                var incele = el('a', 'nf-toast-btn2', 'Detay →');
+                incele.href = '/kisit-onay/' + encodeURIComponent(b.order_id);
+                eylem.appendChild(incele);
+            } else {
+                var link = el('a', 'nf-toast-btn', 'İncele ve Onayla →');
+                link.href = '/kisit-onay/' + encodeURIComponent(b.order_id);
+                eylem.appendChild(link);
+                eylem.appendChild(el('span', 'nf-toast-ipucu',
+                    b.hazir ? 'onay verilince sipariş otomatik koşulur'
+                            : 'işlenmeye hazır — istek çıkarımı incelemede yapılır'));
+            }
+            t.appendChild(eylem);
+            return t;
+        }
+
+        function topluOnay(b, t, k, btn) {
+            btn.disabled = true;
+            btn.textContent = 'Onaylanıyor…';
+            var p = new URLSearchParams();
+            for (var i = 0; i < b.oneriler.length; i++) p.append('onay_' + i, '1');
+            fetch('/kisit-onay/' + encodeURIComponent(b.order_id), {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrf },
+                body: p
+            }).then(function (r) {
+                if (!r.ok && !r.redirected) throw new Error('HTTP ' + r.status);
+                t.classList.add('nf-onaylandi');
+                t.innerHTML = '';
+                if (b.hazir) {
+                    // Otomatik devam: kosu bitince API'den dusecek, balon o
+                    // zaman kalkar — o ana dek canli durum goster.
+                    t.appendChild(el('div', 'nf-toast-ok',
+                        '✓ Onay alındı — ⚙ sipariş otomatik koşuluyor… '
+                        + 'Sonuç İş Geçmişi\'ne düşecek.'));
+                } else {
+                    t.appendChild(el('div', 'nf-toast-ok',
+                        '✓ Onay alındı — sipariş bu isteklere göre koşulacak.'));
+                    setTimeout(function () { sondur(t, k); }, 4000);
+                }
+                try {
+                    window.dispatchEvent(new CustomEvent('nfNotOnay',
+                        { detail: { order_id: b.order_id } }));
+                } catch (e) {}
+                yokla();
+            }).catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Onaylanamadı — tekrar dene';
+            });
+        }
+
+        function sondur(t, k) {
+            delete acik[k];
+            t.classList.add('nf-gidiyor');
+            setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320);
+        }
+
+        function isle(veri) {
+            var liste = (veri && veri.bildirimler) || [];
+            var kpt = kapatilan();
+            var bekleyen = 0, canli = {}, sira = 0;
+            liste.forEach(function (b) {
+                var aktifKosu = b.kosu === 'kosuyor';
+                // Onaylanmis VE kosusu bitmis/baslamamis -> balon yok;
+                // kosu surerken "onay alindi, kosuluyor" balonu kalir.
+                if (b.onayli && !aktifKosu) return;
+                if (!b.onayli) bekleyen++;
+                var k = anahtar(b);
+                canli[k] = 1;
+                if (kpt[k] || acik[k]) return;
+                var t = baloncukYap(b, k, sira++);
+                acik[k] = t;
+                kok.appendChild(t);
+            });
+            // API'den dusen (islenmis/silinmis) siparislerin balonunu kaldir
+            Object.keys(acik).forEach(function (k) {
+                if (!canli[k]) sondur(acik[k], k);
+            });
+            if (rozet) {
+                rozet.hidden = bekleyen === 0;
+                rozet.textContent = bekleyen;
+            }
+        }
+
+        function yokla() {
+            fetch('/api/not-bildirimleri', { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (v) { if (v) isle(v); })
+                .catch(function () { /* sunucu/oturum yoksa sessiz gec */ });
+        }
+
+        yokla();
+        setInterval(function () { if (!document.hidden) yokla(); }, 15000);
+    })();
+</script>
+
+<script>
+    // ---- P6 kosu ilerleme + hata baloncuklari (hoca istegi 2026-08-18) --
+    // /api/kosu-ilerleme yoklanir: aktif kosular sag-alt kosede TAHMINI
+    // yuzdeli ilerleme cubugu olur; hata kayitlari operator kapatana dek
+    // kalici kirmizi baloncuk olarak kalir ("bosuna beklemesinler").
+    (function () {
+        var kok = document.getElementById('not-baloncuk-kok');
+        if (!kok) return;
+        var LSH = 'nfKosuHataKapatilan';
+        var acik = {};   // anahtar -> {dugum, tip}
+
+        function kapatilan() {
+            try { return JSON.parse(localStorage.getItem(LSH) || '{}'); }
+            catch (e) { return {}; }
+        }
+        function el(etiket, sinif, metin) {
+            var d = document.createElement(etiket);
+            if (sinif) d.className = sinif;
+            if (metin != null) d.textContent = metin;
+            return d;
+        }
+
+        function ilerlemeToast(k) {
+            var anahtar = 'kosu|' + k.order_id;
+            var t = acik[anahtar] && acik[anahtar].dugum;
+            if (!t) {
+                t = el('div', 'nf-toast');
+                var ust = el('div', 'nf-toast-ust');
+                ust.appendChild(el('span', 'nf-toast-nabiz'));
+                ust.appendChild(el('span', 'nf-toast-etiket', 'KOŞU · ' + (k.kaynak || '').toUpperCase()));
+                ust.appendChild(el('span', 'nf-toast-id', k.order_id));
+                t.appendChild(ust);
+                var asama = el('div', 'nf-kosu-asama', '');
+                t.appendChild(asama);
+                var cubukDis = el('div', 'nf-ilerleme-cubuk');
+                cubukDis.appendChild(el('div', 'nf-ilerleme-dolgu'));
+                t.appendChild(cubukDis);
+                var alt = el('div', 'nf-kosu-alt', '');
+                t.appendChild(alt);
+                kok.appendChild(t);
+                acik[anahtar] = { dugum: t, tip: 'kosu' };
+            }
+            var dolgu = t.querySelector('.nf-ilerleme-dolgu');
+            dolgu.style.width = Math.max(2, k.yuzde) + '%';
+            t.querySelector('.nf-kosu-asama').textContent =
+                (k.durum === 'bitti' ? '✓ tamamlandı' : k.asama);
+            t.querySelector('.nf-kosu-alt').textContent =
+                (k.durum === 'bitti')
+                    ? '%100 · ' + k.gecen_s + ' sn sürdü'
+                    : '~%' + k.yuzde + ' (tahmini) · ' + k.gecen_s + ' sn geçti';
+            if (k.durum === 'bitti') dolgu.classList.add('nf-dolgu-tamam');
+        }
+
+        function hataToast(h) {
+            var anahtar = 'hata|' + h.order_id + '|' + Math.round(h.ts);
+            if (kapatilan()[anahtar] || acik[anahtar]) return;
+            var t = el('div', 'nf-toast nf-toast-hata');
+            var ust = el('div', 'nf-toast-ust');
+            ust.appendChild(el('span', 'nf-toast-etiket', 'KOŞU BAŞARISIZ'));
+            ust.appendChild(el('span', 'nf-toast-id', h.order_id));
+            var kapat = el('button', 'nf-toast-kapat', '×');
+            kapat.title = 'Kapat';
+            kapat.onclick = function () {
+                var d = kapatilan(); d[anahtar] = 1;
+                localStorage.setItem(LSH, JSON.stringify(d));
+                t.remove(); delete acik[anahtar];
+            };
+            ust.appendChild(kapat);
+            t.appendChild(ust);
+            t.appendChild(el('div', 'nf-kosu-asama',
+                'Koşu hata verdi (' + h.kod + '). Sipariş bekleyenlerde korunur — '
+                + 'Adet Girişi / Kısıt Onayı sayfasından yeniden deneyebilirsiniz.'));
+            kok.appendChild(t);
+            acik[anahtar] = { dugum: t, tip: 'hata' };
+        }
+
+        function yokla() {
+            fetch('/api/kosu-ilerleme', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (v) {
+                    if (!v) return;
+                    var canli = {};
+                    (v.aktif || []).forEach(function (k) {
+                        canli['kosu|' + k.order_id] = 1;
+                        ilerlemeToast(k);
+                    });
+                    // biten/kaybolan kosu baloncuklarini kaldir
+                    Object.keys(acik).forEach(function (a) {
+                        if (acik[a].tip === 'kosu' && !canli[a]) {
+                            acik[a].dugum.remove(); delete acik[a];
+                        }
+                    });
+                    (v.hatalar || []).forEach(hataToast);
+                }).catch(function () {});
+        }
+        yokla();
+        setInterval(function () { if (!document.hidden) yokla(); }, 4000);
+    })();
+</script>
+
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

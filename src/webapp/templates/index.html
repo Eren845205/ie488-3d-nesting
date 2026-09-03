@@ -1,0 +1,1129 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+
+<div class="hero-section">
+    <h2>3D Nesting &amp; Batch Planning</h2>
+    <p>
+        Additive manufacturing ortamında gelen müşteri siparişlerini öncelik
+        sırasına göre partilere ayırır, 3D nesting ile plaka içinde optimal
+        yerleşimi hesaplar ve parti başına maliyet dökümü çıkarır.
+    </p>
+
+    <!-- Havuz ozeti -->
+    <div class="pool-summary-bar">
+        {% if pool_count > 0 %}
+            <span class="badge badge-green">{{ pool_count }} siparis</span>
+            havuzda &mdash; pipeline havuzu kullanacak.
+            <a href="/siparisler" class="nav-link" style="margin-left: 8px;">Havuzu Yonet</a>
+        {% else %}
+            <span class="badge badge-yellow">Bos havuz</span>
+            &mdash; demo senaryosu kullanilacak.
+            <a href="/siparisler" class="nav-link" style="margin-left: 8px;">Kendi Siparislerinizi Ekleyin</a>
+        {% endif %}
+    </div>
+
+    <form method="POST" action="/run" id="run-form" style="margin-top: 16px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        {% if not pool_is_custom %}
+        <div style="margin-bottom: 12px; font-size: 14px; color: var(--color-text-muted);">
+            <label style="margin-right: 16px; font-weight: 600;">Demo senaryosu:</label>
+            <label style="margin-right: 12px; cursor: pointer;">
+                <input type="radio" name="scenario_type" value="rich"
+                       {% if scenario_type != 'standard' %}checked{% endif %}
+                       onchange="location.href='/?scenario=rich'">
+                Zengin (~20 parca, 3 siparis &mdash; 4 algoritma ayirt eder)
+            </label>
+            <label style="cursor: pointer;">
+                <input type="radio" name="scenario_type" value="standard"
+                       {% if scenario_type == 'standard' %}checked{% endif %}
+                       onchange="location.href='/?scenario=standard'">
+                Standart (5 siparis, orjinal demo)
+            </label>
+        </div>
+        {% endif %}
+        <div style="margin-bottom: 12px; font-size: 14px;">
+            <label style="font-weight: 600;">Nesting modu:</label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="auto"
+                       {% if nesting_mode == 'auto' or not nesting_mode %}checked{% endif %}> Otomatik (akıllı)
+            </label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="nfv"
+                       {% if nesting_mode == 'nfv' %}checked{% endif %}> NFV cavity (kalite)
+            </label>
+            <label style="cursor: pointer; margin-left: 8px;">
+                <input type="radio" name="nesting_mode" value="heightmap"
+                       {% if nesting_mode == 'heightmap' %}checked{% endif %}> Heightmap (hızlı)
+            </label>
+            <div style="margin-top: 4px; color: var(--color-text-muted);">
+                Otomatik: sistem parçalara göre seçer (cavity-zengin &rarr; NFV kalite; kutu/ince-plaka
+                &rarr; hızlı heightmap). Kalite asla düşmez; kararsızsa NFV (kalite-güvenli) seçilir.
+            </div>
+            <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="nfv_quality" value="max"
+                       {% if nfv_quality == 'max' %}checked{% endif %}>
+                <span>Maksimum kalite (daha çok oryantasyon &mdash; en kısa istif, en yavaş; güçlü donanım önerilir)</span>
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary" id="run-btn">
+            Pipeline&#39;i Calistir
+        </button>
+    </form>
+</div>
+
+<!-- Senaryo ozeti -->
+<div class="card">
+    <div class="card-title">Scenario Summary</div>
+
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="info-label">Plate Width</div>
+            <div class="info-value">{{ container.get('width_mm', '-') }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Plate Depth</div>
+            <div class="info-value">{{ container.get('depth_mm', '-') }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Machines</div>
+            <div class="info-value">{{ capacity.get('num_machines', '-') }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Max Volume / Batch</div>
+            <div class="info-value">{{ "{:,.0f}".format(capacity.get('max_volume_per_batch_cm3', 0)) }} cm3</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Batch Duration</div>
+            <div class="info-value">{{ capacity.get('batch_duration_hours', '-') }} h</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Orders</div>
+            <div class="info-value">{{ orders | length }}</div>
+        </div>
+    </div>
+
+    <div class="card-title" style="margin-top: 16px;">Order Pool</div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Order ID</th>
+                    <th>Customer</th>
+                    <th>Deadline</th>
+                    <th>Priority</th>
+                    <th>Parts</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td><strong>{{ order.order_id }}</strong></td>
+                    <td>{{ order.customer }}</td>
+                    <td>{{ order.deadline }}</td>
+                    <td>
+                        {% if order.priority_class == 1 %}
+                            <span class="badge badge-red">Sinif 1</span>
+                        {% else %}
+                            <span class="badge badge-yellow">Sinif {{ order.priority_class }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ order.parts | length }} cesit</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if llm_active %}
+<!-- Otonom Mod Bolumu (yalnizca LLM aktifse goster) -->
+<div class="card" id="otonom-card">
+    <div class="card-title">Mail Intake &mdash; Mailleri Çek ve İşle</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:12px;">
+        Sistem mailleri kendisi ceker, LLM ile siparislere donusturur,
+        onceliklendirir, nesting ve fiyat hesaplar.
+        Her asama agent panosu olarak gosterilir.
+        Teklif taslagi <strong>insan onay kapsisi</strong>ndan gecmedikce gonderilmez.
+    </p>
+    <div style="margin-bottom: 10px; font-size: 14px;">
+        <label style="font-weight: 600;">Nesting modu:</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="auto" checked> Otomatik</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="nfv"> NFV cavity</label>
+        <label style="cursor: pointer; margin-left: 8px;"><input type="radio" name="otonom-nesting-mode" value="heightmap"> Heightmap</label>
+        <span style="color: var(--color-text-muted); margin-left: 6px;">
+            &mdash; Otomatik: sistem seçer (kalite düşmez; cavity-zengin&rarr;NFV, kutu&rarr;hızlı).
+        </span>
+        <label style="margin-top: 8px; margin-left: 24px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="otonom-nfv-quality" value="max">
+            <span>Maksimum kalite (daha çok oryantasyon &mdash; en kısa istif, en yavaş; güçlü donanım)</span>
+        </label>
+    </div>
+    <!-- Not-onay anahtari: notlu siparis onaya dussun mu? (mail + Auto Mode ortak) -->
+    <form method="POST" action="/ayar/not-onay" id="not-onay-form"
+          style="margin: 4px 0 12px; font-size: 13px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <label style="cursor: pointer; display: inline-flex; align-items: flex-start; gap: 8px;">
+            <input type="checkbox" name="not_onay_iste" value="1"
+                   {% if not_onay_acik %}checked{% endif %}
+                   onchange="document.getElementById('not-onay-form').submit()"
+                   style="margin-top: 2px;">
+            <span>
+                <strong>Sipariş notları için onay iste</strong> &mdash; notlu sipariş
+                önce onayınıza düşer, onay verince otomatik koşulur.
+                <span style="color: var(--color-text-muted);">Kapatılırsa sormaz:
+                yalnız yüksek güvenli istekler kendiliğinden uygulanır.</span>
+            </span>
+        </label>
+    </form>
+    <button
+        id="otonom-btn"
+        class="btn btn-primary"
+        onclick="otonomCalistir()"
+        style="margin-bottom:10px;"
+    >
+        Mailleri Cek ve Isle (Otonom)
+    </button>
+    <span id="otonom-spinner" style="display:none; font-size:14px; color:var(--color-text-muted); margin-left:10px;">
+        Otonom zincir calisiyor...
+    </span>
+
+    <!-- Agent Panosu -->
+    <div id="otonom-pano" style="display:none; margin-top:16px;">
+        <!-- Forge durum seridi: canli durum + gecen-sure sayaci (JS doldurur) -->
+        <div id="otonom-durum"></div>
+        <div style="font-weight:600; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-text-muted); margin-bottom:12px;">İşlem Hattı</div>
+        <div id="otonom-asamalar"></div>
+        <div id="otonom-ozet" style="margin-top:16px; display:none;"></div>
+        <div id="otonom-teklif" style="margin-top:16px; display:none;"></div>
+        <div id="otonom-detay-link" style="display:none; margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border);">
+            <a href="/sonuc" class="btn btn-primary" style="text-decoration:none; font-size:15px;">
+                Detaylı Sonucu Gör (nesting tabloları · 3D önizleme · maliyet) →
+            </a>
+            <span style="font-size:12px; color:var(--color-text-muted); margin-left:10px;">
+                Pipeline Çalıştır'daki tam ekranın aynısı — istediğiniz zaman geri dönebilirsiniz.
+            </span>
+        </div>
+    </div>
+    <div id="otonom-hata" style="display:none; color:#c0392b; margin-top:10px; font-size:14px;"></div>
+</div>
+
+<!-- Otomatik Mod karti: sistem kendi kendine periyodik tarar (manuel butonun ALTERNATIFI) -->
+<div class="card" id="otomatik-card">
+    <div class="card-title">Auto Mode &mdash; Sistem Kendi Tarasın</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom:14px;">
+        Açıkken sistem gelen kutusunu <strong>periyodik tarar</strong> ve <strong>yeni</strong>
+        siparişleri otomatik işler (çek &rarr; nesting &rarr; fiyat). Aynı mail iki kez işlenmez;
+        teklif maili otomatik <strong>gönderilmez</strong> &mdash; onay sizde kalır. Tüm sonuçlar
+        <a href="/gecmis" class="nav-link">İş Geçmişi</a>'ne kaydedilir.
+    </p>
+    <div style="display:flex; align-items:center; gap:18px; flex-wrap:wrap;">
+        <label class="forge-switch" title="Otomatik modu aç/kapat">
+            <input type="checkbox" id="otomatik-toggle" onchange="otomatikDegis()">
+            <span class="forge-slider"></span>
+        </label>
+        <span id="otomatik-durum-label" style="font-weight:600; font-size:14px; color:var(--color-text-muted);">Kapalı</span>
+        <label style="font-size:13px; color:var(--color-text-muted); display:inline-flex; align-items:center; gap:6px;">
+            Tarama aralığı:
+            <select id="otomatik-aralik" onchange="otomatikAralikDegis()"
+                    style="padding:5px 9px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:var(--font); font-size:13px;">
+                <option value="120">2 dakika</option>
+                <option value="300" selected>5 dakika</option>
+                <option value="600">10 dakika</option>
+            </select>
+        </label>
+    </div>
+    <div id="otomatik-pano" style="display:none; margin-top:16px;"></div>
+</div>
+{% endif %}
+
+<!-- Manuel yukleme: bilgisayardan STL sec -> tara -> (not varsa) onay -> kos -->
+<div class="card" id="manuel-card">
+    <div class="card-title">Manual Intake &mdash; Bilgisayardan Sipariş Yükle</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-bottom: 12px;">
+        STL dosyalarını (veya klasörü) seçin. Sistem parçaları tarar —
+        yazılı sipariş notlarını <strong>ve parça üstündeki kabartma etiketleri</strong>
+        yapay zekâ ile okur. Not bulursa önce <strong>onayınızı ister</strong>,
+        onay verince nesting'i kendisi koşar.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <input type="file" id="man-dosyalar" accept=".stl,.txt" multiple style="display:none">
+        <input type="file" id="man-klasor" webkitdirectory style="display:none">
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('man-dosyalar').click()">
+            STL Dosyaları Seç
+        </button>
+        <button type="button" class="btn" onclick="document.getElementById('man-klasor').click()">
+            Klasör Seç
+        </button>
+        <span id="man-secim" style="font-size:13px; color:var(--color-text-muted);">Henüz dosya seçilmedi.</span>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+        <input type="text" id="man-musteri" placeholder="Müşteri adı (opsiyonel)"
+               style="flex:0 1 220px; padding:8px; font-family:inherit; font-size:13px;
+                      border:1px solid var(--color-border); border-radius:4px;
+                      background:var(--color-bg); color:var(--color-text);">
+        <textarea id="man-not" rows="2"
+                  placeholder="Sipariş notu (opsiyonel) — örn: 288101642-a2 6 adet - Konumu değişmeyecek."
+                  style="flex:1 1 320px; padding:8px; font-family:inherit; font-size:13px;
+                         border:1px solid var(--color-border); border-radius:4px;
+                         resize:vertical; background:var(--color-bg); color:var(--color-text);"></textarea>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+        <label for="man-mod" style="font-size:12px; color:var(--color-text-muted);">Koşu modu:</label>
+        <select id="man-mod"
+                style="font-size:12px; padding:6px 8px; border:1px solid var(--color-border);
+                       border-radius:4px; background:var(--color-bg); color:var(--color-text);"
+                title="Boş = sistem otomatik seçer. NFV: gerçek geometrik arama — yavaş ama genelde daha kısa istif.">
+            <option value="">Otomatik (önerilen)</option>
+            <option value="nfv">NFV kalite (yavaş, en kısa istif hedefi)</option>
+            <option value="heightmap">Heightmap (hızlı)</option>
+        </select>
+        <button id="man-yukle-btn" class="btn btn-primary" onclick="manuelYukle()" disabled>
+            Yükle ve Tara
+        </button>
+        <span id="man-spinner" style="display:none; font-size:13px; color:var(--color-text-muted);">Yükleniyor ve taranıyor…</span>
+    </div>
+    <div id="man-durum" style="display:none; margin-top:14px; padding:12px 14px; border-radius:8px;
+         border:1px solid var(--color-border); background:var(--color-surface,#fff); font-size:13px;"></div>
+
+    {% if llm_active %}
+    <details style="margin-top:16px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--color-text-muted); font-weight:600;">
+            Alternatif: sipariş mailini metin olarak yapıştır (LLM okur)
+        </summary>
+        <div style="margin-top:10px;">
+            <textarea
+                id="mail-text-input"
+                rows="5"
+                placeholder="Orn: FORD icin 4 adet braket, 80x60x30mm, termin 2026-07-10..."
+                style="width:100%; padding:8px; font-family:inherit; font-size:14px;
+                       border:1px solid var(--color-border); border-radius:4px;
+                       resize:vertical; background:var(--color-bg); color:var(--color-text);"
+            ></textarea>
+            <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button
+                    id="parse-btn"
+                    class="btn btn-primary"
+                    onclick="parseMail()"
+                >Maili Oku (LLM)</button>
+                <span id="parse-spinner" style="display:none; font-size:14px; color:var(--color-text-muted);">
+                    Isleniyor...
+                </span>
+            </div>
+            <div id="parse-result" style="margin-top:14px; display:none;">
+                <div id="parse-hata" style="color:#c0392b; display:none; margin-bottom:8px; font-size:14px;"></div>
+                <div id="parse-uyari" style="color:#e67e22; display:none; margin-bottom:8px; font-size:14px;"></div>
+                <div id="parse-eksik" style="color:#7f8c8d; display:none; margin-bottom:8px; font-size:13px;"></div>
+                <div id="parse-notlar" style="display:none; margin-bottom:8px; padding:8px 10px; border-radius:6px;
+                     background:#fff7ed; border-left:3px solid #dd5b17; font-size:13px;"></div>
+                <div id="parse-siparis-kutu" style="display:none; background:var(--color-bg-alt,#f8f8f8);
+                     border:1px solid var(--color-border); border-radius:4px; padding:12px;">
+                    <strong style="font-size:14px;">Cikan Siparis:</strong>
+                    <pre id="parse-siparis-json" style="margin:8px 0 0; font-size:13px; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+            </div>
+        </div>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Yukleniyor overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Pipeline kosturuluyor, lutfen bekleyin...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('run-form').addEventListener('submit', function() {
+        document.getElementById('loading-overlay').classList.add('active');
+        document.getElementById('run-btn').disabled = true;
+        document.getElementById('run-btn').textContent = 'Kosturuluyor...';
+    });
+
+    {% if llm_active %}
+    function otonomCalistir() {
+        var btn = document.getElementById('otonom-btn');
+        var spinner = document.getElementById('otonom-spinner');
+        var pano = document.getElementById('otonom-pano');
+        var asamalarDiv = document.getElementById('otonom-asamalar');
+        var ozetDiv = document.getElementById('otonom-ozet');
+        var teklifDiv = document.getElementById('otonom-teklif');
+        var hataDiv = document.getElementById('otonom-hata');
+
+        btn.disabled = true;
+        spinner.style.display = 'inline';
+        pano.style.display = 'none';
+        hataDiv.style.display = 'none';
+        asamalarDiv.innerHTML = '';
+        ozetDiv.style.display = 'none';
+        teklifDiv.style.display = 'none';
+        document.getElementById('otonom-detay-link').style.display = 'none';
+
+        var nmEl = document.querySelector('input[name="otonom-nesting-mode"]:checked');
+        var nestingMode = (nmEl && nmEl.value) || 'auto';
+        var nfvQualChk = document.getElementById('otonom-nfv-quality');
+        var nfvQuality = (nfvQualChk && nfvQualChk.checked) ? 'max' : 'fast';
+
+        // Canli durum seridi + gecen-sure sayaci BASLAT — kullanici aninda
+        // geri bildirim alir (mail cekme dakikalar surse bile "calisiyor" gorur).
+        window._otonomT0 = Date.now();
+        pano.style.display = 'block';
+        otonomDurumGuncelle('calisiyor', 'Baslatiliyor');
+        otonomTimerBaslat();
+
+        otonomBaslat();
+
+        // Asenkron: baslat -> job_id -> 2sn'de bir durum yokla. Tarayici
+        // timeout/blok OLMAZ; kullanici CANLI ilerlemeyi (calisiyor/bitti/cokme)
+        // gorur. nestingMode/nfvQuality/btn/spinner/... closure'dan erisilir.
+        function otonomBaslat() {
+            fetch('/otonom/baslat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+                body: JSON.stringify({nesting_mode: nestingMode, nfv_quality: nfvQuality}),
+            })
+            .then(function(resp) { return resp.json().then(function(j) { return {ok: resp.ok, status: resp.status, body: j}; }); })
+            .then(function(r) {
+                if (!r.ok || !r.body.job_id) {
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    pano.style.display = 'block';
+                    hataDiv.textContent = 'Hata: ' + (r.body.hata || ('Otonom baslatilamadi (HTTP ' + r.status + ')'));
+                    hataDiv.style.display = 'block';
+                    return;
+                }
+                pano.style.display = 'block';
+                otonomYokla(r.body.job_id);
+            })
+            .catch(function(err) {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                pano.style.display = 'block';
+                hataDiv.textContent = 'Ag hatasi: ' + err;
+                hataDiv.style.display = 'block';
+            });
+        }
+
+        function otonomYokla(jobId) {
+            var iv = setInterval(function() {
+                fetch('/otonom/durum/' + jobId)
+                .then(function(resp) { return resp.json(); })
+                .then(function(snap) {
+                    if (snap.durum === 'calisiyor') {
+                        otonomRender({asamalar: snap.asamalar || []}, false);  // kismi: canli timeline
+                        return;
+                    }
+                    clearInterval(iv);
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    if (snap.durum === 'hata') {
+                        var d = snap.sonuc || {};
+                        if (!d.hata) { d.hata = snap.hata || 'Otonom is basarisiz oldu.'; }
+                        if (!d.asamalar) { d.asamalar = snap.asamalar || []; }
+                        otonomRender(d, true);
+                    } else {
+                        otonomRender(snap.sonuc || {asamalar: snap.asamalar || []}, true);
+                    }
+                })
+                .catch(function(err) {
+                    clearInterval(iv);
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    hataDiv.textContent = 'Ag hatasi (durum): ' + err;
+                    hataDiv.style.display = 'block';
+                });
+            }, 2000);
+        }
+    }
+
+    // Otonom render — KISMI (bitti=false: yalniz canli timeline) + NIHAI
+    // (bitti=true: + pipeline ozeti + teklif + detayli sonuc linki). Polling
+    // her tikte cagirir; senkron yapidaki render mantigi yeniden kullanilir.
+    function otonomRender(data, bitti) {
+        var asamalarDiv = document.getElementById('otonom-asamalar');
+        var ozetDiv = document.getElementById('otonom-ozet');
+        var teklifDiv = document.getElementById('otonom-teklif');
+        var hataDiv = document.getElementById('otonom-hata');
+        var pano = document.getElementById('otonom-pano');
+        pano.style.display = 'block';
+
+        // Aktif asama = pipeline sirasinda ilk HENUZ TAMAMLANMAMIS asama.
+        var asamalar = data.asamalar || [];
+        var tamamAdlar = asamalar.map(function(a) { return a.ad; });
+        var aktifAsama = null;
+        for (var ai = 0; ai < PIPELINE_ASAMALAR.length; ai++) {
+            if (tamamAdlar.indexOf(PIPELINE_ASAMALAR[ai]) < 0) { aktifAsama = PIPELINE_ASAMALAR[ai]; break; }
+        }
+
+        // Forge durum seridi: calisiyor (aktif asama) | bitti | hata
+        if (data.hata) { otonomDurumGuncelle('hata', null); otonomTimerDur(); }
+        else if (bitti) { otonomDurumGuncelle('bitti', null); otonomTimerDur(); }
+        else { otonomDurumGuncelle('calisiyor', ASAMA_ETIKET[aktifAsama] || aktifAsama || 'Isleniyor'); }
+
+        if (data.hata) {
+            hataDiv.textContent = 'Hata: ' + data.hata;
+            hataDiv.style.display = 'block';
+            document.getElementById('otonom-detay-link').style.display = 'none';
+        } else if (bitti) {
+            // Onay-bekleyen bitis: eski sonuc linkini gosterme (kafa karistirir)
+            document.getElementById('otonom-detay-link').style.display =
+                (data.durum === 'onay_bekliyor') ? 'none' : 'block';
+        }
+
+            // Agent asamalari timeline — detay balonlari dahil
+            var html = '<div class="agent-timeline">';
+            asamalar.forEach(function(asama, idx) {
+                var durum = asama.durum || '';
+                var adName = asama.ad || '';
+                var icon = durum === 'tamam' ? '&#10003;' :
+                           durum === 'taslak_hazir' ? '&#9998;' :
+                           durum === 'llm_yok' ? '&#8212;' :
+                           durum === 'tamam_uyari' ? '&#9888;' :
+                           durum.indexOf('hata') >= 0 ? '&#10007;' : '&#8226;';
+                var color = durum === 'tamam' ? '#16a34a' :
+                            durum === 'taslak_hazir' ? '#2563eb' :
+                            durum === 'llm_yok' ? '#6b7280' :
+                            durum === 'tamam_uyari' ? '#d97706' :
+                            durum.indexOf('hata') >= 0 ? '#dc2626' : '#d97706';
+                var cikti = asama.cikti || '';
+                var detay = asama.detay || null;
+
+                html += '<div class="agent-step" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">';
+                html += '<div class="agent-icon" style="width:30px;height:30px;border-radius:50%;background:' + color + ';color:white;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;font-weight:700;">' + icon + '</div>';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-weight:700;font-size:14px;color:#111827;">' + escapeHtml(adName) + '</div>';
+                html += '<div style="font-size:13px;color:#374151;margin-top:3px;">' + escapeHtml(cikti) + '</div>';
+
+                // Detay balonlari — asama bazli
+                if (detay) {
+                    // Mail-Cek: gelen maillerin listesi
+                    if (adName === 'Mail-Cek' && Array.isArray(detay)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        detay.forEach(function(m) {
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">'
+                                  + '<span style="font-weight:600;">' + escapeHtml(m.gonderen || '') + '</span>'
+                                  + ' &mdash; ' + escapeHtml(m.konu || '')
+                                  + '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    // Parse: siparis sayisi + hatalar
+                    if (adName === 'Parse' && typeof detay === 'object' && !Array.isArray(detay)) {
+                        if (detay.siparis_sayisi !== undefined) {
+                            html += '<div class="agent-detail-balloon" style="margin-top:6px;font-size:12px;color:#374151;">';
+                            html += '<span style="color:#15803d;font-weight:600;">' + detay.siparis_sayisi + ' siparis cikarildi</span>';
+                            if (detay.hatalar && detay.hatalar.length > 0) {
+                                html += ' &mdash; <span style="color:#b45309;">' + detay.hatalar.length + ' parse basarisiz</span>';
+                            }
+                            html += '</div>';
+                        }
+                    }
+                    // Onceliklendir: siralama tablosu
+                    if (adName === 'Onceliklendir' && detay.siralama && Array.isArray(detay.siralama)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        html += '<div style="font-size:11px;color:#6b7280;margin-bottom:3px;font-style:italic;">Sistem terminlere ve oncelik sinifina gore siraladi:</div>';
+                        detay.siralama.forEach(function(s) {
+                            var cls = s.priority_class === 1
+                                ? 'background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;'
+                                : 'background:#fefce8;color:#713f12;border:1px solid #fde68a;';
+                            html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">';
+                            html += '<span style="font-size:11px;font-weight:700;color:#6b7280;width:18px;">' + s.sira + '.</span>';
+                            html += '<span style="font-size:12px;font-weight:600;color:#111827;">' + escapeHtml(s.customer || '') + '</span>';
+                            html += '<span style="font-size:11px;color:#6b7280;">' + escapeHtml(String(s.deadline || '')) + '</span>';
+                            html += '<span style="font-size:10px;padding:1px 6px;border-radius:9999px;' + cls + '">Sinif ' + s.priority_class + '</span>';
+                            html += '</div>';
+                        });
+                        if (detay.uyari_sayisi > 0) {
+                            html += '<div style="font-size:11px;color:#b45309;margin-top:3px;">' + detay.uyari_sayisi + ' termin asimi uyarisi</div>';
+                        }
+                        html += '</div>';
+                    }
+                    // Nesting: parti bazli ozet
+                    if (adName === 'Nesting' && detay.batches && Array.isArray(detay.batches)) {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        detay.batches.forEach(function(b) {
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                            html += '<span style="font-weight:600;">' + escapeHtml(b.batch_id || '') + '</span>';
+                            html += ' — ' + escapeHtml(b.customer || '');
+                            if (b.height_mm) {
+                                html += ' &nbsp;|&nbsp; <span style="color:#1d4ed8;">' + b.height_mm.toFixed(1) + ' mm</span>';
+                            }
+                            if (b.density) {
+                                html += ' &nbsp;|&nbsp; doluluk ' + (b.density * 100).toFixed(1) + '%';
+                            }
+                            if (b.n_parts) {
+                                html += ' &nbsp;|&nbsp; ' + b.n_parts + ' parca';
+                            }
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    // Fiyat: parti fiyatlari
+                    if (adName === 'Fiyat' && detay.parti_fiyatlari && typeof detay.parti_fiyatlari === 'object') {
+                        html += '<div class="agent-detail-balloon" style="margin-top:6px;">';
+                        Object.keys(detay.parti_fiyatlari).forEach(function(bid) {
+                            var pr = detay.parti_fiyatlari[bid] || {};
+                            html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                            html += '<span style="font-weight:600;">' + escapeHtml(bid) + '</span>';
+                            html += ' &mdash; <span style="color:#15803d;font-weight:600;">' + (pr.total_price || 0).toFixed(2) + ' USD</span>';
+                            html += '</div>';
+                        });
+                        if (detay.toplam_fiyat !== undefined) {
+                            html += '<div style="font-size:13px;font-weight:700;color:#15803d;margin-top:4px;border-top:1px solid #d1fae5;padding-top:4px;">Toplam: ' + detay.toplam_fiyat.toFixed(2) + ' USD</div>';
+                        }
+                        html += '</div>';
+                    }
+                    // Acikla: aciklama balonu
+                    if (adName === 'Acikla' && detay.aciklama_md) {
+                        html += '<div class="agent-detail-balloon agent-explain-balloon" style="margin-top:6px;background:#f0f4ff;border-left:3px solid #6366f1;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                        html += '<div style="font-size:11px;font-weight:600;color:#4338ca;margin-bottom:3px;">Neden bu algoritma?</div>';
+                        html += '<div style="font-size:12px;color:#374151;line-height:1.5;">' + escapeHtml(detay.aciklama_md) + '</div>';
+                        html += '</div>';
+                    }
+                    // Not-Onayi: siparis notu onay kapisi balonu
+                    if (adName === 'Not-Onayi') {
+                        html += '<div class="agent-detail-balloon" data-notonay="1" style="margin-top:6px;background:#fff7ed;border-left:3px solid #dd5b17;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                        html += '<div style="font-size:11px;font-weight:600;color:#9a3412;margin-bottom:3px;">Insan onay kapisi &mdash; onay verilince siparis OTOMATIK kosulur</div>';
+                        if (detay && detay.bekleyenler) {
+                            detay.bekleyenler.forEach(function(b) {
+                                html += '<div style="font-size:12px;color:#374151;padding:2px 0;">';
+                                html += '<span style="font-weight:600;">' + escapeHtml(b.order_id || '') + '</span>';
+                                (b.notlar || []).forEach(function(n) {
+                                    html += '<div style="font-style:italic;color:#6b7280;padding-left:10px;">&ldquo;' + escapeHtml(n) + '&rdquo;</div>';
+                                });
+                                html += '</div>';
+                            });
+                        }
+                        html += '<a href="/kisit-onay" style="font-size:12px;font-weight:600;color:#dd5b17;">Onay ekranini ac &rarr;</a>';
+                        html += '<span id="notonay-durum" style="font-size:12px;font-weight:600;color:#15803d;margin-left:10px;"></span>';
+                        html += '</div>';
+                    }
+                    // Teklif-Taslagi: onay kapisi balonu
+                    if (adName === 'Teklif-Taslagi') {
+                        html += '<div style="font-size:11px;color:#9ca3af;margin-top:3px;font-style:italic;">Insan onay kapisi &mdash; otomatik gonderilmez</div>';
+                        if (detay && detay.taslak) {
+                            html += '<div class="agent-detail-balloon" style="margin-top:6px;background:#f0fdf4;border-left:3px solid #22c55e;padding:8px 10px;border-radius:0 6px 6px 0;">';
+                            html += '<div style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:3px;">Taslak onizleme (gonderilmedi)</div>';
+                            html += '<div style="font-size:11px;color:#374151;line-height:1.5;max-height:80px;overflow:hidden;">' + escapeHtml(detay.taslak.substring(0, 300)) + (detay.taslak.length > 300 ? '...' : '') + '</div>';
+                            html += '</div>';
+                        }
+                    }
+                }
+
+                // Watcher bulgulari — severity rozeti + anlatim balonu
+                var watcherData = asama.watcher || null;
+                if (watcherData && watcherData.bulgular && watcherData.bulgular.length > 0) {
+                    var bulgular = watcherData.bulgular;
+                    // En yuksek severity belirle
+                    var maxSev = 'low';
+                    bulgular.forEach(function(b) {
+                        if (b.severity === 'high') maxSev = 'high';
+                        else if (b.severity === 'med' && maxSev !== 'high') maxSev = 'med';
+                    });
+                    var sevColor = maxSev === 'high' ? '#dc2626' : maxSev === 'med' ? '#d97706' : '#6b7280';
+                    var sevBg    = maxSev === 'high' ? '#fef2f2' : maxSev === 'med' ? '#fffbeb' : '#f3f4f6';
+                    var sevLabel = maxSev === 'high' ? 'YUKSEK' : maxSev === 'med' ? 'ORTA' : 'DUSUK';
+                    html += '<div style="margin-top:5px;display:flex;align-items:center;gap:6px;">';
+                    html += '<span style="font-size:10px;padding:1px 7px;border-radius:9999px;background:' + sevBg + ';color:' + sevColor + ';border:1px solid ' + sevColor + ';font-weight:700;">DENETCI: ' + sevLabel + '</span>';
+                    html += '<span style="font-size:11px;color:#6b7280;">' + bulgular.length + ' bulgu</span>';
+                    html += '</div>';
+                    // LLM anlatim balonu veya ham bulgu
+                    var anlatim = watcherData.anlatim;
+                    if (anlatim && typeof anlatim === 'object' && anlatim.anlatim_md) {
+                        var hamRozet = anlatim.kaynak === 'ham_bulgu'
+                            ? '<span style="font-size:10px;color:#9ca3af;margin-left:4px;">(dil katmani kapali)</span>'
+                            : '';
+                        html += '<div style="margin-top:4px;background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:6px 8px;border-radius:0 4px 4px 0;font-size:11px;color:#374151;line-height:1.5;">';
+                        html += escapeHtml(anlatim.anlatim_md) + hamRozet;
+                        html += '</div>';
+                    }
+                }
+
+                html += '</div></div>';
+            });
+            // CANLI "isleniyor" dugumu — sicak metal nabiz (yalniz is surerken)
+            if (!bitti && aktifAsama) {
+                html += '<div class="agent-step is-active" style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">';
+                html += '<div class="agent-icon is-active" style="width:30px;height:30px;border-radius:50%;color:white;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;font-weight:700;">&#9881;</div>';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-weight:700;font-size:14px;">' + escapeHtml(aktifAsama) + '</div>';
+                html += '<div class="agent-proc">' + escapeHtml(ASAMA_ETIKET[aktifAsama] || 'Isleniyor') + '</div>';
+                html += '</div></div>';
+            }
+            html += '</div>';
+            asamalarDiv.innerHTML = html;
+
+            if (!bitti) { return; }  // kismi ilerleme: ozet/teklif/detay henuz yok
+
+            // Pipeline ozet
+            if (data.pipeline_ozet || data.toplam_fiyat !== undefined) {
+                var ozet = data.pipeline_ozet || {};
+                var ozetHtml = '<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:6px;">';
+                ozetHtml += '<strong style="font-size:14px;">Pipeline Ozeti</strong><br>';
+                if (data.toplam_fiyat !== undefined) {
+                    ozetHtml += '<span style="font-size:20px;font-weight:800;color:#15803d;">' + data.toplam_fiyat.toFixed(2) + ' USD</span> &mdash; toplam fiyat onerisi<br>';
+                }
+                if (ozet.siparis_sayisi !== undefined) {
+                    ozetHtml += ozet.siparis_sayisi + ' siparis | ' + ozet.parti_sayisi + ' parti | ' + ozet.uyari_sayisi + ' uyari<br>';
+                }
+                if (ozet.elapsed_sec !== undefined) {
+                    ozetHtml += '<span style="font-size:12px;color:#6b7280;">Sure: ' + ozet.elapsed_sec.toFixed(2) + 's</span>';
+                }
+                ozetHtml += '</div>';
+                ozetDiv.innerHTML = ozetHtml;
+                ozetDiv.style.display = 'block';
+            }
+
+            // Aciklama + teklif taslagi
+            if (data.aciklama_md || data.teklif_taslagi) {
+                var tkHtml = '';
+                if (data.aciklama_md) {
+                    tkHtml += '<div style="background:#f0f4ff;border-left:4px solid #6366f1;padding:12px 16px;border-radius:6px;margin-bottom:10px;">';
+                    tkHtml += '<strong style="font-size:13px;color:#4338ca;">Algoritma Aciklamasi (LLM)</strong><br>';
+                    tkHtml += '<div style="font-size:14px;margin-top:6px;">' + escapeHtml(data.aciklama_md) + '</div>';
+                    tkHtml += '</div>';
+                }
+                if (data.teklif_taslagi) {
+                    // taslak metnini closure'da sakla — buton handler'lari erisebilsin
+                    window._otonomTaslakMetni = data.teklif_taslagi;
+
+                    tkHtml += '<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px 16px;border-radius:6px;">';
+                    tkHtml += '<strong style="font-size:13px;color:#15803d;">Teklif Taslagi</strong> ';
+                    tkHtml += '<span style="font-size:11px;color:#6b7280;font-style:italic;">(insan onay kapsisi — gonderilmedi)</span><br>';
+                    tkHtml += '<div style="font-size:13px;margin-top:6px;white-space:pre-wrap;">' + escapeHtml(data.teklif_taslagi) + '</div>';
+                    // Aksiyon cubugu
+                    tkHtml += '<div id="otonom-aksiyon-bar" style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
+                    tkHtml += '<button id="otonom-onayla-btn" class="btn btn-primary" onclick="otonomTaslakOnayla()" style="font-size:13px;padding:6px 14px;">Onayla ve Gonder</button>';
+                    tkHtml += '<button class="btn" onclick="otonomTaslakKopyala()" style="font-size:13px;padding:6px 14px;background:#e5e7eb;color:#111827;border:1px solid #d1d5db;">Panoya Kopyala</button>';
+                    tkHtml += '<span id="otonom-aksiyon-durum" style="font-size:12px;color:#374151;"></span>';
+                    tkHtml += '</div>';
+                    tkHtml += '</div>';
+                }
+                teklifDiv.innerHTML = tkHtml;
+                teklifDiv.style.display = 'block';
+            }
+    }
+
+    // Pipeline asama sirasi + insan-okur etiketler (aktif asama + durum seridi)
+    var PIPELINE_ASAMALAR = ['Mail-Cek', 'Parse', 'Onceliklendir', 'Nesting', 'Fiyat', 'Acikla', 'Teklif-Taslagi'];
+    var ASAMA_ETIKET = {
+        'Mail-Cek': 'Mailler cekiliyor',
+        'Parse': 'Siparisler ayristiriliyor',
+        'Onceliklendir': 'Onceliklendiriliyor',
+        'Nesting': 'Yerlesim (nesting) hesaplaniyor',
+        'Fiyat': 'Fiyatlandiriliyor',
+        'Acikla': 'Aciklama uretiliyor',
+        'Teklif-Taslagi': 'Teklif taslagi yaziliyor'
+    };
+
+    function otonomFmtSure(ms) {
+        var s = Math.max(0, Math.floor(ms / 1000));
+        var dk = Math.floor(s / 60), sn = s % 60;
+        return dk + ':' + (sn < 10 ? '0' : '') + sn;
+    }
+    function otonomTimerBaslat() {
+        otonomTimerDur();
+        window._otonomTimerIv = setInterval(function() {
+            var el = document.getElementById('otonom-timer-val');
+            if (el && window._otonomT0) { el.textContent = otonomFmtSure(Date.now() - window._otonomT0); }
+        }, 1000);
+    }
+    function otonomTimerDur() {
+        if (window._otonomTimerIv) { clearInterval(window._otonomTimerIv); window._otonomTimerIv = null; }
+    }
+    // Forge durum seridi: tek satirda durum (nokta nabzar) + aktif asama + canli sayac
+    function otonomDurumGuncelle(durum, aktifMetin) {
+        var el = document.getElementById('otonom-durum');
+        if (!el) { return; }
+        var sure = window._otonomT0 ? otonomFmtSure(Date.now() - window._otonomT0) : '0:00';
+        var cls, label, timerLbl;
+        if (durum === 'bitti') { cls = 'is-bitti'; label = 'Tamamlandi'; timerLbl = 'Toplam sure'; }
+        else if (durum === 'hata') { cls = 'is-hata'; label = 'Durdu'; timerLbl = 'Durma ani'; }
+        else { cls = 'is-calisiyor'; label = 'Calisiyor'; timerLbl = 'Gecen sure'; }
+        var stage = aktifMetin
+            ? '<span class="forge-status-stage">&rsaquo; <b>' + escapeHtml(aktifMetin) + '</b></span>' : '';
+        el.innerHTML =
+            '<div class="forge-status ' + cls + '">' +
+                '<span class="forge-status-dot"></span>' +
+                '<span class="forge-status-label">' + label + '</span>' +
+                stage +
+                '<span class="forge-timer-wrap">' +
+                    '<span class="forge-timer" id="otonom-timer-val">' + sure + '</span>' +
+                    '<span class="forge-timer-label">' + timerLbl + '</span>' +
+                '</span>' +
+            '</div>';
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(String(text)));
+        return div.innerHTML;
+    }
+
+    // ---- Otomatik Mod (arka-plan poller: sistem kendi tarar) ----
+    var _otomatikIv = null;
+    function otomatikDegis() {
+        var on = document.getElementById('otomatik-toggle').checked;
+        var aralik = parseInt(document.getElementById('otomatik-aralik').value, 10) || 300;
+        if (on) {
+            fetch('/poll/baslat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+                body: JSON.stringify({interval_s: aralik})
+            }).then(function(r){ return r.json(); }).then(function(d){
+                otomatikDurumGuncelle(d.durum); otomatikYoklaBaslat();
+            }).catch(function(){});
+        } else {
+            fetch('/poll/durdur', {
+                method: 'POST', headers: {'X-CSRF-Token': '{{ csrf_token }}'}
+            }).then(function(r){ return r.json(); }).then(function(d){
+                otomatikDurumGuncelle(d.durum); otomatikYoklaDur();
+            }).catch(function(){});
+        }
+    }
+    function otomatikAralikDegis() {
+        // Acikken aralik degisirse yeniden baslat (yeni interval bir sonraki turda)
+        if (document.getElementById('otomatik-toggle').checked) { otomatikDegis(); }
+    }
+    function otomatikYoklaBaslat() {
+        otomatikYoklaDur();
+        _otomatikIv = setInterval(function(){
+            fetch('/poll/durum').then(function(r){ return r.json(); })
+                .then(otomatikDurumGuncelle).catch(function(){});
+        }, 5000);
+    }
+    function otomatikYoklaDur() { if (_otomatikIv) { clearInterval(_otomatikIv); _otomatikIv = null; } }
+    function otomatikDurumGuncelle(durum) {
+        if (!durum) { return; }
+        var lbl = document.getElementById('otomatik-durum-label');
+        var pano = document.getElementById('otomatik-pano');
+        document.getElementById('otomatik-toggle').checked = !!durum.enabled;
+        lbl.textContent = durum.enabled ? 'Açık' : 'Kapalı';
+        lbl.style.color = durum.enabled ? 'var(--accent-ink)' : 'var(--color-text-muted)';
+        if (durum.enabled) {
+            var dk = Math.round((durum.interval_s || 0) / 60);
+            var son = durum.last_poll_ts
+                ? new Date(durum.last_poll_ts * 1000).toLocaleTimeString('tr-TR') : 'henüz yok';
+            var bilgi = 'her ' + dk + ' dk · son tarama: ' + son + ' · ' +
+                        (durum.total_processed || 0) + ' iş işlendi · ' + (durum.runs || 0) + ' tarama';
+            var html = '<div class="forge-status is-calisiyor" style="margin-bottom:0;">' +
+                '<span class="forge-status-dot"></span>' +
+                '<span class="forge-status-label">Gözcü aktif</span>' +
+                '<span class="forge-status-stage">' + escapeHtml(bilgi) + '</span>';
+            if (durum.inflight && durum.inflight_detail) {
+                html += '<span style="color:var(--accent-ink); font-size:12px; font-weight:600;">⚙ ' +
+                        escapeHtml(durum.inflight_detail) + '</span>';
+            }
+            if (durum.last_error) {
+                html += '<span style="color:var(--err); font-size:12px;">hata: ' + escapeHtml(durum.last_error) + '</span>';
+            }
+            var kayitlar = durum.last_gecmis_kayitlar || [];
+            if (!kayitlar.length && durum.last_gecmis_id) {
+                kayitlar = [{id: durum.last_gecmis_id, musteri: null, order_ids: []}];
+            }
+            if (kayitlar.length) {
+                // Son kosunun kalici detay sayfalari — coklu sipariste her
+                // kayit ayri link (nesting/fiyat/3D/teklif siparis-bazli).
+                var linkStil = 'font-size:12px; font-weight:700; color:var(--accent-ink); ' +
+                        'text-decoration:none; border:1px solid var(--accent); background:var(--accent-soft); ' +
+                        'border-radius:6px; padding:4px 10px; white-space:nowrap;';
+                html += '<span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">';
+                kayitlar.forEach(function (kk, ki) {
+                    var etiket;
+                    if (kayitlar.length === 1) {
+                        etiket = 'Son işin detaylarını gör';
+                    } else {
+                        etiket = (kk.order_ids && kk.order_ids.length)
+                            ? kk.order_ids.join(', ')
+                            : (kk.musteri || ('İş ' + (ki + 1)));
+                        etiket += ' detayları';
+                    }
+                    html += '<a href="/gecmis/' + encodeURIComponent(kk.id) + '" style="' + linkStil + '">' +
+                            escapeHtml(etiket) + ' &rarr;</a>';
+                });
+                html += '</span>';
+            }
+            html += '</div>';
+            pano.innerHTML = html;
+            pano.style.display = 'block';
+        } else {
+            pano.style.display = 'none';
+        }
+    }
+    // Sayfa yuklenince mevcut poller durumunu yansit (acik kalmissa toggle ON)
+    fetch('/poll/durum').then(function(r){ return r.json(); }).then(function(d){
+        otomatikDurumGuncelle(d); if (d && d.enabled) { otomatikYoklaBaslat(); }
+    }).catch(function(){});
+    {% endif %}
+
+    {% if llm_active %}
+    function parseMail() {
+        var mailText = document.getElementById('mail-text-input').value.trim();
+        if (!mailText) {
+            alert('Lutfen bir siparis metni yapistirin.');
+            return;
+        }
+
+        var btn = document.getElementById('parse-btn');
+        var spinner = document.getElementById('parse-spinner');
+        var resultDiv = document.getElementById('parse-result');
+        var hataDiv = document.getElementById('parse-hata');
+        var uyariDiv = document.getElementById('parse-uyari');
+        var eksikDiv = document.getElementById('parse-eksik');
+        var siparisKutu = document.getElementById('parse-siparis-kutu');
+        var siparisJson = document.getElementById('parse-siparis-json');
+
+        btn.disabled = true;
+        spinner.style.display = 'inline';
+        resultDiv.style.display = 'none';
+        hataDiv.style.display = 'none';
+        uyariDiv.style.display = 'none';
+        eksikDiv.style.display = 'none';
+        siparisKutu.style.display = 'none';
+
+        fetch('/parse', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+            body: JSON.stringify({mail_text: mailText}),
+        })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            resultDiv.style.display = 'block';
+
+            if (data.status === 'ok') {
+                if (data.injection_suphesi) {
+                    uyariDiv.textContent = 'Uyari: Girdide guvenlik suptesi tespit edildi. Ciktiyi dikkatlice kontrol edin.';
+                    uyariDiv.style.display = 'block';
+                }
+                if (data.eksik_alanlar && data.eksik_alanlar.length > 0) {
+                    eksikDiv.textContent = 'Eksik alanlar: ' + data.eksik_alanlar.join(', ');
+                    eksikDiv.style.display = 'block';
+                }
+                // Not taramasi (Kapi-0): yapistirilan metinde siparis notu var mi?
+                var notlarDiv = document.getElementById('parse-notlar');
+                if (notlarDiv && data.not_adaylari && data.not_adaylari.length > 0) {
+                    var nHtml = '<strong>&#128221; ' + data.not_adaylari.length + ' sipariş notu tespit edildi:</strong>';
+                    data.not_adaylari.forEach(function(n) {
+                        nHtml += '<div style="font-style:italic; padding-left:10px;">&ldquo;' + escapeHtml(n.satir) + '&rdquo; <span style="color:#9a3412;">(' + escapeHtml(n.kaynak) + ')</span></div>';
+                    });
+                    nHtml += '<div style="font-size:12px; color:#6b7280; margin-top:4px;">Not-kısıt onayı, sipariş dosyalarla (STL) yüklendiğinde uygulanır.</div>';
+                    notlarDiv.innerHTML = nHtml;
+                    notlarDiv.style.display = 'block';
+                } else if (notlarDiv) {
+                    notlarDiv.style.display = 'none';
+                }
+                siparisJson.textContent = JSON.stringify(data.siparis, null, 2);
+                siparisKutu.style.display = 'block';
+            } else if (data.status === 'llm_yok') {
+                hataDiv.textContent = data.mesaj || 'LLM aktif degil. Elle giris yapiniz.';
+                hataDiv.style.display = 'block';
+            } else {
+                hataDiv.textContent = (data.mesaj || 'Parse hatasi. Lutfen tekrar deneyin veya elle girin.');
+                hataDiv.style.display = 'block';
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            resultDiv.style.display = 'block';
+            hataDiv.textContent = 'Ag hatasi: ' + err;
+            hataDiv.style.display = 'block';
+        });
+    }
+
+    // ---- Manuel yukleme: dosya sec -> tara -> (not varsa) onay -> kos ----
+    var manDosyalar = [];
+
+    function manDosyaTopla(fileList) {
+        // Klasor seciminde .stl/.txt disindakiler ayiklanir.
+        manDosyalar = [];
+        for (var i = 0; i < fileList.length; i++) {
+            var f = fileList[i];
+            var ad = (f.name || '').toLowerCase();
+            if (ad.endsWith('.stl') || ad.endsWith('.txt')) manDosyalar.push(f);
+        }
+        var stlSay = manDosyalar.filter(function (f) {
+            return f.name.toLowerCase().endsWith('.stl');
+        }).length;
+        var secim = document.getElementById('man-secim');
+        var btn = document.getElementById('man-yukle-btn');
+        if (stlSay > 0) {
+            secim.textContent = stlSay + ' STL secildi'
+                + (manDosyalar.length > stlSay ? ' (+not dosyasi)' : '') + '.';
+            btn.disabled = false;
+        } else {
+            secim.textContent = 'Secimde .stl dosyasi yok.';
+            btn.disabled = true;
+        }
+    }
+
+    document.getElementById('man-dosyalar').addEventListener('change', function () {
+        manDosyaTopla(this.files);
+    });
+    document.getElementById('man-klasor').addEventListener('change', function () {
+        manDosyaTopla(this.files);
+    });
+
+    function manDurumGoster(html) {
+        var d = document.getElementById('man-durum');
+        d.innerHTML = html;
+        d.style.display = 'block';
+    }
+
+    var manPollTimer = null;
+    function manKosuIzle(orderId, onayBekliyor) {
+        if (manPollTimer) clearInterval(manPollTimer);
+        manPollTimer = setInterval(function () {
+            fetch('/api/kosu-durum/' + encodeURIComponent(orderId))
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (v) {
+                    if (!v) return;
+                    if (v.kosu === 'kosuyor') {
+                        manDurumGoster('<strong style="color:#15803d;">✓ Onay alındı</strong> · '
+                            + '<span style="color:#b45309;">⚙ İşleniyor — nesting yapılıyor…</span> '
+                            + '<span style="color:#6b7280;">(süre parça sayısına göre dakikalar alabilir)</span>');
+                    } else if (v.kosu === 'bitti') {
+                        clearInterval(manPollTimer);
+                        manDurumGoster('<strong style="color:#15803d;">✓ Tamamlandı.</strong> '
+                            + '<a href="/sonuc" class="btn btn-primary" style="font-size:12px; padding:5px 12px; margin-left:8px;">Sonucu Gör →</a> '
+                            + '<span style="color:#6b7280;">İş Geçmişi\'ne de kaydedildi.</span>');
+                    } else if (v.kosu && v.kosu.indexOf('hata') === 0) {
+                        clearInterval(manPollTimer);
+                        manDurumGoster('<strong style="color:#c0392b;">Koşu hata verdi.</strong> '
+                            + '<a href="/adet-gir">Adet Girişi</a>\'nden yeniden deneyebilirsiniz.');
+                    }
+                }).catch(function () {});
+        }, 4000);
+    }
+
+    function manuelYukle() {
+        var stlVar = manDosyalar.some(function (f) {
+            return f.name.toLowerCase().endsWith('.stl');
+        });
+        if (!stlVar) return;
+        var btn = document.getElementById('man-yukle-btn');
+        var spin = document.getElementById('man-spinner');
+        btn.disabled = true;
+        spin.style.display = 'inline';
+        manDurumGoster('<span style="color:#b45309;">⚙ Yüklendi, taranıyor — yazılı notlar + parça üstü kabartma etiketler okunuyor…</span> <span style="color:#6b7280;">(büyük setlerde birkaç dakika sürebilir; sayfayı kapatmayın)</span>');
+
+        var fd = new FormData();
+        manDosyalar.forEach(function (f) { fd.append('stl_dosyalar', f, f.name); });
+        fd.append('not_metni', document.getElementById('man-not').value || '');
+        fd.append('musteri', document.getElementById('man-musteri').value || '');
+        fd.append('kosu_modu', (document.getElementById('man-mod') || {}).value || '');
+
+        fetch('/manuel-yukle', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': '{{ csrf_token }}' },
+            body: fd
+        })
+        .then(function (r) {
+            // 413 vb. JSON olmayan yanitlar okunabilir mesaja cevrilir
+            if (r.status === 413) {
+                throw new Error('Dosyalar sunucu yükleme sınırını aşıyor. Sunucuyu güncel sürümle yeniden başlatıp tekrar deneyin.');
+            }
+            return r.json().catch(function () {
+                throw new Error('Sunucu beklenmeyen yanıt verdi (HTTP ' + r.status + ').');
+            });
+        })
+        .then(function (data) {
+            btn.disabled = false;
+            spin.style.display = 'none';
+            if (data.durum === 'onay_bekliyor') {
+                var h = '<strong>&#128221; ' + data.notlar.length + ' sipariş notu bulundu:</strong>';
+                data.notlar.forEach(function (n) {
+                    h += '<div style="font-style:italic; padding-left:10px;">&ldquo;' + escapeHtml(n.satir) + '&rdquo; <span style="color:#9a3412;">(' + escapeHtml(n.kaynak) + ')</span></div>';
+                });
+                h += '<div style="margin-top:8px;"><strong style="color:#b45309;">Onay bekleniyor</strong> — '
+                   + '<a href="/kisit-onay/' + encodeURIComponent(data.order_id) + '" class="btn btn-primary" style="font-size:12px; padding:5px 12px;">İncele ve Onayla →</a> '
+                   + '<span style="color:#6b7280;">Onay verdiğinizde sipariş otomatik koşulacak.</span></div>';
+                manDurumGoster(h);
+                manKosuIzle(data.order_id, true);
+            } else if (data.durum === 'kosuyor') {
+                manDurumGoster('Not bulunmadı · <span style="color:#b45309;">⚙ İşleniyor — nesting yapılıyor…</span>');
+                manKosuIzle(data.order_id, false);
+            } else {
+                manDurumGoster('<strong style="color:#c0392b;">Hata:</strong> ' + escapeHtml(data.mesaj || 'Yükleme başarısız.'));
+            }
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            spin.style.display = 'none';
+            manDurumGoster('<strong style="color:#c0392b;">Ağ hatası:</strong> ' + escapeHtml(String(err)));
+        });
+    }
+
+    // Baloncuktan onay verildiginde otonom panodaki Not-Onayi adimini guncelle
+    window.addEventListener('nfNotOnay', function (e) {
+        var el = document.getElementById('notonay-durum');
+        if (el) el.textContent = '✓ Onay alındı — sipariş koşuluyor…';
+    });
+
+    function otonomTaslakOnayla() {
+        var btn = document.getElementById('otonom-onayla-btn');
+        var durum = document.getElementById('otonom-aksiyon-durum');
+        if (!btn || btn.disabled) { return; }
+        btn.disabled = true;
+        btn.textContent = 'Onaylandi';
+        btn.style.background = '#16a34a';
+        btn.style.borderColor = '#16a34a';
+        if (durum) {
+            durum.textContent = '✓ Taslak onaylandi — gonderim kuyruğuna alindi (demo: gercek e-posta gonderilmez).';
+            durum.style.color = '#15803d';
+        }
+    }
+
+    function otonomTaslakKopyala() {
+        var metin = window._otonomTaslakMetni || '';
+        var durum = document.getElementById('otonom-aksiyon-durum');
+        if (!metin) {
+            if (durum) { durum.textContent = 'Kopyalanacak taslak yok.'; }
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(function() {
+                if (durum) {
+                    durum.textContent = 'Panoya kopyalandi.';
+                    durum.style.color = '#374151';
+                }
+            }).catch(function() {
+                otonomTaslakKopyalaFallback(metin, durum);
+            });
+        } else {
+            otonomTaslakKopyalaFallback(metin, durum);
+        }
+    }
+
+    function otonomTaslakKopyalaFallback(metin, durum) {
+        var ta = document.createElement('textarea');
+        ta.value = metin;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand('copy');
+            if (durum) {
+                durum.textContent = 'Panoya kopyalandi.';
+                durum.style.color = '#374151';
+            }
+        } catch (e) {
+            if (durum) {
+                durum.textContent = 'Kopyalama basarisiz — taslagi kendiniz secip kopyalayin.';
+                durum.style.color = '#c0392b';
+            }
+        }
+        document.body.removeChild(ta);
+    }
+    {% endif %}
+</script>
+{% endblock %}

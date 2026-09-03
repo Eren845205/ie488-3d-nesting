@@ -1,0 +1,180 @@
+{
+ "setler": {
+  "B001": {
+   "armlar": {
+    "nfv_ham@0.5": {
+     "legal": null,
+     "invalid": "85 kilit",
+     "sure_dk": null,
+     "_meta": {}
+    }
+   },
+   "kural_arm": null,
+   "kural_deger": null,
+   "regret": null,
+   "en_iyi": null,
+   "kotumser_ceza": false
+  },
+  "plan3": {
+   "armlar": {
+    "heightmap": {
+     "legal": 735.0,
+     "invalid": null,
+     "sure_dk": 44.6
+    },
+    "nfv_ham@2.5": {
+     "legal": 618.1,
+     "invalid": null,
+     "sure_dk": 13.1
+    },
+    "nfv_ham@2": {
+     "legal": 598.5,
+     "invalid": null,
+     "sure_dk": 31.5
+    },
+    "nfv_ham@1.75": {
+     "legal": 674.2,
+     "invalid": null,
+     "sure_dk": 62.7
+    }
+   },
+   "kural_arm": "nfv_ham@2",
+   "kural_deger": 598.5,
+   "regret": 0.0,
+   "en_iyi": 598.5,
+   "kotumser_ceza": false
+  },
+  "plan1": {
+   "armlar": {
+    "heightmap": {
+     "legal": 141.0,
+     "invalid": null,
+     "sure_dk": null
+    },
+    "nfv_ham@0.6": {
+     "legal": 333.0,
+     "invalid": null,
+     "sure_dk": 2.6
+    }
+   },
+   "kural_arm": "nfv_kalite",
+   "kural_deger": null,
+   "regret": 192.0,
+   "en_iyi": 141.0,
+   "kotumser_ceza": true
+  },
+  "plan2": {
+   "armlar": {
+    "heightmap": {
+     "legal": 618.0,
+     "invalid": null,
+     "sure_dk": 106.6
+    },
+    "nfv_ham@2": {
+     "legal": null,
+     "invalid": "29 kilit",
+     "sure_dk": null
+    },
+    "nfv_guard@2": {
+     "legal": 544.5,
+     "invalid": null,
+     "sure_dk": null
+    }
+   },
+   "kural_arm": "nfv_guard@2",
+   "kural_deger": 544.5,
+   "regret": 0.0,
+   "en_iyi": 544.5,
+   "kotumser_ceza": false
+  },
+  "deneme4": {
+   "armlar": {
+    "heightmap+wall_aware": {
+     "legal": null,
+     "invalid": "clearance 1.555<2.0",
+     "sure_dk": null
+    },
+    "nfv_ham@2": {
+     "legal": 231.5,
+     "invalid": null,
+     "sure_dk": 32.4
+    },
+    "nfv_guard@2": {
+     "legal": 276.5,
+     "invalid": null,
+     "sure_dk": 32.8
+    }
+   },
+   "kural_arm": "heightmap+wall_aware",
+   "kural_deger": null,
+   "regret": 45.0,
+   "en_iyi": 231.5,
+   "kotumser_ceza": true
+  },
+  "deneme5": {
+   "armlar": {
+    "heightmap": {
+     "legal": 338.4,
+     "invalid": null,
+     "sure_dk": 5.9
+    },
+    "nfv_ham@2": {
+     "legal": 223.5,
+     "invalid": null,
+     "sure_dk": 20.3
+    },
+    "nfv_guard@2": {
+     "legal": 244.0,
+     "invalid": null,
+     "sure_dk": 32.9
+    },
+    "nfv_ham@1": {
+     "legal": 218.0,
+     "invalid": null,
+     "sure_dk": 344.6
+    }
+   },
+   "kural_arm": "heightmap",
+   "kural_deger": 338.4,
+   "regret": 120.4,
+   "en_iyi": 218.0,
+   "kotumser_ceza": false
+  },
+  "devset_plan1@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=12.4, thin_plate=0.10): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_plan2@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=6.4, thin_plate=0.26): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_plan3@gercek": {
+   "kural_arm": "nfv_kalite",
+   "kural_mode": "nfv",
+   "kural_quality": "fast",
+   "kural_gerekce": "cavity-aday (mean_aspect_z=7.3, thin_plate=0.08): NFV kalite-guvenli (>=heightmap)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_deneme4@gercek": {
+   "kural_arm": "nfv_max",
+   "kural_mode": "nfv",
+   "kural_quality": "max",
+   "kural_gerekce": "kabuk ailesi (thin_shell, guven=0.87) + rot-sokum dunyasi: NFV+rot yolu (K-46/K-52; kilit rot-kabul zinciriyle aklanir; poz seti AX24, K-53c)",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  },
+  "devset_deneme5@gercek": {
+   "kural_arm": "heightmap",
+   "kural_mode": "heightmap",
+   "kural_quality": "fast",
+   "kural_gerekce": "ince-plaka dominant (thin_plate=0.62 > 0.6): duz zaten optimal, NFV uzatir -> heightmap",
+   "kaynak": "m9_kural_devset 2026-08-31 (etiket-kosullari: no-go yok, model yok, rot_sokum=True)"
+  }
+ },
+ "n_otonom_dislanan": 118
+}

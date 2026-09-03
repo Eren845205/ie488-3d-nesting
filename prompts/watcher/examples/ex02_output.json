@@ -1,0 +1,5 @@
+{
+  "anlatim_md": "Parse aşamasında 1 adet parça boyutunun diğer parçalara göre beklenmedik şekilde büyük olduğu tespit edildi. Parçalar arasındaki medyan hacim 52500.0 mm3 iken bu parça bu değerin oldukça üstünde. Parça listesini gözden geçirip ölçümlerin doğru girildiğini kontrol edin.",
+  "kapsanan_bulgular": ["PARSE_SIGMA_SAPMA"],
+  "topraklama_uyarisi": false
+}

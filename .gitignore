@@ -11,3 +11,38 @@ venv/
 # OneDrive / OS
 desktop.ini
 Thumbs.db
+
+# Runtime durum (uygulama üretir — repro/benchmark yeniden üretir)
+logs/
+data/telemetry/
+data/orders.json
+data/otonom_gecmis/
+data/pending_orders/
+data/idempotency.db
+
+# Playwright MCP geçici çıktıları (screenshot/snapshot/console)
+.playwright-mcp/
+
+# Gercek kimlik bilgisi dosyalari — repoya GIRME (Bulgu 9)
+configs/*.local.json
+.env
+data/mail_stl/
+
+# Büyük ikili dosyalar (teslimat/kaynak materyal — repoya girmez)
+*.zip
+*.pdf
+*.pptx
+*.docx
+*.jpg
+*.jpeg
+/*.png
+NUMUNE_YERLESIM_SA_Z155.stl
+hocaya_sunum/
+*.pdf.txt
+_extract.py
+scripts/*.log
+scripts/zincir_stl/
+
+# Anlik yedekler (scripts/yedekle.py) — zip repoya GIRMEZ, INDEX.md girer
+yedekler/*.zip
+yedekler/geri_*/

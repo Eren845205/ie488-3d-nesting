@@ -1,0 +1,341 @@
+{
+ "adaylar": {
+  "1nn": {
+   "mean": 11.42,
+   "max": 157.38,
+   "n": 49,
+   "accuracy": 0.551,
+   "aile": {
+    "long_rod": {
+     "mean": 8.83,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 1.98,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.42,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 27.13,
+     "n": 11
+    },
+    "tube": {
+     "mean": 14.42,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "karar_agaci": {
+   "mean": 10.0,
+   "max": 157.38,
+   "n": 49,
+   "accuracy": 0.714,
+   "aile": {
+    "long_rod": {
+     "mean": 0.01,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.54,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 26.77,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "knn": {
+   "mean": 12.7,
+   "max": 157.38,
+   "n": 49,
+   "accuracy": 0.531,
+   "aile": {
+    "long_rod": {
+     "mean": 9.16,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 1.94,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.42,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 26.95,
+     "n": 11
+    },
+    "tube": {
+     "mean": 21.23,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "logistic": {
+   "mean": 12.87,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.816,
+   "aile": {
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.03,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 22.68,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_knn_reg": {
+   "mean": 12.76,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.673,
+   "aile": {
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.2,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 27.13,
+     "n": 11
+    },
+    "tube": {
+     "mean": 14.64,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_ridge_reg": {
+   "mean": 19.26,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.061,
+   "aile": {
+    "long_rod": {
+     "mean": 18.71,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 18.89,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 2.1,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 16.99,
+     "n": 11
+    },
+    "tube": {
+     "mean": 11.72,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "regret_logistic": {
+   "mean": 9.66,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.837,
+   "aile": {
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.03,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 8.37,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "conformal_logistic": {
+   "mean": 12.87,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.816,
+   "aile": {
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.03,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 22.68,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "mini_bagging(deney)": {
+   "mean": 9.81,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.714,
+   "aile": {
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 0.55,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.42,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 8.37,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "KURAL(baseline)": {
+   "mean": 17.0,
+   "max": 192.0,
+   "n": 49,
+   "accuracy": 0.306,
+   "aile": {
+    "long_rod": {
+     "mean": 17.15,
+     "n": 12
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "solid_bulk": {
+     "mean": 18.73,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_shell": {
+     "mean": 6.77,
+     "n": 11
+    },
+    "tube": {
+     "mean": 15.04,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  }
+ },
+ "n_tablo": 49,
+ "tablo_istatistik": {
+  "n_heldout_dislanan": 0,
+  "n_featuresiz_satir": 0,
+  "n_invalid_satir": 121,
+  "n_legal_armsiz_instance": 119
+ }
+}

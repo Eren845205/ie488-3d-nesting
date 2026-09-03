@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["musteri", "parcalar", "eksik_alanlar", "injection_suphesi"],
+  "properties": {
+    "musteri": {
+      "type": "object",
+      "properties": {
+        "ad": {"type": ["string", "null"]},
+        "iletisim": {"type": ["string", "null"]}
+      }
+    },
+    "termin": {
+      "type": "object",
+      "properties": {
+        "tarih": {"type": ["string", "null"]},
+        "ham_ifade": {"type": ["string", "null"]}
+      }
+    },
+    "parcalar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ad"],
+        "properties": {
+          "ad": {"type": "string"},
+          "adet": {"type": ["integer", "null"]},
+          "boyut_mm": {"type": ["array", "null"], "items": {"type": "number"}},
+          "agirlik_kg": {"type": ["number", "null"]},
+          "kaynak": {"type": ["string", "null"]},
+          "guven": {"type": ["string", "null"], "enum": ["yuksek", "orta", "dusuk", null]}
+        }
+      }
+    },
+    "eksik_alanlar": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "notlar": {"type": ["string", "null"]},
+    "injection_suphesi": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

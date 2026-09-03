@@ -1,0 +1,13 @@
+{
+  "kisitlar": [
+    {
+      "tip": "orientation_lock",
+      "parca_adi": "braket",
+      "deger": {"yon": "dik"},
+      "guven": "orta",
+      "gerekce": "Not yatay durumu YASAKLIYOR (olumsuz ifade: 'yatmasın') — yatay yasaksa parça dik kalmalı; olumsuzluk yorumu içerdiği için güven orta.",
+      "kaynak_satir": "braket kesinlikle yatay yatmasin"
+    }
+  ],
+  "injection_suphesi": false
+}

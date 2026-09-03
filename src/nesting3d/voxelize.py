@@ -17,11 +17,44 @@ x {upright, tipped on side (Rx 90°)}.  Not all 24 rotations: AM part stability
 """
 
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
 import trimesh
+
+# ---------------------------------------------------------------------------
+# Otomatik-eşikli paralel voxelizasyon sabitleri
+#
+# PARALLEL_MIN_TYPES  — tip sayısı bu değerin ALTINDAYSA seri yol kullanılır.
+#   Küçük demolar (2-5 tip) paralel kurulum maliyetinden zarar görmesin.
+#   Değer: 6 — benchmark: 6 tip × 4 oryantasyon thread faydasının break-even'i.
+#
+# PARALLEL_MIN_VOXELS — tahmini toplam hücre sayısı (tüm tipler, tek oryantasyon
+#   bbox hacmi / pitch³ toplamı) bu değerin ALTINDAYSA seri yol kullanılır.
+#   Çok küçük kutular (her tip 1-2 hücre) paralele geçişi hak etmez.
+#   Değer: 5_000 — 5 kutu @ 20³/10³ = 8 hücre/kutu = 40 toplam → seri kalır;
+#   büyük gerçek parçalarda (200³mm / 3³mm pitch ≈ 300k hücre/tip) paralel açılır.
+#
+# _PARALLEL_MAX_WORKERS — ThreadPoolExecutor üst sınırı.
+#   numpy/trimesh C-uzantıları GIL'i çoğu zaman bırakır (özellikle trimesh
+#   voxelized, _slice_voxelize içindeki numpy ops); thread'ler bu süreçte
+#   gerçekten paralel çalışır. ProcessPoolExecutor daha kesin GIL çözümü
+#   sağlardı ama Windows'ta spawn overhead + pickle riski (mesh nesneleri,
+#   büyük numpy array'leri) kabul edilemez; thread tercih edilir.
+#   Her durumda cpu_count() ile cap'lenir, max 16.
+# ---------------------------------------------------------------------------
+
+PARALLEL_MIN_TYPES: int = 6
+PARALLEL_MIN_VOXELS: float = 5_000.0
+_PARALLEL_MAX_WORKERS: int = 16
+
+# _surface_cells eksen-bazlı buffer'ının (chunk_mk × n_bary) eleman tavanı —
+# ~0.19 GB float64 (H-12 OOM-guard'ın C1 karşılığı; chunk sınırı sonucu
+# değiştirmez, işaretleme idempotent). Test edilebilirlik için modül-seviyesi.
+_SURF_CHUNK_ELEMS: int = 24_000_000
 
 try:
     from shapely import contains_xy as _contains_xy
@@ -44,19 +77,60 @@ def rotation_matrices(n_orientations: int = 4) -> List[np.ndarray]:
     iner (n3 25° ≈ 168, n8 35° ≈ 166) ve paralel eğik plakalar raf gibi
     sık dizilebilir.  Yalnız allowed_orientations ile seçilir;
     n_orientations'lı eski çağrılar ilk 8 pozu görür.
+
+    İndeks 12..27: Kalan 16 eksen-hizalı rotasyon (Ry dahil) — küpün 24
+    simetri grubu tamamlanır (R1, APP_YOL_HARITASI.md §2).  İndeks 0..7
+    AYNEN korunur; yeni pozlar sona eklenir.  Yüz yönü × rulo ayrışımı:
+      Yüz -y (Rx):    Rz2@Rx, Rz3@Rx          (12..13, 0..7'de 2,3 var)
+      Yüz -z (Rx2):   Rz2@Rx2, Rz3@Rx2        (14..15, 0..7'de 6,7 var)
+      Yüz +x (Ry):    Ry, Rz@Ry, Rz2@Ry, Rz3@Ry   (16..19)
+      Yüz +y (Rx3):   Rx3, Rz@Rx3, Rz2@Rx3, Rz3@Rx3 (20..23)
+      Yüz -x (Ry3):   Ry3, Rz@Ry3, Rz2@Ry3, Rz3@Ry3 (24..27)
     """
     rz = trimesh.transformations.rotation_matrix(math.pi / 2, (0, 0, 1))
     rz2 = rz @ rz
+    rz3 = rz2 @ rz
     rx = trimesh.transformations.rotation_matrix(math.pi / 2, (1, 0, 0))
     rx2 = rx @ rx
+    rx3 = rx2 @ rx
+    ry = trimesh.transformations.rotation_matrix(math.pi / 2, (0, 1, 0))
+    ry3 = ry @ ry @ ry
     tilt = [trimesh.transformations.rotation_matrix(math.radians(a), (1, 0, 0))
             for a in (70.0, 65.0, 60.0, 55.0)]  # dikten 20°/25°/30°/35°
-    mats = [np.eye(4), rz, rx, rz @ rx,
-            rz2, rz2 @ rz, rx2, rz @ rx2, *tilt]
+    mats = [
+        # ---- Eski 8 eksen-hizali (0..7) — DEGISMEZ ----
+        np.eye(4),     # 0: dik, 0°
+        rz,            # 1: dik, Rz 90°
+        rx,            # 2: yan (-y yüzü), 0°
+        rz @ rx,       # 3: yan (-y yüzü), Rz 90°
+        rz2,           # 4: dik, Rz 180°
+        rz2 @ rz,      # 5: dik, Rz 270°
+        rx2,           # 6: ters (-z yüzü), 0°
+        rz @ rx2,      # 7: ters (-z yüzü), Rz 90°
+        # ---- Egik 4 (8..11) — DEGISMEZ ----
+        *tilt,
+        # ---- Yeni 16 eksen-hizali (12..27, R1) ----
+        rz2 @ rx,      # 12: yan (-y yüzü), Rz 180°
+        rz3 @ rx,      # 13: yan (-y yüzü), Rz 270°
+        rz2 @ rx2,     # 14: ters (-z yüzü), Rz 180°
+        rz3 @ rx2,     # 15: ters (-z yüzü), Rz 270°
+        ry,            # 16: +x yüzü, 0°
+        rz @ ry,       # 17: +x yüzü, Rz 90°
+        rz2 @ ry,      # 18: +x yüzü, Rz 180°
+        rz3 @ ry,      # 19: +x yüzü, Rz 270°
+        rx3,           # 20: +y yüzü, 0°
+        rz @ rx3,      # 21: +y yüzü, Rz 90°
+        rz2 @ rx3,     # 22: +y yüzü, Rz 180°
+        rz3 @ rx3,     # 23: +y yüzü, Rz 270°
+        ry3,           # 24: -x yüzü, 0°
+        rz @ ry3,      # 25: -x yüzü, Rz 90°
+        rz2 @ ry3,     # 26: -x yüzü, Rz 180°
+        rz3 @ ry3,     # 27: -x yüzü, Rz 270°
+    ]
     return mats[: max(1, min(n_orientations, len(mats)))]
 
 
-N_MASTER_POSES = 12  # 8 eksen-hizalı + 4 eğik (allowed_orientations indeksleri)
+N_MASTER_POSES = 28  # 8 eksen-hizali + 4 egik + 16 yeni eksen-hizali (R1)
 
 
 @dataclass
@@ -90,6 +164,16 @@ class VoxelPart:
     display_mesh: Optional[trimesh.Trimesh] = None  # decimated kopya — SADECE render
     extra: dict = field(default_factory=dict)
 
+    # P0 instance kunyesi (Sokum Konsolu; Eren ilkesi 2026-07-15: kimlik ada
+    # guvenmez). Opsiyonel — eski cagiranlar None ile bit-ozdes. parca_uid =
+    # {geo_imza[:8]}-{order_id}-{kopya_no}: icerik + koken + kopya; sistem
+    # uretimi, insan-okur, deterministik; cakismasi yapisal olarak imkansiz.
+    order_id: Optional[str] = None
+    geo_imza: Optional[str] = None
+    kaynak_ad: Optional[str] = None
+    parca_uid: Optional[str] = None
+    kopya_no: int = 0
+
 
 def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     """YATAY (x, y) binary dilation, `times` voxel parça arası yan boşluk.
@@ -109,7 +193,63 @@ def _dilate(grid: np.ndarray, times: int) -> np.ndarray:
     return g
 
 
-def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
+def _dilate_kose(grid: np.ndarray, times: int) -> np.ndarray:
+    """KOSEGEN-guvensiz hucre dilation'i (seed2 dersi, 2026-08-20).
+
+    _dilate cekirdegi L1/arti-sekilli oldugundan HAM (dilation'siz) pin
+    damgasina karsi parcanin L1-margin'i KOSEGEN temasta clearance'i
+    garanti edemez: parca pin kosesine sqrt(ex^2+ey^2) < margin*pitch
+    mesafeye oturabilir (k66 seed2: 1,256mm < 2,0; pin-tarafi damga
+    denemesi eksen sozlesmesini bozdu — cozum PARCA cekirdegine ek).
+    Bu fonksiyon grid'i yalniz kosegen-guvensiz ofsetlerle buyutur:
+
+      S_diag = {(+-u,+-v): u,v>=1, u+v>times, (u-1)^2+(v-1)^2 < times^2}
+
+    Cagiran `_dilate(grid, times) | _dilate_kose(grid, times)` birlesimini
+    kullanir: eksen yuzleri L1 ile BIT-OZDES kalir (1x-margin HAM-pin
+    sozlesmesi), kosegen cepler parcanin kendi kose-hucreleriyle kapanir.
+    Pad ve origin kaymasi _dilate ile ayni (times hucre, xy).
+    """
+    if times <= 0:
+        return grid
+    g = np.pad(grid, ((times, times), (times, times), (0, 0)))
+    out = g.copy()
+    for u in range(1, times + 1):
+        for v in range(1, times + 1):
+            if u + v <= times or (u - 1) ** 2 + (v - 1) ** 2 >= times ** 2:
+                continue
+            for su in (u, -u):
+                for sv in (v, -v):
+                    out |= np.roll(np.roll(g, su, axis=0), sv, axis=1)
+    return out
+
+
+def _dilate_z_up(grid: np.ndarray, times: int) -> np.ndarray:
+    """TEK-TARAFLI (yalnız +z / ÜST) binary dilation, `times` voxel.
+
+    NFV dikey-clearance mekanizması (EVAL-1 fix, 2026-07-06): NFV yolu Bin3D
+    z_clearance'tan geçmediğinden (FFT fizibilitesi saf sıfır-çakışma + replay
+    tam (x,y,z)) dikey boşluk mekanizması yoktu; z-bitişik voxel'lerde yüzeyler
+    ~0mm'e iniyordu (plan1 0.083mm ölçüldü). Bu fonksiyon her dolu voxel'i
+    YALNIZ yukarı doğru `times` voxel büyütür → iki parça üst üste konunca
+    aralarında ≥ `times` voxel dikey boşluk garanti olur, AMA parçanın ALT
+    yüzeyi (taban / index-0 profili) DEĞİŞMEZ → parça hâlâ plakanın tabanına
+    (z=0) oturabilir.
+
+    Grid'in tepesi `times` katman pad'lenir (dilation kırpılmasın); voxel_origin
+    DEĞİŞMEZ (yalnız +z büyür, index-0 sabit kalır). Xy-dilation'ın (_dilate)
+    dikey eşi.
+    """
+    g = np.pad(grid, ((0, 0), (0, 0), (0, times)))
+    out = g.copy()
+    for d in range(1, times + 1):
+        out[:, :, d:] |= g[:, :, :-d]
+    return out
+
+
+def _slice_voxelize(
+    mesh: trimesh.Trimesh, pitch: float, *, allow_empty: bool = False
+) -> np.ndarray:
     """Watertight mesh -> bool grid via z-slicing at voxel centres.
 
     Her z-katmanında mesh kesiti alınır (section_multiplane) ve voxel
@@ -118,6 +258,15 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
     hacim-doğru: subdivide yüzeye değen her voxeli doldurur, ince plakaları
     ~2x şişirir (numune kalibrasyonu 2026-06-10).  Mesh min-köşesi origin'de
     olmalı (voxelize_part bunu garanti eder).
+
+    allow_empty: True ise boş grid HATA DEĞİL — boş grid aynen döner.
+    voxelize_part bunu kullanır: ince CİDARLI kabuk parçalarda (bbox dolgun
+    ama et kalınlığı << pitch; gerçek örnek Deneme4 'Dugme Kilidi', bbox
+    doluluğu %12) hiçbir hücre MERKEZİ malzemeye düşmez → slice boş; ama
+    hemen ardından _surface_cells yüzeye değen hücreleri konservatif işaretler
+    ve BİRLEŞİM dolu olur. Boş-grid kararı bu yüzden birleşimden SONRA
+    verilmeli (bkz. voxelize_part). Default False: doğrudan çağıranlar için
+    eski fail-fast davranışı birebir korunur.
     """
     if _contains_xy is None:
         raise ImportError("slice voxelization için shapely gerekli")
@@ -130,18 +279,59 @@ def _slice_voxelize(mesh: trimesh.Trimesh, pitch: float) -> np.ndarray:
     )
     xs = (np.arange(n[0]) + 0.5) * pitch
     ys = (np.arange(n[1]) + 0.5) * pitch
-    XX, YY = np.meshgrid(xs, ys, indexing="ij")
-    px, py = XX.ravel(), YY.ravel()
 
+    # Poligon bbox-kırpma (C1, 2026-07-02): bbox dışındaki hücre merkezi
+    # strictly-outside → contains False; test etmemek maskeyi DEĞİŞTİRMEZ
+    # (birebir, H-03 xy-kırpmanın 2D analoğu). searchsorted left/right bbox
+    # SINIRINDAKİ (==) merkezleri dahil eder — konservatif. Grid tek geçişte
+    # k-başına yazıldığından |= tam eski "mask or + ata" ile özdeş.
+    # P155308 @0.5mm: contains_xy döngüsü 20.4s → bbox-kırpma ile slice
+    # toplamı 25.8→8.1s (3.2×).
     grid = np.zeros((n[0], n[1], n[2]), dtype=bool)
     for k, sec in enumerate(sections):
         if sec is None:
             continue
-        mask = np.zeros(px.shape, dtype=bool)
-        for poly in sec.polygons_full:
-            mask |= _contains_xy(poly, px, py)
-        grid[:, :, k] = mask.reshape(n[0], n[1])
-    assert grid.any(), "slice voxelization boş grid üretti — pitch/mesh hatası"
+        # Dejenere kesit dayanikliligi (2026-07-08, plan3 n24 None.exterior):
+        # trimesh polygons_full bazi acili pozlarda None poligonda .exterior
+        # cagirip AttributeError firlatiyor. Fallback: polygons_closed'in
+        # None-olmayan uyeleri — delikler DOLU sayilir = KONSERVATIF
+        # (overapproximation; legality asla ihlal olmaz, o katmanda yuvalama
+        # kaybi olabilir). O da patlarsa katman atlanir (yuzey hucreleri
+        # _surface_cells birlesiminde yine isaretlenir).
+        try:
+            polys = list(sec.polygons_full)
+        except Exception:
+            try:
+                polys = [p for p in sec.polygons_closed if p is not None]
+            except Exception:
+                continue
+        for poly in polys:
+            minx, miny, maxx, maxy = poly.bounds
+            i0 = int(np.searchsorted(xs, minx, side="left"))
+            i1 = int(np.searchsorted(xs, maxx, side="right"))
+            j0 = int(np.searchsorted(ys, miny, side="left"))
+            j1 = int(np.searchsorted(ys, maxy, side="right"))
+            if i0 >= i1 or j0 >= j1:
+                continue
+            sxx, syy = np.meshgrid(xs[i0:i1], ys[j0:j1], indexing="ij")
+            m = _contains_xy(poly, sxx.ravel(), syy.ravel())
+            grid[i0:i1, j0:j1, k] |= m.reshape(i1 - i0, j1 - j0)
+    if not grid.any() and not allow_empty:
+        # Fail-fast tanı: sessiz/şifreli assert yerine açık, aksiyon alınabilir
+        # hata. Boş grid = pitch parçanın en küçük özelliği için fazla kaba;
+        # hiçbir dilim merkezi parçaya düşmemiş. Ana çözüm clamp DEĞİL, adaptif
+        # pitch (instances/pitch.py suggest_pitch) — bu guard onu zorlar.
+        # (allow_empty=True yolunda karar voxelize_part'ta, yüzey birleşimi
+        # SONRASINDA verilir — ince cidarlı kabuk parçalar orada kurtulur.)
+        ext = mesh.extents  # bounding-box boyutları (mm)
+        min_feat = float(min(ext))
+        raise ValueError(
+            f"Voxelizasyon boş grid üretti: pitch={pitch:.3f} mm, parçanın en "
+            f"küçük boyutu ({min_feat:.3f} mm) için fazla kaba "
+            f"(min_dim/pitch={min_feat / pitch:.2f}, ~0.5 altı kaybolur). "
+            f"Pitch'i <= {min_feat / 2.0:.3f} mm yapın veya adaptif pitch "
+            f"kullanın (instances.pitch.suggest_pitch). bbox_extents={ext}"
+        )
     return grid
 
 
@@ -159,6 +349,15 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
 
     AABB sınırındaki noktalar son hücreye clip edilir (grid şekli ceil ile
     zaten tüm AABB'yi kapsıyor) — 20 mm kutu @ pitch 5 hâlâ 4x4x4 kalır.
+
+    C1 hız yeniden-yazımı (2026-07-02): pts (mk, n_bary, 3) broadcast zinciri
+    yerine EKSEN-BAZLI hesap + önceden ayrılmış buffer'lar (out=) + int32
+    indeks. Eleman başına AYNI çarpım ve AYNI toplama sırası korunur
+    ((A·w + B·u) + C·v, sonra /pitch, floor, clip) → IEEE çift-duyarlık
+    deterministik = eski kodla BİT-DÜZEYİ aynı grid (tests/test_voxelize_c1_
+    exact.py donmuş-referans kapısı + 9 gerçek parça cross-dataset doğrulandı).
+    Kazanç taze S-boyutlu tahsislerin (page-fault) + int64 indeks trafiğinin +
+    reshape kopyalarının kalkması: P155308 @0.5mm 125.9→40.7s (3.1×).
     """
     tri = mesh.triangles  # (m, 3, 3)
     edge = np.linalg.norm(
@@ -167,23 +366,45 @@ def _surface_cells(mesh: trimesh.Trimesh, pitch: float,
     k_per_tri = np.maximum(np.ceil(edge / (pitch / 2.0)).astype(int), 1)
 
     grid = np.zeros(shape, dtype=bool)
+    lims = [np.int32(int(s) - 1) for s in shape]
 
-    def _mark(points: np.ndarray) -> None:
-        idx = np.floor(points / pitch).astype(int)
-        np.clip(idx, 0, np.asarray(shape) - 1, out=idx)
-        grid[idx[:, 0], idx[:, 1], idx[:, 2]] = True
-
+    # Bellek tavanı: eksen-bazlı buffer (chunk_mk, n_bary) bu eleman sayısını
+    # aşmaz (~0.19 GB float64). Eski pts'in 1/3 bellek ayak izi → aynı tavanla
+    # 3× büyük chunk. Chunk sınırı sonucu DEĞİŞTİRMEZ (işaretleme idempotent);
+    # OOM-guard H-12 korunur (Plan2 P155308 356mm @0.5mm tek-array 4.87GB çöküşü).
+    chunk_elems = _SURF_CHUNK_ELEMS
     for k in np.unique(k_per_tri):
         sub = tri[k_per_tri == k]  # (mk, 3, 3)
         # barycentric ızgara: (i/k, j/k, 1-i/k-j/k), i+j <= k
         ii, jj = np.meshgrid(np.arange(k + 1), np.arange(k + 1), indexing="ij")
         keep = (ii + jj) <= k
-        u = (ii[keep] / k)[None, :, None]
-        v = (jj[keep] / k)[None, :, None]
-        pts = (sub[:, 0:1, :] * (1.0 - u - v)
-               + sub[:, 1:2, :] * u
-               + sub[:, 2:3, :] * v)
-        _mark(pts.reshape(-1, 3))
+        u1 = ii[keep] / k          # (n_bary,)
+        v1 = jj[keep] / k
+        w1 = (1.0 - u1) - v1       # eski (1.0 - u - v) ile aynı eleman-sırası
+        n_bary = int(u1.size)
+        chunk_mk = max(1, chunk_elems // max(1, n_bary))
+
+        rows = min(chunk_mk, sub.shape[0])
+        buf = np.empty((rows, n_bary), dtype=np.float64)
+        tmp = np.empty_like(buf)
+        idx = [np.empty(buf.shape, dtype=np.int32) for _ in range(3)]
+
+        for s0 in range(0, sub.shape[0], chunk_mk):
+            chunk = sub[s0:s0 + chunk_mk]  # (<=chunk_mk, 3, 3)
+            mk = chunk.shape[0]
+            b, t = buf[:mk], tmp[:mk]
+            for c in range(3):
+                np.multiply(chunk[:, 0, c, None], w1[None, :], out=b)
+                np.multiply(chunk[:, 1, c, None], u1[None, :], out=t)
+                np.add(b, t, out=b)
+                np.multiply(chunk[:, 2, c, None], v1[None, :], out=t)
+                np.add(b, t, out=b)
+                np.divide(b, pitch, out=b)
+                np.floor(b, out=b)
+                ic = idx[c][:mk]
+                ic[...] = b                      # integral float → int32 (özdeş)
+                np.clip(ic, np.int32(0), lims[c], out=ic)
+            grid[idx[0][:mk], idx[1][:mk], idx[2][:mk]] = True
     return grid
 
 
@@ -205,11 +426,20 @@ def voxelize_part(
     *,
     n_orientations: int = 4,
     margin: int = 0,
+    z_dilate: int = 0,
     method: str = "subdivide",
     display_mesh: Optional[trimesh.Trimesh] = None,
     allowed_orientations: Optional[Tuple[int, ...]] = None,
+    rot_matrices: Optional[List[np.ndarray]] = None,
+    extra_rot_matrices: Optional[List[np.ndarray]] = None,
+    kose_doldur: bool = False,
 ) -> VoxelPart:
     """Voxelize one model into a VoxelPart with per-orientation profiles.
+
+    kose_doldur (2026-08-20, k66 seed2 fix'i): margin dilation'ina
+    _dilate_kose kosegen hucreleri de eklenir — HAM-pin (pin_3d) yaninda
+    kosegen cep clearance sizintisini parca tarafinda kapatir. Yalniz
+    pinli cozum yollari True gecer; default False = BIT-OZDES.
 
     fill() is essential: surface-only grids would break both volume metrics
     and the bottom/top profiles (PLAN_3D.md risk #1).
@@ -223,21 +453,62 @@ def voxelize_part(
     allowed_orientations: 8-pozluk master sete indeks listesi — parça-bazlı
     poz kısıtı (örn. plakalar dik duramaz: dik plaka tek başına 178-190 mm,
     <=170 mm hedefini imkânsız kılar).  Verilirse n_orientations yok sayılır.
+
+    rot_matrices: AÇIK 4x4 rotasyon matrisi listesi — verilirse hem
+    n_orientations hem allowed_orientations YOK SAYILIR; oryantasyonlar tam
+    olarak bu matrislerden üretilir. İnce-açı refinement (Faz 2b, coarse_to_fine)
+    kazanan ayrık pozun ±açı çevresinde sürekli (ör. 1° adım) rotasyonlar
+    üretmek için kullanır (master sette olmayan keyfi açılar).
+
+    extra_rot_matrices (K-56): default sete EK 4x4 rotasyonlar — sona
+    eklenir (mevcut indeksler DEĞİŞMEZ; None = bit-özdeş). Hedefli-tilt:
+    master sette olmayan düşük-açı pozları (plan1 baseplate 5-50°) parçaya
+    öğretmek için; rot_matrices'ten farkı EZMEK değil EKLEMEK.
     """
-    if allowed_orientations is not None:
+    if rot_matrices is not None:
+        rots = list(rot_matrices)
+    elif allowed_orientations is not None:
         master = rotation_matrices(N_MASTER_POSES)
         rots = [master[i] for i in allowed_orientations]
     else:
         rots = rotation_matrices(n_orientations)
+    if extra_rot_matrices:
+        rots = list(rots) + [np.asarray(m, dtype=float)
+                             for m in extra_rot_matrices]
     orientations: List[Orientation] = []
+    son_hata: Optional[Exception] = None
     for rot in rots:
         m = mesh.copy()
         m.apply_transform(rot)
         m.apply_translation(-m.bounds[0])
 
         if method == "slice":
-            grid = _slice_voxelize(m, pitch)
+            # allow_empty: ince CİDARLI kabuk parçada (et kalınlığı << pitch,
+            # bbox dolgun — Deneme4 'Dugme Kilidi' %12 doluluk) slice boş
+            # dönebilir; yüzey hücreleri konservatif işaretleyince birleşim
+            # dolar. Boş-grid kararı bu yüzden BİRLEŞİMDEN SONRA verilir.
+            # Dejenere-poz dayanikliligi (2026-07-08, plan3 n24 None.exterior;
+            # 153c961 fine_angle deseninin genellemesi): TEK bozuk poz TUM
+            # cozumu oldurmesin — bozuk poz ATLANIR, hicbir poz kalmazsa hata
+            # yukselir (sessiz bos menu YOK).
+            try:
+                grid = _slice_voxelize(m, pitch, allow_empty=True)
+            except Exception as e:
+                son_hata = e
+                print(f"[voxelize] UYARI: '{name}' dejenere poz atlandi "
+                      f"({type(e).__name__}: {e})", flush=True)
+                continue
             grid |= _surface_cells(m, pitch, grid.shape)  # konservatif sarma
+            if not grid.any():
+                ext_m = m.extents
+                min_feat = float(min(ext_m))
+                raise ValueError(
+                    f"Voxelizasyon boş grid üretti (slice + yüzey birleşimi "
+                    f"sonrası): pitch={pitch:.3f} mm, parçanın en küçük boyutu "
+                    f"({min_feat:.3f} mm) için fazla kaba. Pitch'i küçültün "
+                    f"veya adaptif pitch kullanın "
+                    f"(instances.pitch.suggest_pitch). bbox_extents={ext_m}"
+                )
             origin = np.full(3, pitch / 2.0)
         else:
             vg = m.voxelized(pitch).fill()
@@ -245,8 +516,16 @@ def voxelize_part(
             origin = vg.indices_to_points(np.array([[0, 0, 0]]))[0]
 
         if margin > 0:
-            grid = _dilate(grid, margin)
+            if kose_doldur:
+                grid = _dilate(grid, margin) | _dilate_kose(grid, margin)
+            else:
+                grid = _dilate(grid, margin)
             origin = origin - np.array([margin * pitch, margin * pitch, 0.0])
+
+        # TEK-TARAFLI z-dilation (yalnız +z / üst): iki parça arası dikey boşluk
+        # garantisi (EVAL-1 NFV fix). Taban (index-0) sabit → origin z DEĞİŞMEZ.
+        if z_dilate > 0:
+            grid = _dilate_z_up(grid, z_dilate)
 
         filled, bottom, top = _column_profiles(grid)
         orientations.append(
@@ -261,6 +540,12 @@ def voxelize_part(
             )
         )
 
+    if not orientations:
+        # Hicbir poz kurtarilamadi — sessiz bos menu YASAK (bayat-mock dersi):
+        # gercek hatayi yukselt ki caller (fine_angle fallback / fit-guard /
+        # operator) aksiyon alabilsin.
+        raise son_hata if son_hata is not None else ValueError(
+            f"'{name}': hicbir oryantasyon voxelize edilemedi")
     return VoxelPart(
         id=name,
         name=name,
@@ -271,14 +556,40 @@ def voxelize_part(
     )
 
 
+def _should_parallelize(model_set: List[tuple], pitch: float) -> bool:
+    """Paralel yolun maliyet/kazancını heuristik ile değerlendir.
+
+    Tip sayısı PARALLEL_MIN_TYPES'tan az veya tahmini toplam voxel
+    PARALLEL_MIN_VOXELS'tan az ise seri yol tercih edilir.
+
+    Tahmini voxel: her tip için bbox hacmi / pitch³ (yuvarlak — gerçek
+    doldurma oranını değil ham üst sınırı kullanır; yine de küçük/büyük
+    ayrımı için yeterince güvenilir).
+    """
+    n_types = len(model_set)
+    if n_types < PARALLEL_MIN_TYPES:
+        return False
+    pitch3 = pitch ** 3
+    estimated_voxels = 0.0
+    for entry in model_set:
+        mesh = entry[1]
+        ext = mesh.extents  # (wx, wy, wz)
+        estimated_voxels += float(ext[0] * ext[1] * ext[2]) / pitch3
+    return estimated_voxels >= PARALLEL_MIN_VOXELS
+
+
 def expand_quantities(
     model_set: List[tuple],
     pitch: float,
     *,
     n_orientations: int = 4,
     margin: int = 0,
+    z_dilate: int = 0,
     method: str = "subdivide",
     orientation_overrides: Optional[dict] = None,
+    extra_rot_overrides: Optional[dict] = None,
+    kimlik_map: Optional[dict] = None,
+    kose_doldur: bool = False,
 ) -> List[VoxelPart]:
     """Voxelize each model ONCE, then expand to qty part instances.
 
@@ -290,19 +601,73 @@ def expand_quantities(
 
     orientation_overrides: {model adı -> 8-poz master sete indeks tuple'ı};
     eşleşmeyen modeller n_orientations default setini kullanır.
+
+    extra_rot_overrides (K-56): {model adı -> [4x4 rot matrisi, ...]} — adı
+    eşleşen modelin default poz setine SONA eklenen ek pozlar (hedefli-tilt).
+    None = bit-özdeş.
+
+    kimlik_map (P0, opsiyonel): {model adı -> {"geo_imza", "kaynak_ad",
+    "kovalar": [(order_id, qty), ...]}}. Verilirse kopya k'lar deterministik
+    sırayla sipariş kovalarından tüketilir (özdeş kopyalar fiziksel olarak
+    değiştirilebilir — geometri/id/sıra DEĞİŞMEZ, yalnız künye atanır) ve
+    her instance parca_uid = {geo_imza[:8]}-{order_id}-{k} alır. None =
+    künyesiz eski davranış bit-özdeş.
+
+    Otomatik-eşikli paralellik:
+      - İş yükü küçükse (tip sayısı < PARALLEL_MIN_TYPES veya tahmini
+        toplam voxel < PARALLEL_MIN_VOXELS) seri yol kullanılır.
+      - Büyük iş yükünde ThreadPoolExecutor ile tip voxelizasyonları
+        paralel çalışır.  Executor.map sırayı garanti eder → deterministik.
+      - ValueError (boş grid, ince parça) executor içinden propagate eder.
     """
-    parts: List[VoxelPart] = []
     overrides = orientation_overrides or {}
+    extra_overrides = extra_rot_overrides or {}
+
+    # Her tip için voxelize_part argümanlarını hazırla (sıra korunur).
+    entries = []
     for entry in model_set:
         name, mesh, qty = entry[:3]
         display = entry[3] if len(entry) > 3 else None
-        template = voxelize_part(
-            name, mesh, pitch, n_orientations=n_orientations, margin=margin,
-            method=method, display_mesh=display,
+        entries.append((name, mesh, qty, display))
+
+    def _voxelize_entry(entry: tuple) -> VoxelPart:
+        name, mesh, qty, display = entry
+        return voxelize_part(
+            name, mesh, pitch,
+            n_orientations=n_orientations,
+            margin=margin,
+            z_dilate=z_dilate,
+            method=method,
+            display_mesh=display,
             allowed_orientations=overrides.get(name),
+            extra_rot_matrices=extra_overrides.get(name),
+            kose_doldur=kose_doldur,
         )
+
+    if _should_parallelize(model_set, pitch):
+        max_workers = min(len(entries), os.cpu_count() or 1, _PARALLEL_MAX_WORKERS)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # map() preserves order and re-raises exceptions from workers.
+            templates = list(executor.map(_voxelize_entry, entries))
+    else:
+        templates = [_voxelize_entry(e) for e in entries]
+
+    # Qty genişletme — sıra korunur, oryantasyon verisi paylaşılır.
+    kimlik_map = kimlik_map or {}
+    parts: List[VoxelPart] = []
+    for template, (name, _mesh, qty, _display) in zip(templates, entries):
         width = max(2, len(str(qty)))
+        kimlik = kimlik_map.get(name)
+        # P0 kopya-sayımı: kovalar [(order_id, qty), ...] PartSpec sırasında;
+        # kopya k sıradaki kovadan tüketilir (deterministik).
+        kova_sirasi: List = []
+        if kimlik:
+            for oid, oq in kimlik.get("kovalar", []):
+                kova_sirasi.extend([oid] * int(oq))
         for k in range(1, qty + 1):
+            oid = (kova_sirasi[k - 1]
+                   if kimlik and k - 1 < len(kova_sirasi) else None)
+            imza = kimlik.get("geo_imza") if kimlik else None
             parts.append(
                 VoxelPart(
                     id=f"{name}_{k:0{width}d}",
@@ -312,6 +677,12 @@ def expand_quantities(
                     volume_voxels=template.volume_voxels,
                     qty_of_model=qty,
                     display_mesh=template.display_mesh,
+                    order_id=oid,
+                    geo_imza=imza,
+                    kaynak_ad=kimlik.get("kaynak_ad") if kimlik else None,
+                    parca_uid=(f"{imza[:8]}-{oid if oid is not None else 'NA'}"
+                               f"-{k}") if imza else None,
+                    kopya_no=k if kimlik else 0,
                 )
             )
     return parts

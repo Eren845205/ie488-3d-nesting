@@ -1,0 +1,41 @@
+Konu: 610 parçalık iş — referans yerleşim hakkında birkaç soru + veri ricası
+
+Merhaba,
+
+Gönderilen 610 parçalık işle yakından ilgilenmekteyim. Ancak iyi bir karşılaştırma olması açısından ve olası eksiklerimi doğru tespit edebilmek için birkaç sorum olacaktı:
+
+1) ROTASYON KISITININ KAPSAMI
+Maildeki "rotasyonları değişmeyecek" notunu, parçaların gönderildiği duruşta kilitli (uzun çubuklar dik) olarak yorumladım. Ancak referans yerleşimin 284 mm'lik yüksekliği, 399,6 mm'lik çubukların yatırılmış olduğunu düşündürüyor. Kısıt tam olarak neyi kapsıyor?
+   a) Hiçbir parça hiçbir eksende döndürülmeyecek mi?
+   b) Yalnızca belirli parçalar mı kilitli, hangileri?
+   c) Belirli eksen(ler) etrafında dönüş serbest mi?
+Özellikle çubukların dik/yatık basılması üretim kalitesi açısından fark yaratıyor mu?
+
+2) REFERANS YERLEŞİMİN KAPSAMI
+"PLAN8 (2mm) 315x323x284" yerleşimi 610 parçanın TAMAMINI tek plakada mı içeriyor, yoksa iş birden fazla plakaya/partiye mi bölündü? Bölündüyse toplam kaç plaka kullanıldı ve yükseklikler neydi?
+
+3) PLAKA VE BOŞLUK TEYİDİ
+Bu iş için geçerli plaka 335x335x600 mm (kenarlardan 5 mm pay) ve minimum parça arası boşluk 2 mm varsayımım doğru mu?
+
+4) YERLEŞİM PRATİĞİNİZ (benim için çok öğretici)
+Mühendisiniz bu tür işlerde yerleşim kararlarını neye göre veriyor?
+   a) Aynı parçadan yüzlerce olduğunda (buradaki 520 plaka gibi) düzenli/ızgara şeklinde mi diziyor?
+   b) Bir parçayı hangi durumda yatırıyor / dik bırakıyor?
+   c) İşi birden fazla plakaya bölme kararını neye göre veriyor?
+Kısa birkaç kural veya alışkanlık bile algoritmayı sizin üretim mantığınıza yaklaştırmam için çok değerli.
+
+5) İŞ KARIŞIMINIZ
+Laboratuvara/üretime gelen işlerin tipik dağılımı nasıl? (Örn. bu 610'luk gibi yüksek-adetli tekrarlı işler mi ağırlıkta, yoksa karışık geometrili ya da kabuklu/borulu işler mi?) En sık gördüğünüz 3-4 iş tipini kısaca tarif edebilirseniz, geliştirme önceliklerimi gerçek iş dağılımınıza göre kurarım.
+
+6) KÜÇÜK VERİ RİCASI
+Mümkünse:
+   a) Fiilen basılan nihai yerleşimin ekran görüntüsü veya raporu (yükseklik + kaç plaka),
+   b) Geçmişten FARKLI TİPTE 2-3 gerçek iş daha (STL'ler + adetler + müşteri notları + sizin nihai yerleşiminiz + o işte kullanılan plaka/boşluk ayarı). Örneğin biri kabuklu/borulu, biri karışık geometrili olursa ideal olur.
+Bu tür gerçek iş–referans çiftleri, algoritmayı üretim pratiğinize göre kalibre etmem için en değerli veri.
+
+Cevaplarınız netleşince bu işin tam karşılaştırma sonuçlarını paylaşacağım.
+
+Vakit ayırdığınız için şimdiden çok teşekkürler.
+
+Saygılarımla,
+Eren Kutlu

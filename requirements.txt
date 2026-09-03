@@ -2,6 +2,7 @@
 # Kurulum: pip install -r requirements.txt
 numpy
 matplotlib
+openpyxl>=3.1
 trimesh>=4.0
 shapely>=2.0
 networkx
@@ -10,5 +11,7 @@ scipy
 fast-simplification
 pillow
 pytest
+flask-limiter
+jsonschema
 # sunum üretimi (opsiyonel)
 python-pptx

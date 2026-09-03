@@ -1,0 +1,10 @@
+{
+  "cevap_md": "Fiyat, hacim kademesi kuralı (r1) ile belirlendi. Toplam hacim 2.400 cm3 olduğundan 1.000-5.000 cm3 arası 2. kademeye girdi ve fiyat 750.00 USD olarak hesaplandı.",
+  "alintilar": [
+    {"kaynak_id": "fiyat#r1", "konum": "Kural: r1 (hacim_kademesi)"},
+    {"kaynak_id": "fiyat#r1", "konum": "Girdi: hacim_cm3=2400"}
+  ],
+  "onerilen_aksiyonlar": [],
+  "ret": false,
+  "ret_nedeni": null
+}

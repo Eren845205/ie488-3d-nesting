@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["cevap_md", "alintilar", "onerilen_aksiyonlar", "ret"],
+  "properties": {
+    "cevap_md": {
+      "type": "string",
+      "description": "Topraklanmis Turkce yanit (markdown)"
+    },
+    "alintilar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kaynak_id", "konum"],
+        "properties": {
+          "kaynak_id": {"type": "string"},
+          "konum": {"type": "string"}
+        },
+        "additionalProperties": false
+      },
+      "description": "Atif yapilan kaynaklar; ret=false ise bos olamaz"
+    },
+    "onerilen_aksiyonlar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tip", "parametre"],
+        "properties": {
+          "tip": {"type": "string"},
+          "parametre": {"type": "object"}
+        },
+        "additionalProperties": false
+      },
+      "description": "Kullanicinin onayiyla uygulanabilecek aksiyonlar"
+    },
+    "ret": {
+      "type": "boolean",
+      "description": "true ise soru baglam disinda"
+    },
+    "ret_nedeni": {
+      "type": ["string", "null"],
+      "description": "ret=true ise neden cevaplanamadigi"
+    }
+  },
+  "additionalProperties": false
+}

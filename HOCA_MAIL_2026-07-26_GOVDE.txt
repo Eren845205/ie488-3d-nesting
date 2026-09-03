@@ -1,0 +1,137 @@
+Merhaba Mert Bey,
+
+Geçen haftaki ayrıntılı cevaplarınız için çok teşekkür ederim; özellikle
+"konumu değişmeyecek" ifadesinin duruş açısı anlamına geldiğini netleştirmeniz
+sistemi doğru kurgulamam için çok değerli oldu.
+
+Yerleşim STL'leri ve söküm planları
+
+İstediğiniz dosyaları hazırladım. Toplam boyut 1 GB'ın üzerinde olduğu için
+e-posta ekine sığmıyor; önerdiğiniz ortak Drive klasörü fikrini bu
+vesileyle memnuniyetle kabul ediyorum — bir klasör açıp sizinle paylaşıyorum,
+bundan sonraki tüm dosya alışverişimizi (sizden gelen planlar, benden giden
+yerleşimler) oradan yürütebiliriz.
+
+Klasörde şunlar var:
+
+- Deneme6 (68,5 mm yerleşim): Tek STL dosyası. Daha önce konuştuğumuz
+  gibi her parça dosyanın içinde kendi adıyla ayrı bir katı (solid) olarak
+  yazılı — Magics'te açtığınızda parça adlarını ve adetlerini doğrudan
+  görebilirsiniz.
+- Plan7 (488,4 mm yerleşim): Parça tipi başına ayrı STL, 10 dosya
+  (toplam 872 MB). Hepsini birlikte içe aktardığınızda 345 parçalık tam
+  yerleşimi verir. Burada Deneme6'dan farklı olarak ikili (binary) format
+  kullandım: yerleşimde 17,4 milyon üçgen var, metin formatında dosya
+  yaklaşık 4,9 GB tutuyordu. İkili formatta parça adı yazılabilecek tek bir
+  başlık alanı bulunduğu için de tip başına böldüm; her dosyanın başlığında
+  parça adı ve adedi yazılı, ayrıca dosya adlarında da görünüyor.
+- Her iki yerleşim için adım adım söküm planı (okunabilir metin olarak):
+  parçaların hangi sırayla çıkarılacağı ve her parçanın nasıl hareket
+  ettirileceği (doğrudan yukarı / önce yana kaydırma / hafif döndürme)
+  tek tek listeli. Plan7'de 345 parçanın 344'ü doğrudan çekilerek çıkıyor;
+  yalnızca bir parça (174100684-a) çıkarken 1 derecelik hafif bir döndürme
+  istiyor. Deneme6'da parçaların tamamı doğrudan çıkıyor.
+
+  Bir düzeltme: geçen mailimde Plan7 için bu sayıyı 15 olarak yazmıştım.
+  O 15, kaba ön denetimde "sıkışık" görünen parça sayısıydı; ayrıntılı
+  söküm denetimini tamamlayınca bunların 14'ünün de doğrudan çıktığı,
+  yalnız birinin döndürme istediği ortaya çıktı. Klasördeki plan bu son
+  hâli gösteriyor.
+- Deneme6 için etkileşimli söküm rehberi
+  (deneme6_68p5_rehberli_sokum.html): tarayıcıda çift tıklayarak
+  açabileceğiniz tek bir dosya — kurulum ya da internet bağlantısı
+  gerektirmiyor. Yerleşimi üç boyutlu gösteriyor; adımlarda ilerledikçe
+  sırası gelen parçayı vurgulayıp hangi yöne çekileceğini yazıyor. Sahadaki
+  operatör için düşündüğüm biçim bu — sizin için de yararlı olur mu, merak
+  ediyorum. (Görüntüde parçalar, dosya tarayıcıda akıcı açılsın diye
+  kabalaştırılmıştır; ölçüye esas geometri STL dosyalarındadır.) Plan7'nin
+  rehberini ise — yerleşim aşağıda anlattığım gibi zaten yenileneceği
+  için — güncel çözümle birlikte hazırlayıp aynı klasöre ekleyeceğim;
+  345 parçalık sahnenin tarayıcıda akıcı çalışması için üzerinde biraz
+  daha çalışıyorum.
+- Yerleşim koordinat listeleri (JSON) — programatik kontrol isterseniz.
+
+a2 parçası (duruş kilidi)
+
+288101642-a2'nin yatay imal edilmesi gerektiğini not ettim; sisteme
+parça-bazlı duruş kilidi özelliğini ekledim (parçanın geldiği duruş açısı
+korunuyor, plaka üzerindeki yeri ve yüksekliği serbest kalıyor).
+
+Şunu açıkça belirtmek isterim: klasördeki 488,4 mm'lik yerleşim, bu kural
+bana ulaşmadan önce çözüldüğü için a2 parçalarını serbest duruşta
+yerleştiriyor — altı kopyadan beşi sizin belirttiğiniz duruşta değil.
+Dosyaları incelerken bunu göz önünde bulundurmanızı rica ederim. Plan7'yi
+duruş kilidiyle yeniden çözüp sonucu ve güncel STL'leri önümüzdeki günlerde
+aynı klasöre ekleyeceğim; asıl kıyaslanması gereken yerleşim o olacak.
+
+Sorularım
+
+Liste biraz uzadı; hepsini tek seferde cevaplamanız gerekmiyor — vakit
+buldukça kısmen cevaplamanız bile benim için çok değerli.
+
+1. Eski referansların boşluk değeri: Plan7 için 2 mm üzerinde
+   anlaşmıştık. Elinizdeki eski referans yerleşimlerin (özellikle Deneme5'in
+   209 mm'si) hangi parça-arası boşlukla hazırlandığını öğrenme şansımız
+   var mı? Karşılaştırma tablomu birebir aynı koşullara oturtmak için hâlâ
+   bu tek bilgi eksik.
+
+2. Kapalı boşluk / toz tahliyesi: İç içe yerleşimde, çok nadiren de olsa
+   parçalar arasında tozun hiçbir açıklıktan tahliye edilemeyeceği tamamen
+   kapalı bir boşluk oluşabilir. Sisteme bunu tespit eden bir denetim
+   ekledim; sormak istediğim: üretimde böyle bir durum kabul edilebilir mi,
+   yoksa tümüyle mi kaçınmalıyım? Belirli bir hacim ya da minimum açıklık
+   eşiği var mıdır?
+
+3. Yerleşim yoğunluğunun üretim sınırı: Parçaların çok yoğun kümelendiği
+   bölgeler üretimde ısı birikimi, çarpılma ya da tozun yeniden kullanım
+   oranı açısından sorun yaratıyor mu? Gözetmem gereken bir doluluk üst
+   sınırı ya da bölgesel yoğunluk kuralı varsa motora şimdiden
+   ekleyebilirim.
+
+4. Parçaya özel gereksinimler size nasıl ulaşıyor? a2'nin "yatay imal
+   edilecek" kuralını mail notunuzdan öğrendim. Gerçek işleyişte bu tür
+   gereksinimler (duruş/yön kısıtı, birlikte ya da ayrı basılması
+   gerekenler, öncelik vb.) size hangi biçimde geliyor — müşteri
+   siparişinde yazılı olarak mı, teknik ekip mi ekliyor, yoksa operatör
+   tecrübesiyle mi biliniyor? Hedefim, siparişle birlikte gelen notları
+   sistemin otomatik okuyup yerleşim kısıtına çevirmesi; size uyan en
+   doğru biçimi tasarlayabilmem için bu bilginin bugün nasıl aktığını
+   görmem gerekiyor. Mümkünse birkaç örnek sipariş notu / iş emri
+   paylaşmanız çok yol gösterir.
+
+5. Sipariş dosyaları size hangi kanaldan geliyor? Ortak Drive klasörü
+   düzeni benim tarafımda gayet rahat çalışıyor; bunu ondan bağımsız,
+   uygulamanın kurgusu için soruyorum. Müşterilerden gelen sipariş
+   dosyaları (STL'ler, adet listeleri) size normalde e-postaya doğrudan
+   ek olarak mı ulaşıyor, yoksa Drive/WeTransfer benzeri indirme
+   linkleriyle mi? Sistemim şu an gelen kutusunu izleyip ekleri otomatik
+   işliyor; ağırlık linkli gönderimdeyse link üzerinden indirmeyi de
+   otomatikleştirmem gerekecek — akışı gerçeğe göre kurmak istiyorum.
+
+6. Plan1'in sırrı: Plan1'de sizin 110,41 mm'lik yerleşiminizin açıkçası
+   belirgin şekilde gerisindeyiz; bu setten öğreneceğimiz bir şey olduğu
+   ortada. Yerleşimi hazırlarken özel bir yaklaşımınız var mıydı —
+   örneğin büyük taban parçasını plakaya açıyla mı yatırıyorsunuz?
+   Birkaç cümlelik tarif, mümkünse bir ekran görüntüsü bile bizim için
+   çok öğretici olur.
+
+7. Elle yerleşimin süresi: Plan7 gibi 345 parçalık bir işi Magics'te
+   elle yerleştirmek tipik olarak ne kadar zamanınızı alıyor? Sistemin
+   kazandırdığı zamanı doğru ölçebilmek için soruyorum.
+
+Dosyalara göz atma fırsatı bulduğunuzda geri bildiriminizi çok merak
+ediyorum. Özellikle söküm planı hakkında düşünceleriniz benim için önemli
+bir tasarım sorusu: bu biçim sahada gerçekten işe yarar mı, nasıl olmuş,
+neler eklense daha kullanışlı olur? Çıkarması zor parçaların olduğu yoğun
+yerleşimlerde ekibinize hız ya da verim kazandırır mı, yoksa pratikte
+böyle bir plana ihtiyaç duyulmuyor mu — bunu sizin gözünüzden duymak
+isterim.
+
+Genel olarak da: uygulama tarafında eklememi istediğiniz — ya da tam
+tersine gereksiz bulup eklemememi istediğiniz — özellikler varsa lütfen
+çekinmeden yazın. Bu tür geri bildirim, geliştirmeyi en doğru yöne
+sokacak şey.
+
+İyi çalışmalar, saygılarımla,
+
+Eren

@@ -1,0 +1,15 @@
+{
+  "musteri_adi": "Sayın Mehmet Çelik",
+  "parcalar": [
+    {"ad": "Taşıyıcı Profil", "adet": 30}
+  ],
+  "toplam_fiyat_usd": 2100.0,
+  "termin_ifadesi": "15 iş günü (yoğun kapasite nedeniyle)",
+  "kaynaklar": [
+    {
+      "id": "teklif#ozet",
+      "tip": "termin",
+      "icerik": "musteri: Mehmet Çelik; parca: Taşıyıcı Profil x30; fiyat: 2100.0 USD; termin: 15 iş günü (yoğun kapasite)"
+    }
+  ]
+}

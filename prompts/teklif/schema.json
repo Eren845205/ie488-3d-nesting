@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["konu", "mail_govde_md", "kullanilan_kaynaklar"],
+  "additionalProperties": false,
+  "properties": {
+    "konu": {
+      "type": "string",
+      "description": "Musteriyle iletisimde kullanilacak konu satiri; teknik terim icermez"
+    },
+    "mail_govde_md": {
+      "type": "string",
+      "description": "Turkce mail govdesi (markdown); musteri tarafina gonderilecek taslak"
+    },
+    "kullanilan_kaynaklar": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Taslakta atif yapilan kaynak ID string'leri"
+    },
+    "topraklama_uyarisi": {
+      "type": "boolean",
+      "description": "Opsiyonel — girdide bulunmayan sayi/bilgi kullanildiysa true"
+    }
+  }
+}

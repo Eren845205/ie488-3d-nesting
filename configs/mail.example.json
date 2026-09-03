@@ -1,0 +1,85 @@
+{
+  "_comment": "Mail ingest konfig ornegi (PLAN_SERVIS S1). Gercek parolalar BURAYA YAZILMAZ — env degiskenlerinden veya sirli konfig dosyasindan alinir.",
+  "_usage": "make_mail_source(config) ile kullanilir. 'source' alani 'fake' (demo) veya 'imap' (uretim) olabilir. Alternatif: 'provider' alani ile host/port/ssl otomatik dolar.",
+
+  "fake_ornek": {
+    "source": "fake"
+  },
+
+  "imap_ornek": {
+    "source": "imap",
+    "host": "imap.sirket.com.tr",
+    "port": 993,
+    "user": "siparis@sirket.com.tr",
+    "password": "PLACEHOLDER_BURAYA_GERCEK_PAROLA_KOYMA",
+    "folder": "INBOX",
+    "use_ssl": true
+  },
+
+  "_guvenlik_notu_143": "use_ssl=false (port 143) yalnizca STARTTLS icindir: kod login ONCESI STARTTLS ile sifreler; sunucu STARTTLS desteklemiyorsa FAIL-CLOSED (cleartext parola ASLA gonderilmez). Tercih edilen: use_ssl=true / IMAPS (993).",
+
+  "imap_starttls_ornek": {
+    "source": "imap",
+    "host": "mail.sirket.com.tr",
+    "port": 143,
+    "user": "siparis@sirket.com.tr",
+    "password": "PLACEHOLDER_BURAYA_GERCEK_PAROLA_KOYMA",
+    "folder": "INBOX",
+    "use_ssl": false,
+    "_aciklama": "143 + STARTTLS: login oncesi sifrelenir, STARTTLS yoksa baglanti reddedilir"
+  },
+
+  "_provider_aciklamasi": [
+    "provider alani verilince host/port/use_ssl otomatik dolar — elle yazmaya gerek yok.",
+    "Desteklenen degerler: 'gmail', 'outlook', 'hotmail'.",
+    "Gmail ve Outlook/Hotmail icin NORMAL SIFRE CALISMAZ — hesap ayarlarindan 'Uygulama Sifresi' (App Password) olusturun.",
+    "Gmail App Password: myaccount.google.com/apppasswords",
+    "Outlook/Hotmail App Password: account.microsoft.com/security (2 adimli dogrulama etkin olmali)",
+    "config'te ayrica 'host' yazarsaniz preset degerini ezer (override).",
+    "OPSIYONEL SAGLAM MAIL-SECIMI (yalniz Gmail; geri-uyumlu, belirtilmezse eski 'ALL' davranisi):",
+    "  category_filter: 'primary' -> reklamlari (Promotions/Social) atla, birincil maillere bak.",
+    "  prefer_attachments: true -> ek-iceren mailleri yakala (siparis = ZIP-STL eki = kesin sinyal).",
+    "  Ikisi birlikte -> 'category:primary OR has:attachment' (siparis maili son-N penceresinden dusmez).",
+    "  Non-Gmail (Outlook/Hotmail) bu alanlari yok sayar (X-GM-RAW yok) -> duz arama."
+  ],
+
+  "gmail_ornek": {
+    "provider": "gmail",
+    "user": "siparis@gmail.com",
+    "password": "your-app-password-here",
+    "category_filter": "primary",
+    "prefer_attachments": true,
+    "_aciklama": "Gmail App Password gerekir, normal Gmail sifresi degil. host/port/use_ssl otomatik: imap.gmail.com:993 SSL"
+  },
+
+  "outlook_ornek": {
+    "provider": "outlook",
+    "user": "siparis@outlook.com",
+    "password": "your-app-password-here",
+    "_aciklama": "Outlook App Password gerekir, normal Microsoft sifresi degil. host/port/use_ssl otomatik: outlook.office365.com:993 SSL"
+  },
+
+  "hotmail_ornek": {
+    "provider": "hotmail",
+    "user": "siparis@hotmail.com",
+    "password": "your-app-password-here",
+    "_aciklama": "Hotmail = Outlook altyapisi. App Password gerekir. host otomatik: outlook.office365.com:993 SSL"
+  },
+
+  "gmail_custom_host_ornek": {
+    "provider": "gmail",
+    "host": "imap.ozel-domain.com",
+    "user": "siparis@ozel-domain.com",
+    "password": "your-app-password-here",
+    "_aciklama": "provider='gmail' ama host acikca yazilinca preset degil bu host kullanilir (override)"
+  },
+
+  "_not": [
+    "Parola icin onerilen yontemler:",
+    "  1. Ortam degiskeni: os.environ['MAIL_PASSWORD']",
+    "  2. .env dosyasi (python-dotenv) — .gitignore'a ekle",
+    "  3. Uretim: Vault/Secret Manager entegrasyonu (S2 fazi)",
+    "UID cursor in-memory tutulur; servis yeniden baslatildiginda onceki UIDs kaybolur.",
+    "Kalici cursor icin SqliteIdempotencyStore ile entegre edilebilir (S1.1 plani)."
+  ]
+}

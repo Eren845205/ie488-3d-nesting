@@ -1,0 +1,1127 @@
+{% extends "base.html" %}
+
+{% block title %}Results &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+
+<a href="/" class="back-link">&larr; Ana Sayfaya Don</a>
+
+<h2 class="section-heading">Pipeline Results</h2>
+
+{% if used_demo %}
+<div class="alert alert-warning" style="margin-bottom: 16px;">
+    Demo senaryosu kullanildi &mdash; kendi siparislerinizi
+    <a href="/siparisler">/siparisler</a> ekranindan girin.
+</div>
+{% endif %}
+
+{% if not_istekleri %}
+<div style="margin-bottom:16px; padding:14px 16px; border-radius:8px;
+            background:#f0fff2; border:1px solid #7dbf8a;
+            border-left:5px solid #2e9e4f; font-size:14px;">
+    <div style="font-size:15px; margin-bottom:6px;">
+        <strong>&#128221; Sipari&#351; notlar&#305; dikkate al&#305;nd&#305;</strong>
+        &mdash; {{ not_istekleri.order_id }}
+    </div>
+    <div style="color:#444; margin-bottom:8px;">
+        {% for s in not_istekleri.satirlar %}
+        <div style="padding-left:10px; border-left:2px solid #c5e8cd; margin:3px 0;">
+            &ldquo;{{ s.metin }}&rdquo;
+            <span style="color:#8aa592; font-size:12px;">({{ s.kaynak }})</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% if not_istekleri.uygulandi and not_istekleri.onaylanan %}
+    <div>
+        <strong>Bu ko&#351;u, operat&#246;r&#252;n onaylad&#305;&#287;&#305; &#351;u isteklere g&#246;re yap&#305;ld&#305;:</strong>
+        <ul style="margin:4px 0 4px 18px;">
+            {% for o in not_istekleri.onaylanan %}<li>{{ o }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div style="color:#555;">
+        Notlardan &#231;&#305;kar&#305;lan istekler bu ko&#351;uda uygulanmad&#305;
+        (operat&#246;r onay&#305; verilmedi) &mdash; analiz kayd&#305; raporun
+        &ldquo;Not Analizi&rdquo; b&#246;l&#252;m&#252;nde.
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if nesting_uyari == "hata" %}
+<div style="margin-bottom:16px; padding:12px 14px; border-radius:8px; background:#fff0f0; border:1px solid #e08585; font-size:14px;">
+    <strong>&#9888; Nesting sonucu üretilemedi.</strong> Aşağıdaki tablolar eksik/sıfır değerler içerir;
+    bu koşu <em>tamamlanmış bir iş değildir</em>. Ayrıntılı hata notu
+    <a href="/gecmis">İş Geçmişi</a> kaydında.
+</div>
+{% elif nesting_uyari == "kismi" %}
+<div style="margin-bottom:16px; padding:12px 14px; border-radius:8px; background:#fff8e6; border:1px solid #e0c268; font-size:14px;">
+    <strong>&#9888; Kısmî sonuç:</strong> bazı partiler nesting sonucu üretemedi &mdash;
+    aşağıda yükseklik/doluluk değeri boş olan partiler işlenememiştir. Ayrıntı
+    <a href="/gecmis">İş Geçmişi</a> kaydında.
+</div>
+{% endif %}
+
+<!-- Ozet kartlar -->
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="sc-label">Toplam Ciro Onerisi</div>
+        <div class="sc-value">{{ "%.0f"|format(total_revenue) }}</div>
+        <div class="sc-unit">USD</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Siparis Sayisi</div>
+        <div class="sc-value">{{ n_orders }}</div>
+        <div class="sc-unit">siparis</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Parti Sayisi</div>
+        <div class="sc-value">{{ n_batches }}</div>
+        <div class="sc-unit">parti</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Pipeline Suresi (Time-to-Quote)</div>
+        <div class="sc-value">{{ "%.2f"|format(elapsed) }}</div>
+        <div class="sc-unit">saniye</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Uyari Sayisi</div>
+        <div class="sc-value">{{ n_warnings }}</div>
+        <div class="sc-unit">{% if n_warnings == 0 %}temiz{% else %}uyari{% endif %}</div>
+    </div>
+</div>
+
+<!-- LLM Yonetici Ozeti -->
+{% if llm_active %}
+<div class="card" id="llm-ozet-card">
+    <div class="card-title">LLM Yonetici Ozeti</div>
+    <div id="ozet-content">
+        <p style="color: var(--color-text-muted); font-size: 14px;">
+            Yerel model (llama3) kullanilarak Turkce yonetici ozeti olusturulacak.
+            Lokal model birkaç-onlarca saniye surebilir.
+        </p>
+        <button class="btn btn-primary" id="ozet-btn" onclick="ozetOlustur()">
+            Yonetici Ozeti Olustur
+        </button>
+    </div>
+    <div id="ozet-loading" style="display:none; padding: 12px 0;">
+        <span style="color: var(--color-text-muted);">Yerel model dusunuyor, lutfen bekleyin...</span>
+    </div>
+    <div id="ozet-result" style="display:none;"></div>
+    <div id="ozet-uyari" style="display:none;" class="alert alert-warning"></div>
+    <div id="ozet-hata" style="display:none;" class="alert" style="background:#fee2e2;"></div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">LLM Yonetici Ozeti</div>
+    <p style="color: var(--color-text-muted);">
+        <em>LLM kapali</em> — <code>configs/llm.local.json</code> yapılandirmasi eksik
+        veya Ollama servisi calismıyor.
+    </p>
+</div>
+{% endif %}
+
+<!-- Siparis oncelik tablosu -->
+<div class="card">
+    <div class="card-title">1. Siparis Oncelik Tablosu (EDD Agirlikli)</div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sira</th>
+                    <th>Siparis</th>
+                    <th>Musteri</th>
+                    <th>Termin</th>
+                    <th>Oncelik Sinifi</th>
+                    <th>Toplam Hacim (cm3)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in ranked %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ order.order_id }}</strong></td>
+                    <td>{{ order.customer }}</td>
+                    <td>{{ order.deadline }}</td>
+                    <td>
+                        {% if order.priority_class == 1 %}
+                            <span class="badge badge-red">Sinif 1</span>
+                        {% else %}
+                            <span class="badge badge-yellow">Sinif {{ order.priority_class }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ "%.0f"|format(order.total_volume_cm3) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Parti plani + uyarilar -->
+<div class="card">
+    <div class="card-title">2. Parti Plani</div>
+
+    {% if warnings %}
+        <div class="alert alert-warning">
+            {{ warnings | length }} termin asimi uyarisi tespit edildi.
+        </div>
+        <div class="table-wrapper" style="margin-bottom: 20px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Siparis</th>
+                        <th>Termin</th>
+                        <th>Tahmini Bitis</th>
+                        <th>Gecikme (gun)</th>
+                        <th>Parti</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in warnings %}
+                    <tr>
+                        <td>{{ w.order_id }}</td>
+                        <td>{{ w.deadline }}</td>
+                        <td>{{ w.estimated_completion }}</td>
+                        <td><span class="badge badge-red">{{ w.delay_days }} gun</span></td>
+                        <td>{{ w.batch_id }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-success">
+            Termin asimi uyarisi yok &mdash; tum siparisler planli terminlerde teslim edilebilir.
+        </div>
+    {% endif %}
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Parti ID</th>
+                    <th>Musteri</th>
+                    <th>Siparisler</th>
+                    <th>Toplam Hacim (cm3)</th>
+                    <th>Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch in batches %}
+                <tr>
+                    <td><strong>{{ batch.batch_id }}</strong></td>
+                    <td>{{ batch.customer }}</td>
+                    <td>
+                        {% for order in batch.orders %}
+                            <span class="badge badge-blue">{{ order.order_id }}</span>
+                        {% endfor %}
+                    </td>
+                    <td>{{ "%.0f"|format(batch.total_volume_cm3) }}</td>
+                    <td>
+                        {% if batch.oversized %}
+                            <span class="badge badge-red">Asiri Boyutlu</span>
+                        {% else %}
+                            <span class="badge badge-green">Normal</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Parti basi nesting + fiyat -->
+{% for batch in batches %}
+{% set nr = nesting_results.get(batch.batch_id, {}) %}
+{% set pr = pricing_results.get(batch.batch_id, {}) %}
+<div class="card">
+    <div class="card-title">
+        Parti {{ batch.batch_id }} &mdash; {{ batch.customer }}
+        &nbsp;
+        {% if batch.oversized %}
+            <span class="badge badge-red">Asiri Boyutlu</span>
+        {% else %}
+            <span class="badge badge-green">Normal</span>
+        {% endif %}
+    </div>
+
+    <!-- 3D Onizleme (VİTRİN A) + Sokum Konsolu (P6 parite) -->
+    <div id="viewer-container-{{ batch.batch_id }}" class="viewer-container">
+        <div class="viewer-placeholder" id="viewer-placeholder-{{ batch.batch_id }}">
+            <span style="color: var(--color-text-muted); font-size: 13px;">
+                3D onizleme yukluyor...
+            </span>
+        </div>
+        <canvas id="viewer-canvas-{{ batch.batch_id }}" class="viewer-canvas" style="display:none;"></canvas>
+        <div class="gd-viewer-bar">
+            <span class="gd-viewer-tag">{{ nr.get('n_parts', 0) }} parça &middot; {{ nr.get('pitch_mm', '?') }} mm voxel</span>
+            <span style="display:flex; gap:8px; pointer-events:auto;">
+                {% if nr.get('sokum_sirasi') %}
+                <a class="gd-fs-btn" style="text-decoration:none;" href="/sonuc/rehberli-sokum?bid={{ batch.batch_id }}" target="_blank" rel="noopener" title="Bu yerleşime özel adım adım rehberli söküm planı (3D, yeni sekme)">
+                    &#128203; Söküm Planı
+                </a>
+                {% endif %}
+                <button type="button" class="gd-fs-btn" data-bid="{{ batch.batch_id }}" title="Tam ekranda incele — çıkmak için ESC">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    Tam ekranda incele
+                </button>
+            </span>
+        </div>
+    </div>
+    {% if nr.get('parca_kimlik') %}
+    <div id="sk-arac-{{ batch.batch_id }}"></div>
+    <script type="application/json" id="sk-data-{{ batch.batch_id }}">{{ {
+        'parca_kimlik': nr.get('parca_kimlik'),
+        'siparis_ozeti': nr.get('siparis_ozeti'),
+        'sokum_sirasi': nr.get('sokum_sirasi'),
+        'sokum_plani': nr.get('sokum_plani'),
+    } | tojson }}</script>
+    {% else %}
+    <div style="margin-bottom: 20px;"></div>
+    {% endif %}
+
+    <!-- Siparis ozet kartlari (P3/P6) -->
+    {% set so = nr.get('siparis_ozeti') %}
+    {% if so %}
+    <div class="sk-ozet">
+        {% for o in so %}
+        <div class="sk-ozet-kart">
+            <div class="sk-ozet-siparis">{{ o.get('order_id') or '—' }}</div>
+            <div class="sk-ozet-musteri">{{ o.get('musteri') or 'Müşteri bilinmiyor' }}</div>
+            <div class="sk-ozet-sayilar">
+                <span><strong>{{ o.get('n_parca', 0) }}</strong> parça</span>
+                <span><strong>{{ o.get('n_sokum_planli', 0) }}</strong> söküm-planlı</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Nesting metrikleri -->
+    <div class="info-grid" style="margin-bottom: 20px;">
+        <div class="info-item">
+            <div class="info-label">Nesting Yuksekligi</div>
+            <div class="info-value">{{ "%.1f"|format(nr.get('height_mm', 0.0)) }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Doluluk Orani (voxel)</div>
+            <div class="info-value">
+                {% set density_pct = nr.get('density', 0.0) * 100 %}
+                {{ "%.1f"|format(density_pct) }}%
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Hacim-Doluluk (gercek)</div>
+            <div class="info-value">
+                {{ "%.1f"|format(nr.get('volume_fill_pct', 0.0)) }}%
+                {% if nr.get('volume_missing_parts', 0) %}
+                <span style="font-size:11px; color:#b45309;">(hacim eksik: {{ nr.get('volume_missing_parts') }} parca)</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Kullanilan Plaka (WxD)</div>
+            <div class="info-value">
+                {{ "%.0f"|format(nr.get('plate_w_mm', 0.0)) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0)) }} mm
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Yerlestirilen Parca</div>
+            <div class="info-value">{{ nr.get('n_parts', 0) }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Nesting Suresi</div>
+            <div class="info-value">{{ "%.3f"|format(nr.get('elapsed_sec', 0.0)) }} s</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Voxel Pitch</div>
+            <div class="info-value">{{ nr.get('pitch_mm', '-') }} mm</div>
+        </div>
+        {% if nr.get('note') %}
+        <div class="info-item">
+            <div class="info-label">Not</div>
+            <div class="info-value" style="color: #b45309; font-size: 13px;">{{ nr.get('note') }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- #18 Plaka otomatik-türetildi uyarısı (ASCII) -->
+    {% if nr.get('plate_auto') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff8e6; border: 1px solid #e0c268; border-radius: 8px; font-size: 13px; color: #92400e;">
+        <strong>&#9888; Plaka siparisten TURETILDI</strong> &mdash; gercek platform olcusu girilmedi.
+        Kullanilan plaka {{ "%.0f"|format(nr.get('plate_w_mm', 0.0)) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0)) }} mm
+        en buyuk parcadan otomatik hesaplandi. Gercek yazici tablasi farkliysa
+        <a href="/plaka-ayar">/plaka-ayar</a> ekranindan girin.
+    </div>
+    {% endif %}
+
+    <!-- #22 Zaman butcesi asimi izi -->
+    {% if nr.get('budget_exceeded') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff0f0; border: 1px solid #e08585; border-radius: 8px; font-size: 13px; color: #b45309;">
+        <strong>&#9888; Zaman butcesi asildi</strong> &mdash; bu sonuc ayrilan sure icinde
+        elde edilen EN IYI cozumdur (butce olmasa daha iyi olabilirdi).
+        {% if nr.get('time_budget_sec') %}Butce: {{ nr.get('time_budget_sec') }} sn.{% endif %}
+    </div>
+    {% endif %}
+
+    <!-- #23/#24 RAM on-guard izi (rapor-only) -->
+    {% if nr.get('ram_guard_reason') %}
+    <div style="margin-bottom: 14px; padding: 10px 14px; background: #fff8e6; border: 1px solid #e0c268; border-radius: 8px; font-size: 12px; color: #92400e;">
+        <strong>&#9888; Bellek uyarisi:</strong> {{ nr.get('ram_guard_reason') }}
+    </div>
+    {% endif %}
+
+    {# Sokum Plani (K-52 rot-kabul; P6 gecmis_detay paritesi) #}
+    {% set sp = nr.get('sokum_plani') %}
+    {% if sp %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Sokum Plani</strong>
+            <span class="badge badge-yellow">{{ sp | length }} parca ozel islem ister</span>
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+            Bu yerlesim "sokum-planli" kabul edildi: asagidaki parcalar duz cekmeyle degil,
+            kucuk bir dondurmeyle cikar. Diger tum parcalar normal sirayla duz cekilir.
+        </div>
+        {% set ss = nr.get('sokum_sirasi') or [] %}
+        <ul style="font-size:13px; margin:0; padding-left:18px;">
+            {% for e in sp %}
+            <li style="margin-bottom:4px;">
+                {% if e.get('part_id') and e.get('part_id') in ss %}
+                <span class="badge" style="font-family:var(--font-mono); font-size:10.5px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2);"
+                      title="Genel sokum sirasindaki yeri — rehberli sokum modunda bu adimda gelir">sira {{ ss.index(e.get('part_id')) + 1 }}/{{ ss | length }}</span>
+                {% endif %}
+                <strong>{{ e.get('parca', '?') }}</strong>{% if e.get('part_id') and e.get('part_id') != e.get('parca') %} <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted);">({{ e.get('part_id') }})</span>{% endif %}:
+                {% if (e.get('lift_vox', 0) | int) > 0 %}once ~{{ e.get('lift_vox') }} mm yukari kaldir, {% endif %}
+                {{ e.get('eksen', '?') }} ekseninde {{ "%.0f"|format(e.get('aci_deg', 0.0) | float) }}&deg; dondur,
+                sonra {{ e.get('yon', '?') }} yonunden cek
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Seçim Modeli Kararı — önce hangi algoritma? -->
+    {% set sel = nr.get('selection') %}
+    {% if sel %}
+    <div style="margin-bottom: 14px; padding: 14px 16px; background: var(--accent-soft); border-radius: 8px; border-left: 4px solid var(--accent);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <strong style="font-size: 14px; color: var(--accent-ink);">Seçim Modeli Kararı — önce en uygun algoritma</strong>
+            {% if sel.get('is_easy') %}
+                <span class="badge badge-yellow">KOLAY parti</span>
+                <span class="badge badge-green">Verim: portföy atlanır → DBLF</span>
+            {% else %}
+                <span class="badge badge-red">ZOR parti</span>
+                <span class="badge badge-blue">Tahmin: {{ sel.get('predicted_winner', '?') }}</span>
+            {% endif %}
+        </div>
+        <div style="font-size: 12px; color: var(--ink-soft); margin-top: 6px;">
+            {{ sel.get('explain', '') }}
+        </div>
+        <div style="font-size: 12px; color: var(--muted); margin-top: 9px; line-height: 1.55; border-top: 1px dashed var(--line-2); padding-top: 8px;">
+            <strong style="color: var(--ink-soft);">Nasıl çalışır:</strong> Sistem her parti için <strong>önce</strong> en uygun algoritmayı tahmin eder.
+            Emin olduğunda (kolay parti / yüksek güven) <strong>sadece o algoritmayı koşar</strong> — tüm portföyü denemez, zaman kazanır.
+            Emin olmadığında (güven &lt; %60) güvenlik için aşağıdaki <strong>konfig yarışını</strong> koşup en iyiyi seçer.
+            Güven, gerçek geçmiş-nesting verisiyle eğitildikçe artar → daha çok partide tek algoritmaya iner.
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Katman-Bazli Maliyet (AM makine-zamani: Z-height -> katman -> EUR/saat) -->
+    {% set lc = nr.get('layer_cost') %}
+    {% set ls = nr.get('layer_savings') %}
+    {% if lc %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+            <strong style="font-size: 15px;">Katman-Bazli Maliyet</strong>
+            <span class="badge badge-blue">{{ lc.n_layers }} katman ({{ "%.0f"|format(lc.layer_thickness_mm * 1000) }} µm)</span>
+            <span class="badge">~{{ "%.1f"|format(lc.total_hours) }} saat baski</span>
+            <span class="badge">~{{ "%.0f"|format(lc.total_cost_eur) }} € makine maliyeti</span>
+            {% if ls and ls.saved_layers > 0 %}
+            <span class="badge badge-green">Tuner tasarrufu: −{{ ls.saved_layers }} katman = {{ "%.0f"|format(ls.saved_cost_eur) }} € / {{ "%.1f"|format(ls.saved_hours) }} saat</span>
+            {% endif %}
+        </div>
+        <div style="font-size: 12px; color: var(--color-text-muted);">
+            Z-height {{ "%.1f"|format(lc.height_mm) }} mm ÷ {{ "%.2f"|format(lc.layer_thickness_mm) }} mm/katman = {{ lc.n_layers }} katman;
+            her katman ~{{ "%.0f"|format(lc.total_seconds / lc.n_layers) }} sn ve {{ "%.0f"|format(lc.total_cost_eur / lc.n_layers) }} €.
+            {% if ls and ls.saved_layers > 0 %}Nesting Z-height'i %{{ "%.1f"|format(ls.pct_height) }} dusurdu → {{ ls.saved_layers }} katman daha az.{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Instance-Tuner Konfig Kıyas Tablosu -->
+    {% set tuner_data = nr.get('tuner') %}
+    {% set port = nr.get('portfolio') %}
+    {% if tuner_data %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;">
+            <strong style="font-size: 15px;">Instance-Tuner Konfig Yarisi</strong>
+            <span class="badge badge-green">Kazanan: {{ tuner_data.get('winning_config', '?') }}</span>
+            {% if tuner_data.get('gain_vs_baseline_pct', 0.0) > 0.01 %}
+            <span class="badge badge-blue">Portfoy baseline'a +{{ "%.1f"|format(tuner_data.get('gain_vs_baseline_pct', 0.0)) }}% kazanc</span>
+            <span class="badge badge-green">{{ "%.2f"|format(tuner_data.get('improvement_mm', 0.0)) }} mm iyilesme</span>
+            {% else %}
+            <span class="badge badge-yellow">Portfoy baseline zaten en iyi</span>
+            {% endif %}
+            <span style="font-size: 12px; color: var(--color-text-muted);">
+                {{ tuner_data.get('configs_tried', 0) }} konfig x budget={{ tuner_data.get('budget', 0) }}
+            </span>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Konfig</th>
+                        <th>Yukseklik (mm)</th>
+                        <th>Doluluk</th>
+                        <th>Sure (s)</th>
+                        <th>Baseline'a Kazanc%</th>
+                        <th>Sonuc</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in tuner_data.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background: #f0fff4; font-weight: 600;"{% endif %}>
+                        <td>{{ row.get('config', '?') }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0)) }}</td>
+                        <td>{{ "%.1f"|format(row.get('density', 0.0) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0)) }}</td>
+                        <td>
+                            {% if row.get('config') == 'baseline' %}
+                                <span style="color: var(--color-text-muted);">referans</span>
+                            {% elif row.get('gain_pct', 0.0) > 0.01 %}
+                                <span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0)) }}%</span>
+                            {% else %}
+                                <span style="color: var(--color-text-muted);">0%</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.get('winner') %}
+                                <span class="badge badge-green">KAZANDI</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif port %}
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+            <strong style="font-size: 15px;">Algoritma Karsilastirma</strong>
+            <span class="badge badge-green">Kazanan: {{ port.get('winner', '?') }}</span>
+            {% if port.get('gain_pct', 0.0) > 0.01 %}
+            <span class="badge badge-blue">+{{ "%.1f"|format(port.get('gain_pct', 0.0)) }}% kazanc</span>
+            {% else %}
+            <span class="badge badge-yellow">Baseline en iyi</span>
+            {% endif %}
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Konfig / Algoritma</th>
+                        <th>Yukseklik (mm)</th>
+                        <th>Doluluk</th>
+                        <th>Sure (s)</th>
+                        <th>Kazanc%</th>
+                        <th>Sonuc</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in port.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background: #f0fff4; font-weight: 600;"{% endif %}>
+                        <td>{{ row.get('config', row.get('solver', '?')) }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0)) }}</td>
+                        <td>{{ "%.1f"|format(row.get('density', 0.0) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0)) }}</td>
+                        <td>
+                            {% if row.get('gain_pct', 0.0) > 0.01 %}
+                                <span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0)) }}%</span>
+                            {% else %}
+                                <span style="color: var(--color-text-muted);">0%</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if row.get('winner') %}
+                                <span class="badge badge-green">KAZANDI</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Fiyat dokumu -->
+    <div style="border-top: 1px solid var(--color-border); padding-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <strong>Toplam Fiyat Onerisi</strong>
+            <span style="font-size: 20px; font-weight: 800; color: var(--color-primary);">
+                {{ "%.2f"|format(pr.get('total_price', 0.0)) }} $
+            </span>
+        </div>
+        {% set breakdown = pr.get('breakdown', []) %}
+        {% if breakdown %}
+        <ul class="breakdown-list">
+            {% for line in breakdown %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
+        <p style="font-size: 11px; color: var(--color-text-muted); margin-top: 8px;">
+            Hacim bileseni STL parcalarin gercek mesh hacmini (true_fill x bbox) icerir.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<!-- Musteri Yanit Taslagi (VİTRİN B) -->
+{% if llm_active %}
+<div class="card" id="teklif-card">
+    <div class="card-title">Musteri Yanit Taslagi (LLM)</div>
+    <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
+        Bu taslak <strong>MUSTERIYE gidecek mail icindir</strong>; ic muhendislik detayi icermez.
+        Nesting ve fiyat sonuclarindan musteri mail taslagi olusturulur.
+        Yerel model kullanilir. Gondermeden once operatör onaylar.
+    </p>
+    <div id="teklif-content">
+        <button class="btn btn-primary" id="teklif-btn" onclick="teklifOlustur()">
+            Teklif Taslagi Olustur
+        </button>
+    </div>
+    <div id="teklif-loading" style="display:none; padding: 12px 0;">
+        <span style="color: var(--color-text-muted);">Taslak hazirlaniyor...</span>
+    </div>
+    <div id="teklif-result" style="display:none;"></div>
+    <div id="teklif-hata" style="display:none;" class="alert alert-warning"></div>
+</div>
+{% endif %}
+
+<!-- Sorgu Asistani Paneli -->
+{% if llm_active %}
+<div class="card" id="llm-asistan-card">
+    <div class="card-title">Sorgu Asistani Paneli</div>
+    <p style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 12px;">
+        Bu kosunun sonuclari (nesting, fiyat, termin, algoritma kararlari) hakkinda
+        serbest soru sorun. Sistem otomatik olarak dogru rolu secer:
+        ozet sorulari &rarr; Rapor, &ldquo;neden&rdquo; sorulari &rarr; Aciklayici,
+        genel sorular &rarr; Asistan.
+    </p>
+
+    <!-- Hazir-soru dugmeleri -->
+    <div id="hazir-sorular" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;">
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Bana bir ozet ver')"
+        >Ozet cikar</button>
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Neden bu algoritmay sectiniz?')"
+        >Neden bu algoritma?</button>
+        <button
+            class="btn"
+            style="font-size: 13px; padding: 6px 14px; background: #f0f4ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 6px; cursor: pointer;"
+            onclick="sorguHazir('Fiyat nereden geldi?')"
+        >Fiyat nereden ciKti?</button>
+    </div>
+
+    <!-- Sohbet gecmisi -->
+    <div id="sohbet-container" style="margin-bottom: 16px;">
+        {% for tur in sohbet %}
+        <div class="sohbet-soru">
+            <strong>Siz:</strong> {{ tur.soru }}
+        </div>
+        <div class="sohbet-cevap">
+            <strong>{% if tur.rol == 'explainer' %}Aciklayici{% elif tur.rol == 'report' %}Rapor{% else %}Asistan{% endif %}:</strong> {{ tur.cevap }}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Soru girisi -->
+    <div style="display: flex; gap: 8px; align-items: flex-end;">
+        <textarea
+            id="soru-input"
+            rows="2"
+            placeholder="Ornek: B001 partisinin nesting yuksekligi nedir?"
+            style="flex: 1; padding: 10px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; resize: vertical;"
+        ></textarea>
+        <button class="btn btn-primary" id="sor-btn" onclick="soruSor()">
+            Sor
+        </button>
+    </div>
+    <div id="sor-loading" style="display:none; padding: 8px 0; color: var(--color-text-muted); font-size: 13px;">
+        Yerel model dusunuyor...
+    </div>
+    <div id="sor-hata" style="display:none;" class="alert alert-warning" style="margin-top:8px;"></div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-title">Sorgu Asistani Paneli</div>
+    <p style="color: var(--color-text-muted);">
+        <em>LLM kapali</em> — sorgu paneli devre disi
+        (<code>configs/llm.local.json</code> eksik veya Ollama calismıyor).
+    </p>
+</div>
+{% endif %}
+
+<!-- Yeniden calistir formu -->
+<div class="card" style="text-align: center; padding: 28px;">
+    <p style="margin-bottom: 16px; color: var(--color-text-muted);">
+        Pipeline&#39;i yeniden kosturmak icin asagidaki dugmeyi kullanin.
+    </p>
+    <form method="POST" action="/run" id="rerun-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn-primary" id="rerun-btn">
+            Pipeline&#39;i Yeniden Calistir
+        </button>
+    </form>
+</div>
+
+<!-- Yukleniyor overlay -->
+<div id="loading-overlay">
+    <div class="spinner"></div>
+    <div class="loading-text">Pipeline kosturuluyor, lutfen bekleyin...</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- import-map: three.js offline (on-prem, CDN bagimsiz) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "{{ url_for('static', filename='three.min.js') }}"
+  }
+}
+</script>
+<style>
+.sohbet-soru {
+    background: #f0f4ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+.sohbet-cevap {
+    background: #f0fff4;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+.ozet-body {
+    background: #f8fafc;
+    border-left: 4px solid var(--color-primary);
+    padding: 14px 18px;
+    border-radius: 6px;
+    font-size: 15px;
+    line-height: 1.7;
+    margin-top: 12px;
+}
+/* Viewer/tam-ekran/konsol stilleri style.css'te (P2 tek kaynak). */
+.teklif-body {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
+    padding: 14px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.7;
+    margin-top: 12px;
+    white-space: pre-wrap;
+}
+</style>
+
+<script>
+    document.getElementById('rerun-form').addEventListener('submit', function() {
+        document.getElementById('loading-overlay').classList.add('active');
+        document.getElementById('rerun-btn').disabled = true;
+        document.getElementById('rerun-btn').textContent = 'Kosturuluyor...';
+    });
+
+    function ozetOlustur() {
+        const btn = document.getElementById('ozet-btn');
+        const loading = document.getElementById('ozet-loading');
+        const result = document.getElementById('ozet-result');
+        const uyari = document.getElementById('ozet-uyari');
+        const hata = document.getElementById('ozet-hata');
+
+        btn.disabled = true;
+        btn.textContent = 'Olusturuluyor...';
+        loading.style.display = 'block';
+        result.style.display = 'none';
+        uyari.style.display = 'none';
+        hata.style.display = 'none';
+
+        fetch('/ozet', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'}})
+            .then(r => r.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yeniden Olustur';
+
+                if (data.hata) {
+                    hata.style.display = 'block';
+                    hata.textContent = 'Hata: ' + data.hata;
+                    return;
+                }
+                if (data.topraklama_uyarisi) {
+                    uyari.style.display = 'block';
+                    uyari.textContent = 'Topraklama Uyarisi: ' + data.topraklama_uyarisi;
+                    return;
+                }
+                result.style.display = 'block';
+                result.innerHTML = '<div class="ozet-body">' +
+                    '<strong>' + escapeHtml(data.baslik || '') + '</strong><br><br>' +
+                    escapeHtml(data.ozet || '') + '</div>';
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yonetici Ozeti Olustur';
+                hata.style.display = 'block';
+                hata.textContent = 'Baglanti hatasi: ' + err;
+            });
+    }
+
+    // Hazir soru dugmesi: metni kutuya doldur ve gonder
+    function sorguHazir(soru) {
+        const input = document.getElementById('soru-input');
+        if (input) {
+            input.value = soru;
+            soruSor();
+        }
+    }
+
+    function soruSor() {
+        const input = document.getElementById('soru-input');
+        const btn = document.getElementById('sor-btn');
+        const loading = document.getElementById('sor-loading');
+        const hata = document.getElementById('sor-hata');
+        const container = document.getElementById('sohbet-container');
+
+        const soru = input.value.trim();
+        if (!soru) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Bekleniyor...';
+        loading.style.display = 'block';
+        hata.style.display = 'none';
+
+        fetch('/sor', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'},
+            body: JSON.stringify({soru: soru})
+        })
+        .then(r => r.json())
+        .then(data => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = 'Sor';
+
+            if (data.hata) {
+                hata.style.display = 'block';
+                hata.textContent = 'Hata: ' + data.hata;
+                return;
+            }
+
+            const soruDiv = document.createElement('div');
+            soruDiv.className = 'sohbet-soru';
+            soruDiv.innerHTML = '<strong>Siz:</strong> ' + escapeHtml(soru);
+            container.appendChild(soruDiv);
+
+            const cevapDiv = document.createElement('div');
+            cevapDiv.className = 'sohbet-cevap';
+
+            // cevap_md (yeni) veya cevap (geriye-donuk uyumluluk)
+            const cevapMetni = data.cevap_md || data.cevap || '';
+
+            // Kullanilan rol etiketi — Turkce karsilik + renk rozeti
+            const rolRenk = {'report': '#0891b2', 'explainer': '#7c3aed', 'assistant': '#16a34a'};
+            const rolAdi = data.kullanilan_rol || 'assistant';
+            const rolTurkce = {'report': 'Rapor', 'explainer': 'Aciklayici', 'assistant': 'Asistan'};
+            const rolLabel = rolTurkce[rolAdi] || 'Asistan';
+            const rolEtiketi = '<span style="font-size:11px; padding:2px 7px; border-radius:4px; '
+                + 'background:' + (rolRenk[rolAdi] || '#6b7280') + '22; '
+                + 'color:' + (rolRenk[rolAdi] || '#6b7280') + '; '
+                + 'border:1px solid ' + (rolRenk[rolAdi] || '#6b7280') + '44; margin-left:6px;">'
+                + escapeHtml(rolLabel) + '</span>';
+
+            let cevapHtml = '<strong>' + escapeHtml(rolLabel) + ':</strong> ' + rolEtiketi + ' ' + escapeHtml(cevapMetni);
+
+            // Sayi-topraklama uyarisi
+            if (data.sayi_bayragi || data.topraklama_uyarisi) {
+                cevapHtml += ' <span style="color:#b45309; font-size:12px; background:#fef3c7; padding:1px 5px; border-radius:3px;">'
+                    + '[Sayi-topraklama uyarisi]</span>';
+            }
+
+            // Ret rozeti — "bilgi yok"
+            if (data.ret) {
+                cevapHtml += ' <span style="color:#6b7280; font-size:12px; background:#f3f4f6; padding:1px 5px; border-radius:3px;">'
+                    + '[Bilgi yok — baglam disi]</span>';
+            }
+
+            // Kaynak rozetleri (report/explainer'dan gelen kaynaklar)
+            const kaynaklar = data.kaynaklar || data.alintilar || [];
+            if (kaynaklar.length > 0 && !data.ret) {
+                const kaynakMetin = kaynaklar.slice(0, 3).map(function(k) {
+                    const id = (typeof k === 'string') ? k : (k.kaynak_id || k.id || '?');
+                    return '<span style="font-size:11px; color:#0369a1; background:#e0f2fe; '
+                        + 'padding:1px 5px; border-radius:3px; margin-left:3px;">'
+                        + escapeHtml(String(id)) + '</span>';
+                }).join('');
+                cevapHtml += ' ' + kaynakMetin;
+            }
+
+            cevapDiv.innerHTML = cevapHtml;
+            container.appendChild(cevapDiv);
+
+            input.value = '';
+        })
+        .catch(err => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            btn.textContent = 'Sor';
+            hata.style.display = 'block';
+            hata.textContent = 'Baglanti hatasi: ' + err;
+        });
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    // Enter ile soru gonder (Shift+Enter yeni satir)
+    document.addEventListener('DOMContentLoaded', function() {
+        const input = document.getElementById('soru-input');
+        if (input) {
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    soruSor();
+                }
+            });
+        }
+    });
+
+    // Teklif taslagi (VİTRİN B) — TeklifRole, UYARI modu
+    function teklifOlustur() {
+        const btn = document.getElementById('teklif-btn');
+        const loading = document.getElementById('teklif-loading');
+        const result = document.getElementById('teklif-result');
+        const hata = document.getElementById('teklif-hata');
+
+        btn.disabled = true;
+        btn.textContent = 'Olusturuluyor...';
+        loading.style.display = 'block';
+        result.style.display = 'none';
+        hata.style.display = 'none';
+
+        fetch('/teklif', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'}})
+            .then(r => r.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yeniden Olustur';
+
+                if (data.hata && !data.taslak) {
+                    hata.style.display = 'block';
+                    hata.textContent = 'Hata: ' + escapeHtml(data.hata);
+                    return;
+                }
+
+                let html = '<div class="teklif-body">';
+
+                // Topraklama uyarisi rozeti — taslak yine de gosterilir
+                if (data.topraklama_uyarisi) {
+                    html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#92400e;">' +
+                        '<strong>Uyari:</strong> Gondermeden once sayilari kontrol edin — model bazi sayilari baglamdan uretmis olabilir.' +
+                        '</div>';
+                }
+
+                if (data.baslik) {
+                    html += '<div style="font-weight:600;margin-bottom:8px;">Konu: ' + escapeHtml(data.baslik) + '</div>';
+                }
+                html += '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">' +
+                    escapeHtml(data.taslak || '') +
+                    '</pre></div>';
+
+                // Onay / gonder aksiyon cubugu (DEMO-GUVENLI: gercek e-posta GITMEZ)
+                html += '<div id="taslak-aksiyon" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+                    '<button class="btn btn-primary" id="onayla-btn" onclick="taslakOnayla()">Onayla ve Gonder</button>' +
+                    '<button class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;padding:8px 14px;cursor:pointer;" onclick="taslakKopyala()">Panoya kopyala</button>' +
+                    '<span id="taslak-durum" style="font-size:13px;color:var(--color-text-muted);"></span>' +
+                    '</div>';
+
+                result.style.display = 'block';
+                result.innerHTML = html;
+                window._sonTaslak = (data.baslik ? ('Konu: ' + data.baslik + '\n\n') : '') + (data.taslak || '');
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Teklif Taslagi Olustur';
+                hata.style.display = 'block';
+                hata.textContent = 'Baglanti hatasi: ' + err;
+            });
+    }
+
+    // Taslak onay/gonder — DEMO-GUVENLI: gercek e-posta GONDERILMEZ.
+    // Operatör onayini isaretler; istenirse panoya kopyalanir.
+    function taslakOnayla() {
+        const btn = document.getElementById('onayla-btn');
+        const durum = document.getElementById('taslak-durum');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Onaylandi';
+            btn.style.background = '#059669';
+        }
+        if (durum) {
+            durum.innerHTML = '&#10003; Taslak onaylandi &mdash; gonderim kuyruguna alindi ' +
+                '(demo: gercek e-posta gonderilmez).';
+            durum.style.color = '#059669';
+        }
+    }
+
+    function taslakKopyala() {
+        const durum = document.getElementById('taslak-durum');
+        const metin = window._sonTaslak || '';
+        const bildir = (ok) => {
+            if (!durum) return;
+            durum.textContent = ok ? 'Panoya kopyalandi.' : 'Kopyalama desteklenmiyor.';
+            durum.style.color = ok ? '#059669' : '#b91c1c';
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(() => bildir(true), () => bildir(false));
+        } else {
+            bildir(false);
+        }
+    }
+</script>
+
+<!-- 3D Viewer + Sokum Konsolu — ortak modul (P2/P6: viewer3d.js tek kaynak;
+     sonuc.html instancing + tikla-tani + tam ekrani bedava kazanir) -->
+<script type="module">
+    import { initViewer3d } from '{{ url_for("static", filename="viewer3d.js") }}';
+    import { kurSokumKonsolu } from '{{ url_for("static", filename="sokum_konsol.js") }}';
+
+    // batch_ids: Jinja render zamaninda enjekte edilir
+    const batchIds = [{% for batch in batches %}'{{ batch.batch_id }}'{% if not loop.last %},{% endif %}{% endfor %}];
+    const viewers = {};
+
+    function initViewer(batchId) {
+        const container = document.getElementById('viewer-container-' + batchId);
+        const placeholder = document.getElementById('viewer-placeholder-' + batchId);
+        const canvas = document.getElementById('viewer-canvas-' + batchId);
+        if (!container || !canvas) return;
+
+        initViewer3d({
+            container, canvas, placeholder,
+            glbUrl: '/geometri/' + encodeURIComponent(batchId),
+            onReady: handle => {
+                viewers[batchId] = handle;
+                const dataEl = document.getElementById('sk-data-' + batchId);
+                const arac = document.getElementById('sk-arac-' + batchId);
+                if (dataEl && arac) {
+                    try {
+                        kurSokumKonsolu({
+                            bid: batchId, viewer: handle,
+                            data: JSON.parse(dataEl.textContent),
+                            arac, panelKok: container,
+                        });
+                    } catch (e) { /* konsol kurulamazsa viewer normal calisir */ }
+                }
+            },
+        });
+    }
+
+    // --- Tam ekran modu (gecmis_detay paritesi) ---
+    let fsBatchId = null;
+    function resizeViewer(batchId, refit) {
+        const v = viewers[batchId];
+        if (v) v.resize(refit);
+    }
+    function enterFs(batchId) {
+        const container = document.getElementById('viewer-container-' + batchId);
+        if (!container) return;
+        if (!viewers[batchId]) initViewer(batchId);
+        container.classList.add('gd-fs');
+        document.body.classList.add('gd-fs-open');
+        fsBatchId = batchId;
+        let exitBtn = container.querySelector('.gd-fs-exit');
+        if (!exitBtn) {
+            exitBtn = document.createElement('button');
+            exitBtn.type = 'button';
+            exitBtn.className = 'gd-fs-exit';
+            exitBtn.textContent = '✕  Kapat (ESC)';
+            exitBtn.addEventListener('click', exitFs);
+            container.appendChild(exitBtn);
+        }
+        exitBtn.style.display = 'inline-flex';
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(batchId, true)));
+    }
+    function exitFs() {
+        if (fsBatchId === null) return;
+        const container = document.getElementById('viewer-container-' + fsBatchId);
+        if (container) {
+            container.classList.remove('gd-fs');
+            const exitBtn = container.querySelector('.gd-fs-exit');
+            if (exitBtn) exitBtn.style.display = 'none';
+        }
+        document.body.classList.remove('gd-fs-open');
+        const bid = fsBatchId;
+        fsBatchId = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(bid, true)));
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') exitFs(); });
+    window.addEventListener('resize', () => { if (fsBatchId !== null) resizeViewer(fsBatchId); });
+    document.querySelectorAll('.gd-fs-btn[data-bid]').forEach(btn => {
+        btn.addEventListener('click', () => enterFs(btn.dataset.bid));
+    });
+
+    // Lazy-init via IntersectionObserver: her viewer SADECE canvas gorünür olunca baslatilir.
+    // Boylece ayni anda aktif WebGL context sayisi azalir (CONTEXT_LOST_WEBGL onlenir).
+    document.addEventListener('DOMContentLoaded', () => {
+        const initialized = new Set();
+
+        if (typeof IntersectionObserver === 'undefined') {
+            // Tarayici desteklemiyorsa eski davranisa geri don
+            batchIds.forEach(id => initViewer(id));
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const batchId = entry.target.dataset.batchId;
+                    if (batchId && !initialized.has(batchId)) {
+                        initialized.add(batchId);
+                        observer.unobserve(entry.target);
+                        initViewer(batchId);
+                    }
+                }
+            });
+        }, {rootMargin: '100px'});
+
+        batchIds.forEach(id => {
+            // GÖRÜNÜR container gozlemlenir — canvas baslangicta display:none
+            // oldugundan IntersectionObserver onu ASLA "intersecting" gormez
+            // (gizli elementin layout box'i yoktur -> 3D hic baslamaz).
+            const container = document.getElementById('viewer-container-' + id);
+            if (container) {
+                container.dataset.batchId = id;
+                observer.observe(container);
+            }
+        });
+    });
+</script>
+{% endblock %}

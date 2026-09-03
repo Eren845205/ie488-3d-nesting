@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Job History &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+
+<div class="hero-section">
+    <h2>Job History</h2>
+    <p>
+        Daha önce otonom modda işlenen nesting işlerinin kalıcı kaydı &mdash; en yeni üstte.
+        Mail çekme, parti planlama, yerleşim ve fiyatlandırma sonuçları burada saklanır;
+        uygulama yeniden başlasa da kalır.
+    </p>
+    {% if idem_uyari %}
+    <div class="pool-summary-bar" style="background:var(--warn-soft, #fff3cd); border-color:var(--warn, #b8860b); color:var(--warn, #b8860b);">
+        <span class="badge badge-yellow">Uyarı</span>
+        Kayıt silindi ancak idempotency anahtarı kaldırılamadı — ilgili mail otomatik olarak yeniden işlenmeyebilir.
+    </div>
+    {% endif %}
+    <div class="pool-summary-bar">
+        {% if kayitlar %}
+            <span class="badge badge-green">{{ kayitlar | length }} iş</span>
+            kayıtlı &mdash; işlenen son nesting işleri aşağıda.
+        {% else %}
+            <span class="badge badge-yellow">Boş</span>
+            &mdash; henüz işlenmiş otonom iş yok.
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">İşlenen İşler</div>
+
+    {% if kayitlar %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tarih</th>
+                    <th>Müşteri</th>
+                    <th>Mod</th>
+                    <th style="text-align:right;">Sipariş</th>
+                    <th style="text-align:right;">Parti</th>
+                    <th style="text-align:right;">Min. Yükseklik</th>
+                    <th style="text-align:right;">Fiyat</th>
+                    <th style="text-align:right;">Süre</th>
+                    <th>Durum</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for k in kayitlar %}
+                {# Satir tiklamasi HER ZAMAN detay sayfasina gider (Eren istegi
+                   2026-08-17: arsiv kisayolu detayi atliyordu). Arsiv HTML'inin
+                   linki detay sayfasindaki "Rehberli Sokum" kartindadir. #}
+                <tr class="gecmis-row" onclick="location.href='/gecmis/{{ k.id }}'" title="Detay için tıklayın">
+                    <td style="font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); white-space:nowrap;">
+                        {{ (k.zaman or '') | replace('T', '&nbsp;&nbsp;') | safe }}
+                    </td>
+                    <td>
+                        <strong>{{ k.musteri or '-' }}</strong>
+                        {% if k.kaynak == 'otomatik' %}
+                            <br><span style="font-size:10px; color:var(--accent-ink); font-family:var(--font-mono);" title="Sistem otomatik işledi">&#9881; otomatik</span>
+                        {% elif k.kaynak == 'manuel' %}
+                            <br><span style="font-size:10px; color:var(--muted); font-family:var(--font-mono);" title="Operatör elle başlattı">&#9758; manuel</span>
+                        {% elif k.kaynak == 'arsiv' %}
+                            <br><span style="font-size:10px; color:var(--info); font-family:var(--font-mono);" title="{{ k.get('arsiv_not') or 'Script-tabanlı şampiyon koşusu (arşiv kaydı)' }}">&#128451; arşiv</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if k.mod == 'nfv' %}
+                            <span class="badge badge-blue">NFV cavity</span>
+                        {% elif k.mod == 'heightmap' %}
+                            <span class="badge" style="background:var(--surface-2); color:var(--muted); border-color:var(--line-2);">Heightmap</span>
+                        {% else %}
+                            <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);">Otomatik</span>
+                        {% endif %}
+                        {% if k.nfv_quality == 'max' %}
+                            <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2); margin-left:3px;">maks</span>
+                        {% endif %}
+                    </td>
+                    {# k.get(...) — eski şema kayıtlarında alan hiç olmayabilir; k.X Jinja
+                       Undefined döndürüp "is not none" kontrolünü GEÇER ve format patlar. #}
+                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.get('siparis_sayisi') if k.get('siparis_sayisi') is not none else '-' }}</td>
+                    <td style="text-align:right; font-family:var(--font-mono);">{{ k.get('parti_sayisi') if k.get('parti_sayisi') is not none else '-' }}</td>
+                    <td style="text-align:right; font-family:var(--font-mono);">
+                        {% if k.get('min_yukseklik_mm') is not none %}
+                            <span style="color:var(--info);">{{ '%.1f'|format(k.get('min_yukseklik_mm')) }}</span> mm
+                        {% else %}&mdash;{% endif %}
+                    </td>
+                    <td style="text-align:right; font-family:var(--font-mono);">
+                        {% if k.kaynak == 'arsiv' %}&mdash;{% else %}
+                        <span style="color:var(--ok); font-weight:600;">{{ '%.2f'|format(k.toplam_fiyat or 0) }}</span> USD
+                        {% endif %}
+                    </td>
+                    <td style="text-align:right; font-family:var(--font-mono); color:var(--ink-soft);">
+                        {% if k.kaynak == 'arsiv' %}&mdash;{% else %}
+                        {% set s = (k.sure_sn or 0) | float %}
+                        {% if s >= 60 %}{{ (s // 60) | int }}:{{ '%02d'|format((s % 60) | int) }} dk{% else %}{{ '%.0f'|format(s) }} sn{% endif %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if k.durum == 'bitti' %}
+                            <span class="badge badge-green">Tamamlandı</span>
+                        {% elif k.durum == 'kismi' %}
+                            <span class="badge badge-yellow" {% if k.hata_ozeti %}title="{{ k.hata_ozeti }}"{% endif %}>Kısmî</span>
+                            {% if k.hata_ozeti %}
+                            <br><span style="font-size:10px; color:var(--warn, #b8860b); display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ k.hata_ozeti }}">{{ k.hata_ozeti }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge badge-red" {% if k.hata_ozeti %}title="{{ k.hata_ozeti }}"{% endif %}>{{ k.durum or 'Hata' }}</span>
+                            {% if k.hata_ozeti %}
+                            <br><span style="font-size:10px; color:var(--err); display:inline-block; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ k.hata_ozeti }}">{{ k.hata_ozeti }}</span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td style="text-align:right; color:var(--accent); font-weight:700; font-size:16px;">&rsaquo;</td>
+                    <td onclick="event.stopPropagation();">
+                        {# Liste satirinda hizli sil = VARSAYILAN davranis (mail yeniden
+                           islenebilir olur). "Islenmis sayilsin" secenegi detay sayfasinda. #}
+                        <form method="POST" action="/gecmis/{{ k.id }}/sil"
+                              onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} Mail, gözcünün sonraki taramasında yeniden işlenebilir olur. (Silmeden yeniden-işleme seçeneğini değiştirmek için kayda tıklayıp detay sayfasını kullanın.){% elif k.kaynak == 'otomatik' %} (Eski kayıt: mail bağlantısı saklanmadığından yeniden işleme buradan tetiklenemez — mail gelen kutusuna yeniden iletilirse işlenir.){% endif %}')">
+                            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-danger" style="font-size:11px; padding:4px 8px;">Sil</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:42px 20px; color:var(--muted);">
+        <div style="font-size:34px; opacity:.4; margin-bottom:10px;">&#9881;</div>
+        <div style="font-size:15px; font-weight:600; color:var(--ink-soft); margin-bottom:5px;">Henüz işlenmiş iş yok</div>
+        <div style="font-size:13px;">
+            Ana sayfadaki <strong>&ldquo;Mailleri Çek ve İşle (Otonom)&rdquo;</strong> ile ilk işinizi başlatın;
+            tamamlanan işler burada listelenecek.
+        </div>
+        <a href="/" class="btn btn-primary" style="margin-top:16px; text-decoration:none; display:inline-block;">Ana Sayfaya Dön</a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

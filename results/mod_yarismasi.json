@@ -1,0 +1,709 @@
+{
+ "adaylar": {
+  "1nn": {
+   "mean": 13.1,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.362,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 18.25,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 9.86,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 3.72,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 10.34,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.71,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 1.56,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 12.89,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 10.51,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.42,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 1.6,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 28.11,
+     "n": 11
+    },
+    "tube": {
+     "mean": 14.2,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "karar_agaci": {
+   "mean": 8.72,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.75,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 0.39,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 0.22,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 0.18,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 1.93,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 27.75,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": true
+  },
+  "knn": {
+   "mean": 13.94,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.325,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 18.25,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 9.86,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 3.33,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 10.34,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.71,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 1.56,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 12.89,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 10.69,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.42,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 1.6,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 28.11,
+     "n": 11
+    },
+    "tube": {
+     "mean": 21.59,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "logistic": {
+   "mean": 8.72,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.613,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 9.67,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 2.86,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.95,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 0.44,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 0.72,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 0.85,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 22.68,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_knn_reg": {
+   "mean": 15.15,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.338,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 144.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 7.67,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 1.89,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 12.83,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.95,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 1.56,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 18.92,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 27.75,
+     "n": 11
+    },
+    "tube": {
+     "mean": 14.64,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "argmin_ridge_reg": {
+   "mean": 17.26,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.037,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 19.33,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 144.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 28.57,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 3.74,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 18.71,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 2.0,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 1.56,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 17.56,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 19.79,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 18.91,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 2.1,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 1.93,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 16.99,
+     "n": 11
+    },
+    "tube": {
+     "mean": 11.72,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "regret_logistic": {
+   "mean": 10.55,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.588,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 144.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 9.67,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 2.86,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 0.15,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.95,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 0.44,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 0.72,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 0.85,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 22.68,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "conformal_logistic": {
+   "mean": 8.72,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.613,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 9.67,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 2.86,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.95,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 0.44,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 0.72,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 0.85,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 22.68,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "mini_bagging(deney)": {
+   "mean": 9.01,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.65,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 0.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 1.4,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 0.0,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 0.44,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 4.0,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 0.72,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 1.93,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 27.75,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  },
+  "KURAL(baseline)": {
+   "mean": 16.44,
+   "max": 192.0,
+   "n": 80,
+   "accuracy": 0.362,
+   "aile": {
+    "few_large_many_small": {
+     "mean": 18.25,
+     "n": 3
+    },
+    "fsm610_gercek": {
+     "mean": 144.0,
+     "n": 1
+    },
+    "high_qty_repeat": {
+     "mean": 28.57,
+     "n": 3
+    },
+    "holey_frames": {
+     "mean": 2.86,
+     "n": 3
+    },
+    "long_rod": {
+     "mean": 18.13,
+     "n": 12
+    },
+    "long_rods": {
+     "mean": 0.95,
+     "n": 3
+    },
+    "mass_plate_rod_mix": {
+     "mean": 1.56,
+     "n": 9
+    },
+    "mixed_scale": {
+     "mean": 192.0,
+     "n": 1
+    },
+    "random_boxes": {
+     "mean": 17.51,
+     "n": 3
+    },
+    "repeat_rod_mix": {
+     "mean": 19.44,
+     "n": 3
+    },
+    "solid_bulk": {
+     "mean": 18.73,
+     "n": 12
+    },
+    "thin_plate": {
+     "mean": 0.13,
+     "n": 4
+    },
+    "thin_plates": {
+     "mean": 0.0,
+     "n": 3
+    },
+    "thin_shell": {
+     "mean": 6.48,
+     "n": 11
+    },
+    "tube": {
+     "mean": 20.92,
+     "n": 9
+    }
+   },
+   "overfit_flag": false
+  }
+ },
+ "n_tablo": 80,
+ "tablo_istatistik": {
+  "n_heldout_dislanan": 0,
+  "n_featuresiz_satir": 88,
+  "n_invalid_satir": 142,
+  "n_legal_armsiz_instance": 118,
+  "m4_n_satir": 32,
+  "m4_n_tekrar_satir": 1,
+  "m4_n_kafes_kol_atlandi": 0,
+  "m4_n_invalid_kol": 10,
+  "m4_n_legal_armsiz": 0,
+  "m4_n_heldout_dislanan": 0,
+  "m4_n_id_cakisan": 0,
+  "m4_n_ozelliksiz": 0
+ }
+}

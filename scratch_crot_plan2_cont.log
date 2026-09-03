@@ -1,0 +1,12 @@
+C:\Users\erenk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\cupy\_environment.py:284: UserWarning: CUDA path could not be detected. Set CUDA_PATH environment variable if CuPy fails to load.
+  warnings.warn(
+==============================================================================
+SUREKLI ROTASYON @ KABA PITCH=2.0mm — dataset=plan2 — cpu=16 ram=16.9GB gpu=True(fp64=True) fast_fft=- slurm=False
+  hipotez: off-axis surekli aci KABA cozunurlukte cavity acar mi? (Magics=492.0)
+==============================================================================
+  plaka 329x328mm (164x164 voxel)
+  set                                 n_or      NFV   vs-baz  vs-Magics    sure
+------------------------------------------------------------------------------
+  L0  n=8 (baz)                          8    522.0    +0.0%      +6.1%    231s
+  [not] 2 egik poz kaba pitch'te cok ince -> atlandi (baz n=8 korundu)
+  C24 n=8+surekli(t20/40 a4 s2)         24    550.0    -5.4%     +11.8%   2080s

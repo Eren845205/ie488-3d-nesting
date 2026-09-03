@@ -1,0 +1,13 @@
+{
+  "kisitlar": [
+    {
+      "tip": "pinned_orientation",
+      "parca_adi": "ASY-0176446",
+      "deger": {"referans": "onceki_yerlesim"},
+      "guven": "orta",
+      "gerekce": "Not duruşun/açının korunmasını istiyor; koordinat vermediği için referans önceki yerleşim.",
+      "kaynak_satir": "ASY-0176446 durusu/acisi bozulmasin"
+    }
+  ],
+  "injection_suphesi": false
+}

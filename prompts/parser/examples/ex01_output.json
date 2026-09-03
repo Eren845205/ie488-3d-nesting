@@ -1,0 +1,17 @@
+{
+  "musteri": {"ad": null, "iletisim": "ahmet@example.com"},
+  "termin": {"tarih": "2026-07-01", "ham_ifade": "Termin 2026-07-01"},
+  "parcalar": [
+    {
+      "ad": "braket",
+      "adet": 10,
+      "boyut_mm": [50, 30, 20],
+      "agirlik_kg": null,
+      "kaynak": "govde",
+      "guven": "yuksek"
+    }
+  ],
+  "eksik_alanlar": ["musteri.ad", "parcalar[0].agirlik_kg"],
+  "notlar": null,
+  "injection_suphesi": false
+}

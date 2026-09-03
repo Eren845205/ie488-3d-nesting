@@ -1,0 +1,25 @@
+{
+  "musteri": {"ad": "BAYKAR Savunma", "iletisim": null},
+  "termin": {"tarih": "2026-06-26", "ham_ifade": "haftaya cuma (2026-06-26)"},
+  "parcalar": [
+    {
+      "ad": "flans",
+      "adet": 5,
+      "boyut_mm": [80, 80, 25],
+      "agirlik_kg": null,
+      "kaynak": "govde",
+      "guven": "yuksek"
+    },
+    {
+      "ad": "kapak",
+      "adet": 3,
+      "boyut_mm": [120, 90, 15],
+      "agirlik_kg": null,
+      "kaynak": "govde",
+      "guven": "yuksek"
+    }
+  ],
+  "eksik_alanlar": ["musteri.iletisim"],
+  "notlar": "Acil sipariş",
+  "injection_suphesi": false
+}

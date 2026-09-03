@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Mail Settings &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Mail Ayarları &mdash; Gelen Kutusunu Bağla</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Sağlayıcınızı seçip e-posta ve <strong>Uygulama Şifresi</strong>ni girin.
+        Kaydettikten sonra Ana Sayfa'daki &laquo;Mailleri Çek ve İşle (Otonom)&raquo;
+        butonu gerçek gelen kutunuzdan çeker.
+    </p>
+
+    {% if kayitli %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:13px;">
+        ✓ Şu an bağlı: <strong>{{ aktif_saglayici }}</strong>
+        {% if aktif_user %}— <code>{{ aktif_user }}</code>{% endif %}
+    </div>
+    {% else %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff8e6; border:1px solid #f0d98c; font-size:13px;">
+        Henüz gerçek hesap bağlı değil — şu an <strong>Demo (örnek mailler)</strong> kullanılıyor.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/mail-ayar" id="mail-ayar-form" style="margin-top:16px; max-width:480px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Sağlayıcı</label>
+        <select name="provider" id="provider" style="width:100%; padding:8px; margin-bottom:14px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+            <option value="hotmail" {% if aktif_provider == 'hotmail' %}selected{% endif %}>Hotmail / Outlook.com</option>
+            <option value="outlook" {% if aktif_provider == 'outlook' %}selected{% endif %}>Outlook (Office 365)</option>
+            <option value="gmail"   {% if aktif_provider == 'gmail' %}selected{% endif %}>Gmail</option>
+            <option value="fake"    {% if aktif_provider == 'fake' %}selected{% endif %}>Demo (örnek mailler — bağlantı yok)</option>
+        </select>
+
+        <div id="kimlik-alanlari">
+            <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">E-posta adresi</label>
+            <input type="email" name="user" id="user" value="{{ aktif_user or '' }}" placeholder="ornek@hotmail.com"
+                   style="width:100%; padding:8px; margin-bottom:14px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+
+            <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">
+                Uygulama Şifresi (App Password)
+            </label>
+            <input type="password" name="password" id="password" placeholder="{% if kayitli %}••••••••  (değiştirmek için yeni girin){% else %}16 haneli uygulama şifresi{% endif %}"
+                   style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+            <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 14px;">
+                ⚠ Normal e-posta şifreniz <strong>çalışmaz</strong>. Hesabınızda 2 adımlı doğrulamayı açıp
+                <em>Uygulama Şifresi</em> oluşturun:
+                Hotmail/Outlook → <code>account.microsoft.com/security</code> ·
+                Gmail → <code>myaccount.google.com/apppasswords</code>
+            </p>
+
+            <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Klasör</label>
+            <input type="text" name="folder" id="folder" value="{{ aktif_folder or 'INBOX' }}"
+                   style="width:100%; padding:8px; margin-bottom:16px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="font-size:15px; padding:10px 18px;">Kaydet</button>
+        <button type="button" id="test-btn" class="btn" style="font-size:15px; padding:10px 18px; margin-left:8px;"
+                onclick="testBaglanti()">Bağlantıyı Test Et</button>
+        <span id="test-spinner" style="display:none; font-size:13px; color:var(--color-text-muted); margin-left:10px;">Test ediliyor…</span>
+    </form>
+
+    {% if kaydedildi %}
+    <div style="margin-top:14px; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
+        ✓ Ayarlar kaydedildi.
+    </div>
+    {% endif %}
+
+    <div id="test-sonuc" style="display:none; margin-top:14px; padding:10px 12px; border-radius:8px; font-size:14px;"></div>
+
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-muted);">
+        🔒 Şifre yalnızca bu sunucudaki <code>configs/mail.local.json</code> dosyasına (ya da
+        <code>.env</code>) yazılır; versiyon kontrolüne girmez. Veri dışarı çıkmaz.
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <div class="card-title">Otomatik Tarama (Arka Plan)</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Açıkken uygulama, siz hiçbir şey yapmadan belirli aralıklarla gelen kutusunu
+        kontrol eder; yeni sipariş maili geldikçe tüm pipeline'ı (parse → nesting →
+        fiyat → teklif) otomatik çalıştırır. Sonuçlar Sonuç ekranında görünür.
+    </p>
+    <div style="display:flex; align-items:center; gap:12px; margin-top:10px; flex-wrap:wrap;">
+        <span id="poll-rozet" class="badge">durum yükleniyor…</span>
+        <button type="button" class="btn btn-primary" id="poll-ac" onclick="pollAyar('baslat')">Otomatik Taramayı Aç</button>
+        <button type="button" class="btn" id="poll-kapa" onclick="pollAyar('durdur')">Kapat</button>
+    </div>
+    <div id="poll-detay" style="font-size:12px; color:var(--color-text-muted); margin-top:10px;"></div>
+</div>
+
+<script>
+async function pollDurumGetir() {
+    try {
+        var r = await fetch('/poll/durum');
+        if (!r.ok) return;
+        pollGoster(await r.json());
+    } catch (e) {}
+}
+function pollGoster(s) {
+    var rozet = document.getElementById('poll-rozet');
+    rozet.textContent = s.enabled ? '● Açık' : '○ Kapalı';
+    rozet.className = 'badge ' + (s.enabled ? 'badge-green' : 'badge-yellow');
+    document.getElementById('poll-ac').style.display = s.enabled ? 'none' : 'inline-block';
+    document.getElementById('poll-kapa').style.display = s.enabled ? 'inline-block' : 'none';
+    var parts = ['Aralık: ' + s.interval_s + ' sn', 'Tur: ' + s.runs,
+                 'Toplam işlenen sipariş: ' + s.total_processed];
+    if (s.inflight && s.inflight_detail) parts.push('⚙ ' + s.inflight_detail);
+    if (s.last_error) parts.push('Son hata: ' + s.last_error);
+    document.getElementById('poll-detay').textContent = parts.join(' · ');
+}
+async function pollAyar(eylem) {
+    try {
+        var r = await fetch('/poll/' + eylem, {
+            method: 'POST', headers: {'X-CSRF-Token': '{{ csrf_token }}'}
+        });
+        var j = await r.json();
+        if (j.durum) pollGoster(j.durum);
+    } catch (e) {}
+}
+pollDurumGetir();
+setInterval(pollDurumGetir, 10000);  // 10 sn'de bir durumu tazele
+</script>
+
+<script>
+function provDegisti() {
+    var p = document.getElementById('provider').value;
+    document.getElementById('kimlik-alanlari').style.display = (p === 'fake') ? 'none' : 'block';
+}
+document.getElementById('provider').addEventListener('change', provDegisti);
+provDegisti();
+
+async function testBaglanti() {
+    var sonuc = document.getElementById('test-sonuc');
+    var spinner = document.getElementById('test-spinner');
+    spinner.style.display = 'inline';
+    sonuc.style.display = 'none';
+    var fd = new FormData(document.getElementById('mail-ayar-form'));
+    try {
+        var r = await fetch('/mail-ayar/test', { method: 'POST', body: fd });
+        var j = await r.json();
+        spinner.style.display = 'none';
+        sonuc.style.display = 'block';
+        if (j.ok) {
+            sonuc.style.background = '#f0fff4';
+            sonuc.style.border = '1px solid #b7e4c7';
+            sonuc.textContent = '✓ ' + j.mesaj;
+        } else {
+            sonuc.style.background = '#fdecea';
+            sonuc.style.border = '1px solid #f5b7b1';
+            sonuc.textContent = '✗ ' + j.mesaj;
+        }
+    } catch (e) {
+        spinner.style.display = 'none';
+        sonuc.style.display = 'block';
+        sonuc.style.background = '#fdecea';
+        sonuc.style.border = '1px solid #f5b7b1';
+        sonuc.textContent = '✗ Test isteği başarısız: ' + e;
+    }
+}
+</script>
+{% endblock %}

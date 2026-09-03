@@ -1,0 +1,119 @@
+# 02_EVAL_KAPISI — Dürüst Metrik, Kapı Tanımı, Runbook'lar
+
+> Anayasa bağları: A1 (kapısız kazanç yok), A2 (legal-yükseklik), A5 (dağılım
+> raporu), B2 (eşikler). Bu dosya kapının NASIL koşulduğunu tanımlar.
+
+---
+
+## 1. Dürüst metrik tanımları
+
+**`legal_height_mm`** (başlık metriği):
+```
+legal_height(koşu) =
+  height_mm   eğer  n_placed == n_total
+             VE  min_clearance(placements) >= 2.0mm   (clearance.min_clearance)
+             VE  accessibility.check_result.n_locked == 0
+  INVALID(sebep)  aksi hâlde
+```
+- INVALID bir sayı DEĞİLDİR; kıyas tablosunda `INV(sebep)` yazılır ve o koşu
+  hiçbir iyileşme iddiasına kanıt olamaz. (K-19: 0.084mm ihlalli 282 böyle
+  yakalanırdı; K-21: 554 kilitli 262.5 böyle yakalanırdı.)
+- **Eşik güncellemesi (2026-08-18, Eren onayı — KARAR-3):** 1.0mm → **2.0mm**.
+  ANAYASA A2 zaten 2026-07-09'da (hoca teyidiyle) 2mm demişti; bu dosya 1mm'de
+  kalmıştı (D-4 drift bulgusu, `RAPOR_FSM610_SINIF_VE_ML_DENETIMI_2026-08-18.md`).
+  Muhtemel sonuç: heightmap yolunun ~1mm'lik çıktıları artık dev-set kapısında
+  da INVALID görünür (fsm610'da görünen zafiyet dev'de de yakalanır). Eski
+  1mm-tabanlı kıyas kayıtları TARİHSEL geçerli, yeni iddialar 2mm ile koşulur.
+
+**İkincil metrikler:** doluluk oranı (bilgi amaçlı — [[feedback-doluluk]]
+dersi: mutlak doluluk işin doğası gereği düşük, kıyas ancak aynı iş üzerinde),
+`duration_s`, `peak_ram_mb` (6GB istemci zarfı), `n_locked`,
+`min_clearance_mm` (ham değerler her zaman raporda).
+
+**Seçim-modeli metriği — REGRET (accuracy değil):**
+```
+regret(instance) = legal_height(seçilen mod) - min üzerinden tüm modlar legal_height
+```
+Accuracy yanıltır: modlar arası fark bazen 0.5mm bazen 100mm. Başlık:
+ortalama + maksimum regret (mm), aile kırılımlı. Accuracy yalnız yardımcı.
+
+## 2. Kapı koşusu tanımı
+
+- **Kapsam:** TÜM dev-set'ler (plan1, plan2, plan3, deneme4 + sentetik
+  temsilciler). Held-out YALNIZ final doğrulamada (registry'ye bakış kaydıyla).
+- **Sabitler:** seed=42, gerçek plaka değerleri (deneme4: 325×325; plan2:
+  328.74×328.19; diğerleri registry'den), **clearance=2.0mm** (2026-08-18
+  KARAR-3 hizalaması; eski 1.0mm kayıtları tarihsel), üretim decode yolu
+  (değişiklik hangi yoldaysa o yol + değişmeyen yollar bit-özdeşlik kontrolü).
+- **BASELINE YENİLEME BEKLİYOR (A8):** 2mm eşiğiyle TÜM dev-set baseline'ları
+  yeniden koşulmadan yeni "iyileşme" iddiası ilan edilemez; mevcut anchor'lar
+  1mm dönemine ait ve elle değiştirilmez — yenileme koşusu sakin-makine
+  seansında (D:\ie488, münhasır), sonucuyla anchor gerekçeli güncellenir.
+- **Çıktı formatı (dağılım tablosu — A5):**
+
+  | set | aile | önce | sonra | Δ% | verdict |
+  |---|---|---|---|---|---|
+  her satır legal_height; INVALID ise sebep. Altına: süre/RAM değişimi.
+
+- **Eşikler (B2):** herhangi bir set >%2 kötü veya INVALID'e düşüş → FAIL ·
+  hiçbiri >%0.5 kötüleşmeden ≥1 set >%0.5 iyileşme → PASS · arası → insan
+  kararı (trade-off tablosu zorunlu).
+- **Bit-özdeşlik yükümlülüğü:** dokunulmayan yollarda önce==sonra BİREBİR
+  beklenir (H-15p/H-16 deseni); fark varsa değişiklik "izole değil" → önce onu
+  açıkla.
+
+## 3. Runbook — yeni algoritma fikri (K-xx / H-xx)
+
+1. **Kayıt:** YONTEM_HARITASI §3'e aday satırı (ne, niçin, beklenen ödül).
+2. **Ucuz teşhis (A4):** dakikalık analizle hüküm verilebiliyor mu?
+   (K-23 deseni: replay/teşhis scripti `scripts/` altına, log'uyla.)
+   Teşhis NO-GO derse → §3'e NO-GO kaydı, DUR. (K-24 Adım-1 deseni: teşhis
+   "post-hoc imkânsız, sıra-içi umutlu" gibi YÖN de değiştirebilir.)
+3. **Prototip:** üretime dokunmadan `scripts/` içinde; ölçüm =
+   `legal_height` (INVALID görünce erken kes).
+4. **Kapı koşusu:** §2. PASS → üretime bağlama işi (builder + reviewer +
+   tam suite, bayat-mock kontrolü A9) → commit + anchor güncelle (A8).
+5. **Kayıt kapanışı:** §3 satırı sonuç + kanıt yoluyla güncellenir.
+
+## 4. Runbook — yeni gerçek veri geldi
+
+1. Gözcü işledi → `01_VERI.md` §3 protokolü: registry'ye **held-out** kaydı.
+2. Üretim sonucu (müşteri çıktısı) zaten var; bu bakış SAYILMAZ.
+3. Ekibin merakı için held-out karşılaştırma koşusu İSTENİYORSA: tek koşu,
+   registry'ye bakış kaydı, sonuç rapora — ve o sonuçtan tuning kararı
+   ÇIKARILMAZ (çıkarılacaksa set dev'e transfer edilir ve held-out'luğu düşer).
+4. Magics/rakip değeri varsa: clearance + plaka + ayrılabilirlik şartları
+   sorulmadan kıyas tablosuna "şerhli" girer (A10).
+
+## 5. Fazlar (B4 kademeli yatırım)
+
+> **DURUM (2026-07-07):** Faz-0 ✅ (`eval_gate.py`, deneme4 264.0 + plan1 125.0
+> doğrulandı) · Faz-1 ✅ (`data/registry.json` + rol/red/bakış-log kablosu) ·
+> Faz-2 ✅ (`telemetry.append_run_v2` + demo_pipeline kablosu, test-korumalı) ·
+> Faz-3 kod-katmanı ✅ (KNNSelector, LogisticSelector+kalibrasyon, loo_regret,
+> gengap model-parametrik, held-out eğitim filtresi, `tune_bo.py` koşucusu) —
+> Faz-3'ün KOŞULARI (BO denemeleri, model adaylarının gerçek-veri değerlendirmesi,
+> yürürlüğe alma) baseline kilidi + insan kararı bekler (A1/A6).
+
+- **Faz-0 — Konsolidasyon (ilk iş):** `scripts/eval_gate.py` tek CLI:
+  mevcut parçaları çağırır (`c3_generality` DATASETS + `clearance.
+  min_clearance` + `accessibility.check_result`), §2 tablosunu üretir,
+  verdict basar. Yeni algoritma YOK — yalnız birleştirme. Kabul: Deneme4
+  264.0 + plan setleri mevcut anchor'larla birebir.
+- **Faz-1 — Registry:** `01_VERI.md` §2 tablosunun `data/registry.json`
+  karşılığı + eval_gate'in held-out'u koşmayı reddetmesi (açık bayrak
+  `--heldout-final` olmadan).
+- **Faz-2 — Telemetri v2:** `01_VERI.md` §5 alanları tek satırda; gözcü
+  koşuları otomatik yazar. (Çoğu alan zaten üretiliyor — kablo işi.)
+- **Faz-3 — Tuning/öğrenme:** `04_MOTOR_TUNING.md` + `03_SECIM_MODELI.md`
+  yol haritaları bu altyapının ÜSTÜNE.
+
+## 6. Bilinen sınırlar (dürüstlük)
+
+- Kapı deterministik ama TEK seed'li; seed-duyarlılığı şüphesinde 3-seed
+  (42/13/7) medyanı istenebilir — maliyet 3×, yalnız kritik kararlarda.
+- Sentetik dev-set'ler kutu-ağırlıklı; kabuk ailesi tek gerçek temsilciyle
+  (deneme4) sınırlı → kabuk jeneratörü gelene dek kabuk kararları fazladan
+  ihtiyat ister (01_VERI §6).
+- Süre bandı tahminleri iyimser olabilir (H-16 dersi) — GO/NO-GO süre
+  iddiaları uçtan-uca ölçümle doğrulanır, bileşen toplamıyla değil.

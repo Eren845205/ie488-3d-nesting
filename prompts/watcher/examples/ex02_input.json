@@ -1,0 +1,11 @@
+{
+  "bulgular": [
+    {
+      "asama": "parse",
+      "kod": "PARSE_SIGMA_SAPMA",
+      "severity": "med",
+      "baslik": "Parça boyutunda aykırı sapma",
+      "ham_detay": "aykiri_parca_sayisi=1, medyan_hacim=52500.0, mad=6750.0"
+    }
+  ]
+}

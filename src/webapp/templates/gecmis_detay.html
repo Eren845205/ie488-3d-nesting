@@ -1,0 +1,750 @@
+{% extends "base.html" %}
+
+{% block title %}Job Detail &mdash; {{ k.musteri }} &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+
+{# Geri linki — liste sayfasina doner #}
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+    <a href="/gecmis" class="nav-link" style="font-size:14px;">
+        &larr; İş Geçmişine Dön
+    </a>
+    <form method="POST" action="/gecmis/{{ k.id }}/sil" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;"
+          onsubmit="return confirm('Bu iş kaydı silinsin mi?{% if k.yeniden_islenebilir %} Mail seçimine göre yeniden işlenecek ya da işlenmiş sayılmaya devam edecek.{% elif k.kaynak == 'otomatik' %} (Eski kayıt: mail bağlantısı saklanmadığından yeniden işleme buradan tetiklenemez — mail gelen kutusuna yeniden iletilirse işlenir.){% endif %}')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        {% if k.yeniden_islenebilir %}
+        {# Kullanici karari 2026-07-05: silme VARSAYILAN olarak maili yeniden
+           islenebilir yapar; istenirse isaret kaldirilir (idem_birak=1). #}
+        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink-soft); cursor:pointer;"
+               title="İşaretliyken: silinen işin maili, gözcünün sonraki taramasında (hâlâ gelen kutusu penceresindeyse) yeni mail gibi baştan işlenir. İşareti kaldırırsan: kayıt silinir ama mail işlenmiş sayılmaya devam eder.">
+            <input type="checkbox" id="yeniden-isle-cb" checked
+                   onchange="document.getElementById('idem-birak-alani').value = this.checked ? '' : '1';">
+            Mail yeniden işlenebilir olsun
+        </label>
+        <input type="hidden" name="idem_birak" id="idem-birak-alani" value="">
+        {% endif %}
+        <button type="submit" class="btn btn-danger btn-sm">Kaydı Sil</button>
+    </form>
+</div>
+
+<div class="hero-section">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <h2 style="margin:0;">{{ k.musteri or 'İş' }}</h2>
+        {% if k.durum == 'bitti' %}
+            <span class="badge badge-green">Tamamlandı</span>
+        {% else %}
+            <span class="badge badge-red">{{ k.durum or 'Hata' }}</span>
+        {% endif %}
+        {% if k.kaynak == 'otomatik' %}
+            <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);">&#9881; Otomatik işlendi</span>
+        {% elif k.kaynak == 'manuel' %}
+            <span class="badge" style="background:var(--surface-2); color:var(--muted); border-color:var(--line-2);">Manuel başlatıldı</span>
+        {% endif %}
+        {% if detay %}
+            <span class="badge" style="background:var(--surface-2); color:var(--ink-soft); border-color:var(--line-2);" title="Bu kayıt koşu anında kalıcılaştırıldı — tüm detaylar sunucu yeniden başlasa da erişilebilir.">&#128190; Tam kayıt</span>
+        {% endif %}
+        {% if k.get('kosu_siparis_sayisi') %}
+            <span class="badge" style="background:var(--surface-2); color:var(--ink-soft); border-color:var(--line-2);" title="Bu sipariş, aynı gözcü taramasında yakalanan {{ k.get('kosu_siparis_sayisi') }} siparişlik tek koşuda işlendi (koşu {{ k.get('kosu_id') }}). Süre alanı koşunun toplamıdır; diğer siparişler geçmişte ayrı satırlardır.">&#128279; Aynı koşuda {{ k.get('kosu_siparis_sayisi') }} siparişten biri</span>
+        {% endif %}
+    </div>
+    <p style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-top:8px;">
+        {{ (k.zaman or '') | replace('T', ' &nbsp; ') | safe }}
+    </p>
+</div>
+
+{# ============ ALGORİTMA KARARI — güven paneli ============ #}
+<div class="card karar-panel">
+    <div class="card-title">Nesting Modu Kararı</div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+        {% if k.mod == 'nfv' %}
+            <span class="badge badge-blue" style="font-size:13px;">NFV cavity (kalite)</span>
+        {% elif k.mod == 'heightmap' %}
+            <span class="badge" style="font-size:13px; background:var(--surface-2); color:var(--muted); border-color:var(--line-2);">Heightmap (hızlı)</span>
+        {% else %}
+            <span class="badge" style="font-size:13px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);">Otomatik (akıllı)</span>
+        {% endif %}
+        {% if k.nfv_quality == 'max' %}
+            <span class="badge" style="background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2);">maksimum kalite</span>
+        {% endif %}
+        {% if k.mod == 'auto' and k.secilen_mod %}
+            <span style="color:var(--muted); font-size:13px;">&rarr; sistem seçti:</span>
+            <span class="badge" style="font-size:13px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);">{{ k.secilen_mod | upper }}</span>
+        {% endif %}
+    </div>
+    {% if k.auto_mode_reason %}
+    <div class="agent-detail-balloon agent-explain-balloon">
+        <strong>Gerekçe:</strong> {{ k.auto_mode_reason }}
+    </div>
+    {% endif %}
+</div>
+
+{# Metrikler — ozet grid (her kayitta var) #}
+<div class="card">
+    <div class="card-title">Sonuç Metrikleri</div>
+    {# k.get(...) — eski şema kayıtlarında alan hiç olmayabilir; k.X Jinja
+       Undefined döndürüp "is not none" kontrolünü GEÇER ve format patlar. #}
+    <div class="info-grid">
+        <div class="info-item">
+            <div class="info-label">Sipariş</div>
+            <div class="info-value">{{ k.get('siparis_sayisi') if k.get('siparis_sayisi') is not none else '-' }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Parti</div>
+            <div class="info-value">{{ k.get('parti_sayisi') if k.get('parti_sayisi') is not none else '-' }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Min. İstif Yüksekliği</div>
+            <div class="info-value">{% if k.get('min_yukseklik_mm') is not none %}{{ '%.1f'|format(k.get('min_yukseklik_mm')) }} mm{% else %}&mdash;{% endif %}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Doluluk (voxel)</div>
+            <div class="info-value">{% if k.get('doluluk') is not none %}{{ '%.1f'|format(k.get('doluluk') * 100) }}%{% else %}&mdash;{% endif %}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Hacim-Doluluk (gercek)</div>
+            <div class="info-value">
+                {% if k.get('hacim_doluluk_pct') is not none %}{{ '%.1f'|format(k.get('hacim_doluluk_pct')) }}%{% else %}&mdash;{% endif %}
+                {% if k.get('hacim_eksik_parca') %}<span style="font-size:11px; color:#b45309;">(eksik: {{ k.get('hacim_eksik_parca') }})</span>{% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Kullanilan Plaka</div>
+            <div class="info-value">
+                {% if k.get('plate_w_mm') and k.get('plate_d_mm') %}{{ '%.0f'|format(k.get('plate_w_mm')) }} x {{ '%.0f'|format(k.get('plate_d_mm')) }} mm{% if k.get('plate_auto') %} <span class="badge" style="font-size:11px; background:#fff8e6; color:#92400e; border-color:#e0c268;">oto-turetildi</span>{% endif %}{% else %}&mdash;{% endif %}
+            </div>
+        </div>
+        {% if k.get('budget_exceeded') %}
+        <div class="info-item">
+            <div class="info-label">Zaman Butcesi</div>
+            <div class="info-value"><span class="badge" style="font-size:11px; background:#fff0f0; color:#b45309; border-color:#e08585;">asildi</span></div>
+        </div>
+        {% endif %}
+        <div class="info-item">
+            <div class="info-label">Toplam Fiyat</div>
+            <div class="info-value" style="color:var(--ok);">{{ '%.2f'|format(k.toplam_fiyat or 0) }} USD</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">İşlem Süresi{% if k.get('kosu_siparis_sayisi') %} (koşu toplamı){% endif %}</div>
+            <div class="info-value">
+                {% set s = (k.sure_sn or 0) | float %}
+                {% if s >= 60 %}{{ (s // 60) | int }}:{{ '%02d'|format((s % 60) | int) }} dk{% else %}{{ '%.0f'|format(s) }} sn{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if k.get('arsiv_html') %}
+{# Arşiv kaydı (hoca paketi şampiyonu): koşu-anı detay JSON'u yok ama
+   kendi-içinde rehberli söküm HTML'i var — belirgin kartla sunulur. #}
+<div class="card">
+    <div class="card-title">Rehberli Söküm Planı</div>
+    <p style="font-size:13px; color:var(--muted); margin:0 0 12px;">
+        Bu yerleşimin adım adım, 3D rehberli söküm planı hazır
+        {% if k.get('arsiv_not') %}&mdash; {{ k.arsiv_not }}{% endif %}.
+        İnternetsiz çalışır; yeni sekmede açılır.
+    </p>
+    <a class="btn btn-primary" style="text-decoration:none; display:inline-block;"
+       href="/gecmis/arsiv/{{ k.arsiv_html }}" target="_blank" rel="noopener">
+        &#128203; Söküm Planını Aç (3D, HTML) &rarr;
+    </a>
+</div>
+{% endif %}
+
+{% if detay %}
+{# ================================================================
+   TAM DETAY — kosu aninda kalicilastirilan parti-bazli kanit:
+   3D onizleme + metrikler + secim modeli + tuner yarisi + fiyat kirilimi.
+   ================================================================ #}
+
+{% if detay.glb_atlandi %}
+<div style="margin-bottom:14px; padding:10px 14px; background:#fff8e6; border:1px solid #e0c268; border-radius:8px; font-size:13px; color:#92400e;">
+    <strong>&#9888; Bazı partilerin 3D dosyası kaydedilmedi</strong> &mdash; koşu başına 80MB kalıcı-3D tavanı aşıldı
+    ({{ detay.glb_atlandi | join(', ') }}). Metrikler ve tablolar etkilenmez.
+</div>
+{% endif %}
+
+{% for bid, nr in detay.nesting_results.items() %}
+{% set pr = detay.pricing_results.get(bid, {}) %}
+<div class="card">
+    <div class="card-title">Parti {{ bid }}</div>
+
+    {# --- 3D onizleme (kalici GLB) + Sokum Konsolu (P2-P5) --- #}
+    {% if detay.glb and detay.glb.get(bid) %}
+    <div id="viewer-container-{{ bid }}" class="viewer-container gd-viewer">
+        <div class="viewer-placeholder" id="viewer-placeholder-{{ bid }}">
+            <span class="gd-viewer-hint">3D önizleme yükleniyor&hellip;</span>
+        </div>
+        <canvas id="viewer-canvas-{{ bid }}" class="viewer-canvas" style="display:none;"></canvas>
+        <div class="gd-viewer-bar">
+            <span class="gd-viewer-tag">{{ nr.get('n_parts', 0) }} parça &middot; {{ nr.get('pitch_mm', '?') }} mm voxel</span>
+            <span style="display:flex; gap:8px; pointer-events:auto;">
+                <a class="gd-fs-btn" href="/gecmis/{{ k.id }}/stl/{{ bid }}" download
+                   title="Yerleşimin tamamını tek STL dosyası olarak indir — Magics veya herhangi bir STL görüntüleyicide açılır (geometri 3D önizleme ile birebir)">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v8M4 6l3 3 3-3M2 12h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    STL indir
+                </a>
+                {% if nr.get('sokum_sirasi') %}
+                <a class="gd-fs-btn" href="/gecmis/{{ k.id }}/rehberli-sokum?bid={{ bid }}" target="_blank" rel="noopener"
+                   title="Çevrimdışı çalışan, adım adım söküm rehberi HTML dosyasını yeni sekmede aç — indirip operatöre gönderilebilir">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1L7 9M4 4L7 1L10 4M2 9v3h10V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Rehberli Söküm (HTML)
+                </a>
+                {% endif %}
+                <button type="button" class="gd-fs-btn" data-bid="{{ bid }}" title="Tam ekranda incele — çıkmak için ESC">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    Tam ekranda incele
+                </button>
+            </span>
+        </div>
+    </div>
+    {# Konsol arac cubugu koku — viewer'in hemen altina JS kurar (P3-P5).
+       parca_kimlik yoksa (eski kayit) JS hicbir sey kurmaz, cubuk bos kalmaz. #}
+    {% if nr.get('parca_kimlik') %}
+    <div id="sk-arac-{{ bid }}"></div>
+    <script type="application/json" id="sk-data-{{ bid }}">{{ {
+        'parca_kimlik': nr.get('parca_kimlik'),
+        'siparis_ozeti': nr.get('siparis_ozeti'),
+        'sokum_sirasi': nr.get('sokum_sirasi'),
+        'sokum_plani': nr.get('sokum_plani'),
+    } | tojson }}</script>
+    {% else %}
+    <div style="margin-bottom:20px;"></div>
+    {% endif %}
+    {% else %}
+    <div class="gd-viewer-yok">3B önizleme bu parti için kaydedilmedi.</div>
+    {% endif %}
+
+    {# --- Siparis ozet kartlari (P3) — operator kutu etiketleri --- #}
+    {% set so = nr.get('siparis_ozeti') %}
+    {% if so %}
+    <div class="sk-ozet">
+        {% for o in so %}
+        <div class="sk-ozet-kart">
+            <div class="sk-ozet-siparis">{{ o.get('order_id') or '—' }}</div>
+            <div class="sk-ozet-musteri">{{ o.get('musteri') or 'Müşteri bilinmiyor' }}</div>
+            <div class="sk-ozet-sayilar">
+                <span><strong>{{ o.get('n_parca', 0) }}</strong> parça</span>
+                <span><strong>{{ o.get('n_sokum_planli', 0) }}</strong> söküm-planlı</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# --- Nesting metrikleri --- #}
+    <div class="info-grid" style="margin-bottom:20px;">
+        <div class="info-item">
+            <div class="info-label">Nesting Yuksekligi</div>
+            <div class="info-value">{{ "%.1f"|format(nr.get('height_mm', 0.0) | float) }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Doluluk Orani (voxel)</div>
+            <div class="info-value">{{ "%.1f"|format((nr.get('density', 0.0) | float) * 100) }}%</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Hacim-Doluluk (gercek)</div>
+            <div class="info-value">
+                {{ "%.1f"|format(nr.get('volume_fill_pct', 0.0) | float) }}%
+                {% if nr.get('volume_missing_parts', 0) %}
+                <span style="font-size:11px; color:#b45309;">(hacim eksik: {{ nr.get('volume_missing_parts') }} parca)</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Kullanilan Plaka (WxD)</div>
+            <div class="info-value">{{ "%.0f"|format(nr.get('plate_w_mm', 0.0) | float) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0) | float) }} mm</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Yerlestirilen Parca</div>
+            <div class="info-value">{{ nr.get('n_parts', 0) }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Nesting Suresi</div>
+            <div class="info-value">{{ "%.1f"|format(nr.get('elapsed_sec', 0.0) | float) }} s</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Voxel Pitch</div>
+            <div class="info-value">{{ nr.get('pitch_mm', '-') }} mm</div>
+        </div>
+        {% if nr.get('nesting_mode_used') %}
+        <div class="info-item">
+            <div class="info-label">Kullanilan Cozucu</div>
+            <div class="info-value">{{ nr.get('nesting_mode_used') | upper }}</div>
+        </div>
+        {% endif %}
+        {% if nr.get('note') %}
+        <div class="info-item">
+            <div class="info-label">Not</div>
+            <div class="info-value" style="color:#b45309; font-size:13px;">{{ nr.get('note') }}</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {# --- Uyari izleri (plaka / butce / RAM) --- #}
+    {% if nr.get('plate_auto') %}
+    <div style="margin-bottom:14px; padding:10px 14px; background:#fff8e6; border:1px solid #e0c268; border-radius:8px; font-size:13px; color:#92400e;">
+        <strong>&#9888; Plaka siparisten TURETILDI</strong> &mdash; gercek platform olcusu girilmedi.
+        Kullanilan plaka {{ "%.0f"|format(nr.get('plate_w_mm', 0.0) | float) }} x {{ "%.0f"|format(nr.get('plate_d_mm', 0.0) | float) }} mm
+        en buyuk parcadan otomatik hesaplandi.
+    </div>
+    {% endif %}
+    {% if nr.get('budget_exceeded') %}
+    <div style="margin-bottom:14px; padding:10px 14px; background:#fff0f0; border:1px solid #e08585; border-radius:8px; font-size:13px; color:#b45309;">
+        <strong>&#9888; Zaman butcesi asildi</strong> &mdash; bu sonuc ayrilan sure icinde elde edilen EN IYI cozumdur.
+        {% if nr.get('time_budget_sec') %}Butce: {{ nr.get('time_budget_sec') }} sn.{% endif %}
+    </div>
+    {% endif %}
+    {% if nr.get('ram_guard_reason') %}
+    <div style="margin-bottom:14px; padding:10px 14px; background:#fff8e6; border:1px solid #e0c268; border-radius:8px; font-size:12px; color:#92400e;">
+        <strong>&#9888; Bellek uyarisi:</strong> {{ nr.get('ram_guard_reason') }}
+    </div>
+    {% endif %}
+
+    {# --- Secim Modeli Karari (algoritma neden secildi) --- #}
+    {% set sel = nr.get('selection') %}
+    {% if sel %}
+    <div style="margin-bottom:14px; padding:14px 16px; background:var(--accent-soft); border-radius:8px; border-left:4px solid var(--accent);">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <strong style="font-size:14px; color:var(--accent-ink);">Seçim Modeli Kararı — önce en uygun algoritma</strong>
+            {% if sel.get('is_easy') %}
+                <span class="badge badge-yellow">KOLAY parti</span>
+                <span class="badge badge-green">Verim: portföy atlanır → DBLF</span>
+            {% else %}
+                <span class="badge badge-red">ZOR parti</span>
+                <span class="badge badge-blue">Tahmin: {{ sel.get('predicted_winner', '?') }}</span>
+            {% endif %}
+        </div>
+        <div style="font-size:12px; color:var(--ink-soft); margin-top:6px;">
+            {{ sel.get('explain', '') }}
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- Katman-bazli maliyet --- #}
+    {% set lc = nr.get('layer_cost') %}
+    {% set ls = nr.get('layer_savings') %}
+    {% if lc %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Katman-Bazli Maliyet</strong>
+            <span class="badge badge-blue">{{ lc.n_layers }} katman ({{ "%.0f"|format((lc.layer_thickness_mm | float) * 1000) }} µm)</span>
+            <span class="badge">~{{ "%.1f"|format(lc.total_hours | float) }} saat baski</span>
+            <span class="badge">~{{ "%.0f"|format(lc.total_cost_eur | float) }} € makine maliyeti</span>
+            {% if ls and (ls.saved_layers | int) > 0 %}
+            <span class="badge badge-green">Tuner tasarrufu: −{{ ls.saved_layers }} katman = {{ "%.0f"|format(ls.saved_cost_eur | float) }} € / {{ "%.1f"|format(ls.saved_hours | float) }} saat</span>
+            {% endif %}
+        </div>
+        <div style="font-size:12px; color:var(--muted);">
+            Z-height {{ "%.1f"|format(lc.height_mm | float) }} mm ÷ {{ "%.2f"|format(lc.layer_thickness_mm | float) }} mm/katman = {{ lc.n_layers }} katman.
+            {% if ls and (ls.saved_layers | int) > 0 %}Nesting Z-height'i %{{ "%.1f"|format(ls.pct_height | float) }} dusurdu → {{ ls.saved_layers }} katman daha az.{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- Sokum plani (K-52 rot-kabul): operator talimatlari --- #}
+    {% set sp = nr.get('sokum_plani') %}
+    {% if sp %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Sokum Plani</strong>
+            <span class="badge badge-yellow">{{ sp | length }} parca ozel islem ister</span>
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+            Bu yerlesim "sokum-planli" kabul edildi: asagidaki parcalar duz cekmeyle degil,
+            kucuk bir dondurmeyle cikar. Diger tum parcalar normal sirayla duz cekilir.
+        </div>
+        {% set ss = nr.get('sokum_sirasi') or [] %}
+        <ul style="font-size:13px; margin:0; padding-left:18px;">
+            {% for e in sp %}
+            <li style="margin-bottom:4px;">
+                {% if e.get('part_id') and e.get('part_id') in ss %}
+                <span class="badge" style="font-family:var(--font-mono); font-size:10.5px; background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-2);"
+                      title="Genel sokum sirasindaki yeri — rehberli sokum modunda bu adimda gelir">sira {{ ss.index(e.get('part_id')) + 1 }}/{{ ss | length }}</span>
+                {% endif %}
+                <strong>{{ e.get('parca', '?') }}</strong>{% if e.get('part_id') and e.get('part_id') != e.get('parca') %} <span style="font-family:var(--font-mono); font-size:11px; color:var(--muted);">({{ e.get('part_id') }})</span>{% endif %}:
+                {% if (e.get('lift_vox', 0) | int) > 0 %}once ~{{ e.get('lift_vox') }} mm yukari kaldir, {% endif %}
+                {{ e.get('eksen', '?') }} ekseninde {{ "%.0f"|format(e.get('aci_deg', 0.0) | float) }}&deg; dondur,
+                sonra {{ e.get('yon', '?') }} yonunden cek
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {# --- Tuner konfig yarisi / portfoy karsilastirma --- #}
+    {% set tuner_data = nr.get('tuner') %}
+    {% set port = nr.get('portfolio') %}
+    {% if tuner_data %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+            <strong style="font-size:15px;">Instance-Tuner Konfig Yarisi</strong>
+            <span class="badge badge-green">Kazanan: {{ tuner_data.get('winning_config', '?') }}</span>
+            {% if (tuner_data.get('gain_vs_baseline_pct', 0.0) | float) > 0.01 %}
+            <span class="badge badge-blue">Baseline'a +{{ "%.1f"|format(tuner_data.get('gain_vs_baseline_pct', 0.0) | float) }}% kazanc</span>
+            {% else %}
+            <span class="badge badge-yellow">Baseline zaten en iyi</span>
+            {% endif %}
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Konfig</th><th>Yukseklik (mm)</th><th>Doluluk</th><th>Sure (s)</th><th>Kazanc%</th><th>Sonuc</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in tuner_data.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background:#f0fff4; font-weight:600;"{% endif %}>
+                        <td>{{ row.get('config', '?') }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0) | float) }}</td>
+                        <td>{{ "%.1f"|format((row.get('density', 0.0) | float) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0) | float) }}</td>
+                        <td>
+                            {% if row.get('config') == 'baseline' %}<span style="color:var(--muted);">referans</span>
+                            {% elif (row.get('gain_pct', 0.0) | float) > 0.01 %}<span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0) | float) }}%</span>
+                            {% else %}<span style="color:var(--muted);">0%</span>{% endif %}
+                        </td>
+                        <td>{% if row.get('winner') %}<span class="badge badge-green">KAZANDI</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% elif port %}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <strong style="font-size:15px;">Algoritma Karsilastirma</strong>
+            <span class="badge badge-green">Kazanan: {{ port.get('winner', '?') }}</span>
+            {% if (port.get('gain_pct', 0.0) | float) > 0.01 %}
+            <span class="badge badge-blue">+{{ "%.1f"|format(port.get('gain_pct', 0.0) | float) }}% kazanc</span>
+            {% else %}
+            <span class="badge badge-yellow">Baseline en iyi</span>
+            {% endif %}
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr><th>Konfig / Algoritma</th><th>Yukseklik (mm)</th><th>Doluluk</th><th>Sure (s)</th><th>Kazanc%</th><th>Sonuc</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in port.get('rows', []) %}
+                    <tr {% if row.get('winner') %}style="background:#f0fff4; font-weight:600;"{% endif %}>
+                        <td>{{ row.get('config', row.get('solver', '?')) }}</td>
+                        <td>{{ "%.2f"|format(row.get('height_mm', 0.0) | float) }}</td>
+                        <td>{{ "%.1f"|format((row.get('density', 0.0) | float) * 100) }}%</td>
+                        <td>{{ "%.3f"|format(row.get('time_s', 0.0) | float) }}</td>
+                        <td>
+                            {% if (row.get('gain_pct', 0.0) | float) > 0.01 %}<span class="badge badge-green">+{{ "%.1f"|format(row.get('gain_pct', 0.0) | float) }}%</span>
+                            {% else %}<span style="color:var(--muted);">0%</span>{% endif %}
+                        </td>
+                        <td>{% if row.get('winner') %}<span class="badge badge-green">KAZANDI</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {# --- Fiyat kirilimi --- #}
+    <div style="border-top:1px solid var(--line-2); padding-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <strong>Toplam Fiyat Onerisi</strong>
+            <span style="font-size:20px; font-weight:800; color:var(--accent);">
+                {{ "%.2f"|format(pr.get('total_price', 0.0) | float) }} $
+            </span>
+        </div>
+        {% set breakdown = pr.get('breakdown', []) %}
+        {% if breakdown %}
+        <ul class="breakdown-list">
+            {% for line in breakdown %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{# --- Musteri Yanit Taslagi (kalici detaydan) --- #}
+{% if llm_active %}
+<div class="card" id="teklif-card">
+    <div class="card-title">Musteri Yanit Taslagi (LLM)</div>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:12px;">
+        Taslak <strong>bu koşunun kalıcı kaydından</strong> üretilir — sunucu yeniden başlamış ya da
+        başka işler koşulmuş olsa bile bu işin sayılarıyla çalışır. Göndermeden önce operatör onaylar.
+    </p>
+    <div id="teklif-content">
+        <button class="btn btn-primary" id="teklif-btn" onclick="teklifOlustur()">
+            Teklif Taslagi Olustur
+        </button>
+    </div>
+    <div id="teklif-loading" style="display:none; padding:12px 0;">
+        <span style="color:var(--muted);">Taslak hazirlaniyor...</span>
+    </div>
+    <div id="teklif-result" style="display:none;"></div>
+    <div id="teklif-hata" style="display:none;" class="alert alert-warning"></div>
+</div>
+{% endif %}
+
+{% endif %}{# detay #}
+
+{# Asama ozeti — islem hatti adimlari #}
+{% if k.asamalar %}
+<div class="card">
+    <div class="card-title">İşlem Hattı Aşamaları</div>
+    <div class="agent-timeline" style="margin-top:8px;">
+        {% for a in k.asamalar %}
+        {% set durum = a.durum or '' %}
+        {% set ok = durum in ['tamam', 'tamam_uyari', 'taslak_hazir', 'flagli_taslak'] %}
+        {% set kotu = 'hata' in durum %}
+        <div class="agent-step" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
+            <div class="agent-icon" style="width:28px; height:28px; border-radius:50%; color:white; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; font-weight:700;
+                background:{% if kotu %}var(--err){% elif ok %}var(--ok){% else %}var(--muted){% endif %};">
+                {% if kotu %}&#10007;{% elif ok %}&#10003;{% else %}&#8212;{% endif %}
+            </div>
+            <div style="flex:1;">
+                <div style="font-weight:700; font-size:14px; color:var(--ink);">{{ a.ad }}</div>
+                <div style="font-size:13px; color:var(--ink-soft); margin-top:3px;">{{ a.cikti }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not detay %}
+{# Eski kayit — detay kalicilastirilmadan once yazilmis #}
+<div class="card" style="background:var(--surface-2);">
+    <div style="font-size:13px; color:var(--ink-soft);">
+        <strong>Not:</strong> Bu kayıt, tam-detay saklama özelliğinden <em>önce</em> oluşturulmuş.
+        3B önizleme, parti tabloları ve fiyat kırılımı yalnız yeni kayıtlarda saklanır;
+        bu iş için yukarıdaki özet metrikler mevcuttur.
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if detay %}
+<script type="importmap">
+{
+  "imports": {
+    "three": "{{ url_for('static', filename='three.min.js') }}"
+  }
+}
+</script>
+<style>
+/* Viewer/tam-ekran/konsol stilleri style.css'te (P2 tek kaynak) — burada
+   yalniz sayfaya ozgu kalanlar. */
+.teklif-body {
+    background: #f0fdf4; border-left: 4px solid #22c55e;
+    padding: 14px 18px; border-radius: 6px; font-size: 14px;
+    line-height: 1.7; margin-top: 12px; white-space: pre-wrap;
+}
+.karar-panel { border-left: 4px solid var(--accent); }
+</style>
+
+<script>
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    // Teklif taslagi — KALICI kayittan uretilir (/gecmis/<id>/teklif)
+    function teklifOlustur() {
+        const btn = document.getElementById('teklif-btn');
+        const loading = document.getElementById('teklif-loading');
+        const result = document.getElementById('teklif-result');
+        const hata = document.getElementById('teklif-hata');
+
+        btn.disabled = true;
+        btn.textContent = 'Olusturuluyor...';
+        loading.style.display = 'block';
+        result.style.display = 'none';
+        hata.style.display = 'none';
+
+        fetch('/gecmis/{{ k.id }}/teklif', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '{{ csrf_token }}'}})
+            .then(r => r.json())
+            .then(data => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Yeniden Olustur';
+
+                if (data.hata && !data.taslak) {
+                    hata.style.display = 'block';
+                    hata.textContent = 'Hata: ' + data.hata;
+                    return;
+                }
+
+                let html = '<div class="teklif-body">';
+                if (data.topraklama_uyarisi) {
+                    html += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px;color:#92400e;">' +
+                        '<strong>Uyari:</strong> Gondermeden once sayilari kontrol edin — model bazi sayilari baglamdan uretmis olabilir.' +
+                        '</div>';
+                }
+                if (data.baslik) {
+                    html += '<div style="font-weight:600;margin-bottom:8px;">Konu: ' + escapeHtml(data.baslik) + '</div>';
+                }
+                html += '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">' +
+                    escapeHtml(data.taslak || '') + '</pre></div>';
+                html += '<div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">' +
+                    '<button class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:6px;padding:8px 14px;cursor:pointer;" onclick="taslakKopyala()">Panoya kopyala</button>' +
+                    '<span id="taslak-durum" style="font-size:13px;color:var(--muted);"></span>' +
+                    '</div>';
+
+                result.style.display = 'block';
+                result.innerHTML = html;
+                window._sonTaslak = (data.baslik ? ('Konu: ' + data.baslik + '\n\n') : '') + (data.taslak || '');
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = 'Teklif Taslagi Olustur';
+                hata.style.display = 'block';
+                hata.textContent = 'Baglanti hatasi: ' + err;
+            });
+    }
+
+    function taslakKopyala() {
+        const durum = document.getElementById('taslak-durum');
+        const metin = window._sonTaslak || '';
+        const bildir = (ok) => {
+            if (!durum) return;
+            durum.textContent = ok ? 'Panoya kopyalandi.' : 'Kopyalama desteklenmiyor.';
+            durum.style.color = ok ? '#059669' : '#b91c1c';
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(() => bildir(true), () => bildir(false));
+        } else {
+            bildir(false);
+        }
+    }
+</script>
+
+<!-- 3D Viewer + Sokum Konsolu — ortak modul (P2: viewer3d.js tek kaynak) -->
+<script type="module">
+    import { initViewer3d } from '{{ url_for("static", filename="viewer3d.js") }}';
+    import { kurSokumKonsolu } from '{{ url_for("static", filename="sokum_konsol.js") }}';
+
+    const batchIds = [{% for bid in detay.nesting_results.keys() %}{% if detay.glb and detay.glb.get(bid) %}'{{ bid }}',{% endif %}{% endfor %}];
+    // Viewer handle'lari: tam ekran gecisinde resize icin saklanir.
+    const viewers = {};
+    // Cifte init korumasi: observer VE tam-ekran dugmesi ayni viewer'i
+    // tetikleyebilir — ilk tetikleyen kurar, digeri no-op.
+    const initialized = new Set();
+
+    function initViewer(batchId) {
+        if (initialized.has(batchId)) return;
+        initialized.add(batchId);
+        const container = document.getElementById('viewer-container-' + batchId);
+        const placeholder = document.getElementById('viewer-placeholder-' + batchId);
+        const canvas = document.getElementById('viewer-canvas-' + batchId);
+        if (!container || !canvas) return;
+
+        initViewer3d({
+            container, canvas, placeholder,
+            glbUrl: '/gecmis/{{ k.id }}/geometri/' + encodeURIComponent(batchId),
+            onReady: handle => {
+                viewers[batchId] = handle;
+                // Sokum Konsolu (P3-P5): kimlik kaydi olan koyularda kurulur;
+                // eski kayitlarda sk-data yok -> konsol hic olusmaz.
+                const dataEl = document.getElementById('sk-data-' + batchId);
+                const arac = document.getElementById('sk-arac-' + batchId);
+                if (dataEl && arac) {
+                    try {
+                        kurSokumKonsolu({
+                            bid: batchId, viewer: handle,
+                            data: JSON.parse(dataEl.textContent),
+                            arac, panelKok: container,
+                        });
+                    } catch (e) { /* konsol kurulamazsa viewer normal calisir */ }
+                }
+            },
+        });
+    }
+
+    // --- Tam ekran modu: container fixed-overlay olur, renderer resize edilir ---
+    let fsBatchId = null;
+
+    function resizeViewer(batchId, refit) {
+        const v = viewers[batchId];
+        if (v) v.resize(refit);
+    }
+
+    function enterFs(batchId) {
+        const v = viewers[batchId];
+        const container = document.getElementById('viewer-container-' + batchId);
+        if (!container) return;
+        if (!v) { initViewer(batchId); }
+        container.classList.add('gd-fs');
+        document.body.classList.add('gd-fs-open');
+        fsBatchId = batchId;
+        // Cikis dugmesi (yalniz tam ekranda gorunur)
+        let exitBtn = container.querySelector('.gd-fs-exit');
+        if (!exitBtn) {
+            exitBtn = document.createElement('button');
+            exitBtn.type = 'button';
+            exitBtn.className = 'gd-fs-exit';
+            exitBtn.innerHTML = '&#10005;&nbsp; Kapat (ESC)';
+            exitBtn.addEventListener('click', exitFs);
+            container.appendChild(exitBtn);
+        }
+        exitBtn.style.display = 'inline-flex';
+        // Iki RAF: fixed-overlay layout'u otursun, SONRA resize+refit yap.
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(batchId, true)));
+    }
+
+    function exitFs() {
+        if (fsBatchId === null) return;
+        const container = document.getElementById('viewer-container-' + fsBatchId);
+        if (container) {
+            container.classList.remove('gd-fs');
+            const exitBtn = container.querySelector('.gd-fs-exit');
+            if (exitBtn) exitBtn.style.display = 'none';
+        }
+        document.body.classList.remove('gd-fs-open');
+        const bid = fsBatchId;
+        fsBatchId = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => resizeViewer(bid, true)));
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') exitFs();
+    });
+    window.addEventListener('resize', () => {
+        if (fsBatchId !== null) resizeViewer(fsBatchId);
+    });
+    document.querySelectorAll('.gd-fs-btn').forEach(btn => {
+        btn.addEventListener('click', () => enterFs(btn.dataset.bid));
+    });
+
+    // Lazy-init: viewer yalniz gorunur olunca baslar (WebGL context tasarrufu)
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof IntersectionObserver === 'undefined') {
+            batchIds.forEach(id => initViewer(id));
+            return;
+        }
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const batchId = entry.target.dataset.batchId;
+                    if (batchId && !initialized.has(batchId)) {
+                        observer.unobserve(entry.target);
+                        initViewer(batchId);
+                    }
+                }
+            });
+        }, {rootMargin: '100px'});
+        batchIds.forEach(id => {
+            const container = document.getElementById('viewer-container-' + id);
+            if (container) {
+                container.dataset.batchId = id;
+                observer.observe(container);
+            }
+        });
+    });
+</script>
+{% endif %}
+{% endblock %}

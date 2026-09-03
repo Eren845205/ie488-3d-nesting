@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["baslik", "govde_md", "kullanilan_kaynaklar", "eksik_bilgi"],
+  "properties": {
+    "baslik": {
+      "type": "string",
+      "description": "Ozet baslik (max 80 karakter)"
+    },
+    "govde_md": {
+      "type": "string",
+      "description": "3-6 cumle Turkce yonetici ozeti (markdown)"
+    },
+    "kullanilan_kaynaklar": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Atif yapilan kaynak ID'leri (orn. 'yerlesim#bin1', 'fiyat#r1')"
+    },
+    "eksik_bilgi": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Baglam disinda kalan, cevaplanamayan bilgi noktalari"
+    }
+  },
+  "additionalProperties": false
+}

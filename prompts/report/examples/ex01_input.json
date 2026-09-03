@@ -1,0 +1,24 @@
+{
+  "is_id": "demo-001",
+  "n_orders": 3,
+  "n_batches": 2,
+  "n_warnings": 0,
+  "total_revenue_usd": 1250.50,
+  "kaynaklar": [
+    {
+      "id": "yerlesim#B001",
+      "tip": "yerlesim",
+      "icerik": "Yükseklik: 180.0 mm\nDoluluk: %72.3\nÇözücü: DBLF\n3 parça yerleşti"
+    },
+    {
+      "id": "fiyat#B001",
+      "tip": "fiyat",
+      "icerik": "Nihai fiyat: 750.25 USD\nKural: hacim_kademesi"
+    },
+    {
+      "id": "fiyat#B002",
+      "tip": "fiyat",
+      "icerik": "Nihai fiyat: 500.25 USD\nKural: hacim_kademesi"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "aciklama_md": "Bu parti için GA (Genetik Algoritma) seçildi çünkü girdide 'Çok sayıda tekrar parça — GA için ideal' notu belirtildi. GA, 187.5 mm yükseklik ve %81 doluluk ile diğer seçeneklere göre daha iyi sonuç aldı: SA 203.0 mm, DBLF ise 215.0 mm yükseklik verdi. Daha küçük yükseklik = daha az malzeme kullanımı demektir.",
+  "karar_tipi": "algoritma",
+  "kullanilan_girdiler": ["kazanan_algoritma", "nesting_yuksekligi_mm", "doluluk_orani", "portfoy_kiyasi", "sebep_notlari"],
+  "topraklama_uyarisi": false
+}

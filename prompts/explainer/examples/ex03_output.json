@@ -1,0 +1,6 @@
+{
+  "aciklama_md": "Sıralama EDF (En Erken Termin Önce) kuralı ile yapıldı. BAYKAR-2024-07 en önce işleniyor çünkü termini yalnızca 5 gün kaldı ve sistem bunu 'yüksek gecikme riski' olarak işaretledi. ASELSAN-2024-12 ikinci sırada (14 gün) ve ROKETSAN-2024-09 üçüncü sırada (21 gün) geliyor; ikisinde de gecikme riski düşük.",
+  "karar_tipi": "oncelik",
+  "kullanilan_girdiler": ["siralama", "oncelik_kurali", "kritik_uyari"],
+  "topraklama_uyarisi": false
+}

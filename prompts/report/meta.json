@@ -1,0 +1,9 @@
+{
+  "id": "report-v1",
+  "version": "2.0",
+  "model_hint": "haiku-class",
+  "changelog": [
+    {"version": "1.0", "date": "2026-06-13", "note": "Ilk surum — Turkce yonetici ozeti; sayi-topraklama BLOK modunda"},
+    {"version": "2.0", "date": "2026-06-15", "note": "prompt-architect CO-STAR yukseltmesi: baglam/amac/stil/ton/kitle/kurallar, yonetici kitle dili, §6.1 ust+alt tekrar"}
+  ]
+}

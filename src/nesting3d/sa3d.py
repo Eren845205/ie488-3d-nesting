@@ -22,22 +22,23 @@ Determinism: all randomness flows through one seeded random.Random — same
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 from src.nesting3d.bin3d import Bin3D, Placement3D
-from src.nesting3d.dblf import dblf, place_in_order
+from src.nesting3d.dblf import dblf
 from src.nesting3d.voxelize import VoxelPart
 
 Solution = List[Tuple[VoxelPart, int]]
 
+# §1.4 (PLAN_DEMO1): decode is defined in solvers/base.py as the canonical
+# shared implementation; sa3d re-exports it so existing callers are unchanged.
+from src.nesting3d.solvers.base import decode  # noqa: E402 (import after type aliases)
 
-def decode(solution: Solution, bin_factory: Callable[[], Bin3D]):
-    """Place the solution's parts in order with their fixed orientations."""
-    parts = [p for p, _ in solution]
-    orients = [oi for _, oi in solution]
-    bin3d = bin_factory()
-    placements = place_in_order(parts, bin3d, lambda i, _p: (orients[i],))
-    return placements, bin3d
+# Adaptif t0 (R2). "auto" sentinel + probe parametreleri (modül seviyesinde →
+# testler monkeypatch edebilir).
+_T0_AUTO = "auto"
+_AUTO_T0_PROBES: int = 50          # t0 kalibrasyonu için rastgele komşu sayısı
+_AUTO_T0_P0: float = 0.5           # t=t0'da hedef erken-kabul olasılığı
 
 
 def _energy(bin3d: Bin3D) -> float:
@@ -73,6 +74,37 @@ def _neighbour(solution: Solution, rng: random.Random) -> Solution:
     return new
 
 
+def _calibrate_t0(
+    solution: Solution,
+    bin_factory: Callable[[], Bin3D],
+    rng: random.Random,
+    n_probes: int = _AUTO_T0_PROBES,
+    p0: float = _AUTO_T0_P0,
+) -> float:
+    """t0'ı rastgele komşuların enerji-delta dağılımından kestir (R2).
+
+    n_probes rastgele komşu çek, pozitif (yokuş-yukarı) deltaları topla, dön:
+        t0 = medyan(pozitif_deltalar) / ln(1/p0)
+    böylece medyan yokuş hamlesi başlangıçta p0 olasılıkla kabul edilir.
+    Pozitif delta yoksa (tüm problar lokal minimumda) fallback = 3.0 (elle
+    kalibre default). Problar rng'yi tüketir → seed verildiğinde deterministik.
+    """
+    _, cur_bin = decode(solution, bin_factory)
+    cur_energy = _energy(cur_bin)
+    positive_deltas: List[float] = []
+    for _ in range(n_probes):
+        candidate = _neighbour(solution, rng)
+        _, cand_bin = decode(candidate, bin_factory)
+        delta = _energy(cand_bin) - cur_energy
+        if delta > 0:
+            positive_deltas.append(delta)
+    if not positive_deltas:
+        return 3.0
+    positive_deltas.sort()
+    median_delta = positive_deltas[len(positive_deltas) // 2]
+    return median_delta / max(-math.log(p0), 1e-9)
+
+
 @dataclass
 class SA3DResult:
     """Outcome of a 3D Simulated Annealing run."""
@@ -94,16 +126,21 @@ def simulated_annealing_3d(
     *,
     seed: int = 42,
     iterations: int = 600,
-    t0: float = 3.0,
+    t0: Union[float, str] = 3.0,
     t_min: float = 0.05,
     order_key: Optional[Callable[[VoxelPart], tuple]] = None,
 ) -> SA3DResult:
     """Minimize bin height by searching (order, orientation) space with SA.
 
-    Energy deltas are in mm, so t0 is too: t0=3 (calibrated 2026-06-09; 8 was
-    too hot — pure random walk) accepts early uphill moves below one voxel
-    layer; geometric cooling reaches t_min at the last step.  Best solution
-    ever seen is retained — never regresses below baseline.
+    t0 (sayısal, default 3.0): elle kalibre (2026-06-09; 8 çok sıcaktı). Erken
+    yokuş hamlelerini bir voxel katman altında kabul eder; geometrik soğuma son
+    adımda t_min'e ulaşır. t0=3.0'ı AÇIKÇA vermek default ile BİREBİR aynı sonuç
+    verir (seed'li random.Random garantisi) — numune 181.5 mm rekoru bu yola bağlı.
+
+    t0="auto" (R2): ana döngü ÖNCESİ ilk _AUTO_T0_PROBES rastgele-komşu enerji
+    deltasından türetilir (t0 = medyan pozitif delta / ln(1/_AUTO_T0_P0)).
+    Problar aynı rng'den çekilir → seed verildiğinde tam deterministik. Sayısal
+    t0 davranışı DEĞİŞMEZ (sıcak döngüde yeni dal yok). Best-so-far korunur.
     """
     rng = random.Random(seed)
 
@@ -124,6 +161,12 @@ def simulated_annealing_3d(
     best = list(current)
     best_bin = cur_bin
     best_energy = cur_energy
+
+    # t0'ı çöz: "auto" ise kalibre et (R2), aksi halde sayısalı aynen kullan.
+    # Problar ana döngüden ÖNCE rng'yi tüketir → seed verildiğinde deterministik.
+    if t0 == _T0_AUTO:
+        t0 = _calibrate_t0(current, bin_factory, rng)
+    # Buradan sonra t0 her zaman float.
 
     cooling = (t_min / t0) ** (1.0 / (iterations - 1)) if iterations > 1 else 1.0
     temperature = t0

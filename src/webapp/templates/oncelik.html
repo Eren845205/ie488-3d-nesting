@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Priority Plan &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+
+<a href="/" class="back-link">&larr; Ana Sayfaya Dön</a>
+
+<h2 class="section-heading">Priority Plan</h2>
+
+<!-- Özet Kartlar -->
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="sc-label">Sipariş Sayısı</div>
+        <div class="sc-value">{{ report.ranked_orders | length }}</div>
+        <div class="sc-unit">sipariş</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Parti Sayısı</div>
+        <div class="sc-value">{{ report.batches | length }}</div>
+        <div class="sc-unit">parti</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Termin Uyarısı</div>
+        <div class="sc-value">{{ report.warnings | length }}</div>
+        <div class="sc-unit">{% if report.warnings | length == 0 %}temiz{% else %}uyarı{% endif %}</div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-label">Şirket Sayısı</div>
+        <div class="sc-value">{{ report.ranked_orders | map(attribute='customer') | list | unique | list | length }}</div>
+        <div class="sc-unit">şirket</div>
+    </div>
+</div>
+
+<!-- Öncelik Sırası -->
+<div class="card">
+    <div class="card-title">Öncelik Sırası</div>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sıra</th>
+                    <th>Sipariş</th>
+                    <th>Müşteri</th>
+                    <th>Termin</th>
+                    <th>Öncelik Sınıfı</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in report.ranked_orders %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ order.order_id }}</strong></td>
+                    <td>{{ order.customer }}</td>
+                    <td>{{ order.deadline }}</td>
+                    <td>
+                        {% if order.priority_class == 1 %}
+                            <span class="badge badge-red">Sınıf 1 — Acil</span>
+                        {% elif order.priority_class == 2 %}
+                            <span class="badge badge-yellow">Sınıf 2 — Normal</span>
+                        {% else %}
+                            <span class="badge badge-green">Sınıf 3 — Esnek</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Parti Planı -->
+<div class="card">
+    <div class="card-title">Parti Planı</div>
+    {% if report.batches %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Parti</th>
+                    <th>Müşteri</th>
+                    <th>Siparişler</th>
+                    <th>Hacim (cm³)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for batch in report.batches %}
+                <tr>
+                    <td><span class="badge badge-blue">{{ batch.batch_id }}</span></td>
+                    <td>{{ batch.customer }}</td>
+                    <td>{{ batch.orders | join(", ") }}</td>
+                    <td>{{ "%.0f" | format(batch.total_volume_cm3) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="color: var(--color-text-muted);">Parti bulunamadı.</p>
+    {% endif %}
+</div>
+
+<!-- Termin Uyarıları -->
+<div class="card">
+    <div class="card-title">Termin Uyarıları</div>
+    {% if report.warnings %}
+        <div class="alert alert-warning">
+            {{ report.warnings | length }} sipariş için termin aşımı tespit edildi.
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sipariş</th>
+                        <th>Termin</th>
+                        <th>Tahmini Bitiş</th>
+                        <th>Gecikme (gün)</th>
+                        <th>Parti</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for w in report.warnings %}
+                    <tr>
+                        <td><strong>{{ w.order_id }}</strong></td>
+                        <td>{{ w.deadline }}</td>
+                        <td>{{ w.estimated_completion }}</td>
+                        <td><span class="badge badge-red">{{ w.delay_days }} gün</span></td>
+                        <td>{{ w.batch_id }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p style="color: var(--color-text-muted);">Termin aşımı uyarısı yok — tüm siparişler zamanında teslim edilebilir.</p>
+    {% endif %}
+</div>
+
+<!-- Kapasite Uyarıları -->
+<div class="card">
+    <div class="card-title">Kapasite Uyarıları</div>
+    {% if report.capacity_warnings %}
+        {% for cw in report.capacity_warnings %}
+        <div class="alert alert-warning">
+            <strong>{{ cw.batch_id }}</strong> — Sipariş {{ cw.order_id }}
+            ({{ "%.0f" | format(cw.total_volume_cm3) }} cm³) kapasite sınırını aşıyor.
+            İlgili müşteriler: {{ cw.customers | join(", ") }}.
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="color: var(--color-text-muted);">Kapasite aşımı uyarısı yok.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

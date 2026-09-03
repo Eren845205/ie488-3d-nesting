@@ -1,0 +1,14 @@
+{
+  "karar_tipi": "algoritma",
+  "sistem_ciktisi": {
+    "kazanan_algoritma": "GA",
+    "nesting_yuksekligi_mm": 187.5,
+    "doluluk_orani": 0.81,
+    "portfoy_kiyasi": [
+      {"algoritma": "SA", "yukseklik_mm": 203.0, "doluluk": 0.74},
+      {"algoritma": "GA", "yukseklik_mm": 187.5, "doluluk": 0.81},
+      {"algoritma": "DBLF", "yukseklik_mm": 215.0, "doluluk": 0.69}
+    ],
+    "sebep_notlari": "Çok sayıda tekrar parça — GA için ideal"
+  }
+}

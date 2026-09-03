@@ -1,0 +1,18 @@
+C:\Users\erenk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\cupy\_environment.py:284: UserWarning: CUDA path could not be detected. Set CUDA_PATH environment variable if CuPy fails to load.
+  warnings.warn(
+==============================================================================
+KOORDINELI ORTAK-TILT (Yol A) — dataset=plan2 pitch=2.0mm — cpu=16 ram=16.9GB gpu=True(fp64=True) fast_fft=- slurm=False
+  hipotez: uzun parcalar PAYLASILAN tilt acisinda raf gibi dizilir mi? (baz n=8=522, Magics=492.0)
+==============================================================================
+  plaka 329x328mm (164x164); 16 model, 8 rack-uygun (uzun & <= 197mm) koordine edilecek
+   rack_aci      NFV  vs-baz522  vs-Magics    sure
+------------------------------------------------------------------------------
+        90d    522.0      +0.0%      +6.1%    202s
+        75d    522.0      +0.0%      +6.1%    227s
+        60d    522.0      +0.0%      +6.1%    228s
+        45d    522.0      +0.0%      +6.1%    247s
+        30d    522.0      +0.0%      +6.1%    257s
+------------------------------------------------------------------------------
+  EN IYI: 522.0mm (baz n=8) | baz 522
+  -> koordine tilt de bu veride kazanmadi -> rack firsati zayif / A1 (tam NLP) beklentisi duser. Onemli negatif bilgi.
+==============================================================================

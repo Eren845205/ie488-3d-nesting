@@ -1,0 +1,38 @@
+{
+  "_comment": "Sablon hash kayit defteri. Her sablon yuklemesinde content_hash dogrulani. Yeni/degisen sablon icin: versiyonu artir + eval kos + update_lock() cagir.",
+  "parser-v1": {
+    "version": "2.0",
+    "content_hash": "b5ab2426a70258f608da5dba491f537974129d9013e73ec060dd6b3b347ed263",
+    "last_eval_ref": ""
+  },
+  "report-v1": {
+    "version": "2.0",
+    "content_hash": "ac4bd8ff909bad5a73cbf08a6aa30c4c968651c6a0e2a889371a6b9833b08163",
+    "last_eval_ref": ""
+  },
+  "assistant-v1": {
+    "version": "2.0",
+    "content_hash": "e50f991774aa4d07d934118b6ba7c01a6717eb3b410e908697d85dfb52a0e552",
+    "last_eval_ref": ""
+  },
+  "explainer-v1": {
+    "version": "2.0",
+    "content_hash": "13591bb7cc08eaba0e8c7c8fe42567dcd4c4e6fa5d685be5709178ca54740dea",
+    "last_eval_ref": ""
+  },
+  "watcher-v1": {
+    "version": "1.0",
+    "content_hash": "6f54db6f4624d10205e20ca80da8f28e31df55056bf6966eae015ea8dad9964e",
+    "last_eval_ref": ""
+  },
+  "teklif-v1": {
+    "version": "1.0",
+    "content_hash": "e2f27bedfd476e0f4ba0fbb8bb031bd27849e9557daf2acf90f98607d0ff7f38",
+    "last_eval_ref": ""
+  },
+  "kisit-v1": {
+    "version": "1.3",
+    "content_hash": "45551a6125b38bdb7352c08827f13da49ff1ce3278ab3b3433d14d669a6cc9b2",
+    "last_eval_ref": "results/kisit_korpus_eval.json (v1.2 skoru alinamadi; v1.3 = hoca S2 durus_koru semantigi — sakin-makine seansinda kosulacak)"
+  }
+}

@@ -50,17 +50,23 @@ MAX_Z_MM = 600.0
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description="3D voxel nesting (PLAN_3D.md)")
     p.add_argument("--scenario", choices=[*SCENARIOS, "all"], default="default")
-    p.add_argument("--algo", choices=["dblf", "sa"], default="sa",
-                   help="sa = DBLF baseline + SA improvement (default)")
+    p.add_argument("--algo", choices=["dblf", "sa", "portfolio"], default="sa",
+                   help="sa = DBLF baseline + SA improvement (default); "
+                        "portfolio = run --solvers list and compare")
+    p.add_argument("--solvers", default="dblf,sa,ga,tabu",
+                   help="comma-separated solver list for --algo portfolio "
+                        "(default: dblf,sa,ga,tabu — four-solver Demo-1 portfolio); "
+                        "ignored when --algo is not 'portfolio'")
     p.add_argument("--pitch", type=float, default=None,
                    help=f"voxel kenarı mm (default {BASE_DEFAULTS['pitch']:.2f}, "
                         "numune senaryosunda 2.5)")
     p.add_argument("--plate", type=float, default=None,
                    help="kare taban kenarı mm (default 220, numune 335)")
     p.add_argument("--rotations", type=int, default=4,
-                   choices=[1, 2, 3, 4, 6, 8],
+                   choices=[1, 2, 3, 4, 6, 8, 24],
                    help="poz sayısı; 5+ = 180°/270° + ters çevirme "
-                        "(plaka geçişmesi için, toz yataklı üretim)")
+                        "(plaka geçişmesi için, toz yataklı üretim); "
+                        "24 = tüm eksen-hizalı rotasyonlar (R1)")
     p.add_argument("--margin", type=int, default=None,
                    help="parça arası boşluk (voxel, dilation; numune default 1 "
                         "= garantili >=1 mm gerçek mesafe)")
@@ -173,6 +179,63 @@ def run_scenario(scenario: str, args) -> list[dict]:
             args.out / f"sa3d_convergence_{scenario}.png",
             title=f"SA yakınsama — {scenario} ({len(parts)} parça)",
         )
+
+    elif args.algo == "portfolio":
+        from src.nesting3d.solvers.dblf_solver import DBLFSolver
+        from src.nesting3d.solvers.ga_solver import GASolver
+        from src.nesting3d.solvers.portfolio import run_portfolio
+        from src.nesting3d.solvers.sa_solver import SASolver
+        from src.nesting3d.solvers.tabu_solver import TabuSolver
+
+        _solver_map = {
+            "dblf": DBLFSolver(),
+            "sa": SASolver(),
+            "ga": GASolver(),
+            "tabu": TabuSolver(),
+        }
+        solver_names = [s.strip() for s in args.solvers.split(",") if s.strip()]
+        unknown = [n for n in solver_names if n not in _solver_map]
+        if unknown:
+            raise SystemExit(
+                f"Bilinmeyen solver adı: {unknown!r}. "
+                f"Geçerli seçenekler: {sorted(_solver_map)}"
+            )
+        # solver_names is non-empty when --solvers was explicitly given;
+        # fall back to all known solvers only when the list ends up empty
+        # (e.g. --solvers was not provided and default is empty after strip).
+        solvers = [_solver_map[n] for n in solver_names] if solver_names else [DBLFSolver(), SASolver()]
+
+        pr = run_portfolio(
+            parts, bin_factory, solvers,
+            budget=args.iters, seed=args.seed, order_key=order_key,
+        )
+        for r in pr.results:
+            solver_name = r.meta.get("solver", "?")
+            is_winner = r is pr.winner
+            tag = " [WINNER]" if is_winner else ""
+            print(f"Portfolio/{solver_name}{tag}: yükseklik {r.height_mm:6.1f} mm  "
+                  f"density {r.density:.3f}  ({r.time_s:.2f} s)")
+            rows.append({
+                "scenario": scenario,
+                "algo": f"portfolio/{solver_name}" + ("*" if is_winner else ""),
+                "parts": len(parts),
+                "height_mm": round(r.height_mm, 2),
+                "density": round(r.density, 4),
+                "time_s": round(r.time_s, 2),
+                "iters": args.iters,
+                "z_ok": r.height_mm <= args.max_z,
+            })
+        placements = pr.winner.placements
+        bin3d = pr.winner.bin3d
+        suffix = "portfolio"
+        args.out.mkdir(parents=True, exist_ok=True)
+        (args.out / f"portfolio_{scenario}.md").write_text(
+            pr.table_md, encoding="utf-8"
+        )
+        (args.out / f"portfolio_{scenario}.csv").write_text(
+            pr.table_csv, encoding="utf-8"
+        )
+        print(f"Portfolio tablo: {args.out / f'portfolio_{scenario}.md'}")
 
     if bin3d.max_height_mm() > args.max_z:
         print(f"UYARI         : yükseklik {bin3d.max_height_mm():.1f} mm "

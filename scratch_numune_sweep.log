@@ -1,0 +1,21 @@
+C:\Users\erenk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\cupy\_environment.py:284: UserWarning: CUDA path could not be detected. Set CUDA_PATH environment variable if CuPy fails to load.
+  warnings.warn(
+==============================================================================
+NUMUNE — NFV PITCH x N SUPURME (hedef 170, rekor 181.5) — cpu=16 ram=16.9GB gpu=True(fp64=True) fast_fft=- slurm=False
+plaka=335  (diskret kaldirac doyuyor mu? -> A1 surekli rotasyon karari)
+==============================================================================
+   pitch    n  heightmap       NFV  NFV-vs-hm    sure      durum
+------------------------------------------------------------------------------
+     2.0    8      180.0     180.0      +0.0%    101s gpu-resident
+     2.0   12      214.0     182.0     +15.0%    152s gpu-resident
+     1.5    8      238.5     186.0     +22.0%    175s gpu-resident
+     1.5   12          -         -          -       -        OOM
+     1.0    8          -         -          -       -        OOM
+     1.0   12          -         -          -       -        OOM
+     0.5    8          -         -          -       -        OOM
+     0.5   12          -         -          -       -        OOM
+------------------------------------------------------------------------------
+  EN IYI: 180.0 mm  (NFV pitch=2.0 n=8)
+  rekor 181.5 | hedef 170 (sozel stretch, ulasilmadi)
+  -> rekoru gecti ama 170 altina inmedi (diskret kaldirac sinirli).
+==============================================================================

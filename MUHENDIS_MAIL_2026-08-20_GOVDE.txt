@@ -1,0 +1,41 @@
+Konu: Kisa 4 soru + yerlesim onerimiz — 610 parcalik is
+
+Merhaba,
+
+Donusunuz icin tesekkurler; Aluteam davetiniz icin cok naziksiniz —
+ilk firsatta ziyareti kurulum planiyla birlestirmeyi cok isterim.
+
+Bir sure Istanbul'da olmayacagim; bu sebeple buradan vereceginiz geri
+bildirimler, uygulamayi sizin istediginiz kalite standartlarina uygun
+hale getirebilmek icin oldukca onemli. Bu donemde sureci mail (ve
+gerekirse kisa telefon) uzerinden yurutecegiz.
+
+Bu arada bos durmadik: gonderdiginiz Netfabb dosyasini kendi
+araclarimizla inceledik. PLAN8'in 118 adet braketten olustugunu, tumunun
+yatik ve ~17 mm kademeli (ic ice yuvalanmis) dizildigini, 284 mm'nin bu
+plana ait oldugunu gorduk — guzel bir yerlesim, elinize saglik.
+
+Uzaktan yuruttugumuz icin sorulari tek kelime/sayi ile cevaplanacak
+kadar kisa tuttum:
+
+1) 610 parcalik is TOPLAM kac plana bolundu? (tek sayi)
+
+2) 95x10x400 mm'lik cubuklar hangi planda ve durusu nedir?
+   (dik / yatik-capraz / egimli — tek kelime yeter)
+
+3) "Rotasyonlari degismeyecek" notunda: parcayi EGMEDEN, plaka
+   duzleminde cevirmek (saat yonunde dondurmek) serbest mi?
+   (evet / hayir)
+
+Ayrica uygulamamizin ayni 610 parcalik is icin urettigi TEK-PLAKA
+yerlesiminin STL'ini asagidaki linkten indirebilirsiniz (boyut nedeniyle
+ek yerine link): 335x335 tablada toplam yukseklik 400 mm, tum parca
+aralari >= 2 mm, cubuklar geldigi gibi dik, plakalar geldigi gibi yatik
+(yalniz tabla duzleminde cevrilmis — 3. sorunun konusu).
+
+  [DRIVE-LINKI-BURAYA]
+
+4) Ekteki yerlesim sizce uretime uygun mu? (evet / hayir)
+
+Simdiden tesekkurler; iyi calismalar,
+Eren Kutlu

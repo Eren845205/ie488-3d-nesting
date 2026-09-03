@@ -1,0 +1,49 @@
+# MEKANİZMA KATALOĞU — İnsan-Kaynaklı Strateji Çıkarımları + Açıklarımız
+
+> Kuruluş: 2026-08-20 (Eren talebi: "her veriden çıkardığımız sonuçlar —
+> mühendislerin bizde olmayan stratejileri, kendi eksiklerimiz — ayrı bir
+> yerde not alınsın; ML'in otomatik kısmı bunlara göre yönlendirilsin").
+>
+> **Amaç:** ML'in AKSİYON-UZAYININ insan tarafı. Her girdi bir mekanizma/
+> strateji çıkarımıdır; yaşam döngüsü: GÖZLEM → PROTOTİP → KAPI → ÜRETİM →
+> **ML-KOLU** (M4 portföyüne girer, seçici haritalar). Deney kanıtları
+> YONTEM §3'te kalır (buraya link); beyanlar HOCA_CEVAPLARI'nda. Burası
+> KESİT: "elimizde hangi silahlar var / eksik ne / hangisi ne durumda".
+>
+> **Runbook kuralı:** her yeni veri/referans analizi + her açık-ayrıştırma
+> raporu sonunda bu katalog güncellenir (yeni girdi VEYA durum ilerletme).
+
+## A. Referanstan/insandan öğrenilen mekanizmalar
+
+| # | Mekanizma | Kaynak-kanıt | Geometrik tetik (A11) | Durum | Bağlı iş |
+|---|---|---|---|---|---|
+| MK-01 | **Düz-KANOPİ**: delikli büyük parça diğerlerinin üstüne düz; dik parçalar deliklerden | Hoca 110,41 görüntüleri (2026-08-03) | delikli/düşük-footprint-doluluk büyük parça + no-go geçişi | **ÜRETİMDE** (kanopi-zinciri v28, nfv-kalite yolu) | K-62 |
+| MK-02 | **Hedefli TİLT + zemin-PİN**: baseplate eğik + parça-pinleme | plan1 krizi + Magics eğik basma gözlemi | no-go'lu plakaya düz pozu sığmayan yükseklik-sürücü | ÜRETİM-KABLO (şerhli-GO) | K-56 |
+| MK-03 | **KAFES/çubuk-arası interleave**: aşan-çubuk kolonları + kanallara kitle-plaka + kalan NFV | fsm610 516 z-anatomisi (çubuk-üstü yığılma teşhisi) | tekrar-kitle payı≥0,5 + plaka-aşan parça | **✅ DAĞILIMSAL KAPI PASS (2026-08-20 gece, köşe-fix sonrası 12-seed @2,0): 12/12 LEGAL (min cl 2,011) + tetik 24/24 + 2W/10T/0L (yfp SIFIR) + yükseklikler fix-öncesiyle birebir — kablo kararı EREN'DE.** fsm610: kısıt-uyumlu mod **400,00 LEGAL (teorik taban+0,4; kısıtlı-eski 691'e −%42)** = tek-plaka şampiyonu; **plan-skoru v2 (ölü-bant; 2026-08-21 gece) kısıtsız ekseni de 458,4→400,00 LEGAL'e indirdi** (12-seed v2-A/B PASS + sentetik 12/12 bit-özdeş; YONTEM v2 kaydı). M4 portföyüne KOL eklendi (kafes + kafes_duruskoru, tetikli). **🔌 ÜRETİMDE (2026-08-22, Eren "Devam et" onayı): `kafes_zincir.kafes_zinciri_uretim` kanopi-deseni kablo (tetik yoksa sıfır maliyet; kabul=TAM A2+ref'ten iyi; kare-plaka sözleşmesi; orientation-kilitte güvenli atlama; 9 birim test + CANLI duman: tetikli mass 416,5→414,5 KABUL / tetiksiz sıfır-dokunuş)**; plan1 v28 baseline 136,20 (köşe-fix bedeli Eren-onaylı) | K-66-d; kalan: duruş-koru modunun üretim tetiği (S3 yaw teyidi sonrası) |
+| MK-04 | **ŞİNDİL diyagonal yuvalama**: tek-tip çanak-parça sabit (Δy,Δz) adımla iç-içe dizi (%65 z-tasarrufu gözlendi) | PLAN8 anatomisi (**126** braket — 2026-08-21 tam-dekod düzeltmesi; Δy≈16/Δz≈15-17, 4 kolon) | yüksek-tekrar + **ölçülen şindil Δz < 0,7×h** (araç: k67_yuvalama_derinligi; saniyelik) | **ÖLÇÜM-ARACI HAZIR + GERÇEK-VERİ KANITLI (2026-08-20 gece: fsm braketi Δy=21/Δz=11, %86; xy-hizalı yuvalanmıyor — şindil şart, YONTEM §3 K-67)** → sırada dizim prototipi (kolon-alan maliyeti) | K-67 |
+| MK-05 | **TEK-TİP PLAN bölme politikası**: plan-başına tek model; yükseklik-sürücüler ayrı planda | PLAN8 (plakada yalnız braket ✓ 2026-08-21 tam-dekod; "≥8 plan BU işe ait" çıkarımı ŞERHLİ — PLAN8 muhtemelen işler-arası sayaç, S1 cevabı bekler) | çok-parti gereken işte model-bazlı atama | TASARIM (U1 Katman-2) | U1 |
+| MK-06 | **PROFİL iç-içe yuvalama**: tf-düşük açık profillerin (çubuk tf 0,098) birbirine kenetlenmesi | çubuk geometrisi + "516'da sömürülmedi" teşhisi; engel: pitch-2 dilation mühürü | tf<~0,15 açık-profil çifti | HİPOTEZ — ince-pitch ister (lab 64GB işi) + iç-içe sözleşme teyidi | K-66 devamı |
+
+## B. Kendi payımıza düşen açıklar (teşhisli eksikler)
+
+| # | Açık | Kanıt | Durum |
+|---|---|---|---|
+| AC-01 | Karar katmanı sensörlere bakmıyordu (mod-yönlendirici körlüğü) | fsm610 %21 kaybı | K-65 kablo + KARAR-6 polarite + M14 (model→üretim) İLERLİYOR |
+| AC-02 | Heightmap yolunda clearance-uygulama zafiyeti (1,004/0,131<2; **plan2 0,001** 2026-08-30) | fsm610 iki koşu + **plan2 kampanya v2 (708,5/0,001, v1 ile birebir replikasyon)** | AÇIK — teşhis sırada (K-45 kuantizasyon bağlantısı şüphesi); artık 2 gerçek sette kanıtlı, öncelik YÜKSELDİ |
+| AC-08 | **Kanopi zinciri (v28) plan2'de bellek bombası**: `kanopi_zinciri_uretim→kanopi_zinciri_coz→solve_nfv→GPU FFT` aşamasında python private 14 GB / CPU≈0 (takas); eval_gate yolu (kanopisiz) 521,18'i 5,3 GB'da koşar. Üretim NFV yolu plan2'de tetiklenirse uygulama tıkanır — p2/d4 KIRMIZI şerhinin gerçek yüzü | kampanya v2/v3/v4 (py-spy yığını 2026-08-30 21:00) | **KAPALI-İZLEMEDE (2026-08-31):** kök = zincir fine_pitch=None→zehirli bant + cuFFT plan work-area birikimi; fix A1+A2+F4 (TDD, suite 3363); kanıt p2 535,0 / p3 629,0 uçtan uca LEGAL (tepe ≤10,7 GB) |
+| AC-09 | **Kapalı-kavite TELEMETRİSİ bellek bombası** (üretim yolu): `_kapali_kavite_gate→kapali_kavite_analizi→ndimage.label` çözüm-SONRASI tam plakayı ince pitch'te 3B ızgaraya döker; MAX (pitch 0,5) p3'te ~540M voxel × ~30 B = 16,9 GB → bekçi/takas, 55 dk MAX çözümü sidecar'a yazılamadan ölür. "Karara bağlanmaz / üretimi bozamaz" denen yan-kanal, OOM'la süreci öldürüyordu (except OOM yakalamaz) | p3-max 09-01 23:17 (15,6 GB) · 09-02 11:06 (16,8) · 09-02 12:15 py-spy bekçi-dump `results/pyspy_bekci_25276_uyari/olum.txt` | **FIX 2026-09-02 13:10:** voxel bütçesi (`KAVITE_VOXEL_BUTCE`=60M → any-havuz kaba pitch, `kaba_faktor` raporlu; `KAVITE_VOXEL_TAVAN`=2G → atlanır); nesting çözümü bit-özdeş; 6 test; **KAPALI (21:40, dağılımsal PASS):** p3 577,0 · d4 269/230 · mass_plate 416,5 · holey 313,5 — 4 aile birebir, tepe 3-6,4 GB (YONTEM 21:40) |
+| AC-10 | **C4 model kapısı üretimde hiç ateşlememiş**: (1) conformal-tekil kilidi — v2 lojistik kümesi 84/86'da ≥2 kol, bagging α≤0,15'te eşik 1,0; (2) allowlist aile-adı uyumsuzluğu — eğitim/allowlist m4-devset adları (devset_plan3, thin_plates…), üretim `classify_prelim` adları (thin_shell/tube/mixed_scale/thin_plate); kesişim yalnız long_rod/solid_bulk. Yarışmalar ham `predict` ölçtü, kapılı kararı değil | kapılı LOO 09-02 16:00 (v2 konuştu 0/86) + classify_prelim probu 6 dev-set | **KAPALI-İZLEMEDE (17:55, Eren: A):** `uretim_aile.py` — satır→classify_prelim ailesi + gerçek üretim kuralı; auto allowlist {long_rod, solid_bulk}; karar-probu 27/86; promote ac10-…-mini_bagging α=0,25; gerçek-sipariş aileleri kuralda (şerh: aynı-veri seçim, held-out bekler) |
+| AC-03 | Batching'de yükseklik fizibilite kapısı yok (691 tek-parti raporu) | fsm610 | U1 v1 TASARIM HAZIR (LB hakemi + doğru-mod-önce + bölme son çare) |
+| AC-04 | Pitch/dilation ince boşlukları mühürlüyor (profil-yuvalama kör noktası) | K-66 teşhisi; kafes v1 INVALID dersi (K-38 yeniden) | KISMİ — kuantize-adım fix'i kodda; ince-pitch donanım bekler |
+| AC-05 | Kıyas-şartı doğrulanmadan referans sayısı hedef alındı ("%45 geride" yanılgısı) | PLAN8 öz-ölçümü | KAPANDI — ders: referans DOSYASI önce ölçülür (A10+A4) |
+| AC-06 | **Köşegen clearance sızıntısı**: L1-dilation çekirdeği HAM-pin yanında köşegen cebi korumuyordu (parça pin köşesine <2mm oturabiliyordu; settle cebe indirebiliyordu) | k66 seed2 teşhisi (1,256mm; minimal repro 1,088) + YONTEM §3 köşe-fix kaydı | **KAPANDI (kod; commit onay bekler)** — parça-tarafı `kose_doldur` çekirdeği (L1∪S_diag, yalnız pinli+pin_3d); eksen 1×-margin sözleşmesi testli korunur; yeniden-doğrulama: fsm 400,00 birebir ✓ · plan1 v28 132,00→**136,20 LEGAL (Eren 2026-08-21: yeni baseline KABUL)** |
+| AC-07 | **Pin-köşe dolgu bedeli**: AC-06 fix'i pinli-plan1'de +4,2mm + söküm 7-cert'e çıkardı (köşegen cebi tamamen mühürleniyor; daha hassas — köşe-yarıçaplı/mesafe-alanı — dolgu 4,2mm'in bir kısmını geri kazanabilir, garanti yok) | plan1 v28 replay kıyası (YONTEM §3 PLAN1-REPLAY kaydı) | BACKLOG (Eren 2026-08-21 "plan1'e bakarız sonra"); korrektlik önce — fix geri alınmaz |
+
+## C. ML'e akış kuralı
+
+Katalogdaki her mekanizma ÜRETİM/KAPI durumuna gelince: (1) M4 portföyüne
+KOL olarak eklenir → etiketleri birikir; (2) seçici (mod_yarismasi
+kazananı) onun "ne zaman kazandığını" haritalar — el-tetik yalnız adaylık
+filtresi kalır; (3) zarf-dışı sınıflarda çekimserlik korunur. Böylece
+"manuel çıkarım → otomatik genelleme" hattı: İNSAN mekanizmayı bulur ve
+buraya yazar; ML kullanım haritasını öğrenir ve sınırını veriyle inceltir.

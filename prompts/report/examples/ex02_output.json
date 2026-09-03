@@ -1,0 +1,6 @@
+{
+  "baslik": "Pipeline Sonucu: 5 Sipariş, 3 Parti — 2 Termin Uyarısı",
+  "govde_md": "Bu koşuda 5 sipariş 3 partiye dağıtıldı; toplam fiyat önerisi 3.400,00 USD olarak hesaplandı. **Dikkat:** 2 siparişte termin aşımı tespit edildi (ORD-FORD-A2: 3 gün gecikme, ORD-BAYKAR-B1: 1 gün gecikme). B001 partisinin nesting yüksekliği 220.5 mm, doluluk %68.1 olarak gerçekleşti. Termin aşımlarının müşteri ile ivedilikle görüşülmesi önerilir.",
+  "kullanilan_kaynaklar": ["yerlesim#B001", "termin#cizelge", "fiyat#B001"],
+  "eksik_bilgi": []
+}

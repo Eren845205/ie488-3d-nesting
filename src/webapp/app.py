@@ -1,0 +1,4592 @@
+"""app.py — Konteyner Nesting Sistemi Flask web uygulamasi.
+
+Kullanim:
+    python -m src.webapp.app          # Sunucu baslat (127.0.0.1:8765)
+
+Rotalar:
+    GET  /       Ana sayfa (senaryo ozeti + Pipeline Calistir dugmesi)
+    POST /run    Demo pipeline kosturur, /sonuc'a yonlendirir
+    GET  /sonuc  Son kosun sonuclari
+    POST /ozet   LLM yonetici ozeti olustur (LLM aktif ise)
+    POST /sor    LLM asistan sorusu (LLM aktif ise)
+
+LLM zarif dusus:
+    configs/llm.local.json yoksa veya Ollama kapaliysa, LLM bolumlerini
+    gizle — uygulama COKMEZ.
+
+Durum yonetimi:
+    _last_result ve _conversation_turns app.config uzerinde tutulur;
+    bu sayede her create_app() cagrisinda sifirlanir (test izolasyonu).
+"""
+
+from __future__ import annotations
+
+import hmac
+import json
+import logging
+import os
+import secrets
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from flask import (
+    Flask, Response, jsonify, redirect, render_template,
+    request, send_file, session, url_for,
+)
+
+# Rate limiting — optional dep; no-op if flask-limiter not installed
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    _LIMITER_AVAILABLE = True
+except ImportError:
+    _LIMITER_AVAILABLE = False
+    Limiter = None  # type: ignore
+
+# Proje kokunu sys.path'e ekle (dogrudan calistirma icin)
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+logger = logging.getLogger(__name__)
+
+MAX_SORU_LEN = 2000  # /sor soru uzunluk siniri (DoS korumasi)
+
+# ---------------------------------------------------------------------------
+# SSRF allowlist — Ollama base_url yalnizca localhost'a izin verilir
+# ---------------------------------------------------------------------------
+import re as _re
+
+_ALLOWED_BASE_URL_PATTERN = _re.compile(
+    r"^https?://(localhost|127\.0\.0\.1)(:\d+)?(/.*)?$"
+)
+
+
+def _validate_ollama_base_url(url: str) -> bool:
+    """base_url'in localhost/127.0.0.1 ile sinirli oldugunu dogrular (SSRF korumasi)."""
+    return bool(_ALLOWED_BASE_URL_PATTERN.match(url))
+
+
+# ---------------------------------------------------------------------------
+# Paylasilan seri-hale-getirici yardimci (Bulgu 6: /otonom tutarli projeksiyon)
+# ---------------------------------------------------------------------------
+
+def _nesting_result_projection(nr: dict) -> dict:
+    """Nesting sonuc dict'inden guvenli scalar alanlar cikarir.
+
+    /otonom ve /run yanit yollari bu ortak helper'i kullanir;
+    buyuk/seri-edilemeyen nesneler disarda kalir.
+    """
+    return {
+        "height_mm": nr.get("height_mm", 0.0),
+        "density": nr.get("density", 0.0),
+        "n_parts": nr.get("n_parts", 0),
+    }
+
+
+def _load_llm_components(
+    provider_override: Any = None,
+    enabled: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """LLM bilesenleri yukle; hata veya eksik konfig varsa None dondur.
+
+    Parametreler
+    ------------
+    provider_override : test injection icin sahte saglayici (None = gercek)
+    enabled           : False ise yuklemeden None dondur (LLM devre disi)
+    """
+    if not enabled:
+        return None
+
+    try:
+        from src.llm.config import LLMConfig
+        from src.llm.audit import AuditLogger
+        from src.llm.prompts import PromptRegistry
+        from src.llm.roles.report import ReportRole
+        from src.llm.roles.assistant import AssistantRole, Conversation
+        from src.llm.roles.parser import ParserRole
+
+        cfg_path = _ROOT / "configs" / "llm.local.json"
+        if not cfg_path.exists():
+            logger.info("LLM: configs/llm.local.json bulunamadi — LLM devre disi.")
+            return None
+
+        cfg = LLMConfig.from_file(str(cfg_path))
+        cfg.validate()
+
+        audit = AuditLogger(
+            log_dir=str(_ROOT / cfg.audit.log_dir),
+            payload_log_dir=str(_ROOT / cfg.audit.payload_log_dir),
+            payload_logging=cfg.audit.payload_logging_default,
+        )
+
+        registry = PromptRegistry(
+            prompts_dir=str(_ROOT / "prompts"),
+            enforce_lock=True,
+        )
+
+        if provider_override is not None:
+            provider = provider_override
+
+            def _provider_for(role_name: str):  # noqa: E306
+                return provider_override
+        else:
+            # Gercek Ollama saglayicisi — model bazli provider cache
+            from src.llm.providers.openai_compat import OpenAICompatProvider
+
+            prov_cfg = cfg.provider_for_role("report")
+            _base_url = prov_cfg.base_url or "http://localhost:11434"
+            # SSRF allowlist: yalnizca localhost / 127.0.0.1 kabul edilir (Bulgu 4)
+            if not _validate_ollama_base_url(_base_url):
+                logger.error(
+                    "Ollama base_url SSRF allowlist'i disinda: %r — LLM devre disi.",
+                    _base_url,
+                )
+                return None
+
+            _prov_cache: Dict[str, Any] = {}
+
+            def _provider_for(role_name: str):  # noqa: E306
+                rc = cfg.roles.get(role_name)
+                model = rc.model if rc is not None else cfg.role("report").model
+                if model not in _prov_cache:
+                    _prov_cache[model] = OpenAICompatProvider(
+                        base_url=_base_url,
+                        model=model,
+                        timeout_s=prov_cfg.timeout_s,
+                    )
+                return _prov_cache[model]
+
+            # Geriye donuk uyum: 'provider' degiskeni ilk provider'a bakar
+            provider = _provider_for("report")
+
+        from src.llm.roles.explainer import ExplainerRole
+        from src.llm.roles.watcher import WatcherRole
+        from src.llm.roles.teklif import TeklifRole
+
+        report_role = ReportRole(
+            provider=_provider_for("report"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("report"),
+        )
+
+        assistant_role = AssistantRole(
+            provider=_provider_for("assistant"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("assistant"),
+            conversation=Conversation(),
+        )
+
+        parser_role = ParserRole(
+            provider=_provider_for("parser"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("parser"),
+        )
+
+        explainer_role = ExplainerRole(
+            provider=_provider_for("explainer"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("explainer"),
+        )
+
+        watcher_role = WatcherRole(
+            provider=_provider_for("watcher"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("watcher"),
+        )
+
+        teklif_role = TeklifRole(
+            provider=_provider_for("teklif"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("teklif"),
+        )
+
+        # K-56g: siparis-notu kisit rolu + hakem (Eren karari: hakem bastan).
+        # Iki rol de AYNI kisit-v1 sablonunu kullanir (KisitRole.ROLE_NAME);
+        # hakem yalniz model/konfig farkiyla ayrisir (qwen2.5:7b). Model
+        # cekili degilse ilk cagri graceful basarisiz olur (run_with_voting
+        # hakem hatasini yutar — guven oldugu yerde kalir); banner probe'u
+        # eksik modeli "ollama pull" uyarisiyla gosterir.
+        from src.llm.roles.kisit import KisitRole
+
+        kisit_role = KisitRole(
+            provider=_provider_for("kisit"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("kisit"),
+        )
+        kisit_hakem_role = KisitRole(
+            provider=_provider_for("kisit_hakem"),
+            registry=registry,
+            audit=audit,
+            role_cfg=cfg.roles.get("kisit_hakem"),
+        )
+
+        # kisit_modu: "kapali" (default) | "golge" | "otomatik" — LLMConfig
+        # semasina girmeyen serbest alan; ham JSON'dan okunur (from_dict
+        # bilinmeyen ust-duzey anahtari yok sayar).
+        try:
+            import json as _json
+            _kisit_modu = str(_json.loads(
+                cfg_path.read_text(encoding="utf-8")
+            ).get("kisit_modu", "kapali"))
+        except Exception:
+            _kisit_modu = "kapali"
+
+        return {
+            "report_role": report_role,
+            "assistant_role": assistant_role,
+            "parser_role": parser_role,
+            "explainer_role": explainer_role,
+            "watcher_role": watcher_role,
+            "teklif_role": teklif_role,
+            "kisit_role": kisit_role,
+            "kisit_hakem_role": kisit_hakem_role,
+            "kisit_modu": _kisit_modu,
+            "llm_active": True,
+            # /health probe icin provider referansi (canli Ollama saglik kontrolu)
+            "health_provider": provider,
+        }
+
+    except Exception as exc:
+        logger.warning("LLM bilesenleri yuklenemedi (%s) — LLM devre disi.", exc)
+        return None
+
+
+def _build_grounded_context(pipeline_result: Dict[str, Any]) -> Any:
+    """Pipeline sonucundan GroundedContext olustur."""
+    from src.llm.grounding import GroundedContext, SourceDoc
+
+    nesting = pipeline_result.get("nesting_results", {})
+    pricing = pipeline_result.get("pricing_results", {})
+    warnings = pipeline_result.get("warnings", [])
+
+    kaynaklar = []
+
+    for batch_id, nr in nesting.items():
+        height = nr.get("height_mm", 0.0)
+        density = nr.get("density", 0.0)
+        n_parts = nr.get("n_parts", 0)
+        icerik = (
+            f"Yukseklik: {height} mm\n"
+            f"Doluluk: {density:.1%}\n"
+            f"Yerlestirilen parca: {n_parts}"
+        )
+        kaynaklar.append(SourceDoc(
+            id=f"yerlesim#{batch_id}",
+            tip="yerlesim",
+            icerik=icerik,
+            uretici="nesting3d.dblf",
+        ))
+
+    for batch_id, pr in pricing.items():
+        total = pr.get("total_price", 0.0)
+        breakdown = pr.get("breakdown", [])
+        breakdown_text = "\n".join(f"- {line}" for line in breakdown)
+        icerik = f"Nihai fiyat: {total:.2f} USD\n{breakdown_text}"
+        kaynaklar.append(SourceDoc(
+            id=f"fiyat#{batch_id}",
+            tip="fiyat",
+            icerik=icerik,
+            uretici="pricing.engine",
+        ))
+
+    if warnings:
+        warn_lines = []
+        for w in warnings:
+            if isinstance(w, dict):
+                oid = w.get("order_id", "?")
+                delay = w.get("delay_days", "?")
+            else:
+                oid = getattr(w, "order_id", "?")
+                delay = getattr(w, "delay_days", "?")
+            warn_lines.append(f"- {oid}: {delay} gun gecikme")
+        icerik = "Uyarilar:\n" + "\n".join(warn_lines)
+        kaynaklar.append(SourceDoc(
+            id="termin#cizelge",
+            tip="termin",
+            icerik=icerik,
+            uretici="scheduling.report",
+        ))
+
+    return GroundedContext(
+        is_id="demo-pipeline",
+        kaynaklar=kaynaklar,
+    )
+
+
+def _json_guvenli(obj: Any) -> Any:
+    """Bir degeri ozyinelemeli olarak JSON-serilestirilebilir hale getir.
+
+    numpy skalerleri -> python int/float; dict/list/tuple ozyinelemeli;
+    bilinmeyen nesneler str()'e duser (detay kaydi rapor-only oldugundan
+    kayip kabul edilebilir, crash edilmez).
+    """
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _json_guvenli(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_guvenli(v) for v in obj]
+    # numpy skaleri (np.float64/np.int32 vb.) — item() python tipine cevirir
+    item = getattr(obj, "item", None)
+    if callable(item):
+        try:
+            return _json_guvenli(item())
+        except Exception:
+            pass
+    return str(obj)
+
+
+def _layer_costs_ekle(nesting_results: Dict[str, Any]) -> None:
+    """Her partiye katman-bazli maliyet (+tuner varsa tasarruf) alanlarini ekle.
+
+    /sonuc sayfasi ile gecmis-detay kalicilastirmasi AYNI hesabi kullanir
+    (tek kaynak) — gecmis kaydindaki deger kosu anina sabitlenir.
+    """
+    from src.pricing.layer_cost import (
+        LayerCostParams, compute_cost, compute_savings,
+    )
+    _lc_params = LayerCostParams()  # default 0.12mm / 20sn / 10EUR
+    for _nr in nesting_results.values():
+        _h = _nr.get("height_mm", 0.0)
+        if not _h:
+            continue
+        _nr["layer_cost"] = compute_cost(_h, _lc_params).to_dict()
+        _impr = (_nr.get("tuner") or {}).get("improvement_mm", 0.0) or 0.0
+        if _impr > 0:
+            _nr["layer_savings"] = compute_savings(
+                _h + _impr, _h, _lc_params
+            ).to_dict()
+
+
+# Gecmis-detay GLB kalicilastirmasi icin kosu basina toplam tavan (disk emniyeti).
+_GECMIS_GLB_TAVAN_BYTES = 80 * 1024 * 1024
+# 3D ONIZLEME ucgen butcesi: WebGL'de ~1.5M ucgen akici; ustundeki sahneler
+# (orn. Deneme4 acilmis 5.8M ucgen) icin sadelesmis onizleme GLB'si uretilir.
+# STL indirme HER ZAMAN tam-detay GLB'den gider (geometri birebir).
+_GECMIS_ONIZLEME_UCGEN = 1_500_000
+
+
+_TURKCE_AYLAR = {
+    "ocak": "01", "subat": "02", "mart": "03", "nisan": "04",
+    "mayis": "05", "haziran": "06", "temmuz": "07", "agustos": "08",
+    "eylul": "09", "ekim": "10", "kasim": "11", "aralik": "12",
+}
+
+
+def _resolve_mail_source_config(root) -> Dict[str, Any]:
+    """Mail kaynak konfigini coz: oncelik mail.local.json > .env MAIL_* > fake.
+
+    - configs/mail.local.json varsa (UI'dan kaydedilmis) O kullanilir.
+    - Yoksa .env'deki MAIL_PROVIDER/MAIL_USER/MAIL_PASSWORD/MAIL_FOLDER.
+    - O da yoksa demo FakeMailbox.
+    """
+    p = root / "configs" / "mail.local.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("mail.local.json okunamadi (%s) — .env/demo'ya dusuluyor", exc)
+    prov = os.environ.get("MAIL_PROVIDER", "").strip()
+    if prov:
+        return {
+            "provider": prov,
+            "user": os.environ.get("MAIL_USER", "").strip(),
+            "password": os.environ.get("MAIL_PASSWORD", "").strip(),
+            "folder": os.environ.get("MAIL_FOLDER", "INBOX").strip() or "INBOX",
+        }
+    return {"source": "fake"}
+
+
+def _normalize_deadline(deadline_str: str, mail_tarih: str = "") -> str:
+    """Termin dizesini ISO 8601 (YYYY-MM-DD) formatina donusturur.
+
+    Desteklenen formatlar:
+      - ISO 8601: "2026-06-19" -> dogrudan don
+      - Turkce tam tarih: "19 Haziran 2026" -> "2026-06-19"
+      - Bos/tanimsiz: mail tarihinden +30 gun fallback
+    Hicbir durumda atmaz; en kotu fallback bugunden +30 gun.
+    """
+    from datetime import date, timedelta
+
+    s = (deadline_str or "").strip()
+
+    # ISO formatini dene
+    if s:
+        try:
+            date.fromisoformat(s[:10])
+            return s[:10]
+        except ValueError:
+            logger.debug("_normalize_deadline: ISO parse basarisiz: %r", s[:10])
+
+    # Turkce "GG Ay YYYY" formatini dene
+    if s:
+        parts = s.replace(",", "").split()
+        if len(parts) == 3:
+            gun, ay_str, yil = parts[0], parts[1].lower(), parts[2]
+            ay = _TURKCE_AYLAR.get(ay_str, "")
+            if ay and gun.isdigit() and yil.isdigit():
+                try:
+                    candidate = f"{yil}-{ay}-{int(gun):02d}"
+                    date.fromisoformat(candidate)
+                    return candidate
+                except ValueError:
+                    logger.debug(
+                        "_normalize_deadline: Turkce tarih parse basarisiz: %r",
+                        s,
+                    )
+
+    # Fallback: mail tarihinden +30 gun veya bugunden +30 gun
+    try:
+        mail_date = date.fromisoformat(mail_tarih[:10])
+        return (mail_date + timedelta(days=30)).isoformat()
+    except Exception:
+        return (date.today() + timedelta(days=30)).isoformat()
+
+
+def create_app(
+    testing: bool = False,
+    llm_provider_override: Any = None,
+    llm_enabled: bool = True,
+    orders_path: Optional[str] = None,
+    load_env: bool = True,
+    plate_root: Optional[str] = None,
+) -> Flask:
+    """Flask uygulama factory.
+
+    Parametreler
+    ------------
+    testing              : bool
+        True ise test modu aktif.
+    llm_provider_override: LLMProvider
+        Test injection icin sahte saglayici. None = gercek Ollama.
+    llm_enabled          : bool
+        False ise LLM tamamen devre disi (test izolasyonu icin).
+    orders_path          : str | None
+        Siparis havuzu JSON dosya yolu. None ise varsayilan (data/orders.json).
+        Test izolasyonu icin tmp_path gecirilebilir.
+    plate_root           : str | None
+        Plaka config koku (configs/plate.local.json bunun altinda cozulur/
+        yazilir). None = proje koku. Test izolasyonu icin tmp_path gecirilir —
+        /plaka-ayar POST'u gercek gelistirici dosyasina ASLA dokunmasin
+        (2026-07-16 bulgusu: eski test gercek dosyaya yazip geri yukluyordu;
+        paralel kosuda yaris riski).
+    """
+    from pathlib import Path as _Path
+
+    # .env varsa ortam degiskenlerini yukle (python-dotenv). override=False:
+    # mevcut sistem/.bat env'i oncelikli kalir, .env yalniz eksikleri doldurur.
+    # testing modunda ASLA yuklenmez (testler .env'deki gercek mail/parola ile
+    # kirlenmesin; otonom testleri gercek IMAP'a baglanmaya calismasin).
+    if load_env and not testing:
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=False)
+        except Exception:
+            pass
+
+    app = Flask(
+        __name__,
+        template_folder="templates",
+        static_folder="static",
+    )
+    app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+    app.config["TESTING"] = testing
+    # Plaka config koku (test izolasyonu icin enjekte edilebilir; None = _ROOT).
+    # Rotalar _register_routes'ta yasadigi icin app.config uzerinden tasinir.
+    app.config["PLATE_ROOT"] = _Path(plate_root) if plate_root else _ROOT
+
+    # Yuklem buyuklugu siniri — yükleme DoS'a karsi (Bulgu 1)
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
+
+    # Manuel STL yuklemesi ISTISNASI (2026-08-16 hoca-demo bulgusu): gercek
+    # siparis STL'leri 5MB'i kat kat asar (plan7 tek dosya 9-191MB olculdu;
+    # 5MB tavani /manuel-yukle'yi 413 ile kiriyordu). Yalniz bu route yuksek
+    # tavana cikar (Flask 3.1 per-request override); DIGER TUM rotalarda
+    # Bulgu-1'in 5MB korumasi aynen surer. Route ayrica login + CSRF +
+    # 10/dk rate-limit arkasinda.
+    _MANUEL_YUKLE_TAVAN = 2 * 1024 * 1024 * 1024  # 2 GB
+    @app.before_request
+    def _manuel_yukle_boyut_istisnasi():
+        if request.path == "/manuel-yukle":
+            request.max_content_length = _MANUEL_YUKLE_TAVAN
+
+    # Session cookie guvenlik bayraklari (FIX 4). HTTPONLY: JS erisimini
+    # engeller (XSS ile cookie calinmasini zorlastirir). SAMESITE=Lax: CSRF
+    # savunmasini destekler. SECURE: varsayilan KAPALI (localhost HTTP demo
+    # bozulmasin); TLS arkasinda deploy edilirse FLASK_COOKIE_SECURE=1 ile acilir.
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
+        "FLASK_COOKIE_SECURE", ""
+    ).strip().lower() in ("1", "true", "yes")
+
+    # Durum: her create_app() cagrisinda sifirlanir (test izolasyonu)
+    app.config["LAST_RESULT"] = None
+    # NOT: CONVERSATION_TURNS artik Flask session'da (per-kullanici); bu kaldir.
+    # Geriye donuk uyumluluk: app.config["CONVERSATION_TURNS"] diger testler
+    # ile cakismamasi icin bos liste olarak baslatilmaya devam eder.
+    app.config["CONVERSATION_TURNS"] = []
+
+    # Siparis havuzu yolu
+    if orders_path is not None:
+        app.config["ORDERS_PATH"] = _Path(orders_path)
+    else:
+        app.config["ORDERS_PATH"] = None  # orders_store varsayilani kullanir
+
+    # LLM bilesenleri: provider_override verildiyse LLM aktif; yoksa
+    # llm_enabled=False ise tamamen kapali
+    _effective_enabled = llm_enabled or (llm_provider_override is not None)
+    _llm: Optional[Dict[str, Any]] = _load_llm_components(
+        provider_override=llm_provider_override,
+        enabled=_effective_enabled,
+    )
+    llm_active = _llm is not None
+    # Baslangic saglik raporu (_startup_health_report) icin erisim
+    app.config["LLM_COMPONENTS"] = _llm
+
+    # Rate limiter (Bulgu 2) — flask-limiter yuklu degilse no-op
+    if _LIMITER_AVAILABLE and Limiter is not None:
+        _limiter = Limiter(
+            app=app,
+            key_func=get_remote_address,
+            default_limits=[],
+            storage_uri="memory://",
+        )
+    else:
+        _limiter = None
+
+    _register_routes(app, llm_components=_llm, llm_active=llm_active, limiter=_limiter)
+    return app
+
+
+def _register_routes(
+    app: Flask,
+    llm_components: Optional[Dict[str, Any]] = None,
+    llm_active: bool = False,
+    limiter: Any = None,
+) -> None:
+    """Tum rotalari app'e kaydeder."""
+
+    # Plaka config koku — create_app enjeksiyonu (test izolasyonu; None = _ROOT)
+    _plate_root = app.config.get("PLATE_ROOT") or _ROOT
+
+    # Rate-limit dekorator yardimcisi — limiter None ise gecmis decorator doner
+    def _limit(limit_string: str, **limiter_kwargs):
+        if limiter is not None:
+            return limiter.limit(limit_string, **limiter_kwargs)
+        # no-op: ayni fonksiyonu olduğu gibi döndürür
+        def _passthrough(f):
+            return f
+        return _passthrough
+
+    # -----------------------------------------------------------------------
+    # Guvenlik: admin oturum (session) + CSRF (uygulama geneli)
+    # -----------------------------------------------------------------------
+    # ADMIN_PASSWORD env'den okunur (kodda sabit YOK). Bossa login devre disi
+    # (demo kolayligi). CSRF testing=False'ta aktif; testing=True'da mevcut
+    # testleri kirmamak icin atlanir (Flask-WTF'in WTF_CSRF_ENABLED=False mantigi).
+    _ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+    _AUTH_EXEMPT = {"giris", "cikis", "health", "static"}   # oturum gerektirmez
+    _CSRF_EXEMPT = {"health", "static"}                      # CSRF gerektirmez
+
+    @app.before_request
+    def _security_guard():
+        # Her oturuma CSRF token garanti et (testte de — context_processor icin)
+        if "_csrf" not in session:
+            session["_csrf"] = secrets.token_hex(16)
+
+        # Test izolasyonu: auth+csrf atlanir (mevcut testler token gondermez)
+        if app.config.get("TESTING"):
+            return
+
+        ep = request.endpoint or ""
+
+        # 1) Admin oturum (ADMIN_PASSWORD bossa login tamamen devre disi)
+        if _ADMIN_PASSWORD and ep not in _AUTH_EXEMPT and not session.get("authed"):
+            if request.method == "GET":
+                return redirect(url_for("giris", next=request.path))
+            return jsonify({"hata": "Oturum gerekli — lütfen giriş yapın."}), 401
+
+        # 2) CSRF (durum degistiren metodlar)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and ep not in _CSRF_EXEMPT:
+            sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
+            if not (sent and hmac.compare_digest(sent, session.get("_csrf", ""))):
+                return jsonify({"hata": "CSRF doğrulaması başarısız — sayfayı yenileyin."}), 403
+
+    @app.context_processor
+    def _inject_csrf():
+        return {"csrf_token": session.get("_csrf", "")}
+
+    @app.route("/giris", methods=["GET", "POST"])
+    @_limit("5 per minute", methods=["POST"])  # brute-force korumasi (FIX 2); GET (login sayfasi) serbest
+    def giris():
+        """Admin giris ekrani. ADMIN_PASSWORD bossa dogrudan ana sayfaya gecer."""
+        if not _ADMIN_PASSWORD:
+            return redirect(url_for("index"))
+        if request.method == "POST":
+            # bytes karsilastirma: Turkce/unicode parolada compare_digest ASCII
+            # kisitina takilmaz (str karsilastirma non-ASCII'de TypeError verir)
+            _girilen = request.form.get("password", "").encode("utf-8")
+            if hmac.compare_digest(_girilen, _ADMIN_PASSWORD.encode("utf-8")):
+                session["authed"] = True
+                _next = request.args.get("next") or url_for("index")
+                # acik-yonlendirme korumasi: yalniz site-ici mutlak yol
+                if not _next.startswith("/") or _next.startswith("//"):
+                    _next = url_for("index")
+                return redirect(_next)
+            return render_template("giris.html", hata="Parola yanlış.")
+        if session.get("authed"):
+            return redirect(url_for("index"))
+        return render_template("giris.html", hata=None)
+
+    @app.route("/cikis", methods=["GET", "POST"])
+    def cikis():
+        """Oturumu kapat."""
+        session.pop("authed", None)
+        return redirect(url_for("giris"))
+
+    # -----------------------------------------------------------------------
+    # Arka plan poll (otomatik tetik): periyodik kutu kontrolu -> pipeline
+    # -----------------------------------------------------------------------
+    from src.runtime.mail_poller import MailPoller
+    from src.runtime.pending_orders import PendingOrderStore, _safe_id as _safe_order_id
+    from scripts.demo_pipeline import RICH_SCENARIO as _POLL_BASE_SCENARIO
+
+    # Eksik-bilgi (ZIP var, adet yok) siparis deposu. Testte gecici dizine yazar
+    # (test izolasyonu); aksi halde data/pending_orders. /otonom + poller buraya
+    # kaydeder, /adet-gir buradan okur.
+    if app.config.get("TESTING"):
+        import tempfile as _tf
+        _pending_root = Path(_tf.mkdtemp(prefix="pending_orders_"))
+    else:
+        _pending_root = _ROOT / "data" / "pending_orders"
+    _pending_store = PendingOrderStore(_pending_root)
+    app.config["PENDING_STORE"] = _pending_store
+
+    # Kalici is gecmisi (manuel /otonom + otomatik poller ORTAK yazar; /gecmis okur).
+    # Testte gecici dizin (izolasyon).
+    from src.runtime.otonom_gecmis import OtonomGecmisStore
+    if app.config.get("TESTING"):
+        import tempfile as _tfg
+        _gecmis_root = Path(_tfg.mkdtemp(prefix="otonom_gecmis_"))
+    else:
+        _gecmis_root = _ROOT / "data" / "otonom_gecmis"
+    _otonom_gecmis = OtonomGecmisStore(_gecmis_root)
+    app.config["OTONOM_GECMIS"] = _otonom_gecmis
+
+    # Paylasilmis kalici idempotency deposu — poller tum turlarinda BU STORE'u kullanir.
+    # TESTING: :memory: (izolasyon); uretim: data/idempotency.db (restart-kalici).
+    from src.runtime.idempotency import SqliteIdempotencyStore as _SqliteIdemStore
+    if app.config.get("TESTING"):
+        _shared_idem_store = _SqliteIdemStore(db_path=":memory:")
+    else:
+        _idem_db_path = str(_ROOT / "data" / "idempotency.db")
+        _shared_idem_store = _SqliteIdemStore(db_path=_idem_db_path)
+    app.config["SHARED_IDEM_STORE"] = _shared_idem_store
+
+    def _siparis_gruplari(ranked, batches):
+        """Siparisleri parti-paylasimina gore gruplara ayir (union-find).
+
+        Siparis-bazli gecmis (kullanici karari 2026-07-05): ayni taramada
+        islenen her siparis AYRI kayit olur — operator siparisle dusunur,
+        kosuyla degil; silme/yeniden-isleme de siparis-bazli ayrisir.
+        AYRISTIRILAMAZ kural: ayni partide yer alan siparisler (batching
+        birlestirdiyse) tek grupta kalir — partinin nesting'i bolunmez.
+        Partisiz siparis kendi basina grup; ranked bos -> tek grup (eski
+        davranis, hata kayitlari tek satir).
+        """
+        def _oid(o):
+            v = getattr(o, "order_id", None)
+            if v is None and isinstance(o, dict):
+                v = o.get("order_id")
+            return str(v) if v else None
+
+        if not ranked:
+            return [{"orders": [], "batches": list(batches)}]
+
+        parent = {}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        oids = []
+        for _i, o in enumerate(ranked):
+            i = _oid(o) or f"_anon{_i}"
+            parent.setdefault(i, i)
+            oids.append(i)
+
+        batch_temsilci = {}
+        for bi, b in enumerate(batches):
+            b_orders = getattr(b, "orders", None)
+            if b_orders is None and isinstance(b, dict):
+                b_orders = b.get("orders")
+            uyeler = [x for x in (_oid(o) for o in (b_orders or [])) if x in parent]
+            if uyeler:
+                for x in uyeler[1:]:
+                    union(uyeler[0], x)
+                batch_temsilci[bi] = uyeler[0]
+
+        gruplar = {}
+        for o, i in zip(ranked, oids):
+            gruplar.setdefault(find(i), {"orders": [], "batches": []})["orders"].append(o)
+        for bi, b in enumerate(batches):
+            temsil = batch_temsilci.get(bi)
+            if temsil is not None:
+                gruplar[find(temsil)]["batches"].append(b)
+            else:
+                # Sahipsiz parti (order eslesmedi): ilk gruba — kaybolmasin.
+                next(iter(gruplar.values()))["batches"].append(b)
+        return list(gruplar.values())
+
+    def _gecmis_kaydet(pipeline_result, *, mod, nfv_quality="fast",
+                       asamalar=None, kaynak="manuel"):
+        """Bir pipeline sonucunu gecmise SIPARIS-BAZLI kayitlarla yaz.
+
+        kaynak: "manuel" (operator) | "otomatik" (poller). Ayni kosuda islenen
+        her siparis(-grubu) icin AYRI kayit + AYRI detay/GLB yazilir; ortak
+        kosu kimligi kosu_id/kosu_siparis_sayisi alanlarinda tasinir.
+        Donus: yazilan kayit dict'lerinin listesi (truthy) | False (hicbiri
+        yazilamadi — poller mail'i islendi saymaz).
+        """
+        ranked = pipeline_result.get("ranked_orders", []) or []
+        batches = pipeline_result.get("batches", []) or []
+        try:
+            gruplar = _siparis_gruplari(ranked, batches)
+        except Exception:
+            logger.error("gecmis_kaydet: gruplama basarisiz — tek kayit yolu",
+                         exc_info=True)
+            gruplar = [{"orders": list(ranked), "batches": list(batches)}]
+
+        idem_map = pipeline_result.get("_idem_key_map") or {}
+        flat_keys = pipeline_result.get("_idem_keys") or []
+        nesting_results = pipeline_result.get("nesting_results", {}) or {}
+        pricing_results = pipeline_result.get("pricing_results", {}) or {}
+        warnings_all = pipeline_result.get("warnings", []) or []
+
+        ekstra = {}
+        if len(gruplar) > 1:
+            ekstra = {"kosu_id": secrets.token_hex(4),
+                      "kosu_siparis_sayisi": len(ranked)}
+
+        kayitlar = []
+        if len(gruplar) == 1:
+            # TEK grup = bolme yok -> alt-kumeleme YAPMA, tam sonucu gecir.
+            # (Eski davranis birebir; ayrica stub/hata sonuclarinda batch
+            # kimligi cozulemese bile nesting notlari kaybolmaz.)
+            grup_keys = list(flat_keys)
+            sub = {
+                **{k: v for k, v in pipeline_result.items()
+                   if not str(k).startswith("_")},
+                **({"_idem_keys": grup_keys} if grup_keys else {}),
+            }
+            kayit = _tek_kayit_yaz(sub, mod=mod, nfv_quality=nfv_quality,
+                                   asamalar=asamalar, kaynak=kaynak, ekstra=ekstra)
+            return [kayit] if kayit else False
+
+        for grup in gruplar:
+            bids = set()
+            for b in grup["batches"]:
+                bid = getattr(b, "batch_id", None)
+                if bid is None and isinstance(b, dict):
+                    bid = b.get("batch_id")
+                if bid:
+                    bids.add(bid)
+            oids = []
+            for o in grup["orders"]:
+                _oid = getattr(o, "order_id", None)
+                if _oid is None and isinstance(o, dict):
+                    _oid = o.get("order_id")
+                if _oid:
+                    oids.append(str(_oid))
+            if idem_map:
+                grup_keys = [idem_map[i] for i in oids if i in idem_map]
+            elif len(gruplar) == 1:
+                grup_keys = list(flat_keys)  # eski akis (map'siz) geriye uyum
+            else:
+                grup_keys = []
+
+            def _w_ait(w):
+                wb = w.get("batch_id") if isinstance(w, dict) else getattr(w, "batch_id", None)
+                return (wb is None) or (wb in bids)
+
+            sub = {
+                "ranked_orders": grup["orders"],
+                "batches": grup["batches"],
+                "nesting_results": {k: v for k, v in nesting_results.items() if k in bids},
+                "pricing_results": {k: v for k, v in pricing_results.items() if k in bids},
+                "warnings": [w for w in warnings_all if _w_ait(w)],
+                "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+                **({"_idem_keys": grup_keys} if grup_keys else {}),
+            }
+            kayit = _tek_kayit_yaz(sub, mod=mod, nfv_quality=nfv_quality,
+                                   asamalar=asamalar, kaynak=kaynak, ekstra=ekstra)
+            if kayit:
+                kayitlar.append(kayit)
+        return kayitlar if kayitlar else False
+
+    def _tek_kayit_yaz(pipeline_result, *, mod, nfv_quality="fast",
+                       asamalar=None, kaynak="manuel", ekstra=None):
+        """TEK siparis-grubunun ozet kaydini + detayini/GLB'lerini yaz.
+
+        pipeline_result: tam kosu SONUCUNUN grup-alt-kumesi (ranked/batches/
+        nesting/pricing yalniz bu gruba ait). Eski tek-kayit govdesi.
+        """
+        try:
+            ranked = pipeline_result.get("ranked_orders", [])
+            batches = pipeline_result.get("batches", [])
+            nesting_results = pipeline_result.get("nesting_results", {})
+            pricing_results = pipeline_result.get("pricing_results", {})
+            toplam_fiyat = sum(pr.get("total_price", 0.0) for pr in pricing_results.values())
+            _musteri = "-"
+            if ranked:
+                _musteri = ranked[0].customer
+                _farkli = len({getattr(o, "customer", "") for o in ranked})
+                if _farkli > 1:
+                    _musteri = f"{_musteri} +{_farkli - 1}"
+            _yuk = [nr.get("height_mm", 0.0) for nr in nesting_results.values() if nr.get("height_mm")]
+            _dol = [nr.get("density", 0.0) for nr in nesting_results.values() if nr.get("density")]
+            _secilen = None
+            _reason = None
+            # #18 plaka + #17/#19 hacim-doluluk + #22 butce izi: ilk partiden ozetle
+            # (operator gecmis-detay gorunurlugu; cozucu davranisi degismez — rapor-only).
+            _plate_w = _plate_d = None
+            _plate_auto_flag = None
+            _hacim_doluluk = None
+            _hacim_eksik = None
+            _budget_asildi = False
+            if nesting_results:
+                _ilk = next(iter(nesting_results.values()))
+                _secilen = _ilk.get("nesting_mode_used")
+                _reason = _ilk.get("auto_mode_reason")
+                _plate_w = _ilk.get("plate_w_mm")
+                _plate_d = _ilk.get("plate_d_mm")
+                _plate_auto_flag = _ilk.get("plate_auto")
+                _hacim_doluluk = _ilk.get("volume_fill_pct")
+                _hacim_eksik = _ilk.get("volume_missing_parts")
+                _budget_asildi = any(
+                    nr.get("budget_exceeded") for nr in nesting_results.values()
+                )
+            # KESIN-SONUC tanimi poller ile ORTAK (2026-07-03 canli dersi + R1):
+            #   bitti = TUM partiler gecerli yukseklik uretti
+            #   kismi = bazilari uretti (kalanlar not'la kayboldu — R1 #3)
+            #   hata  = hicbiri uretmedi
+            # Basarisiz partilerin yutulan notlari kayda cikar (operator
+            # gorunurlugu) ve dedup anahtari durum-onekiyle ayrisir ki mail
+            # yeniden denendiginde BASARILI kaydin onunu kesmesin.
+            from src.runtime.mail_poller import (
+                nesting_fully_succeeded, nesting_produced_output,
+            )
+            _tam = nesting_fully_succeeded(pipeline_result)
+            _uretti = nesting_produced_output(pipeline_result)
+            _durum = "bitti" if _tam else ("kismi" if _uretti else "hata")
+            _basarili = _tam
+            _hata_ozeti = None
+            if not _tam:
+                _notlar = [
+                    str(nr.get("note") or "").strip()
+                    for nr in nesting_results.values()
+                    if not float(nr.get("height_mm") or 0.0) > 0.0
+                ]
+                _notlar = [n for n in _notlar if n]
+                if _notlar:
+                    _hata_ozeti = ("; ".join(_notlar))[:500]
+                elif _uretti:
+                    _hata_ozeti = "Bazi partiler nesting sonucu uretemedi."
+                else:
+                    _hata_ozeti = "Nesting sonucu uretilemedi (parti/nesting kaydi bos)."
+            _asama_ozet = [
+                {"ad": a.get("ad"), "durum": a.get("durum"), "cikti": a.get("cikti")}
+                for a in (asamalar or [])
+            ]
+            # order_ids: ranked'daki her order'dan order_id topla; None/bos atla
+            _order_ids: list = []
+            for _o in ranked:
+                _oid = getattr(_o, "order_id", None)
+                if _oid:
+                    _order_ids.append(_oid)
+            _order_ids = sorted(set(_order_ids))
+            # _idem_keys: poller (process_inbox_once) order ureten maillerin
+            # idempotency anahtarlarini pipeline_result['_idem_keys']'e yazar
+            # (bkz. mail_poller.py). Gecmis kaydina `_`-onekli ic alan olarak
+            # yazilir (liste()/get() bunlari zaten ayiklar) -- "gecmisten sil
+            # -> yeniden islenebilir" ozelligi bu alani okur (route asagida).
+            _idem_keys = pipeline_result.get("_idem_keys") or []
+            # dedup_key: yalniz kaynak=="otomatik" ve order_ids doluysa.
+            # JSON string -> ayirici-collision yok. MAIL-FARKINDALI (kullanici
+            # istegi 2026-07-05): anahtara idempotency anahtarlari da katilir —
+            # AYNI paket FARKLI bir mail ile yeniden gonderilirse (farkli
+            # message-id -> farkli idem key) yeni kayit yazilir; yalniz AYNI
+            # mailin retry'i (crash sonrasi ayni message-id) dedup'lanir.
+            _dedup_key = None
+            if kaynak == "otomatik" and _order_ids:
+                _dedup_key = json.dumps(
+                    {"orders": _order_ids, "mails": sorted(_idem_keys)},
+                    sort_keys=True,
+                )
+                if _durum != "bitti":
+                    # Hata/kismi kaydi kendi anahtarinda dedup'lanir (her
+                    # retry'da cogalmasin) ama basari anahtarini TUKETMEZ.
+                    _dedup_key = f"{_durum}:" + _dedup_key
+            elif kaynak == "otomatik" and ranked:
+                # Otomatik kayit ama order_id toplanamadi -> dedup atlanir
+                # (kayit yine yazilir, kaybolmaz; ama cift-kayit korumasi yok).
+                # Gozlemlenebilir sinyal: ranked dict dondurmeye gecerse fark edilir.
+                logger.warning(
+                    "gecmis_kaydet: otomatik kayit icin order_ids bos -- dedup atlanacak (ranked=%d)",
+                    len(ranked),
+                )
+            kayit = _otonom_gecmis.kaydet(
+                {
+                    "durum": _durum,
+                    "hata_ozeti": _hata_ozeti,
+                    "kaynak": kaynak,
+                    "mod": mod,
+                    "secilen_mod": _secilen,
+                    "auto_mode_reason": _reason,
+                    "nfv_quality": nfv_quality,
+                    "musteri": _musteri,
+                    "siparis_sayisi": len(ranked),
+                    "parti_sayisi": len(batches),
+                    "min_yukseklik_mm": round(min(_yuk), 1) if _yuk else None,
+                    "doluluk": round(sum(_dol) / len(_dol), 3) if _dol else None,
+                    "plate_w_mm": _plate_w,
+                    "plate_d_mm": _plate_d,
+                    "plate_auto": _plate_auto_flag,
+                    "hacim_doluluk_pct": _hacim_doluluk,
+                    "hacim_eksik_parca": _hacim_eksik,
+                    "budget_exceeded": _budget_asildi,
+                    "toplam_fiyat": round(toplam_fiyat, 2),
+                    "sure_sn": round(pipeline_result.get("elapsed_sec", 0.0), 1),
+                    "asamalar": _asama_ozet,
+                    "order_ids": _order_ids,
+                    **(ekstra or {}),
+                    # 2026-08-18: kaynak kisiti kaldirildi — park-yolu kayitlari
+                    # (mail-not-onay / manuel adet-gir'e dusen mail siparisleri)
+                    # da _idem_keys tasiyabilir; "gecmisten sil -> yeniden
+                    # islensin" onlarda da calissin. Anahtar yoksa alan yok
+                    # (eski kayit sekli bit-ozdes).
+                    **({"_idem_keys": _idem_keys} if _idem_keys else {}),
+                },
+                dedup_key=_dedup_key,
+            )
+        except Exception:
+            # R1 #4: sessiz debug DEGIL gorunur hata — cagiran (poller yolu)
+            # False'a gore mail'i islendi saymamayi secebilir.
+            logger.error("Is gecmisine YAZILAMADI (kaynak=%s)", kaynak, exc_info=True)
+            return False
+
+        # -- TAM DETAY kalicilastirmasi (rapor-only; ozet kaydini asla bozmaz) --
+        # Amac: /gecmis/<id> sayfasi manuel /sonuc esdegeri detay gosterebilsin
+        # (nesting metrikleri, algoritma karari, fiyat kirilimi, 3D onizleme,
+        # teklif taslagi). Hata olursa loglanir, ozet kayit YASAR (geriye uyum:
+        # detay yoksa sayfa eski ozet gorunumune duser).
+        try:
+            _detay_kalicilastir(pipeline_result, kayit)
+        except Exception:
+            logger.error(
+                "Gecmis DETAYI kalicilastirilamadi (id=%s) — ozet kayit duruyor",
+                kayit.get("id"), exc_info=True,
+            )
+        return kayit
+
+    def _detay_kalicilastir(pipeline_result, kayit):
+        """Kosu detayini (JSON) + parti GLB'lerini kalici depoya yaz.
+
+        Dedup isabetinde (ayni kayit id'sinin detayi zaten varsa) EZILMEZ —
+        ilk kosunun detayi korunur (retry'lar ayni maili yeniden islerken
+        var olan kaniti degistirmesin).
+        """
+        kayit_id = kayit.get("id")
+        if not kayit_id:
+            return
+        if _otonom_gecmis.detay_get(kayit_id) is not None:
+            return  # dedup isabeti — mevcut detay korunur
+
+        nesting_results = pipeline_result.get("nesting_results", {})
+
+        # Katman-maliyet alanlarini kosu anina sabitle (/sonuc ile ayni hesap).
+        try:
+            _layer_costs_ekle(nesting_results)
+        except Exception:
+            logger.warning("layer_cost hesabi atlandi (id=%s)", kayit_id, exc_info=True)
+
+        # -- GLB'ler: her parti icin BIR kez uret, diske yaz (80MB toplam tavan) --
+        glb_haritasi = {}
+        glb_atlandi = []
+        toplam_glb = 0
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene, scene_to_glb_bytes,
+            )
+        except ImportError:
+            build_result_scene = None
+        if build_result_scene is not None:
+            for _bid, _nr in nesting_results.items():
+                _pl = _nr.get("placements")
+                _vp = _nr.get("voxel_parts")
+                _pitch = _nr.get("pitch_mm") or _nr.get("pitch")
+                # K-50 dz export kablosu: r11 dusme listesi varsa GLB'ye islenir
+                # (STL indirme bu GLB'den turedigi icin kazanc dosyaya yansir).
+                _dz = _nr.get("r11_dz") or None
+                if not _pl or not _vp or not _pitch:
+                    glb_haritasi[_bid] = False
+                    continue
+                if toplam_glb >= _GECMIS_GLB_TAVAN_BYTES:
+                    glb_haritasi[_bid] = False
+                    glb_atlandi.append(_bid)
+                    continue
+                try:
+                    # merge_by_type: 588 ayri mesh -> tip basina TEK geometri;
+                    # gorunum birebir, tarayici draw-call sayisi ~40x duser
+                    # (buyuk sahnede viewer kasmasinin ana sebebi).
+                    _scene = build_result_scene(
+                        _pl, _vp, pitch=float(_pitch), merge_by_type=True,
+                        dz=_dz)
+                    _glb = scene_to_glb_bytes(_scene)
+                    if toplam_glb + len(_glb) > _GECMIS_GLB_TAVAN_BYTES:
+                        glb_haritasi[_bid] = False
+                        glb_atlandi.append(_bid)
+                        continue
+                    _otonom_gecmis.glb_kaydet(kayit_id, _bid, _glb)
+                    toplam_glb += len(_glb)
+                    glb_haritasi[_bid] = True
+                    # ACILMIS ucgen sayisi butceyi asiyorsa viewer icin ayrica
+                    # SADELESMIS onizleme GLB'si yaz (STL/tam-dogruluk full'da).
+                    try:
+                        _acilmis = sum(
+                            len(_vp[p.part_id].mesh.faces) for p in _pl
+                        )
+                        if _acilmis > _GECMIS_ONIZLEME_UCGEN:
+                            _psc = build_result_scene(
+                                _pl, _vp, pitch=float(_pitch),
+                                merge_by_type=True,
+                                max_faces_total=_GECMIS_ONIZLEME_UCGEN,
+                                dz=_dz)
+                            _otonom_gecmis.glb_kaydet(
+                                kayit_id, f"{_bid}__onizleme",
+                                scene_to_glb_bytes(_psc))
+                    except Exception:
+                        logger.warning(
+                            "Onizleme GLB uretilemedi (id=%s batch=%s) — "
+                            "viewer tam GLB'ye duser", kayit_id, _bid,
+                            exc_info=True,
+                        )
+                except Exception:
+                    logger.warning(
+                        "GLB kalicilastirma hatasi (id=%s batch=%s)",
+                        kayit_id, _bid, exc_info=True,
+                    )
+                    glb_haritasi[_bid] = False
+
+        # -- Detay JSON: pipeline_result seklini taklit eder (teklif/grounding
+        #    kodu SIFIR degisiklikle calisir); agir alanlar HARIC tutulur. --
+        _AGIR = {"placements", "voxel_parts"}
+        detay_nesting = {
+            str(bid): _json_guvenli({k: v for k, v in nr.items() if k not in _AGIR})
+            for bid, nr in nesting_results.items()
+        }
+        detay_ranked = []
+        for _o in pipeline_result.get("ranked_orders", []):
+            if isinstance(_o, dict):
+                detay_ranked.append(_json_guvenli(_o))
+            else:
+                detay_ranked.append({
+                    "order_id": getattr(_o, "order_id", None),
+                    "customer": getattr(_o, "customer", None),
+                    "deadline": str(getattr(_o, "deadline", "") or ""),
+                    "priority_class": getattr(_o, "priority_class", None),
+                    "total_volume_cm3": _json_guvenli(
+                        getattr(_o, "total_volume_cm3", None)
+                    ),
+                })
+        detay_batches = []
+        for _b in pipeline_result.get("batches", []):
+            if isinstance(_b, dict):
+                detay_batches.append(_json_guvenli(_b))
+            else:
+                detay_batches.append({
+                    "batch_id": getattr(_b, "batch_id", None),
+                    "customer": getattr(_b, "customer", None),
+                    "total_volume_cm3": _json_guvenli(
+                        getattr(_b, "total_volume_cm3", None)
+                    ),
+                    "oversized": bool(getattr(_b, "oversized", False)),
+                    "orders": [
+                        {
+                            "order_id": getattr(_bo, "order_id", None),
+                            "customer": getattr(_bo, "customer", None),
+                            "deadline": str(getattr(_bo, "deadline", "") or ""),
+                        }
+                        for _bo in (getattr(_b, "orders", None) or [])
+                    ],
+                })
+        detay = {
+            "nesting_results": detay_nesting,
+            "pricing_results": _json_guvenli(
+                pipeline_result.get("pricing_results", {})
+            ),
+            "ranked_orders": detay_ranked,
+            "batches": detay_batches,
+            "warnings": _json_guvenli(pipeline_result.get("warnings", [])),
+            "elapsed_sec": _json_guvenli(pipeline_result.get("elapsed_sec", 0.0)),
+            "glb": glb_haritasi,
+            **({"glb_atlandi": glb_atlandi} if glb_atlandi else {}),
+        }
+        _otonom_gecmis.detay_kaydet(kayit_id, detay)
+
+    # Testlerde dogrudan erisim icin config'e eklenir; uretimde de set edilir
+    # ama hicbir route geri okumaz -> zararsiz serbest referans (test izolasyonu).
+    app.config["GECMIS_KAYDET_FN"] = _gecmis_kaydet
+
+    def _poll_make_source():
+        from src.runtime.mail_ingest import make_mail_source
+        cfg = ({"source": "fake"} if app.config.get("TESTING")
+               else _resolve_mail_source_config(_ROOT))
+        return make_mail_source(cfg, idem_store=_shared_idem_store)
+
+    def _poll_on_result(result):
+        # Poll sonucu da /sonuc ekranina yazilir (tek-tik /run ile ayni yer)
+        result["used_demo"] = False
+        app.config["LAST_RESULT"] = result
+        # OTOMATIK islenen is de kalici gecmise dussun — operator sonradan
+        # /gecmis'ten "sistem gece sunlari isledi" diye gorur (kaynak=otomatik).
+        # mod/nfv_quality _POLL_SCENARIO politikasiyla ayni (F5 asama-2:
+        # auto + max). Gercek secilen dal (heightmap/nfv) kayda ayrica
+        # secilen_mod=nesting_mode_used ile duser (rapor-only).
+        # R1 #4: kayit yazilamadiysa RAISE — process_inbox_once mark'i atlar,
+        # mail sonraki turda yeniden denenir ("gorunmez is" olusamaz).
+        kayitlar = _gecmis_kaydet(result, mod="auto", nfv_quality="max", kaynak="otomatik")
+        if not kayitlar:
+            raise RuntimeError("is gecmisi kaydi yazilamadi — mail islendi sayilmayacak")
+        # Gozcu panosu "Detaylari gor" linkleri icin son kosunun kayitlari
+        # (rapor-only). Coklu siparis kosusunda HER kayit ayri link olur.
+        if isinstance(kayitlar, list) and kayitlar:
+            app.config["SON_GECMIS_ID"] = kayitlar[-1].get("id")
+            app.config["SON_GECMIS_KAYITLAR"] = [
+                {"id": k.get("id"),
+                 "musteri": k.get("musteri"),
+                 "order_ids": k.get("order_ids") or []}
+                for k in kayitlar if k.get("id")
+            ]
+
+    try:
+        _poll_interval = int(os.environ.get("MAIL_POLL_INTERVAL", "120") or "120")
+    except ValueError:
+        _poll_interval = 120
+
+    # FIX 2(b): Manuel /otonom (sync + async) + poller ORTAK tekil-tarama kilidi.
+    # Ayni anda YALNIZ bir mailbox taramasi olsun ki sync istek, async job ve
+    # poller thread'i ayni maili paralel cekip iki kez islemesin. Non-blocking
+    # acquire ile kullanilir -> deadlock/UI blogu yok; tutuluysa 'mesgul' doner.
+    # Idempotency ayrica _shared_idem_store ile ORTAK (mark_processed) -> ayni
+    # mail hangi yoldan gelirse gelsin BIR kez islenir.
+    _scan_lock = threading.Lock()
+    app.config["OTONOM_SCAN_LOCK"] = _scan_lock
+
+    # P6 (hoca istegi 2026-08-18): kosu ilerleme + hata bildirimi deposu.
+    # Yuzde TAHMINIDIR (gecen/beklenen sure; EWMA ogrenir) — UI "tahmini"
+    # etiketiyle gosterir. Hata kayitlari baloncukta kalici gorunur.
+    from src.webapp.kosu_ilerleme import KosuIlerleme
+    from src.runtime.not_onay import ayar_yaz as _ki_ayar_yaz
+    from src.runtime.not_onay import ayarlari_oku as _ki_ayar_oku
+    _kosu_ilerleme = KosuIlerleme(
+        ayar_oku=_ki_ayar_oku,
+        ayar_yaz=(None if app.config.get("TESTING") else _ki_ayar_yaz),
+    )
+    app.config["KOSU_ILERLEME"] = _kosu_ilerleme
+
+    # OTOMATIK MOD POLITIKASI — F5 ASAMA-2 ROLLOUT (kullanici karari 2026-07-05):
+    # gozcu artik aile-farkindali OTOMATIK modda kosar (nesting_mode="auto" +
+    # auto_family_routing=True); nfv_quality=max KORUNUR (auto'nun NFV dali
+    # kalite modunu surdurur). Gerekce: aile-yonlendirme zinciri uretim kodunda
+    # hazir ve E2E-kanitli (opt-in zincir testi 3/3 PASS; K-19 legal 282.0mm
+    # birebir + sokulebilir; H-15p hizli coarse 9.2 dk). Akis: predict_nfv_benefit
+    # family_routing -> kabuk ailesi (thin_shell guven>=0.75) heightmap + cidar-
+    # pitch + H-15p; kabuk-disi -> mevcut NFV yolu (quality=max korur).
+    #
+    # TARIHCE (2026-07-03, artik gecersiz): gozcu SABIT "nfv" kosuyordu cunku
+    # auto->heightmap sezgiseli parca KUTU oranina bakip ince cidarli KABUK
+    # parcalarda (Deneme4 dugme seti: bbox dolulugu ~%12) "cavity yok" diye
+    # yaniliyordu (377mm heightmap vs Magics 250mm). Aile-yonlendirme bu bosugu
+    # kapatti; artik "nfv sabit" gerekmiyor.
+    #
+    # Heightmap YINE manuel ekranda (operator bilincli secerse) kalir.
+    # quality=max kendi RAM on-kontrolunu yapar (<13GB -> n=8 taban) ve
+    # fine-settle/GPU fallback'leri guard'lidir — zarif dusus korunur.
+    _POLL_SCENARIO = {
+        **_POLL_BASE_SCENARIO, "nesting_mode": "auto",
+        "auto_family_routing": True, "nfv_quality": "max",
+    }
+
+    _poller = MailPoller(
+        make_source=_poll_make_source,
+        parser_role=(llm_components or {}).get("parser_role"),
+        base_scenario=_POLL_SCENARIO,
+        persist_root=str(_ROOT / "data" / "mail_stl"),
+        interval_s=_poll_interval,
+        on_result=_poll_on_result,
+        now=time.time,
+        pending_store=_pending_store,
+        inflight_lock=_scan_lock,
+        # K-56g not->kisit hatti (kisit_modu default "kapali" = birebir)
+        kisit_role=(llm_components or {}).get("kisit_role"),
+        kisit_hakem_role=(llm_components or {}).get("kisit_hakem_role"),
+        kisit_modu=(llm_components or {}).get("kisit_modu", "kapali"),
+    )
+    app.config["MAIL_POLLER"] = _poller
+
+    # Otomatik baslat: MAIL_POLL_ENABLED=1 (testte baslamaz).
+    # 2026-08-18 karar gecmisi: default-ACIK denendi, Eren AYNI GUN geri
+    # aldirdi ("otomatik acik olmasin") — gozcu operator kontrolunde kalir
+    # (UI /poll/baslat veya env). Sabahki "islemiyor" karisikliginin asil
+    # kokleri ayrica cozuldu: (a) park-yolu kayitlari _idem_keys tasimiyordu
+    # ("gecmisten sil -> yeniden islensin" bosugu), (b) operator gozcunun
+    # kapali oldugunu goremiyordu (gorunur uyari backlog'da).
+    _poll_auto = os.environ.get("MAIL_POLL_ENABLED", "").strip().lower()
+    if _poll_auto in ("1", "true", "yes", "on") and not app.config.get("TESTING"):
+        _poller.start()
+
+    @app.route("/poll/durum", methods=["GET"])
+    def poll_durum():
+        snap = _poller.state.snapshot()
+        # Son otomatik isin gecmis-detay linki (UI "Detaylari gor" butonu).
+        snap["last_gecmis_id"] = app.config.get("SON_GECMIS_ID")
+        # Coklu siparis kosusu: her kayit icin ayri link (id + etiket).
+        snap["last_gecmis_kayitlar"] = app.config.get("SON_GECMIS_KAYITLAR") or []
+        return jsonify(snap)
+
+    @app.route("/poll/baslat", methods=["POST"])
+    def poll_baslat():
+        # Opsiyonel tarama araligi (saniye). UI 2/5/10 dk gonderir. Min 30s
+        # (cok sik tarama = bosa kaynak). Bir sonraki turda etkili.
+        _body = request.get_json(silent=True) or {}
+        _iv = _body.get("interval_s")
+        if _iv is not None:
+            try:
+                _ivn = int(_iv)
+                if _ivn >= 30:
+                    _poller.state.interval_s = _ivn
+            except (ValueError, TypeError):
+                pass
+        # Zaten calisiyorsa restart -> yeni interval ANINDA gecerli + yeni tarama
+        # hemen kosar (aksi halde eski interval'in bekleyen wait'i sururdu).
+        # Calismiyorsa start -> _loop ilk taramayi yine hemen yapar.
+        if _poller.is_running():
+            _poller.restart()
+        else:
+            _poller.start()
+        return jsonify({"ok": True, "durum": _poller.state.snapshot()})
+
+    @app.route("/poll/durdur", methods=["POST"])
+    def poll_durdur():
+        _poller.stop()
+        return jsonify({"ok": True, "durum": _poller.state.snapshot()})
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        """Demo oncesi saglik kontrolu: web ayakta + LLM (Ollama) hazir mi.
+
+        Demo'dan ONCE `GET /health` ile LLM'in canli oldugu dogrulanir; Ollama
+        kapaliysa veya model cekilmemisse demo sirasinda degil burada yakalanir.
+        HTTP 200 = her sey hazir; 503 = LLM aktif ama probe basarisiz.
+        """
+        out: Dict[str, Any] = {"web": "ok", "llm_active": llm_active}
+
+        if not llm_active:
+            # LLM kapali (config yok / devre disi). Web calisiyor; LLM gerektiren
+            # ozellikler (asistan, teklif, aciklama) calismaz.
+            out["llm"] = "disabled"
+            out["detail"] = (
+                "LLM devre disi (configs/llm.local.json yok veya yuklenemedi). "
+                "Nesting calisir; asistan/teklif/aciklama calismaz."
+            )
+            return jsonify(out), 200
+
+        provider = (llm_components or {}).get("health_provider")
+        checker = getattr(provider, "health_check", None)
+        if not callable(checker):
+            # Provider probe desteklemiyor (or. sahte saglayici) — aktif say.
+            out["llm"] = "ok"
+            out["detail"] = "LLM aktif (probe desteklenmeyen saglayici)."
+            return jsonify(out), 200
+
+        ok, detail = checker()
+        out["llm"] = "ok" if ok else "fail"
+        out["detail"] = detail
+        return jsonify(out), (200 if ok else 503)
+
+    # Not kaynagi -> insan-okur kisa etiket (Eren istegi 2026-08-15:
+    # "nereden aldigini ufaktan belirten bir not olsun").
+    _NOT_KAYNAK_ETIKET = {
+        "govde": "mail gövdesi",
+        "txt": "mail eki (TXT)",
+        "adet_satiri_kuyrugu": "mail adet satırı",
+        "parca_label": "parça üstü kabartma",
+    }
+
+    def _not_kaynak_etiketi(aday):
+        et = _NOT_KAYNAK_ETIKET.get(str(aday.get("kaynak") or ""),
+                                    "mail notu")
+        no = aday.get("satir_no")
+        return f"{et}, satır {no}" if no else et
+
+    def _kisit_ozet_metni(k, adaylar=None):
+        """Kisit onerisini insan-okur tek satira indir (bildirim kutusu).
+
+        adaylar verilirse kaynak_satir eslesmesinden kisa kaynak eki eklenir:
+        '... — kaynak: mail govdesi, satir 3'.
+        """
+        deger = k.get("deger") or {}
+        val = deger.get("yon") if isinstance(deger, dict) else None
+        if val is None:
+            val = json.dumps(deger, ensure_ascii=False)
+        guven = k.get("nihai_guven") or k.get("guven") or "?"
+        metin = (f"{k.get('parca_adi', '?')} icin '{val}' yerlesim istegi "
+                 f"({k.get('tip', '?')}, guven: {guven})")
+        ks = k.get("kaynak_satir")
+        if adaylar and ks:
+            for a in adaylar:
+                if a.get("satir") == ks:
+                    metin += f" — kaynak: {_not_kaynak_etiketi(a)}"
+                    break
+        return metin
+
+    def _yapistirma_notlari(metin):
+        """Yapistirilan mail metninde deterministik not taramasi (Kapi-0)."""
+        try:
+            from src.runtime.note_detector import extract_note_candidates
+            return extract_note_candidates(metin, "", []).get("adaylar") or []
+        except Exception:
+            logger.debug("yapistirma not taramasi atlandi", exc_info=True)
+            return []
+
+    def _not_bildirim_listesi():
+        """Notlu bekleyen siparisleri baloncuk-bildirim listesine indir.
+
+        K-61 revizyon (Eren istegi 2026-08-16): buyuk sayfa-ici kutular
+        yerine sag-alt kose baloncuklari — base.html bu listeyi
+        /api/not-bildirimleri'nden periyodik ceker, onay yine
+        /kisit-onay POST'undan gecer (insan kapisi degismez).
+        """
+        out = []
+        kosular = app.config.get("NOT_KOSU") or {}
+        for m in _pending_store.list():
+            if not m.get("not_adaylari"):
+                continue
+            adaylar = m["not_adaylari"]
+            out.append({
+                "order_id": m.get("order_id"),
+                "customer": m.get("customer", ""),
+                "satirlar": [{"metin": a.get("satir", ""),
+                              "kaynak": _not_kaynak_etiketi(a)}
+                             for a in adaylar],
+                "oneriler": [_kisit_ozet_metni(k, adaylar)
+                             for k in (m.get("kisit_onerileri") or [])],
+                "onayli": bool(m.get("motor_kisitlari")),
+                # Not-onay kapisi: adetleri belli park -> onay sonrasi
+                # OTOMATIK kosulur (baloncuk metni buna gore degisir).
+                "hazir": bool(m.get("not_onay_quantities")),
+                "kosu": kosular.get(m.get("order_id")),
+                "kaynak_tip": m.get("kaynak_tip") or "mail",
+            })
+        return out
+
+    @app.route("/ayar/not-onay", methods=["POST"])
+    def ayar_not_onay():
+        """'Siparis notlari icin onay iste' anahtari (varsayilan ACIK).
+
+        Kapatilirsa notlu siparisler onaya dusmeden kosulur ve kisit hatti
+        golge yerine otomatik moda gecer (yalniz yuksek guvenli istekler).
+        """
+        from src.runtime.not_onay import ayar_yaz
+        ayar_yaz("not_onay_iste", request.form.get("not_onay_iste") == "1")
+        return redirect(url_for("index"))
+
+    @app.route("/api/not-bildirimleri", methods=["GET"])
+    def api_not_bildirimleri():
+        """Baloncuk bildirimleri icin canli veri (base.html poll eder)."""
+        try:
+            return jsonify({"bildirimler": _not_bildirim_listesi()})
+        except Exception:
+            logger.exception("api_not_bildirimleri okunamadi")
+            return jsonify({"bildirimler": []})
+
+    @app.route("/", methods=["GET"])
+    def index():
+        """Ana sayfa: uygulama tanitimi + havuz ozeti + calistir dugmesi."""
+        from scripts.demo_pipeline import SCENARIO, RICH_SCENARIO
+        from src.webapp.orders_store import load_orders
+
+        _opath = app.config.get("ORDERS_PATH")
+        pool_orders = load_orders(_opath)
+        pool_count = len(pool_orders)
+
+        # Onizleme, SECILI radyo ile TUTARLI olmali: varsayilan 'rich' (zengin
+        # senaryo, calistir dugmesinin de varsayilani). Eski hata: onizleme her
+        # zaman SCENARIO (5 siparis) gosteriyordu ama varsayilan kosu RICH (3).
+        scenario_type = (request.args.get("scenario") or "rich").strip()
+        demo = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
+
+        # Senaryo ozeti: havuz doluysa havuzdan, bos ise SECILI demo senaryodan
+        container = demo.get("container", {})
+        capacity = demo.get("capacity", {})
+        display_orders = pool_orders if pool_orders else demo.get("orders", [])
+
+        from src.runtime.not_onay import not_onay_iste as _noi
+        return render_template(
+            "index.html",
+            orders=display_orders,
+            container=container,
+            capacity=capacity,
+            llm_active=llm_active,
+            pool_count=pool_count,
+            pool_is_custom=bool(pool_orders),
+            scenario_type=scenario_type,
+            not_onay_acik=_noi(),
+        )
+
+    @app.route("/run", methods=["POST"])
+    @_limit("3 per minute")  # FIX 5: agir senkron pipeline (300-600s olabilir) — DoS/kaynak-tuketim korumasi
+    def run():
+        """Havuz doluysa havuz senaryosunu, bos ise demo senaryosunu kosturur.
+
+        Form parametresi: scenario_type = 'standard' | 'rich' (varsayilan 'rich')
+        """
+        from scripts.demo_pipeline import SCENARIO, RICH_SCENARIO, run_pipeline
+        from src.webapp.orders_store import load_orders, orders_to_scenario
+
+        _opath = app.config.get("ORDERS_PATH")
+        pool_orders = load_orders(_opath)
+
+        if pool_orders:
+            scenario = orders_to_scenario(pool_orders)
+            used_demo = False
+        else:
+            # Senaryo tipi: form'dan al; default = zengin senaryo
+            scenario_type = (request.form.get("scenario_type") or "rich").strip()
+            scenario = RICH_SCENARIO if scenario_type == "rich" else SCENARIO
+            used_demo = True
+
+        # Nesting modu: "auto" (VARSAYILAN, veri-odaklı NFV/heightmap seçimi) | "nfv" | "heightmap".
+        # auto → predict_nfv_benefit pipeline içinde çözer (cavity-zengin→NFV, kutu/ince-plaka→heightmap).
+        _nm = request.form.get("nesting_mode", "auto")
+        nesting_mode = _nm if _nm in ("auto", "nfv", "heightmap") else "auto"
+        # NFV kalite seviyesi: "max" → donanım-tavanı oryantasyon (en kısa istif, en yavaş); default "fast" (n=8).
+        # KARAR-G: default MAX; "fast" yalniz operator ACIKCA hizli-onizleme isterse
+        nfv_quality = "fast" if request.form.get("nfv_quality") == "fast" else "max"
+        # F5 ASAMA-2 (2026-07-05): aile-farkindali yonlendirme YALNIZ "auto" modda
+        # acilir; nfv/heightmap bilincli secilirse False -> davranis birebir korunur.
+        scenario = {**scenario, "nesting_mode": nesting_mode, "nfv_quality": nfv_quality,
+                    "auto_family_routing": nesting_mode == "auto"}
+
+        result = run_pipeline(scenario)
+        result["used_demo"] = used_demo
+        app.config["LAST_RESULT"] = result
+        # Manuel /run kosusu da KALICI gecmise duser (tam detay + GLB) —
+        # operatorun "calistir" dedigi is sonradan /gecmis'ten her detayiyla
+        # (3D dahil) incelenebilir. Kayit hatasi kosuyu BLOKLAMAZ (loglanir).
+        _gecmis_kaydet(result, mod=nesting_mode, nfv_quality=nfv_quality,
+                       kaynak="manuel")
+        # Sohbet gecmisi: session'a sifirla (per-kullanici izolasyonu, Bulgu 5)
+        session["conversation_turns"] = []
+        app.config["CONVERSATION_TURNS"] = []  # geriye-donuk uyumluluk
+        return redirect(url_for("sonuc"))
+
+    @app.route("/sonuc", methods=["GET"])
+    def sonuc():
+        """Son kosun sonuclari."""
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return redirect(url_for("index"))
+
+        ranked = result.get("ranked_orders", [])
+        batches = result.get("batches", [])
+        warnings = result.get("warnings", [])
+        nesting_results = result.get("nesting_results", {})
+        pricing_results = result.get("pricing_results", {})
+        elapsed = result.get("elapsed_sec", 0.0)
+
+        total_revenue = sum(
+            pr.get("total_price", 0.0) for pr in pricing_results.values()
+        )
+        n_orders = len(ranked)
+        n_batches = len(batches)
+        n_warnings = len(warnings)
+
+        used_demo = result.get("used_demo", False)
+
+        # Katman-bazli maliyet + tasarruf (AM makine-zamani): her batch icin
+        # height_mm -> katman sayisi -> EUR/saat. Tuner varsa baseline'a gore
+        # tasarruf da hesaplanir. Ortak helper — gecmis-detay kalicilastirmasi
+        # ile AYNI hesap (tek kaynak).
+        _layer_costs_ekle(nesting_results)
+
+        # Sohbet gecmisi: session'dan oku (per-kullanici)
+        _sohbet = session.get("conversation_turns", [])
+
+        # R1 #6: nesting sonucsuz/kismi ise ekran "tamamlanmis" gibi
+        # gorunmesin — /gecmis "hata" derken /sonuc'un sessiz kalmasi
+        # operatoru yaniltiyordu.
+        from src.runtime.mail_poller import (
+            nesting_fully_succeeded as _nfs_ok,
+            nesting_produced_output as _npo_ok,
+        )
+        _nesting_uyari = None
+        if not _npo_ok(result):
+            _nesting_uyari = "hata"
+        elif not _nfs_ok(result):
+            _nesting_uyari = "kismi"
+
+        return render_template(
+            "sonuc.html",
+            nesting_uyari=_nesting_uyari,
+            ranked=ranked,
+            batches=batches,
+            warnings=warnings,
+            nesting_results=nesting_results,
+            pricing_results=pricing_results,
+            elapsed=elapsed,
+            total_revenue=total_revenue,
+            n_orders=n_orders,
+            n_batches=n_batches,
+            n_warnings=n_warnings,
+            llm_active=llm_active,
+            llm_ozet=None,
+            llm_ozet_hata=None,
+            sohbet=_sohbet,
+            used_demo=used_demo,
+            not_istekleri=result.get("not_istekleri"),
+            has_portfolio=any(
+                nesting_results.get(b.batch_id, {}).get("portfolio") is not None
+                for b in batches
+            ),
+        )
+
+    @app.route("/sonuc/rehberli-sokum", methods=["GET"])
+    def sonuc_rehberli_sokum():
+        """SON kosunun REHBERLI SOKUM HTML'i (Eren istegi 2026-08-16).
+
+        /gecmis/<id>/rehberli-sokum ile ayni cikti; fark: kaynak LAST_RESULT
+        (kalici detay degil) ve GLB istek aninda uretilir. Boylece operator
+        /sonuc ekranindan, gecmis kaydina gitmeden sokum rehberini acar.
+        Parti secimi ?bid= ile; verilmezse sokum verisi olan ilk parti.
+        """
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin."}), 404
+        nesting_results = result.get("nesting_results", {}) or {}
+        bid = request.args.get("bid")
+        if bid is None or bid not in nesting_results:
+            bid = next(
+                (b for b, nr in nesting_results.items()
+                 if (nr or {}).get("sokum_sirasi")),
+                next(iter(nesting_results), None),
+            )
+        nr = nesting_results.get(bid) or {}
+        if not nr.get("sokum_sirasi"):
+            return jsonify({
+                "hata": "Bu parti icin sokum sirasi verisi yok — "
+                        "rehberli sokum uretilemez.",
+            }), 404
+        placements = nr.get("placements")
+        voxel_parts = nr.get("voxel_parts")
+        pitch = nr.get("pitch_mm") or nr.get("pitch")
+        if not placements or not voxel_parts or not pitch:
+            return jsonify({
+                "hata": "3D verisi hazir degil — rehberli sokum uretilemez.",
+            }), 404
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene, scene_to_glb_bytes,
+            )
+            # Kalici GLB ile AYNI recete (merge_by_type + r11 dz) — gecmis
+            # kaydindaki rehberli sokum ile birebir ayni sahne.
+            scene = build_result_scene(
+                placements, voxel_parts, pitch=float(pitch),
+                merge_by_type=True, dz=nr.get("r11_dz") or None)
+            glb_bytes = scene_to_glb_bytes(scene)
+        except Exception as exc:
+            logger.warning("sonuc rehberli-sokum GLB hatasi (bid=%s): %s",
+                           bid, exc)
+            return jsonify({"hata": "3D sahne uretilemedi."}), 500
+
+        from src.runtime.rehberli_sokum import build_rehberli_sokum_html
+        from src.runtime.sokum_veri import sokum_veri_hazirla
+
+        # sokum_veri_hazirla "kayit" olarak etiket/zaman bekler — son kosuda
+        # kalici kayit olmayabilir; parti musterisinden turetilir.
+        _musteri = next(
+            (getattr(b, "customer", None) or (b.get("customer")
+             if isinstance(b, dict) else None)
+             for b in (result.get("batches") or [])
+             if (getattr(b, "batch_id", None)
+                 or (b.get("batch_id") if isinstance(b, dict) else None)) == bid),
+            None,
+        )
+        kayit_gibi = {"musteri": _musteri or f"Parti {bid}", "zaman": ""}
+        veri = sokum_veri_hazirla(kayit_gibi, nr)
+        html = build_rehberli_sokum_html(veri, glb_bytes)
+        return Response(html, mimetype="text/html")
+
+    @app.route("/ozet", methods=["POST"])
+    @_limit("10 per minute")
+    def ozet():
+        """LLM yonetici ozeti olustur.
+
+        Yanit: JSON {ozet, hata, topraklama_uyarisi}
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "ozet": None}), 503
+
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin.", "ozet": None}), 400
+
+        try:
+            from src.llm.roles.report import ReportInput
+            from src.llm.structured import ValidationStatus
+
+            context = _build_grounded_context(result)
+
+            pricing_results = result.get("pricing_results", {})
+            total_revenue = sum(
+                pr.get("total_price", 0.0) for pr in pricing_results.values()
+            )
+
+            report_input = ReportInput(
+                is_id="demo-pipeline",
+                n_orders=len(result.get("ranked_orders", [])),
+                n_batches=len(result.get("batches", [])),
+                n_warnings=len(result.get("warnings", [])),
+                total_revenue_usd=total_revenue,
+                context=context,
+            )
+
+            report_role = llm_components["report_role"]
+            report_result = report_role.run(report_input)
+
+            if report_result.grounding_blocked:
+                return jsonify({
+                    "ozet": None,
+                    "hata": None,
+                    "topraklama_uyarisi": (
+                        "LLM ciktisi sayi-topraklama dogrulamasini gecemedi. "
+                        f"Dogrulanamayan sayilar: {report_result.grounding_detail}. "
+                        "Lutfen manuel ozet yazin."
+                    ),
+                }), 200
+
+            if report_result.status == ValidationStatus.INVALID or report_result.fallback:
+                fallback_text = ""
+                if report_result.fallback:
+                    fallback_text = report_result.fallback.raw_text
+                return jsonify({
+                    "ozet": None,
+                    "hata": "LLM gecerli yanit uretemedi. Lutfen tekrar deneyin.",
+                    "fallback_text": fallback_text[:300] if fallback_text else "",
+                }), 200
+
+            data = report_result.data or {}
+            return jsonify({
+                "ozet": data.get("govde_md", ""),
+                "baslik": data.get("baslik", ""),
+                "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                "hata": None,
+                "topraklama_uyarisi": None,
+            }), 200
+
+        except Exception as exc:
+            logger.exception("LLM ozet hatasi: %s", exc)
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "ozet": None}), 500
+
+    @app.route("/sor", methods=["POST"])
+    @_limit("10 per minute")
+    def sor():
+        """LLM sorgu asistani paneli — niyet-yonlendirici ile rol secimi.
+
+        Istek JSON: {soru: "..."}
+        Yanit JSON: {cevap_md, alintilar|kaynaklar, ret, topraklama_uyarisi|sayi_bayragi,
+                     kullanilan_rol, hata}
+
+        Niyet-yonlendirici (deterministik, LLM degil):
+          - "ozet/rapor/teklif/yonetici"  -> report rolu
+          - "neden/nicin/hangi algoritma" -> explainer rolu
+          - eslesme yok                   -> assistant rolu (default)
+
+        READ-ONLY garantisi: LAST_RESULT hicbir rol cagirisinda degistirilmez.
+        LLM kapali -> 503 (mevcut desen).
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "cevap": None}), 503
+
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin.", "cevap": None}), 400
+
+        body = request.get_json(silent=True) or {}
+        soru = (body.get("soru") or "").strip()
+        if not soru:
+            return jsonify({"hata": "Soru bos olamaz.", "cevap": None}), 400
+        if len(soru) > MAX_SORU_LEN:
+            return jsonify({"hata": "Soru cok uzun.", "cevap": None}), 400
+
+        try:
+            from src.llm.structured import ValidationStatus
+            from src.webapp.intent_router import route_intent
+
+            # Niyet-yonlendirici: deterministik, LLM cagirisi yok
+            intent = route_intent(soru)
+
+            # TAZE baglam: her cagri aninda yeniden kurulur (bayat baglam yok)
+            context = _build_grounded_context(result)
+
+            # --- REPORT rolu ---
+            if intent.rol == "report":
+                from src.llm.roles.report import ReportInput
+
+                pricing_results = result.get("pricing_results", {})
+                total_revenue = sum(
+                    pr.get("total_price", 0.0) for pr in pricing_results.values()
+                )
+                report_input = ReportInput(
+                    is_id="sorgu-report",
+                    n_orders=len(result.get("ranked_orders", [])),
+                    n_batches=len(result.get("batches", [])),
+                    n_warnings=len(result.get("warnings", [])),
+                    total_revenue_usd=total_revenue,
+                    context=context,
+                )
+                report_role = llm_components["report_role"]
+                report_result = report_role.run(report_input)
+
+                if report_result.grounding_blocked:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": (
+                            "Sayi-topraklama dogrulanamadi. "
+                            f"Sayilar: {report_result.grounding_detail}."
+                        ),
+                        "sayi_bayragi": True,
+                        "kullanilan_rol": "report",
+                        "hata": None,
+                    }), 200
+
+                if report_result.status == ValidationStatus.INVALID or report_result.fallback:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": None,
+                        "sayi_bayragi": False,
+                        "kullanilan_rol": "report",
+                        "hata": "LLM gecerli rapor uretemedi. Tekrar deneyin.",
+                    }), 200
+
+                data = report_result.data or {}
+                return jsonify({
+                    "cevap_md": data.get("govde_md", ""),
+                    "baslik": data.get("baslik", ""),
+                    "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                    "ret": False,
+                    "topraklama_uyarisi": None,
+                    "sayi_bayragi": False,
+                    "kullanilan_rol": "report",
+                    "hata": None,
+                }), 200
+
+            # --- EXPLAINER rolu ---
+            if intent.rol == "explainer":
+                from src.llm.roles.explainer import ExplainerInput
+
+                # Sistem ciktisini ilk batch'ten veya genel metriklerden derliyoruz
+                nesting_results = result.get("nesting_results", {})
+                pricing_results = result.get("pricing_results", {})
+                batches = result.get("batches", [])
+                toplam_fiyat = sum(
+                    pr.get("total_price", 0.0) for pr in pricing_results.values()
+                )
+
+                if batches:
+                    first_batch = batches[0]
+                    nr_first = nesting_results.get(first_batch.batch_id, {})
+                    port_first = nr_first.get("portfolio") or nr_first.get("tuner") or {}
+                    winner_name = (
+                        port_first.get("winner")
+                        or port_first.get("winning_config")
+                        or "dblf"
+                    )
+                    _density_raw = nr_first.get("density", 0.0)
+                    sistem_ciktisi: Dict[str, Any] = {
+                        "kazanan_algoritma": winner_name,
+                        "height_mm": nr_first.get("height_mm", 0.0),
+                        "doluluk": f"{_density_raw:.1%}",
+                        "n_parts": nr_first.get("n_parts", 0),
+                        "toplam_fiyat": toplam_fiyat,
+                        "n_orders": len(result.get("ranked_orders", [])),
+                        "n_batches": len(batches),
+                    }
+                else:
+                    sistem_ciktisi = {
+                        "toplam_fiyat": toplam_fiyat,
+                        "n_orders": len(result.get("ranked_orders", [])),
+                    }
+
+                exp_input = ExplainerInput(
+                    karar_tipi=intent.karar_tipi or "algoritma",
+                    sistem_ciktisi=sistem_ciktisi,
+                )
+                explainer_role = llm_components["explainer_role"]
+                exp_result = explainer_role.explain(exp_input)
+
+                if exp_result.status == ValidationStatus.INVALID or exp_result.fallback:
+                    return jsonify({
+                        "cevap_md": None,
+                        "kaynaklar": [],
+                        "ret": False,
+                        "topraklama_uyarisi": None,
+                        "sayi_bayragi": False,
+                        "kullanilan_rol": "explainer",
+                        "hata": "LLM gecerli aciklama uretemedi. Tekrar deneyin.",
+                    }), 200
+
+                exp_data = exp_result.data or {}
+                return jsonify({
+                    "cevap_md": exp_data.get("aciklama_md", ""),
+                    "karar_tipi": exp_data.get("karar_tipi", intent.karar_tipi),
+                    "alintilar": [],
+                    "kaynaklar": exp_data.get("kullanilan_girdiler", []),
+                    "ret": False,
+                    "topraklama_uyarisi": (
+                        "Aciklamada sistem ciktisinda olmayan rakam var."
+                        if exp_result.number_flag else None
+                    ),
+                    "sayi_bayragi": exp_result.number_flag,
+                    "kullanilan_rol": "explainer",
+                    "hata": None,
+                }), 200
+
+            # --- ASSISTANT rolu (default) ---
+            assistant_role = llm_components["assistant_role"]
+            ask_result = assistant_role.ask(soru=soru, context=context)
+
+            if ask_result.status == ValidationStatus.INVALID or ask_result.fallback:
+                fallback_text = ""
+                if ask_result.fallback:
+                    fallback_text = ask_result.fallback.raw_text
+                return jsonify({
+                    "cevap_md": None,
+                    "cevap": None,
+                    "kullanilan_rol": "assistant",
+                    "hata": "LLM gecerli yanit uretemedi.",
+                    "fallback": fallback_text[:300] if fallback_text else "",
+                }), 200
+
+            data = ask_result.data or {}
+            cevap_md = data.get("cevap_md", "")
+            ret = data.get("ret", False)
+
+            # Sohbet gecmisini guncelle — session (per-kullanici, Bulgu 5)
+            turns = list(session.get("conversation_turns", []))
+            turns.append({"soru": soru, "cevap": cevap_md})
+            if len(turns) > 6:
+                turns = turns[-6:]
+            session["conversation_turns"] = turns
+
+            return jsonify({
+                "cevap_md": cevap_md,
+                "cevap": cevap_md,  # geriye-donuk uyumluluk
+                "alintilar": data.get("alintilar", []),
+                "ret": ret,
+                "ret_nedeni": data.get("ret_nedeni"),
+                "topraklama_uyarisi": None,
+                "sayi_bayragi": ask_result.number_flag,
+                "topraklanamayan_sayilar": ask_result.ungrounded_numbers,
+                "kullanilan_rol": "assistant",
+                "hata": None,
+            }), 200
+
+        except Exception as exc:
+            logger.exception("LLM soru hatasi: %s", exc)
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "cevap": None}), 500
+
+    # -----------------------------------------------------------------------
+    # 3D Geometri rotasi (VİTRİN A)
+    # -----------------------------------------------------------------------
+
+    @app.route("/geometri/<batch_id>", methods=["GET"])
+    def geometri(batch_id: str):
+        """3D yerlesim sahnesini GLB olarak dondurur.
+
+        Yanit: model/gltf-binary (GLB) veya 503 (export hazir degil).
+
+        Zarif dusus: build_result_scene / scene_to_glb_bytes import HATASI
+        veya batch_id bulunamadi -> 503 JSON.
+        """
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({
+                "hata": "Once pipeline calistirin.",
+                "preview": "hazir_degil",
+            }), 503
+
+        nesting_results = result.get("nesting_results", {})
+        if batch_id not in nesting_results:
+            return jsonify({
+                "hata": f"Parti {batch_id!r} bulunamadi.",
+                "preview": "hazir_degil",
+            }), 503
+
+        nr = nesting_results[batch_id]
+
+        # Placements verisi: paralel builder export_stl.py'e ekleyince hazir olacak.
+        # Simdilik nesting_results icinde 'placements' veya 'voxel_parts' YOK.
+        placements = nr.get("placements")
+        voxel_parts = nr.get("voxel_parts")
+        pitch = nr.get("pitch_mm") or nr.get("pitch", 10.0)
+
+        if placements is None or voxel_parts is None:
+            return jsonify({
+                "hata": "3D export verisi henuz hazir degil.",
+                "preview": "hazir_degil",
+            }), 503
+
+        try:
+            from src.nesting3d.export_stl import (
+                build_result_scene,
+                scene_to_glb_bytes,
+            )
+        except ImportError as exc:
+            logger.warning("GLB export import hatasi: %s", exc)
+            return jsonify({
+                "hata": "3D export modulu yuklenemedi.",
+                "preview": "hazir_degil",
+            }), 503
+
+        try:
+            # merge_by_type + onizleme butcesi: tip basina tek geometri ve
+            # ~1.5M ucgen tavani — bu route YALNIZ tarayici onizlemesi icin
+            # (STL indirme gecmis kaydinin tam-detay GLB'sinden gider).
+            scene = build_result_scene(
+                placements, voxel_parts, pitch=float(pitch), merge_by_type=True,
+                max_faces_total=_GECMIS_ONIZLEME_UCGEN,
+                dz=nr.get("r11_dz") or None)
+            glb_bytes = scene_to_glb_bytes(scene)
+        except Exception as exc:
+            logger.warning("GLB export hatasi batch=%s: %s", batch_id, exc)
+            return jsonify({
+                "hata": f"3D export hatasi: {exc}",
+                "preview": "hazir_degil",
+            }), 503
+
+        return Response(
+            glb_bytes,
+            mimetype="model/gltf-binary",
+            headers={
+                "Content-Disposition": f"inline; filename={batch_id}.glb",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    # -----------------------------------------------------------------------
+    # Teklif taslagi rotasi (VİTRİN B)
+    # -----------------------------------------------------------------------
+
+    def _teklif_uret(result):
+        """Bir pipeline-sonucu(-benzeri) dict'ten teklif taslagi uret.
+
+        ORTAK govde: /teklif (LAST_RESULT) ve /gecmis/<id>/teklif (kalici
+        detay JSON'u) ayni yolu kullanir — detay JSON pipeline_result seklini
+        taklit ettigi icin _build_grounded_context SIFIR degisiklikle calisir.
+        Donus: (json_response, status_code).
+        """
+        teklif_role = llm_components.get("teklif_role") if llm_components else None
+        if teklif_role is None:
+            return jsonify({"hata": "Teklif bileşeni yuklenemedi.", "taslak": None}), 503
+
+        try:
+            from src.llm.roles.teklif import TeklifInput
+            from src.llm.structured import ValidationStatus
+            from src.llm.grounding import GroundedContext
+
+            context = _build_grounded_context(result)
+
+            pricing_results = result.get("pricing_results", {})
+            total_revenue = sum(
+                pr.get("total_price", 0.0) for pr in pricing_results.values()
+            )
+
+            ranked_orders = result.get("ranked_orders", [])
+            musteri_adi = "Değerli Müşterimiz"
+            if ranked_orders:
+                # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
+                # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
+                musteri_adlari = set()
+                for _o in ranked_orders:
+                    if isinstance(_o, dict):
+                        _m = _o.get("customer", "")
+                    else:
+                        _m = getattr(_o, "customer", "")
+                    if _m:
+                        musteri_adlari.add(_m)
+                if len(musteri_adlari) == 1:
+                    musteri_adi = musteri_adlari.pop()
+                # >1 farkli musteri: musteri_adi "Değerli Müşterimiz" olarak kalir
+
+            batches = result.get("batches", [])
+            parca_ozeti = []
+            for b in batches:
+                if isinstance(b, dict):
+                    bid = b.get("batch_id", "")
+                    orders = b.get("orders", [])
+                    for o in orders:
+                        if isinstance(o, dict):
+                            parts = o.get("parts", [])
+                            for p in parts:
+                                if isinstance(p, dict):
+                                    parca_ozeti.append({
+                                        "ad": p.get("name", p.get("part_id", bid)),
+                                        "adet": p.get("quantity", 1),
+                                    })
+
+            if not parca_ozeti:
+                parca_ozeti = [{"ad": "konteyner parcalari", "adet": len(ranked_orders)}]
+
+            termin_ifadesi = "sipariş onayını takiben tarafınıza bildirilecektir"
+            if ranked_orders:
+                first = ranked_orders[0]
+                if isinstance(first, dict):
+                    termin_ifadesi = first.get("deadline", termin_ifadesi)
+
+            teklif_input = TeklifInput(
+                musteri_adi=musteri_adi,
+                parca_ozeti=parca_ozeti,
+                toplam_fiyat_usd=total_revenue,
+                termin_ifadesi=str(termin_ifadesi),
+                context=context,
+            )
+
+            teklif_result = teklif_role.draft(teklif_input)
+
+            # INVALID+fallback -> 502 taslak=None+hata (dead-end yok ama LLM basarisiz)
+            if teklif_result.status == ValidationStatus.INVALID or teklif_result.fallback:
+                return jsonify({
+                    "taslak": None,
+                    "hata": "LLM gecerli taslak uretemedi. Tekrar deneyin.",
+                    "topraklama_uyarisi": False,
+                    "ungrounded": [],
+                }), 502
+
+            # VALID/PARTIAL — her zaman taslak dolu (BLOK YOK)
+            data = teklif_result.data or {}
+            return jsonify({
+                "taslak": data.get("mail_govde_md", ""),
+                "baslik": data.get("konu", ""),
+                "kaynaklar": data.get("kullanilan_kaynaklar", []),
+                "topraklama_uyarisi": teklif_result.number_flag,
+                "ungrounded": teklif_result.ungrounded_numbers,
+                "hata": None,
+            }), 200
+
+        except Exception as exc:
+            logger.exception("Teklif taslagi hatasi: %s", exc)
+            return jsonify({"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "taslak": None}), 500
+
+    @app.route("/teklif", methods=["POST"])
+    @_limit("10 per minute")
+    def teklif():
+        """LLM ile musteri-yanit mail taslagi uret (TeklifRole — UYARI modu).
+
+        Yanit JSON: {taslak, baslik, kaynaklar, topraklama_uyarisi, ungrounded, hata}
+        LLM aktif degil -> 503.
+        Pipeline kosulmamis -> 400.
+        DEAD-END YOK: number_flag=True olsa bile taslak dolu, 200 doner.
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
+
+        result = app.config.get("LAST_RESULT")
+        if result is None:
+            return jsonify({"hata": "Once pipeline calistirin.", "taslak": None}), 400
+
+        return _teklif_uret(result)
+
+    # -----------------------------------------------------------------------
+    # Mail parser rotasi
+    # -----------------------------------------------------------------------
+
+    @app.route("/parse", methods=["POST"])
+    @_limit("20 per minute")
+    def parse_mail():
+        """Serbest metin/mail -> yapilandirilmis siparis JSON.
+
+        Istek JSON : {"mail_text": "<serbest siparis metni>"}
+        Yanit JSON :
+          - Basarili  : {"status": "ok", "siparis": {...}, "eksik_alanlar": [...],
+                         "injection_suphesi": bool}
+          - LLM yok   : {"status": "llm_yok", "mesaj": "..."}
+          - Parse hata: {"status": "parse_hatasi", "mesaj": "..."}
+          - Bos girdi : {"status": "hata", "mesaj": "..."} (400)
+        """
+        body = request.get_json(silent=True) or {}
+        mail_text = (body.get("mail_text") or "").strip()
+
+        if not mail_text:
+            return jsonify({
+                "status": "hata",
+                "mesaj": "mail_text bos olamaz.",
+            }), 400
+
+        if not llm_active or llm_components is None:
+            return jsonify({
+                "status": "llm_yok",
+                "mesaj": (
+                    "LLM aktif degil. Ollama calismiyor olabilir. "
+                    "Siparis bilgilerini elle girin."
+                ),
+            }), 200
+
+        try:
+            from src.llm.roles.parser import parsed_to_order
+            from src.llm.structured import ValidationStatus
+
+            parser_role = llm_components.get("parser_role")
+            if parser_role is None:
+                return jsonify({
+                    "status": "llm_yok",
+                    "mesaj": "Parser rolu yuklenemedi. Elle girin.",
+                }), 200
+
+            parse_result = parser_role.parse(mail_text)
+
+            if parse_result.status == ValidationStatus.INVALID or parse_result.fallback:
+                raw = ""
+                if parse_result.fallback:
+                    raw = parse_result.fallback.raw_text[:300]
+                return jsonify({
+                    "status": "parse_hatasi",
+                    "mesaj": (
+                        "LLM siparis yapisini cikartamadiSimdi deneyin veya "
+                        "bilgileri elle girin."
+                    ),
+                    "ham_cikti": raw,
+                }), 200
+
+            if parse_result.injection_suphesi:
+                return jsonify({
+                    "status": "guvenlik_suptesi",
+                    "mesaj": (
+                        "Guvenlik suptesi nedeniyle siparis islenmedi. "
+                        "Lutfen icerik kontrolu yapin."
+                    ),
+                    "injection_suphesi": True,
+                }), 422
+
+            return jsonify({
+                "status": "ok",
+                "siparis": parse_result.order_dict,
+                "eksik_alanlar": parse_result.eksik_alanlar or [],
+                "injection_suphesi": parse_result.injection_suphesi,
+                # 2026-08-16: yapistirma yolunda da not taramasi (Kapi-0,
+                # mail akisiyla ayni deterministik agent hatti).
+                "not_adaylari": [
+                    {"satir": a.get("satir", ""),
+                     "kaynak": _not_kaynak_etiketi(a)}
+                    for a in (_yapistirma_notlari(mail_text))
+                ],
+            }), 200
+
+        except Exception as exc:
+            logger.exception("Mail parse hatasi: %s", exc)
+            return jsonify({
+                "status": "parse_hatasi",
+                "mesaj": "Sistem hatasi olustu, lutfen tekrar deneyin.",
+            }), 500
+
+    # -----------------------------------------------------------------------
+    # Otonom zincir rotasi (VİTRİN C)
+    # -----------------------------------------------------------------------
+    # (Is gecmisi deposu + _gecmis_kaydet helper yukarida, poll bolumunden once
+    #  tanimli — manuel /otonom ile otomatik poller ORTAK kullanir.)
+    def _run_otonom_pipeline(otonom_nesting_mode, otonom_nfv_quality, on_stage=None):
+        """Mail-cek → parse → onceliklendir → nesting → fiyat → acikla → teklif taslagi.
+
+        SENKRON /otonom ve ASENKRON /otonom/baslat ORTAK govdesi (DRY). request
+        objesi KULLANMAZ (mode/quality parametre) — arka-plan thread'inde request
+        context yok. (dict, http_status) tuple doner; on_stage verilirse her asama
+        eklendiginde CANLI haber verir (asenkron ilerleme paneli).
+
+        Tum pipeline asamalarini otomatik kosturur; sonuclari agent-panosu formati
+        ile dondurur. LLM olmadan mail parse edilemeyeceginden LLM gerekli.
+
+        Yanit JSON:
+        {
+          "asamalar": [
+            {"ad": "Mail-Cek", "durum": "tamam", "cikti": "4 mail cekildi"},
+            {"ad": "Parse", "durum": "tamam", "cikti": "4 siparis cikarildi"},
+            {"ad": "Onceliklendir", "durum": "tamam", "cikti": "Ford ACIL once secildi"},
+            {"ad": "Nesting", "durum": "tamam", "cikti": "GA, 2 parti, 3 konteyner"},
+            {"ad": "Fiyat", "durum": "tamam", "cikti": "Toplam 1200 USD"},
+            {"ad": "Acikla", "durum": "tamam|llm_yok", "cikti": "SA en iyi..."},
+            {"ad": "Teklif-Taslagi", "durum": "tamam|llm_yok", "cikti": "...(insan onay gerekli)"},
+          ],
+          "nesting_results": {...},
+          "pricing_results": {...},
+          "pipeline_ozet": {...},
+          "toplam_fiyat": 1200.0,
+          "aciklama_md": "...",
+          "teklif_taslagi": "...",
+          "teklif_onay_gerekli": true,
+        }
+        """
+        def _emit(asama):
+            # on_stage callback'i job'i ASLA dusurmemeli (asenkron ilerleme)
+            if on_stage is not None:
+                try:
+                    on_stage(asama)
+                except Exception:
+                    logger.debug("on_stage callback hatasi yutuldu", exc_info=True)
+
+        class _StageList(list):
+            # append edildikce on_stage'e CANLI haber ver. Senkron yolda (on_stage
+            # None) _emit no-op'tur; davranis BIREBIR ayni kalir.
+            def append(self, item):
+                super().append(item)
+                _emit(item)
+
+        if not llm_active or llm_components is None:
+            return {
+                "hata": (
+                    "Otonom mod LLM gerektiriyor (mail parse icin). "
+                    "Ollama calismiyor veya configs/llm.local.json eksik. "
+                    "Manuel demo icin /run rotasini kullanin."
+                ),
+                "mesaj": "LLM gerekli",
+                "asamalar": [],
+            }, 503
+
+        from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
+        from src.runtime.mail_ingest import make_mail_source, ingest_order
+        from src.llm.roles.parser import parsed_to_order
+        from src.llm.roles.explainer import ExplainerInput
+        from src.llm.structured import ValidationStatus
+
+        asamalar: List[Dict[str, Any]] = _StageList()
+
+        # ------------------------------------------------------------------
+        # ASAMA 1: Mail-Cek
+        # ------------------------------------------------------------------
+        try:
+            # Mail kaynagi: mail.local.json (UI) > .env MAIL_* > demo Fake.
+            # Sifre asla kodda degil — dosya veya .env'den gelir.
+            # TESTING: gercek IMAP'a baglanmamak icin her zaman fake.
+            mail_cfg = ({"source": "fake"} if app.config.get("TESTING")
+                        else _resolve_mail_source_config(_ROOT))
+
+            # FIX 2(a): poller ile ORTAK kalici idempotency store enjekte et.
+            # Aksi halde ImapMailbox her istekte :memory: store yaratir, hicbir
+            # mark_processed kalici olmaz -> son mailler tekrar tekrar islenir.
+            mail_source = make_mail_source(mail_cfg, idem_store=_shared_idem_store)
+            raw_mails = mail_source.fetch_new()
+            n_mail = len(raw_mails)
+            _kaynak_etiket = mail_cfg.get("provider") or mail_cfg.get("source", "fake")
+            asamalar.append({
+                "ad": "Mail-Cek",
+                "durum": "tamam",
+                "cikti": f"{n_mail} mail cekildi ({_kaynak_etiket})",
+                "detay": [
+                    {"gonderen": m.gonderen, "konu": m.konu}
+                    for m in raw_mails
+                ],
+            })
+        except Exception as exc:
+            logger.warning("Otonom: Mail-Cek hatasi: %s", exc)
+            asamalar.append({"ad": "Mail-Cek", "durum": "hata", "cikti": "Mail cekme basarisiz."})
+            return {"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}, 500
+
+        # ------------------------------------------------------------------
+        # ASAMA 2: Parse (her mail icin — ek varsa deterministik, yoksa LLM)
+        # ------------------------------------------------------------------
+        parser_role = llm_components.get("parser_role")
+        parsed_orders: List[Dict[str, Any]] = []
+        parse_hatalar: List[str] = []
+        parse_eksik: List[Dict[str, Any]] = []  # ZIP var, adet yok -> operator girmeli
+        parse_not_onay: List[Dict[str, Any]] = []  # notlu TAM siparis -> onay kapisi
+        parse_karantina: List[str] = []
+        # FIX 2(a): pipeline BASARISI sonrasi mark edilecek order-ureten mailler
+        # (at-least-once: gecici hata olursa mark ETME -> tekrar denenir).
+        _order_mails: List[Any] = []
+
+        # mark_processed: kalici idempotency (poller ile ORTAK store). Poller'daki
+        # deseni izler -> KESIN sonuclanan mailler kapatilir (ayni mail bir kez).
+        _mail_mark = getattr(mail_source, "mark_processed", None)
+
+        def _mark_mail(_m):
+            if _mail_mark is None:
+                return
+            try:
+                _mail_mark(_m)
+            except Exception:
+                logger.debug("Otonom: mark_processed basarisiz", exc_info=True)
+        parse_kaynak_sayac: Dict[str, int] = {
+            "attachment_zip_stl": 0, "attachment_excel": 0, "attachment_csv": 0, "llm_text": 0,
+        }
+        # ZIP-STL yolunda STL'ler buraya kalici yazilir (nesting voxelize edene
+        # kadar yasamali); mesaj-bazli alt klasor ingest_order icinde acilir.
+        _persist_root = str(_ROOT / "data" / "mail_stl")
+
+        for mail in raw_mails:
+            try:
+                order = ingest_order(mail, parser_role, persist_root=_persist_root)
+                if order is not None and order.get("needs_review"):
+                    # EKSIK BILGI: ZIP'te STL var ama govdede adet yok. Otomatik
+                    # ISLENMEZ — operatorun adet girmesi gerekir (karar: operatore
+                    # sor/beklet). Genel "parse basarisiz" ile karistirilmaz.
+                    # Operatorun /adet-gir'den adet girip yeniden kurabilmesi icin
+                    # bekleyen siparis deposuna (STL'ler + meta) kaydet.
+                    _saved_id = order.get("order_id", "")
+                    try:
+                        _saved_id = _pending_store.add(
+                            order_id=order.get("order_id", ""),
+                            customer=order.get("customer", ""),
+                            sender=mail.gonderen,
+                            deadline=_normalize_deadline(
+                                order.get("deadline", ""), mail_tarih=mail.tarih,
+                            ),
+                            priority_class=(1 if ("acil" in mail.konu.lower()
+                                                  or "acil" in mail.govde.lower())
+                                            else order.get("priority_class", 2)),
+                            konu=mail.konu,
+                            stl_map=order.get("_stl_map", {}),
+                            container=order.get("container"),
+                            # K-56g: not alanlari (yoksa None -> meta bit-ozdes)
+                            not_adaylari=order.get("not_adaylari"),
+                            govde_metni=order.get("govde_metni"),
+                            # 2026-08-03 kayip-veri fix'i (poller'la ayni):
+                            # share-link alanlari meta.json'a aksin.
+                            review_reason=order.get("review_reason", ""),
+                            share_links=order.get("share_links"),
+                            adet_listesi=order.get("adet_listesi"),
+                        )
+                    except Exception as exc:
+                        logger.warning("Otonom: bekleyen siparis kaydedilemedi: %s", exc)
+                    parse_eksik.append({
+                        "order_id": _saved_id,
+                        "gonderen": mail.gonderen,
+                        "konu": mail.konu,
+                        "stl_sayisi": len(order.get("stl_names", [])),
+                        "stl_adlar": order.get("stl_names", []),
+                    })
+                    # Kesin: pending'e alindi -> mark (tekrar ayristirmaya girme)
+                    _mark_mail(mail)
+                elif order is not None:
+                    # Mail gonderenden oncelik ipucu al
+                    govde_lower = mail.govde.lower()
+                    konu_lower = mail.konu.lower()
+                    if "acil" in konu_lower or "acil" in govde_lower:
+                        order["priority_class"] = 1
+
+                    # Musteri adini gonderen domain'den zenginlestir (bos/bilinmiyor ise)
+                    if not order.get("customer") or order["customer"] == "Bilinmiyor":
+                        domain = mail.gonderen.split("@")[-1].split(".")[0].upper()
+                        order["customer"] = domain
+
+                    # Termin duzeltme
+                    order["deadline"] = _normalize_deadline(
+                        order.get("deadline", ""),
+                        mail_tarih=mail.tarih,
+                    )
+
+                    # Kaynak sayaci
+                    src = order.get("parse_source", "llm_text")
+                    parse_kaynak_sayac[src] = parse_kaynak_sayac.get(src, 0) + 1
+
+                    # K-56g not->kisit analizi (yapisal kapi note_pipeline'da:
+                    # notsuz order / kisit_modu=kapali -> LLM'e SIFIR dokunus,
+                    # order aynen doner).
+                    from src.runtime.note_pipeline import analyze_order_notes
+                    from src.runtime.not_onay import (
+                        efektif_kisit_modu, not_onay_gerekli,
+                        notlu_siparisi_beklet)
+                    order = analyze_order_notes(
+                        order,
+                        llm_components.get("kisit_role"),
+                        llm_components.get("kisit_hakem_role"),
+                        mode=efektif_kisit_modu(
+                            llm_components.get("kisit_modu", "kapali")),
+                    )
+
+                    # NOT-ONAY KAPISI (2026-08-16, Eren istegi): notlu TAM
+                    # siparis pipeline'a sokulmaz — bekleyen onaya park edilir;
+                    # operator onayi sonrasi OTOMATIK kosulur. Park edilemezse
+                    # (STL okunamadi vb.) siparis normal akista devam eder.
+                    if not_onay_gerekli(order):
+                        _park_id = notlu_siparisi_beklet(
+                            _pending_store, order, mail)
+                        if _park_id:
+                            parse_not_onay.append({
+                                "order_id": _park_id,
+                                "gonderen": mail.gonderen,
+                                "notlar": [a.get("satir", "") for a in
+                                           (order.get("not_adaylari") or [])],
+                            })
+                            _mark_mail(mail)
+                            continue
+
+                    parsed_orders.append(order)
+                    _order_mails.append(mail)  # mark yalniz pipeline basarisi sonrasi
+                else:
+                    # None donus: injection suphesi karantina veya parse basarisiz.
+                    # Ek yoksa LLM yolu denendiginden, parse_result'a erisim yok;
+                    # ingest_order zaten karantina logunu yazmis olur — ozet icin
+                    # gonderen bazli kayit yapiyoruz.
+                    parse_hatalar.append(f"{mail.gonderen}: parse basarisiz veya karantinaya alindi")
+                    # Kesin sonuc (spam/karantina) -> mark (tekrar LLM'e gitme)
+                    _mark_mail(mail)
+            except Exception as exc:
+                logger.warning("Otonom: Parse hatasi (mail=%s): %s", mail.gonderen, exc)
+                parse_hatalar.append(f"{mail.gonderen}: {exc}")
+
+        n_parsed = len(parsed_orders)
+        parse_durum = "tamam" if n_parsed > 0 else "hata"
+
+        # Kaynak ozeti icin etiket
+        kaynak_parcalari = []
+        if parse_kaynak_sayac.get("attachment_zip_stl", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_zip_stl']} ZIP-STL'den"
+            )
+        if parse_kaynak_sayac.get("attachment_excel", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_excel']} Excel'den"
+            )
+        if parse_kaynak_sayac.get("attachment_csv", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['attachment_csv']} CSV'den"
+            )
+        if parse_kaynak_sayac.get("llm_text", 0) > 0:
+            kaynak_parcalari.append(
+                f"{parse_kaynak_sayac['llm_text']} mailden (LLM)"
+            )
+        kaynak_ozet = ", ".join(kaynak_parcalari) if kaynak_parcalari else "bilinmiyor"
+
+        parse_cikti = f"{n_parsed} siparis cikarildi ({kaynak_ozet})"
+        if parse_hatalar:
+            parse_cikti += f" — {len(parse_hatalar)} basarisiz"
+        if parse_eksik:
+            parse_cikti += f" — {len(parse_eksik)} eksik bilgi (adet yok)"
+        if parse_not_onay:
+            parse_cikti += f" — {len(parse_not_onay)} not-onayi bekliyor"
+        asamalar.append({
+            "ad": "Parse",
+            "durum": parse_durum if (n_parsed or not parse_not_onay) else "tamam",
+            "cikti": parse_cikti,
+            "detay": {
+                "siparis_sayisi": n_parsed,
+                "hatalar": parse_hatalar,
+                "eksik_bilgi": parse_eksik,
+                "kaynak_sayac": parse_kaynak_sayac,
+            },
+        })
+
+        # NOT-ONAY asamasi: park edilen siparisler operatore gorunur sekilde
+        # "onay bekleniyor" der; onay sonrasi kosu otomatik baslar.
+        if parse_not_onay:
+            asamalar.append({
+                "ad": "Not-Onayi",
+                "durum": "bekliyor",
+                "cikti": (f"{len(parse_not_onay)} siparis ONAY BEKLIYOR — "
+                          "siparis notu tespit edildi. Constraint Approval "
+                          "ekranindan (veya sag-alt baloncuktan) onaylayin; "
+                          "onay verilince siparis OTOMATIK kosulacak."),
+                "detay": {"bekleyenler": parse_not_onay},
+            })
+
+        if n_parsed == 0 and parse_not_onay:
+            # Tum siparisler onay kapisinda — bu bir HATA degil, beklenen
+            # insan-onay duragi. Zincir "bekliyor" ozetiyle temiz biter.
+            return {
+                "asamalar": asamalar,
+                "durum": "onay_bekliyor",
+                "onay_bekleyen": parse_not_onay,
+            }, 200
+
+        if n_parsed == 0:
+            # Eksik-bilgi siparisi varsa operatore net mesaj ver (genel "parse
+            # basarisiz" degil — ZIP geldi, sadece adet eksik).
+            if parse_eksik:
+                _ek = parse_eksik[0]
+                hata_msg = (
+                    f"{len(parse_eksik)} siparis EKSIK BILGI nedeniyle islenemedi: "
+                    f"ZIP ekinde STL var ama mail govdesinde adet belirtilmemis. "
+                    f"Ornek: {_ek['gonderen']} ({_ek['stl_sayisi']} STL). "
+                    f"Adetleri girmek icin 'Adet Girisi' (/adet-gir) sayfasini acin."
+                )
+            else:
+                hata_msg = "Hic siparis cikartilamadi (LLM parse basarisiz)."
+            return {
+                "hata": hata_msg,
+                "asamalar": asamalar,
+            }, 500
+
+        # ------------------------------------------------------------------
+        # ASAMA 3-5: Onceliklendir + Nesting + Fiyat (run_pipeline)
+        # ------------------------------------------------------------------
+        # Bulgu 7: deepcopy yerine shallow + tek anahtar override (daha hizli)
+        scenario = {**RICH_SCENARIO, "orders": parsed_orders}
+
+        # Plaka politikasi (cekirdek). Oncelik:
+        #   1. UI'dan girilen GERCEK plaka (configs/plate.local.json > env PLATE_*)
+        #   2. Siparisin tasidigi container (varsa)
+        #   3. Hicbiri yok -> None -> run_pipeline parcalardan otomatik turetir.
+        # Demo container'i gercek STL siparisine ASLA dayatilmaz.
+        from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
+        _pw, _pd, _ph = _resolve_plate_ui(_plate_root)
+        if _pw and _pd:
+            _container = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
+        else:
+            _container = next(
+                (o["container"] for o in parsed_orders if o.get("container")), None
+            )
+        # F5 ASAMA-2 (2026-07-05): aile-farkindali yonlendirme YALNIZ "auto" modda
+        # acilir; nfv/heightmap bilincli secilirse False -> davranis birebir korunur.
+        scenario = {**scenario, "container": _container,  # None -> pipeline otomatik
+                    "nesting_mode": otonom_nesting_mode,
+                    "nfv_quality": otonom_nfv_quality,
+                    "auto_family_routing": otonom_nesting_mode == "auto"}
+
+        try:
+            pipeline_result = run_pipeline(scenario)
+        except Exception as exc:
+            logger.exception("Otonom: pipeline hatasi: %s", exc)
+            return {"hata": "Sistem hatasi olustu, lutfen tekrar deneyin.", "asamalar": asamalar}, 500
+
+        # Detayli sonuc ekrani (/sonuc) icin: otonom sonucu da LAST_RESULT'a
+        # yazilir; boylece kullanici "Detayli Sonucu Gor" ile tum tablolar +
+        # 3D onizleme + maliyet ekranina gidebilir (tek-tik /run ile ayni deneyim).
+        pipeline_result["used_demo"] = False
+        app.config["LAST_RESULT"] = pipeline_result
+
+        # FIX 2(a) + R1 #2/#3: at-least-once — order-ureten mailler yalniz
+        # TAM basari (tum partiler gecerli yukseklik) sonrasi kalici isaretlenir
+        # (poller ile ORTAK store + ORTAK kesin-sonuc tanimi). Sifir/kismi
+        # sonucta mark YOK -> mail poller/manuel sonraki kosuda yeniden denenir;
+        # aksi halde motor duzeltmesi sonrasi otomatik telafi imkansiz olurdu
+        # (2026-07-03 Deneme4 canli dersi).
+        from src.runtime.mail_poller import nesting_fully_succeeded as _nfs
+        if _nfs(pipeline_result):
+            for _m in _order_mails:
+                _mark_mail(_m)
+        else:
+            logger.warning(
+                "Otonom: nesting TAM sonuc uretmedi — mail(ler) islendi "
+                "SAYILMADI (sonraki kosuda yeniden denenebilir)."
+            )
+
+        ranked = pipeline_result.get("ranked_orders", [])
+        batches = pipeline_result.get("batches", [])
+        warnings = pipeline_result.get("warnings", [])
+        nesting_results = pipeline_result.get("nesting_results", {})
+        pricing_results = pipeline_result.get("pricing_results", {})
+
+        # ------------------------------------------------------------------
+        # WATCHER: deterministik kontroller + opsiyonel LLM anlatimi
+        # run_pipeline'a dokunmaz; READ-ONLY.
+        # ------------------------------------------------------------------
+        from src.watcher.checks import (
+            check_parse, check_nest, check_price, check_priority,
+        )
+
+        watcher_role = (llm_components or {}).get("watcher_role") if llm_active else None
+
+        def _watcher_narrate(findings):
+            """Finding listesini LLM ile Turkce'ye cevirir; LLM yoksa ham bulgu."""
+            if not findings:
+                return []
+            if watcher_role is not None:
+                try:
+                    wr = watcher_role.narrate(findings)
+                    if wr is not None and wr.status.value != "INVALID" and wr.data:
+                        return {
+                            "anlatim_md": wr.data.get("anlatim_md", ""),
+                            "kapsanan_bulgular": wr.data.get("kapsanan_bulgular", []),
+                            "number_flag": wr.number_flag,
+                            "kaynak": "llm",
+                        }
+                except Exception as exc:
+                    logger.warning("Watcher LLM anlatim hatasi: %s", exc)
+            # LLM yok veya basarisiz -> ham bulgu
+            return {
+                "anlatim_md": " ".join(
+                    f"[{f.severity.upper()}] {f.baslik}: {f.ham_detay}"
+                    for f in findings
+                ),
+                "kapsanan_bulgular": [f.kod for f in findings],
+                "number_flag": False,
+                "kaynak": "ham_bulgu",
+            }
+
+        # Parse watcher verisi: parsed_orders'tan parca listesi derle.
+        # missing_field_ratio: parse edilemeyen mail orani (parse_hatalar / n_mail).
+        # Her basarisiz/karantina mail eksik-veri sinyalidir; sabit 0.0 yerine
+        # gercek oran beslenir ki PARSE_EKSIK_ALAN kontrolu canli yolda yasasin.
+        _missing_field_ratio = (len(parse_hatalar) / n_mail) if n_mail > 0 else 0.0
+        _parse_check_data = {
+            "parts": [
+                p
+                for o in parsed_orders
+                for p in o.get("parts", [])
+            ],
+            "missing_field_ratio": _missing_field_ratio,
+        }
+        _parse_findings = check_parse(_parse_check_data)
+
+        # Istenen parca sayisi: order_id -> qty-toplami haritasi.
+        # nesting_results[*]["n_parts"] motorda len(placements) ile doldurulur
+        # (scripts/demo_pipeline.py: n_placed), yani YERLESEN sayidir. Istenen
+        # sayi ise her parcanin adet (qty) toplamidir; voxel pipeline parcalari
+        # qty kadar cogaltir (to_voxel_parts -> expand_quantities), bu yuzden
+        # istenen-yerlesen kiyasi qty-toplami uzerinden dogru olur.
+        _order_requested_parts = {
+            o.get("order_id"): sum(int(p.get("qty", 1) or 1) for p in o.get("parts", []))
+            for o in parsed_orders
+        }
+
+        # Nesting + Fiyat watcher verisi: her parti icin; kumulatif
+        _nest_findings_all = []
+        _price_findings_all = []
+        for _b in batches:
+            _nr = nesting_results.get(_b.batch_id, {})
+            _pr = pricing_results.get(_b.batch_id, {})
+            # Bu partinin icerdigi siparislerden ISTENEN toplam parca sayisi
+            _requested_parts = sum(
+                _order_requested_parts.get(_o.order_id, 0)
+                for _o in getattr(_b, "orders", [])
+            )
+            # YERLESEN sayi: motorun n_parts anahtari (= len(placements)).
+            _placed_parts = int(_nr.get("n_parts", 0))
+            _nest_data = {
+                "density": _nr.get("density", 0.0),
+                "height_mm": _nr.get("height_mm", 0.0),
+                "container_height_mm": parsed_orders[0].get("container_height_mm") if parsed_orders else None,
+                "n_parts": _requested_parts,
+                "n_placed": _placed_parts,
+            }
+            _nest_findings_all.extend(check_nest(_nest_data))
+            _price_data = {
+                "total_price": _pr.get("total_price", 0.0),
+                "breakdown": [
+                    {"rule_id": line.split(":")[0] if ":" in str(line) else str(line),
+                     "subtotal_after": _pr.get("total_price", 0.0)}
+                    for line in _pr.get("breakdown", [])
+                ],
+            }
+            _price_findings_all.extend(check_price(_price_data))
+
+        # Oncelik watcher verisi
+        _priority_classes = [o.get("priority_class", 2) for o in parsed_orders]
+        _priority_check_data = {
+            "warnings": warnings,
+            "priority_classes": _priority_classes,
+        }
+        _priority_findings = check_priority(_priority_check_data)
+
+        # LLM anlatim (varsa)
+        _watcher_parse = _watcher_narrate(_parse_findings)
+        _watcher_nest = _watcher_narrate(_nest_findings_all)
+        _watcher_price = _watcher_narrate(_price_findings_all)
+        _watcher_priority = _watcher_narrate(_priority_findings)
+
+        def _findings_to_serial(findings):
+            return [
+                {
+                    "kod": f.kod,
+                    "severity": f.severity,
+                    "baslik": f.baslik,
+                    "ham_detay": f.ham_detay,
+                }
+                for f in findings
+            ]
+
+        # Parse asamasini geriye donuk guncelle (watcher bilgisi ekle)
+        for _i, _s in enumerate(asamalar):
+            if _s.get("ad") == "Parse":
+                _s["watcher"] = {
+                    "bulgular": _findings_to_serial(_parse_findings),
+                    "anlatim": _watcher_parse,
+                }
+                break
+
+        # Onceliklendirme ozeti
+        if ranked:
+            ilk = ranked[0]
+            oncelik_cikti = (
+                f"{ilk.order_id} ({ilk.customer}) one alindi"
+                f" — Sinif {ilk.priority_class}, termin {ilk.deadline}"
+            )
+        else:
+            oncelik_cikti = "Siparis siralanamadi"
+
+        asamalar.append({
+            "ad": "Onceliklendir",
+            "durum": "tamam",
+            "cikti": oncelik_cikti,
+            "detay": {
+                "siralama": [
+                    {
+                        "sira": i + 1,
+                        "order_id": o.order_id,
+                        "customer": o.customer,
+                        "deadline": str(o.deadline),
+                        "priority_class": o.priority_class,
+                    }
+                    for i, o in enumerate(ranked)
+                ],
+                "uyari_sayisi": len(warnings),
+            },
+            "watcher": {
+                "bulgular": _findings_to_serial(_priority_findings),
+                "anlatim": _watcher_priority,
+            },
+        })
+
+        # Nesting ozeti
+        n_batches = len(batches)
+        if batches:
+            best_height = min(
+                nesting_results.get(b.batch_id, {}).get("height_mm", 9999.0)
+                for b in batches
+            )
+            winners = []
+            for b in batches:
+                nr = nesting_results.get(b.batch_id, {})
+                port = nr.get("portfolio") or nr.get("tuner") or {}
+                w = port.get("winner") or port.get("winning_config") or "dblf"
+                winners.append(w)
+            nesting_cikti = (
+                f"{n_batches} parti, min yukseklik {best_height:.1f} mm"
+                f" — algoritmalar: {', '.join(set(winners))}"
+            )
+        else:
+            nesting_cikti = "Parti olusturulamadi"
+
+        asamalar.append({
+            "ad": "Nesting",
+            "durum": "tamam" if batches else "hata",
+            "cikti": nesting_cikti,
+            "detay": {
+                "parti_sayisi": n_batches,
+                "batches": [
+                    {
+                        "batch_id": b.batch_id,
+                        "customer": b.customer,
+                        "height_mm": nesting_results.get(b.batch_id, {}).get("height_mm", 0),
+                        "density": nesting_results.get(b.batch_id, {}).get("density", 0),
+                        "n_parts": nesting_results.get(b.batch_id, {}).get("n_parts", 0),
+                    }
+                    for b in batches
+                ],
+            },
+            "watcher": {
+                "bulgular": _findings_to_serial(_nest_findings_all),
+                "anlatim": _watcher_nest,
+            },
+        })
+
+        # Fiyat ozeti
+        toplam_fiyat = sum(
+            pr.get("total_price", 0.0) for pr in pricing_results.values()
+        )
+        fiyat_cikti = f"Toplam {toplam_fiyat:.2f} USD ({n_batches} parti)"
+        asamalar.append({
+            "ad": "Fiyat",
+            "durum": "tamam",
+            "cikti": fiyat_cikti,
+            "detay": {
+                "toplam_fiyat": toplam_fiyat,
+                "parti_fiyatlari": {
+                    bid: {"total_price": pr.get("total_price", 0.0)}
+                    for bid, pr in pricing_results.items()
+                },
+            },
+            "watcher": {
+                "bulgular": _findings_to_serial(_price_findings_all),
+                "anlatim": _watcher_price,
+            },
+        })
+
+        # ------------------------------------------------------------------
+        # ASAMA 6: Acikla (LLM explainer -- ilk parti icin)
+        # ------------------------------------------------------------------
+        explainer_role = llm_components.get("explainer_role")
+        aciklama_md = ""
+        acikla_durum = "llm_yok"
+
+        if explainer_role is not None and batches:
+            try:
+                first_batch = batches[0]
+                nr_first = nesting_results.get(first_batch.batch_id, {})
+                port_first = nr_first.get("portfolio") or nr_first.get("tuner") or {}
+                winner_name = (
+                    port_first.get("winner")
+                    or port_first.get("winning_config")
+                    or "dblf"
+                )
+                _density_raw_otonom = nr_first.get("density", 0.0)
+                sistem_ciktisi = {
+                    "kazanan_algoritma": winner_name,
+                    "height_mm": nr_first.get("height_mm", 0.0),
+                    "doluluk": f"{_density_raw_otonom:.1%}",
+                    "n_parts": nr_first.get("n_parts", 0),
+                    "toplam_fiyat": toplam_fiyat,
+                }
+                from src.llm.roles.explainer import ExplainerInput
+                exp_input = ExplainerInput(
+                    karar_tipi="algoritma",
+                    sistem_ciktisi=sistem_ciktisi,
+                )
+                exp_result = explainer_role.explain(exp_input)
+
+                if exp_result.status != ValidationStatus.INVALID and exp_result.data:
+                    aciklama_md = exp_result.data.get("aciklama_md", "")
+                    acikla_durum = "tamam"
+                    if exp_result.number_flag:
+                        acikla_durum = "tamam_uyari"
+                else:
+                    aciklama_md = "Aciklama uretilemedi (LLM yanit vermedi)."
+                    acikla_durum = "parcali"
+            except Exception as exc:
+                logger.warning("Otonom: Acikla hatasi: %s", exc)
+                aciklama_md = f"Aciklama hatasi: {exc}"
+                acikla_durum = "hata"
+
+        asamalar.append({
+            "ad": "Acikla",
+            "durum": acikla_durum,
+            "cikti": aciklama_md[:200] if aciklama_md else "LLM aciklama atildi",
+            "detay": {"aciklama_md": aciklama_md},
+        })
+
+        # ------------------------------------------------------------------
+        # ASAMA 7: Teklif Taslagi (TeklifRole -- UYARI modu, INSAN ONAY KAPISI)
+        # ------------------------------------------------------------------
+        teklif_taslagi = ""
+        teklif_konu = ""
+        teklif_durum = "llm_yok"
+        teklif_number_flag = False
+
+        _teklif_role = llm_components.get("teklif_role")
+        if _teklif_role is not None:
+            try:
+                from src.llm.roles.teklif import TeklifInput
+
+                context = _build_grounded_context(pipeline_result)
+
+                musteri_adi = "Değerli Müşterimiz"
+                if ranked:
+                    # MED-3: cok-musterili guard — birden fazla farkli musteri varsa
+                    # yanlislikla spesifik bir isim yazilmamasi icin genel hitap kullan.
+                    _otonom_musteri_adlari = set()
+                    for _o in ranked:
+                        if isinstance(_o, dict):
+                            _m = _o.get("customer", "")
+                        else:
+                            _m = getattr(_o, "customer", "")
+                        if _m:
+                            _otonom_musteri_adlari.add(_m)
+                    if len(_otonom_musteri_adlari) == 1:
+                        musteri_adi = _otonom_musteri_adlari.pop()
+                    # >1 farkli musteri: musteri_adi "Değerli Müşterimiz" olarak kalir
+
+                parca_ozeti_list = []
+                for b in batches:
+                    if isinstance(b, dict):
+                        bid = b.get("batch_id", "")
+                        for o in b.get("orders", []):
+                            if isinstance(o, dict):
+                                for p in o.get("parts", []):
+                                    if isinstance(p, dict):
+                                        parca_ozeti_list.append({
+                                            "ad": p.get("name", p.get("part_id", bid)),
+                                            "adet": p.get("quantity", 1),
+                                        })
+
+                if not parca_ozeti_list:
+                    parca_ozeti_list = [
+                        {"ad": "konteyner parcalari", "adet": len(ranked)}
+                    ]
+
+                termin_ifadesi = "sipariş onayını takiben tarafınıza bildirilecektir"
+                if ranked:
+                    first = ranked[0]
+                    if isinstance(first, dict):
+                        termin_ifadesi = str(first.get("deadline", termin_ifadesi))
+
+                teklif_input = TeklifInput(
+                    musteri_adi=musteri_adi,
+                    parca_ozeti=parca_ozeti_list,
+                    toplam_fiyat_usd=toplam_fiyat,
+                    termin_ifadesi=termin_ifadesi,
+                    context=context,
+                )
+                teklif_result = _teklif_role.draft(teklif_input)
+
+                from src.llm.structured import ValidationStatus as _VS
+                if teklif_result.status in (_VS.VALID, _VS.PARTIAL) and teklif_result.data:
+                    teklif_taslagi = teklif_result.data.get("mail_govde_md", "")
+                    teklif_konu = teklif_result.data.get("konu", "")
+                    teklif_number_flag = teklif_result.number_flag
+                    # flagli_taslak: taslak DOLU ama uyari var (dead-end yok)
+                    teklif_durum = "flagli_taslak" if teklif_number_flag else "taslak_hazir"
+                else:
+                    teklif_taslagi = ""
+                    teklif_durum = "hata"
+            except Exception as exc:
+                logger.warning("Otonom: Teklif taslagi hatasi: %s", exc)
+                teklif_taslagi = ""
+                teklif_durum = "hata"
+
+        asamalar.append({
+            "ad": "Teklif-Taslagi",
+            "durum": teklif_durum,
+            "cikti": (
+                "Taslak hazir — insan onay gerekli, otomatik gonderilmez"
+                if teklif_durum in ("taslak_hazir", "flagli_taslak")
+                else "Teklif taslagi uretilemedi"
+            ),
+            "detay": {
+                "taslak": teklif_taslagi,
+                "onay_gerekli": True,
+                "otomatik_gonderildi": False,
+                "topraklama_uyarisi": teklif_number_flag,
+                "konu": teklif_konu,
+            },
+        })
+
+        # Kalici GECMISE yaz — manuel buton (kaynak=manuel). Otomatik poller ayni
+        # helper'i kaynak=otomatik ile kullanir (DRY; _poll_on_result).
+        _gecmis_kaydet(pipeline_result, mod=otonom_nesting_mode,
+                       nfv_quality=otonom_nfv_quality, asamalar=asamalar,
+                       kaynak="manuel")
+
+        # ------------------------------------------------------------------
+        # Yanit
+        # ------------------------------------------------------------------
+        return {
+            "asamalar": asamalar,
+            # Bulgu 6: paylasilan helper ile tutarli projeksiyon
+            "nesting_results": {
+                bid: _nesting_result_projection(nr)
+                for bid, nr in nesting_results.items()
+            },
+            "pricing_results": {
+                bid: {"total_price": pr.get("total_price", 0.0)}
+                for bid, pr in pricing_results.items()
+            },
+            "pipeline_ozet": {
+                "siparis_sayisi": len(ranked),
+                "parti_sayisi": n_batches,
+                "uyari_sayisi": len(warnings),
+                "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+            },
+            "toplam_fiyat": toplam_fiyat,
+            "aciklama_md": aciklama_md,
+            "teklif_taslagi": teklif_taslagi,
+            "teklif_onay_gerekli": True,
+        }, 200
+
+    # -----------------------------------------------------------------------
+    # Senkron /otonom rotasi (geriye-uyum: mevcut testler + tek-tik JSON akisi)
+    # -----------------------------------------------------------------------
+    def _parse_otonom_istek():
+        """JSON body'den (nesting_mode, nfv_quality) coz — senkron + asenkron ortak."""
+        _body = request.get_json(silent=True) or {}
+        _onm = _body.get("nesting_mode", "auto")
+        _mode = _onm if _onm in ("auto", "nfv", "heightmap") else "auto"
+        _quality = "fast" if _body.get("nfv_quality") == "fast" else "max"  # KARAR-G
+        return _mode, _quality
+
+    @app.route("/otonom", methods=["POST"])
+    @_limit("2 per minute")
+    def otonom():
+        """Senkron otonom: pipeline'i bekleyip tam JSON doner (mevcut davranis).
+
+        Asenkron/canli-ilerleme isteyen UI /otonom/baslat + /otonom/durum kullanir.
+        """
+        _mode, _quality = _parse_otonom_istek()
+        # FIX 2(b): poller + async job ile ORTAK tekil-tarama kilidi. Non-blocking
+        # -> baska bir tarama (poller/async/sync) suruyorsa bloklamadan 'mesgul'
+        # doner (paralel mailbox taramasi + cift islem yok, deadlock yok).
+        if not _scan_lock.acquire(blocking=False):
+            return jsonify({
+                "hata": ("Su anda bir mail taramasi zaten suruyor "
+                         "(otomatik gozcu veya baska bir istek); bitince tekrar deneyin."),
+                "mesaj": "Tarama mesgul",
+            }), 409
+        try:
+            body, status = _run_otonom_pipeline(_mode, _quality)
+        finally:
+            _scan_lock.release()
+        return jsonify(body), status
+
+    # -----------------------------------------------------------------------
+    # ASENKRON otonom: baslat (job + arka-plan thread) + durum (polling)
+    # -----------------------------------------------------------------------
+    # Uzun suren otonom isi (NFV CPU'da dakikalar) senkron istekte tarayici
+    # timeout + sunucu blok yaratir. Job'i daemon thread'e alir; UI durumu
+    # /otonom/durum/<id> ile yoklayarak CANLI gosterir. Tek-is politikasi
+    # (OtonomJobStore): ayni anda en fazla 1 aktif is.
+    from src.runtime.otonom_jobs import OtonomJobStore, scan_orphaned_markers
+    # marker_dir=_gecmis_root: is baslarken/biterken "calisiyor_<id>.json"
+    # isareti yazilir/silinir (restart durustlugu, 2026-07-25). TESTING'de
+    # _gecmis_root izole gecici dizindir -> gercek data/otonom_gecmis'e
+    # dokunulmaz.
+    _otonom_jobs = OtonomJobStore(marker_dir=_gecmis_root)
+    app.config["OTONOM_JOBS"] = _otonom_jobs
+
+    # Sahipsiz calisiyor-isaretleri (onceki calistirmadan restart/crash ile
+    # yarim kalmis is) taranir; RECOVERY YOK — yalniz durust "kesildi" kaydi
+    # gecmise dusulur ve isaret silinir. Bos dizinde (normal kapanis / ilk
+    # calistirma) hicbir sey yapmaz -> davranis bit-ozdes.
+    for _orphan in scan_orphaned_markers(_gecmis_root):
+        try:
+            _otonom_gecmis.kaydet({
+                "durum": "kesildi",
+                "kaynak": "restart_kesintisi",
+                "hata_ozeti": (
+                    "Uygulama yeniden baslatildi, is yarim kaldi (otomatik "
+                    "devam/recovery yok - operator elle kontrol etmeli)."
+                ),
+                "job_id": _orphan.get("job_id"),
+                "started_at": _orphan.get("started_at"),
+                "meta": _orphan.get("meta") or {},
+            })
+        except Exception:
+            logger.exception(
+                "otonom restart-kesintisi kaydi yazilamadi: %r", _orphan)
+
+    @app.route("/otonom/baslat", methods=["POST"])
+    @_limit("2 per minute")
+    def otonom_baslat():
+        """Otonom isi arka-planda baslat — ANINDA job_id doner (202).
+
+        LLM yok -> 503 (senkron ile ayni kapi). Zaten calisan is varsa -> 409.
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({
+                "hata": (
+                    "Otonom mod LLM gerektiriyor (mail parse icin). "
+                    "Ollama calismiyor veya configs/llm.local.json eksik."
+                ),
+                "mesaj": "LLM gerekli",
+            }), 503
+
+        _mode, _quality = _parse_otonom_istek()
+        jid = _otonom_jobs.try_start(meta={"mode": _mode, "quality": _quality})
+        if jid is None:
+            return jsonify({
+                "hata": "Zaten calisan bir otonom is var; bitmesini bekleyin.",
+                "job_id": _otonom_jobs.active_job_id(),
+            }), 409
+
+        def _worker():
+            # Arka-plan: request/session context YOK (pipeline bunlari kullanmaz).
+            try:
+                # FIX 2(b): poller + sync /otonom ile ORTAK tekil-tarama kilidi.
+                # Non-blocking -> baska tarama suruyorsa isi 'mesgul' bitir (bg
+                # thread'de bloklamak yerine; UI durumdan gorur, deadlock yok).
+                if not _scan_lock.acquire(blocking=False):
+                    _otonom_jobs.finish(jid, sonuc={
+                        "hata": ("Su anda bir mail taramasi zaten suruyor; "
+                                 "bitince tekrar deneyin."),
+                        "mesaj": "Tarama mesgul",
+                        "asamalar": [],
+                    }, status=409)
+                    return
+                try:
+                    body, status = _run_otonom_pipeline(
+                        _mode, _quality,
+                        on_stage=lambda asama: _otonom_jobs.add_stage(jid, asama),
+                    )
+                    _otonom_jobs.finish(jid, sonuc=body, status=status)
+                finally:
+                    _scan_lock.release()
+            except Exception as exc:  # pragma: no cover - beklenmeyen
+                logger.exception("Otonom job (%s) hatasi: %s", jid, exc)
+                _otonom_jobs.fail(jid, hata="Sistem hatasi olustu, lutfen tekrar deneyin.")
+
+        threading.Thread(target=_worker, daemon=True, name=f"otonom-{jid}").start()
+        return jsonify({"job_id": jid, "durum": "calisiyor"}), 202
+
+    @app.route("/otonom/durum/<job_id>", methods=["GET"])
+    @_limit("600 per minute")  # hafif okuma; UI ~2sn'de bir yoklar (=30/dk), bol tolerans
+    def otonom_durum(job_id: str):
+        """Asenkron isin anlik durumu (polling). Bulunamazsa 404."""
+        snap = _otonom_jobs.snapshot(job_id)
+        if snap is None:
+            return jsonify({"hata": "Is bulunamadi (suresi dolmus olabilir)."}), 404
+        return jsonify(snap), 200
+
+    # -----------------------------------------------------------------------
+    # Is Gecmisi sayfasi (kalici — daha once islenen otonom isleri)
+    # -----------------------------------------------------------------------
+    @app.route("/gecmis", methods=["GET"])
+    def gecmis():
+        """Daha once islenen otonom nesting isleri (en yeni ustte)."""
+        kayitlar = _otonom_gecmis.liste(limit=100)
+        return render_template(
+            "gecmis.html",
+            kayitlar=kayitlar,
+            idem_uyari=(request.args.get("idem_uyari") == "1"),
+        )
+
+    @app.route("/gecmis/<kayit_id>", methods=["GET"])
+    def gecmis_detay(kayit_id: str):
+        """Tek bir gecmis isinin DETAYI (asama ozeti + metrikler + auto karar).
+
+        Ayri sayfa — liste icinde acilmaz (sayfayi isgal etmesin). Geri linki
+        /gecmis'e doner. Kayit yoksa listeye yonlendir.
+        """
+        kayit = _otonom_gecmis.get(kayit_id)
+        if kayit is None:
+            return redirect(url_for("gecmis"))
+        # TAM detay (varsa): nesting metrikleri + algoritma karari + fiyat
+        # kirilimi + GLB haritasi. Eski kayitlarda None -> template ozet
+        # gorunumune duser (geriye uyum).
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        return render_template(
+            "gecmis_detay.html", k=kayit, detay=detay,
+            llm_active=llm_active,
+        )
+
+    @app.route("/gecmis/<kayit_id>/geometri/<batch_id>", methods=["GET"])
+    def gecmis_geometri(kayit_id: str, batch_id: str):
+        """Gecmis kaydinin KALICI GLB onizlemesini servis et.
+
+        /geometri/<batch_id>'den farki: LAST_RESULT'a degil, kosu aninda
+        diske yazilmis dosyaya baglidir — restart/yeni kosu ezmez.
+        kayit_id token_hex formati dogrulanir; batch_id store katmaninda
+        sanitize + containment'lidir (path traversal imkansiz).
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        try:
+            # Viewer icin SADELESMIS onizleme varsa onu tercih et (akicilik);
+            # yoksa tam GLB. STL indirme her zaman tam GLB'den (/stl route'u).
+            yol = _otonom_gecmis.glb_path(kayit_id, f"{batch_id}__onizleme")
+            if yol is None:
+                yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D onizleme dosyasi yok.",
+                "preview": "hazir_degil",
+            }), 404
+        return send_file(
+            yol, mimetype="model/gltf-binary",
+            download_name=f"{kayit_id}_{batch_id}.glb",
+        )
+
+    @app.route("/gecmis/<kayit_id>/stl/<batch_id>", methods=["GET"])
+    def gecmis_stl(kayit_id: str, batch_id: str):
+        """Nesting sonucunu tek STL dosyasi olarak INDIR (kullanici istegi).
+
+        Kaynak: kalici GLB (koşu aninda yazilan) — trimesh ile yuklenir,
+        dugum-matrisleri acilarak tek mesh'e birlestirilir, binary STL
+        olarak dondurulur. Hoca dosyayi indirip Magics/istedigi STL
+        goruntuleyicide acar; geometri GLB/3D onizleme ile birebirdir.
+        (Ek disk maliyeti yok — STL istek aninda uretilir.)
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        try:
+            yol = _otonom_gecmis.glb_path(kayit_id, batch_id)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D dosyasi yok — STL uretilemez.",
+            }), 404
+        try:
+            import io
+            import trimesh
+            sahne = trimesh.load(str(yol), file_type="glb")
+            if hasattr(sahne, "to_geometry"):
+                mesh = sahne.to_geometry()
+            else:  # eski trimesh geriye uyum
+                mesh = sahne.dump(concatenate=True)
+            stl_bytes = mesh.export(file_type="stl")
+            if isinstance(stl_bytes, str):
+                stl_bytes = stl_bytes.encode("utf-8")
+        except Exception as exc:
+            logger.warning("STL uretimi hatasi (%s/%s): %s", kayit_id, batch_id, exc)
+            return jsonify({"hata": "STL uretilemedi."}), 500
+        return send_file(
+            io.BytesIO(stl_bytes), mimetype="model/stl", as_attachment=True,
+            download_name=f"nesting_{kayit_id}_{batch_id}.stl",
+        )
+
+    @app.route("/gecmis/<kayit_id>/rehberli-sokum", methods=["GET"])
+    def gecmis_rehberli_sokum(kayit_id: str):
+        """Gecmis kaydinin REHBERLI SOKUM HTML'ini uret (cevrimdisi, tek dosya).
+
+        Kaynak: kalici detay JSON (parca_kimlik/sokum_sirasi/sokum_plani/
+        siparis_ozeti) + kalici GLB. Ikisi de yoksa 404 + aciklayici mesaj —
+        eski kayitlarda (ozellik-oncesi) bu route dogal olarak calismaz.
+        """
+        if not _re.fullmatch(r"[0-9a-f]{6,32}", kayit_id or ""):
+            return jsonify({"hata": "Gecersiz kayit id."}), 404
+        kayit = _otonom_gecmis.get(kayit_id)
+        if kayit is None:
+            return jsonify({"hata": "Kayit bulunamadi."}), 404
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        if detay is None:
+            return jsonify({
+                "hata": "Bu kayit icin tam detay yok (eski kayit) — rehberli sokum uretilemez.",
+            }), 404
+
+        from src.runtime.rehberli_sokum import build_rehberli_sokum_html
+        from src.runtime.sokum_veri import sokum_veri_hazirla
+
+        nesting_results = detay.get("nesting_results") or {}
+        # ILK sokum-verisi tasiyan parti — coklu-parti kayitlarda operator
+        # partiyi ?bid= ile secebilir; verilmezse ilk uygun parti kullanilir.
+        bid = request.args.get("bid")
+        if bid is None or bid not in nesting_results:
+            bid = next(
+                (b for b, nr in nesting_results.items() if nr.get("sokum_sirasi")),
+                next(iter(nesting_results), None),
+            )
+        nr = nesting_results.get(bid) or {}
+        if not nr.get("sokum_sirasi"):
+            return jsonify({
+                "hata": "Bu parti icin sokum sirasi verisi yok — rehberli sokum uretilemez.",
+            }), 404
+
+        try:
+            yol = _otonom_gecmis.glb_path(kayit_id, bid)
+        except ValueError:
+            yol = None
+        if yol is None:
+            return jsonify({
+                "hata": "Bu kayit icin 3D dosyasi yok — rehberli sokum uretilemez.",
+            }), 404
+        glb_bytes = yol.read_bytes()
+
+        veri = sokum_veri_hazirla(kayit, nr)
+        html = build_rehberli_sokum_html(veri, glb_bytes)
+        return Response(html, mimetype="text/html")
+
+    @app.route("/gecmis/arsiv/<dosya>", methods=["GET"])
+    def gecmis_arsiv(dosya: str):
+        """Hoca-paketi ARSIV rehberli-sokum HTML'lerini servis et (salt-okunur).
+
+        Kaynak: data/otonom_gecmis/arsiv/*.html — script-tabanli sampiyon
+        kosularin (gecmis_arsiv_yukle.py) kendi-icinde HTML'leri. Dosya adi
+        siki whitelist regex'inden gecer (yol ayraci/nokta-nokta imkansiz)
+        ve yalnizca arsiv klasoru icinden okunur.
+        """
+        if not _re.fullmatch(r"[A-Za-z0-9_\-]+\.html", dosya or ""):
+            return jsonify({"hata": "Gecersiz arsiv dosyasi adi."}), 404
+        yol = _gecmis_root / "arsiv" / dosya
+        if not yol.is_file():
+            return jsonify({"hata": "Arsiv dosyasi bulunamadi."}), 404
+        return send_file(yol, mimetype="text/html")
+
+    @app.route("/gecmis/<kayit_id>/teklif", methods=["POST"])
+    @_limit("10 per minute")
+    def gecmis_teklif(kayit_id: str):
+        """Gecmis kaydinin KALICI detayindan musteri-yanit taslagi uret.
+
+        /teklif ile ayni govde (_teklif_uret) — fark: LAST_RESULT yerine
+        kalici detay JSON'u kullanilir, yani operator haftalar sonra da
+        ayni kosu icin taslak uretebilir. CSRF global before_request
+        kapsaminda (POST, exempt degil).
+        """
+        if not llm_active or llm_components is None:
+            return jsonify({"hata": "LLM aktif degil.", "taslak": None}), 503
+        detay = _otonom_gecmis.detay_get(kayit_id)
+        if detay is None:
+            return jsonify({
+                "hata": "Bu kayit icin detay verisi yok (eski kayit).",
+                "taslak": None,
+            }), 404
+        return _teklif_uret(detay)
+
+    @app.route("/gecmis/<kayit_id>/sil", methods=["POST"])
+    def gecmis_sil(kayit_id: str):
+        """Bir gecmis kaydini kalici sil.
+
+        "Gecmisten sil -> yeniden islenebilir": kayit otomatik (poller) kaynakli
+        ve mail(ler)in idempotency anahtarlarini tasiyorsa (_idem_keys), bu
+        anahtarlar paylasimli idempotency store'dan da dusurulur -> mail(ler)
+        gozcunun sonraki taramasinda HALA pencerede ise (son ~20 mail) yeni
+        mail gibi yeniden islenir. VARSAYILAN bu ("ben silmissem tekrar
+        islensin" — kullanici karari 2026-07-05); form alani `idem_birak=1`
+        gonderilirse anahtarlara DOKUNULMAZ -> kayit silinir ama mail islendi
+        sayilmaya devam eder (yeniden islenmez). Eski kayitlarda _idem_keys
+        yoksa (ozellik-oncesi veri) mail baglantisi saklanmadigindan yeniden
+        isleme tetiklenemez -- yalniz kayit silinir.
+        """
+        _idem_birak = request.form.get("idem_birak") == "1"
+        kayit = _otonom_gecmis.sil(kayit_id)
+        _idem_uyari = False
+        if kayit is not None and not _idem_birak:
+            for _key in (kayit.get("_idem_keys") or []):
+                try:
+                    _shared_idem_store.unregister(_key)
+                except Exception as exc:
+                    logger.warning(
+                        "gecmis_sil: idempotency anahtari silinemedi (%s): %s",
+                        kayit_id, exc,
+                    )
+                    _idem_uyari = True
+        if _idem_uyari:
+            # Kayit silindi ama idempotency anahtari kaldirilamadi -> mail
+            # yeniden islenmeyebilir; kullaniciya /gecmis listesinde goster.
+            return redirect(url_for("gecmis") + "?idem_uyari=1")
+        return redirect(url_for("gecmis"))
+
+    # -----------------------------------------------------------------------
+    # Mail Ayarlari rotasi (UI'dan gercek gelen-kutusu baglama)
+    # -----------------------------------------------------------------------
+
+    _MAIL_SAGLAYICI_ETIKET = {
+        "hotmail": "Hotmail / Outlook.com", "outlook": "Outlook (Office 365)",
+        "gmail": "Gmail", "fake": "Demo", "imap": "IMAP",
+    }
+
+    def _mail_cfg_path():
+        return _ROOT / "configs" / "mail.local.json"
+
+    def _read_mail_cfg() -> Dict[str, Any]:
+        p = _mail_cfg_path()
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception as exc:
+                logger.warning("mail.local.json okunamadi: %s", exc)
+        return {}
+
+    @app.route("/mail-ayar", methods=["GET"])
+    def mail_ayar():
+        """Mail ayar formunu goster (mevcut config'i doldurur, parola maskeli)."""
+        cfg = _read_mail_cfg()
+        provider = cfg.get("provider") or cfg.get("source") or "fake"
+        return render_template(
+            "mail_ayar.html",
+            kayitli=(bool(cfg) and provider != "fake"),
+            aktif_provider=provider,
+            aktif_saglayici=_MAIL_SAGLAYICI_ETIKET.get(provider, provider),
+            aktif_user=cfg.get("user", ""),
+            aktif_folder=cfg.get("folder", "INBOX"),
+            kaydedildi=(request.args.get("kaydedildi") == "1"),
+        )
+
+    def _mail_cfg_from_form() -> Dict[str, Any]:
+        """Form verisinden mail config kur; bos parola mevcut parolayi korur."""
+        provider = request.form.get("provider", "fake")
+        if provider == "fake":
+            return {"source": "fake"}
+        pw = (request.form.get("password") or "").strip()
+        if not pw:  # bos birakildi -> mevcut parolayi koru
+            pw = _read_mail_cfg().get("password", "")
+        return {
+            "provider": provider,
+            "user": (request.form.get("user") or "").strip(),
+            "password": pw,
+            "folder": (request.form.get("folder") or "INBOX").strip() or "INBOX",
+        }
+
+    @app.route("/mail-ayar", methods=["POST"])
+    def mail_ayar_kaydet():
+        """Form verisini configs/mail.local.json'a yaz (sifre yalniz sunucuda).
+
+        Guvenlik: dosya owner-only (0o600), dizin 0o700 yazilir — app password
+        baska kullanicilarca okunamaz (POSIX). Windows'ta mode kismen yoksayilir
+        ama POSIX deployment'ta (on-prem Linux sunucu) gercek koruma saglar.
+        """
+        cfg = _mail_cfg_from_form()
+        p = _mail_cfg_path()
+        p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        payload = json.dumps(cfg, ensure_ascii=False, indent=2)
+        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        return redirect(url_for("mail_ayar") + "?kaydedildi=1")
+
+    @app.route("/mail-ayar/test", methods=["POST"])
+    @_limit("4 per minute")
+    def mail_ayar_test():
+        """Girilen bilgilerle GERCEK baglanti+login dene (fetch_new degil — o
+        auth hatasinda sessizce bos doner). _connect login firlatirsa yakalanir."""
+        from src.runtime.mail_ingest import make_mail_source, ImapMailbox
+        cfg = _mail_cfg_from_form()
+        if cfg.get("source") == "fake":
+            return jsonify({"ok": True, "mesaj": "Demo modu — örnek mailler kullanılır, gerçek bağlantı yok."})
+        if not cfg.get("user") or not cfg.get("password"):
+            return jsonify({"ok": False, "mesaj": "E-posta ve uygulama şifresi gerekli."})
+        try:
+            src = make_mail_source(cfg)
+            if not isinstance(src, ImapMailbox):
+                return jsonify({"ok": False, "mesaj": "Geçersiz sağlayıcı."})
+            conn = src._connect()  # login dener; auth/baglanti hatasi firlatir
+            try:
+                conn.logout()
+            except Exception:
+                pass
+            return jsonify({"ok": True, "mesaj": "Bağlantı ve giriş başarılı. Gelen kutusu hazır."})
+        except Exception as exc:
+            logger.warning("Mail test baglanti hatasi: %s", exc)
+            return jsonify({"ok": False, "mesaj": f"Bağlanılamadı / giriş reddedildi: {exc}"})
+
+    # -----------------------------------------------------------------------
+    # Plaka (yazici tabani) ayar rotalari — manuel sabit plaka girisi
+    # -----------------------------------------------------------------------
+
+    def _plate_cfg_path():
+        return _plate_root / "configs" / "plate.local.json"
+
+    @app.route("/plaka-ayar", methods=["GET"])
+    def plaka_ayar():
+        """Plaka ayar formunu goster (mevcut config'i doldurur)."""
+        from src.runtime.plate_config import resolve_plate, resolve_no_go
+        w, d, h = resolve_plate(_plate_root)
+        ng = resolve_no_go(_plate_root)  # K-45: yasak bolge plaka ozelligi
+        return render_template(
+            "plaka_ayar.html",
+            aktif_w=("" if w is None else w),
+            aktif_d=("" if d is None else d),
+            aktif_h=("" if h is None else h),
+            ng_x1=("" if ng is None else ng[0][0]),
+            ng_y1=("" if ng is None else ng[0][1]),
+            ng_x2=("" if ng is None else ng[1][0]),
+            ng_y2=("" if ng is None else ng[1][1]),
+            otomatik=(w is None and d is None),
+            kaydedildi=(request.args.get("kaydedildi") == "1"),
+        )
+
+    @app.route("/plaka-ayar", methods=["POST"])
+    def plaka_ayar_kaydet():
+        """Plaka boyutunu configs/plate.local.json'a yaz (MERGE, sifirdan degil).
+
+        Bos birakilirsa (veya 'otomatik' secilirse) formun yonettigi plaka
+        alanlari KALDIRILIR -> plaka parcalardan otomatik turetilir (cekirdek
+        politika). Form yalnizca kendi yonettigi anahtarlara dokunur
+        (width/depth/height/no_go); formda olmayan sozlesme alanlari
+        (no_go_soft, min_clearance_mm, ...) KORUNUR — sifirdan-yazma bu
+        alanlari sessizce siliyordu (2026-08-03 bulgusu, K-56g sozlesmesi).
+        """
+        def _num(key):
+            raw = (request.form.get(key) or "").strip().replace(",", ".")
+            if not raw:
+                return None
+            try:
+                v = float(raw)
+                return v if v > 0 else None
+            except ValueError:
+                return None
+
+        otomatik = request.form.get("otomatik") == "1"
+        w, d, h = (None, None, None) if otomatik else (_num("width_mm"), _num("depth_mm"), _num("height_mm"))
+
+        p = _plate_cfg_path()
+        _FORM_ANAHTARLARI = ("width_mm", "depth_mm", "height_mm", "no_go")
+        try:
+            _eski = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(_eski, dict):
+                _eski = {}
+        except Exception:
+            _eski = {}
+        korunan = {k: v for k, v in _eski.items() if k not in _FORM_ANAHTARLARI}
+
+        if w is None or d is None:
+            # Eksik/otomatik -> form alanlari kaldirilir; form-disi alanlar
+            # varsa dosya onlarla yasar, yoksa silinir (eski davranis).
+            if korunan:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(
+                    json.dumps(korunan, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            else:
+                try:
+                    p.unlink()
+                except FileNotFoundError:
+                    pass
+            return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
+
+        cfg = dict(korunan)
+        cfg["width_mm"] = w
+        cfg["depth_mm"] = d
+        if h is not None:
+            cfg["height_mm"] = h
+        # K-45: yasak bolge (no-go) — 4 alan da gecerliyse yazilir; x1<x2, y1<y2
+        # saglanmazsa sessizce atlanir (maskesiz devam = guvenli taraf).
+        def _ng_num(key):
+            raw = (request.form.get(key) or "").strip().replace(",", ".")
+            try:
+                return float(raw) if raw else None
+            except ValueError:
+                return None
+        _ngv = [_ng_num(k) for k in ("ng_x1", "ng_y1", "ng_x2", "ng_y2")]
+        if None not in _ngv and _ngv[0] < _ngv[2] and _ngv[1] < _ngv[3]:
+            cfg["no_go"] = [[_ngv[0], _ngv[1]], [_ngv[2], _ngv[3]]]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+        return redirect(url_for("plaka_ayar") + "?kaydedildi=1")
+
+    # -----------------------------------------------------------------------
+    # Eksik-bilgi siparisleri: operator adet girisi (/adet-gir)
+    # -----------------------------------------------------------------------
+    # "ZIP ekinde STL var ama mailde adet yok" siparisleri otomatik islenmez
+    # (karar: operatore sor/beklet). Operator burada her STL icin adet girer;
+    # siparis yeniden kurulup pipeline'a sokulur.
+
+    @app.route("/adet-gir", methods=["GET"])
+    def adet_gir():
+        """Bekleyen eksik-bilgi siparislerini listele (her STL icin adet formu)."""
+        bekleyenler = _pending_store.list()
+        return render_template(
+            "adet_gir.html",
+            bekleyenler=bekleyenler,
+            hata=request.args.get("hata"),
+            islenen=request.args.get("islenen"),
+        )
+
+    def _bekleyen_siparisi_kos(order_id, quantities, *, gecmis_kaynak="manuel"):
+        """Bekleyen siparisi kos + P6 ilerleme/hata defteri (sarmalayici).
+
+        Asil is _bekleyen_siparisi_kos_ic'te; burasi yalniz KOSU_ILERLEME
+        yasam dongusunu isler (baslat -> bitti/hata) ki her cikis yolu tek
+        noktadan kayda gecsin.
+        """
+        _meta0 = _pending_store.get(order_id) or {}
+        _n = sum(int(v) for v in (quantities or {}).values() if v)
+        _kosu_ilerleme.baslat(
+            order_id, _n,
+            kaynak=_meta0.get("kaynak_tip") or gecmis_kaynak)
+        # GOZCU PANELI CANLI GORUNUM (2026-08-18 Eren istegi: "is kosarken
+        # dussun, neyi nesting yaptigini da belirtsin"): mail-kaynakli parkli
+        # siparis onay sonrasi kosarken gozcu panelinde "⚙ <siparis> nesting
+        # kosuyor — N parca (dokum)" gorunur (poller'in kendi inflight
+        # alanlari; panel zaten render ediyor). Kosu bitince temizlenir.
+        _p_canli = (app.config.get("MAIL_POLLER")
+                    if _meta0.get("kaynak_tip") == "mail" else None)
+        if _p_canli is not None:
+            try:
+                _dokum = ", ".join(
+                    f"{k}x{v}" for k, v in list((quantities or {}).items())[:6])
+                _p_canli.state.inflight = True
+                _p_canli.state.inflight_detail = (
+                    f"{order_id} nesting kosuyor — {_n} parca ({_dokum})")[:200]
+            except Exception:
+                logger.debug("gozcu canli-gorunum yazilamadi", exc_info=True)
+        try:
+            ok, hata_kodu = _bekleyen_siparisi_kos_ic(
+                order_id, quantities, gecmis_kaynak=gecmis_kaynak)
+        except Exception:
+            _kosu_ilerleme.hata(order_id, "beklenmeyen")
+            raise
+        finally:
+            if _p_canli is not None:
+                try:
+                    _p_canli.state.inflight = False
+                    _p_canli.state.inflight_detail = ""
+                except Exception:
+                    pass
+        if ok:
+            _kosu_ilerleme.bitti(order_id)
+        else:
+            _kosu_ilerleme.hata(order_id, hata_kodu or "bilinmeyen")
+        return ok, hata_kodu
+
+    def _bekleyen_siparisi_kos_ic(order_id, quantities, *, gecmis_kaynak="manuel"):
+        """Bekleyen siparisi verilen adetlerle kur + pipeline kos.
+
+        adet-gir formu VE not-onay sonrasi otomatik devam ORTAK bu makineyi
+        kullanir. Donus: (True, None) basari; (False, hata_kodu) — kodlar
+        adet-gir'in redirect ?hata= degerleriyle ayni.
+        """
+        from scripts.demo_pipeline import RICH_SCENARIO, run_pipeline
+        from src.nesting3d.instances.stl_order_loader import build_instance_from_order
+
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return False, "bulunamadi"
+        order_id = _safe_order_id(order_id)
+
+        stl_map = _pending_store.load_stl_map(order_id)
+        if not stl_map:
+            _pending_store.remove(order_id)
+            return False, "stl_kayip"
+
+        quantities = {k: v for k, v in (quantities or {}).items() if v > 0}
+        if not quantities:
+            return False, "adet_yok"
+
+        # Plaka politikasi (cekirdek) — UI plakasi > siparis container > otomatik.
+        from src.runtime.plate_config import resolve_plate as _resolve_plate_ui
+        _pw, _pd, _ph = _resolve_plate_ui(_plate_root)
+        if not (_pw and _pd):
+            _c = meta.get("container") or {}
+            _pw, _pd, _ph = _c.get("width_mm"), _c.get("depth_mm"), _c.get("height_mm")
+
+        _persist_dir = _ROOT / "data" / "mail_stl" / f"adetgir_{order_id}"
+        _mail_stl_root = (_ROOT / "data" / "mail_stl").resolve()
+        # Ekstra savunma (defense-in-depth): sanitize sonrasi bile path
+        # data/mail_stl disina tasarsa reddet (containment guard).
+        if not _persist_dir.resolve().is_relative_to(_mail_stl_root):
+            logger.warning(
+                "adet-gir: guvenlik ihlali (path containment) order_id=%s", order_id
+            )
+            return False, "guvenlik"
+        res = build_instance_from_order(
+            stl_map, quantities,
+            container_w_mm=_pw, container_d_mm=_pd, container_h_mm=_ph,
+            persist_dir=_persist_dir,
+        )
+        if not res.instance.parts:
+            return False, "parca_yok"
+
+        parts = [
+            {
+                "id": p.id, "name": p.name, "qty": p.qty, "source": "stl",
+                "stl_path": p.stl_path, "width_mm": p.width_mm,
+                "depth_mm": p.depth_mm, "height_mm": p.height_mm,
+                # #17/#19: gercek-hacim doluluk% icin true_fill tasi (None ise
+                # 'hacim eksik' sayilir). wall/family de raporlama icin gecer.
+                "true_fill": p.true_fill, "wall_mm": p.wall_mm, "family": p.family,
+            }
+            for p in res.instance.parts
+        ]
+        order = {
+            "order_id": meta.get("order_id", order_id),
+            "customer": meta.get("customer", ""),
+            "deadline": _normalize_deadline(meta.get("deadline", "")),
+            "priority_class": meta.get("priority_class", 2),
+            "parts": parts,
+            "parse_source": "operator_adet_girisi",
+        }
+        # K-56g: /kisit-onay'da operatorun ONAYLADIGI kisitlar (varsa)
+        # siparisle birlikte akar; alan yoksa order dict bit-ozdes eski sekil.
+        if meta.get("motor_kisitlari"):
+            order["motor_kisitlari"] = meta["motor_kisitlari"]
+        if meta.get("not_adaylari"):
+            order["not_adaylari"] = meta["not_adaylari"]
+        scenario = {**RICH_SCENARIO, "orders": [order]}
+        # adet-giris yolu da aile-yonlendirmeli (F5 asama-2 rollout 2026-07-05)
+        scenario["auto_family_routing"] = True
+        # Kalite politikasi gozcuyle AYNI (_POLL_SCENARIO: auto + nfv max).
+        # Onceden bu yol nfv_quality tasimiyordu -> ayni siparis parktan devam
+        # ederken sessizce "fast"e dusuyordu (politika tutarsizligi; 2026-08-18
+        # Eren karari: bekleyen-onay devami da max kosar).
+        scenario["nfv_quality"] = "max"
+        # Operator mod tercihi (2026-08-18 Eren istegi): aile-yonlendirme
+        # "auto"da heightmap'e itebiliyor; operator park/manuel yolunda
+        # acikca nfv/heightmap ZORLAYABILIR. Meta'da tercih yoksa davranis
+        # birebir eski (auto + aile-yonlendirme).
+        _kmod = str(meta.get("kosu_modu") or "").strip().lower()
+        if _kmod in ("nfv", "heightmap"):
+            scenario["nesting_mode"] = _kmod
+            scenario["auto_family_routing"] = False
+        _kosu_ilerleme.asama(order_id, "yerlesim hesaplaniyor")
+        if _pw and _pd:
+            scenario["container"] = {"width_mm": _pw, "depth_mm": _pd, "height_mm": _ph}
+        else:
+            scenario["container"] = None  # run_pipeline parcalardan otomatik
+
+        try:
+            result = run_pipeline(scenario)
+        except Exception as exc:
+            logger.exception("adet-gir: pipeline hatasi: %s", exc)
+            return False, "pipeline"
+
+        _kosu_ilerleme.asama(order_id, "sonuc isleniyor")
+        result["used_demo"] = False
+        # "Gecmisten sil -> yeniden islensin" (2026-07-05 karari; 2026-08-18
+        # park-yolu bosluk fix'i): mail kaynakli parkli siparislerde mailin
+        # idempotency anahtari meta'dan sonuca tasinir ki gecmis kaydi
+        # _idem_keys tasisin ve gecmis_sil maili yeniden islenebilir kilsin.
+        if meta.get("mail_idem_key"):
+            result["_idem_keys"] = [meta["mail_idem_key"]]
+        # K-61 NOT BILDIRIMI: notlu siparis kosulduysa sonuc ekraninda
+        # "siparis su isteklere gore kosuldu" kutusu icin ozet tasi.
+        if meta.get("not_adaylari"):
+            result["not_istekleri"] = {
+                "order_id": order["order_id"],
+                "satirlar": [{"metin": a.get("satir", ""),
+                              "kaynak": _not_kaynak_etiketi(a)}
+                             for a in meta["not_adaylari"]],
+                "onaylanan": [_kisit_ozet_metni(k, meta["not_adaylari"])
+                              for k in (meta.get("onaylanan_kisitlar") or [])],
+                "uygulandi": bool(meta.get("motor_kisitlari")),
+            }
+        app.config["LAST_RESULT"] = result
+
+        # R1 #5: operator adet-girisi de kalici gecmise duser (denetim izi) —
+        # durum (bitti/kismi/hata) + hata notlari _gecmis_kaydet icinde cozulur.
+        _kayitlar = _gecmis_kaydet(result, mod="auto", nfv_quality="max",
+                                   kaynak=gecmis_kaynak)
+        # GOZCU PANELI SAYACI (2026-08-18 Eren istegi: "onay verince islendi
+        # diye gozuksun auto kisminda"): mail-kaynakli parkli siparis onay
+        # sonrasi kosulunca gozcu panelinde islenmis sayilir + "Son isin
+        # detaylarini gor" linki bu kosuya isaret eder. Manuel yuklemeler
+        # gozcu isi degildir -> sayaca girmez.
+        if meta.get("kaynak_tip") == "mail":
+            try:
+                _p = app.config.get("MAIL_POLLER")
+                if _p is not None:
+                    _p.state.last_processed = 1
+                    _p.state.total_processed += 1
+                if isinstance(_kayitlar, list) and _kayitlar:
+                    app.config["SON_GECMIS_ID"] = _kayitlar[-1].get("id")
+                    app.config["SON_GECMIS_KAYITLAR"] = [
+                        {"id": k.get("id"), "musteri": k.get("musteri"),
+                         "order_ids": k.get("order_ids") or []}
+                        for k in _kayitlar if k.get("id")]
+            except Exception:
+                logger.debug("gozcu sayaci guncellenemedi", exc_info=True)
+
+        # R1 #1 (CRITICAL): bekleyen kayit + STL byte'lari YALNIZ gecerli
+        # nesting sonucu varsa silinir. Sifir-sonucta pending KORUNUR —
+        # operator emegi + kaynak STL'ler imha edilmez, hata gorunur sekilde
+        # /adet-gir'e doner (motor duzeltmesi sonrasi ayni kayittan yeniden
+        # denenebilir).
+        from src.runtime.mail_poller import nesting_produced_output as _npo
+        if not _npo(result):
+            logger.warning(
+                "adet-gir: nesting sonuc uretmedi — bekleyen siparis %s "
+                "KORUNDU (silinmedi), operator yeniden deneyebilir.", order_id,
+            )
+            return False, "nesting"
+
+        # Basariyla islendi -> bekleyen kayidi temizle.
+        _pending_store.remove(order_id)
+        return True, None
+
+    @app.route("/adet-gir/<order_id>", methods=["POST"])
+    def adet_gir_isle(order_id):
+        """Operatorun girdigi adetlerle siparisi yeniden kur + pipeline kos.
+
+        Form: her STL icin 'qty_<ad>' alani. Adet>0 olan STL'ler dahil edilir;
+        bos/0 birakilanlar atlanir (operator parcayi cikarmis sayilir). En az bir
+        gecerli adet yoksa hata ile geri doner. Kosu makinesi ortak:
+        `_bekleyen_siparisi_kos` (not-onay otomatik devam da ayni yolu kullanir).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("adet_gir") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        stl_map = _pending_store.load_stl_map(order_id)
+        quantities: Dict[str, int] = {}
+        for name in stl_map:
+            raw = (request.form.get(f"qty_{name}") or "").strip()
+            if not raw:
+                continue
+            try:
+                q = int(float(raw.replace(",", ".")))
+            except ValueError:
+                continue
+            if q > 0:
+                quantities[name] = q
+
+        ok, hata = _bekleyen_siparisi_kos(order_id, quantities)
+        if not ok:
+            return redirect(url_for("adet_gir") + f"?hata={hata}")
+        return redirect(url_for("sonuc"))
+
+    def _not_onay_devam(order_id):
+        """Onay sonrasi OTOMATIK devam: park edilen siparisi arka planda kos.
+
+        Durum app.config["NOT_KOSU"] uzerinden yuzeye cikar (baloncuk +
+        /kisit-onay + manuel panel poll eder): kosuyor -> bitti | hata:<kod>.
+        """
+        durumlar = app.config.setdefault("NOT_KOSU", {})
+        durumlar[order_id] = "kosuyor"
+        try:
+            meta = _pending_store.get(order_id) or {}
+            q = {k: int(v) for k, v in
+                 (meta.get("not_onay_quantities") or {}).items()}
+            kaynak = ("manuel" if meta.get("kaynak_tip") == "manuel"
+                      else "mail-not-onay")
+            ok, hata = _bekleyen_siparisi_kos(
+                order_id, q, gecmis_kaynak=kaynak)
+            durumlar[order_id] = "bitti" if ok else f"hata:{hata}"
+            logger.info("not-onay devam: %s -> %s", order_id, durumlar[order_id])
+        except Exception:
+            logger.exception("not-onay devam: beklenmeyen hata (%s)", order_id)
+            durumlar[order_id] = "hata"
+
+    @app.route("/manuel-yukle", methods=["POST"])
+    @_limit("10 per minute")
+    def manuel_yukle():
+        """Manuel siparis yukleme: bilgisayardan STL sec (+ opsiyonel not).
+
+        Akis (Eren istegi 2026-08-16, mail akisiyla AYNI agent taramasi):
+        dosyalar alinir -> adetler dosya adi/STL icinden cikarilir (yoksa 1)
+        -> notlar taranir (metin Kapi-0 + .txt eki + parca-ustu kabartma) ->
+        bekleyen depoya park. Not VARSA operator onayina duser (onay sonrasi
+        OTOMATIK kosulur); not YOKSA dogrudan arka planda kosulur. Canli
+        durum /api/kosu-durum'dan izlenir.
+        """
+        import hashlib as _hl
+
+        dosyalar = request.files.getlist("stl_dosyalar")
+        stl_map: Dict[str, bytes] = {}
+        txt_metin = ""
+        for f in dosyalar:
+            ad = Path(f.filename or "").name
+            if not ad:
+                continue
+            if ad.lower().endswith(".stl"):
+                # Anahtar STEM olmali (mail akisiyla ayni sozlesme):
+                # PendingOrderStore.add() ada ".stl" ekleyerek yazar — uzantili
+                # anahtar cift-uzantili dosya ("x.stl.stl") uretiyor ve
+                # load_stl_map anahtari adetlerle eslesmeyip kosuyu
+                # "parca_yok" ile dusuruyordu (2026-08-16 plan7 canli bulgusu).
+                stl_map[Path(ad).stem] = f.read()
+            elif ad.lower().endswith(".txt") and not txt_metin:
+                try:
+                    txt_metin = f.read().decode("utf-8", errors="replace")
+                except Exception:
+                    txt_metin = ""
+        if not stl_map:
+            return jsonify({"durum": "hata",
+                            "mesaj": "Hic .stl dosyasi secilmedi."}), 400
+
+        not_metni = (request.form.get("not_metni") or "").strip()
+        musteri = (request.form.get("musteri") or "").strip() or "Manuel"
+
+        # Adetler: dosya adi / STL binary-header (mail yoluyla ayni kurallar);
+        # cikarilamayan 1 kabul edilir (operator kisit-onay/adet-gir'de duzeltir).
+        from src.runtime.mail_ingest import _qty_from_stl_name_and_bytes
+        quantities: Dict[str, int] = {}
+        for nm, blob in stl_map.items():
+            try:
+                q, _src, celiski = _qty_from_stl_name_and_bytes(nm, blob)
+            except Exception:
+                q, celiski = None, None
+            quantities[Path(nm).stem] = int(q) if (q and not celiski) else 1
+
+        # .txt eki / not metnindeki "parca N adet" satirlari dosya-adi
+        # cikarimini EZER — mail akisiyla ayni parser (plan7 gercek deseni:
+        # STL adlari adetsiz, adetler ayri txt listesinde; 2026-08-16).
+        try:
+            from src.runtime.quantity_text_parser import parse_quantities
+            _metin_adet = parse_quantities(
+                "\n".join(t for t in (txt_metin, not_metni) if t))
+        except Exception:
+            logger.warning("manuel-yukle: metin adet parse atlandi",
+                           exc_info=True)
+            _metin_adet = {}
+        if _metin_adet:
+            _stems = {st.casefold(): st for st in quantities}
+            for ad, q in _metin_adet.items():
+                st = _stems.get(str(ad).casefold())
+                if st and int(q) > 0:
+                    quantities[st] = int(q)
+
+        # NOT TARAMASI — mail akisiyla ayni agent hatti:
+        # (1) Kapi-0 deterministik metin taramasi (not metni + .txt dosyasi)
+        from src.runtime.note_detector import extract_note_candidates
+        _scan = extract_note_candidates(
+            not_metni, txt_metin, sorted(stl_map))
+        adaylar = list(_scan.get("adaylar") or [])
+        # (2) parca-ustu kabartma (kanal-3; config-anahtarli, hata sessiz)
+        try:
+            from src.runtime.kabartma import kabartma_acik, kabartma_not_adaylari
+            if kabartma_acik():
+                adaylar += kabartma_not_adaylari(stl_map)
+        except Exception:
+            logger.warning("manuel-yukle: kabartma taramasi atlandi",
+                           exc_info=True)
+
+        _imza = "|".join(f"{nm}:{len(stl_map[nm])}" for nm in sorted(stl_map))
+        _hex = _hl.sha256(_imza.encode("utf-8")).hexdigest()[:8].upper()
+        order_id = f"MAN-{_hex}"
+
+        from src.runtime.not_onay import NOT_ONAY_REASON
+        try:
+            park_id = _pending_store.add(
+                order_id=order_id,
+                customer=musteri,
+                sender="manuel-yukleme",
+                deadline="",
+                priority_class=2,
+                konu="Manuel yukleme",
+                stl_map=stl_map,
+                review_reason=NOT_ONAY_REASON if adaylar else "manuel_yukleme",
+                not_adaylari=adaylar or None,
+                govde_metni=not_metni or None,
+            )
+            # Operator mod tercihi (opsiyonel; bos = auto/aile-yonlendirme)
+            _kmod = (request.form.get("kosu_modu") or "").strip().lower()
+            _pending_store.update_meta(
+                park_id,
+                not_onay_quantities=quantities,
+                kaynak_tip="manuel",
+                kosu_modu=_kmod if _kmod in ("nfv", "heightmap") else None,
+            )
+        except Exception as exc:
+            logger.exception("manuel-yukle: kayit hatasi: %s", exc)
+            return jsonify({"durum": "hata",
+                            "mesaj": "Siparis kaydedilemedi."}), 500
+
+        if adaylar:
+            # Onay kapisi: baloncuk + Constraint Approval'a duser.
+            return jsonify({
+                "durum": "onay_bekliyor",
+                "order_id": park_id,
+                "stl_sayisi": len(stl_map),
+                "notlar": [{"satir": a.get("satir", ""),
+                            "kaynak": _not_kaynak_etiketi(a)}
+                           for a in adaylar],
+            })
+
+        # Not yok -> dogrudan arka planda kos (durum canli izlenir).
+        import threading
+        threading.Thread(
+            target=_not_onay_devam, args=(park_id,), daemon=True,
+        ).start()
+        return jsonify({
+            "durum": "kosuyor",
+            "order_id": park_id,
+            "stl_sayisi": len(stl_map),
+            "notlar": [],
+        })
+
+    @app.route("/api/kosu-durum/<order_id>", methods=["GET"])
+    def api_kosu_durum(order_id):
+        """Onay-sonrasi otomatik kosunun canli durumu (UI poll eder)."""
+        order_id = _safe_order_id(order_id)
+        durum = (app.config.get("NOT_KOSU") or {}).get(order_id)
+        bekliyor = _pending_store.get(order_id) is not None
+        return jsonify({"order_id": order_id, "kosu": durum,
+                        "bekliyor": bekliyor})
+
+    @app.route("/api/kosu-ilerleme", methods=["GET"])
+    def api_kosu_ilerleme():
+        """P6: aktif kosularin tahmini ilerlemesi + son kosu hatalari.
+
+        base.html baloncugu periyodik yoklar: aktifler ilerleme cubugu,
+        hatalar kalici kirmizi baloncuk olur. Gozcu (poller) hatasi da
+        buradan yuzeye cikar (mail tarafi patlarsa da operator gorur).
+        """
+        veri = {
+            "aktif": _kosu_ilerleme.aktifler(),
+            "hatalar": _kosu_ilerleme.son_hatalar(),
+        }
+        try:
+            _p = app.config.get("MAIL_POLLER")
+            _le = _p.state.snapshot().get("last_error") if _p else None
+            if _le:
+                veri["gozcu_hatasi"] = str(_le)[:300]
+        except Exception:
+            pass
+        return jsonify(veri)
+
+    # -----------------------------------------------------------------------
+    # K-56g Kisit Onayi: siparis notlarindan uretilen kisit onerilerinin
+    # operator onay yuzeyi. Onaylanan kisitlar pending meta'ya yazilir;
+    # /adet-gir islerken order'a motor_kisitlari olarak gecer. HICBIR kisit
+    # onaysiz uygulanmaz (kisit_modu=otomatik yolu ayri — o yalniz
+    # yuksek-guvenli kisitlari uygular ve raporda gorunur).
+    # -----------------------------------------------------------------------
+
+    @app.route("/kisit-onay", methods=["GET"])
+    def kisit_onay_liste():
+        """Notlu bekleyen siparisleri listele (otomatik/manuel AYRIK).
+
+        Otomatik grup = mail akisinin not-onay parki (adetler belli; onay
+        sonrasi OTOMATIK kosulur). Manuel grup = adet bekleyen / elle
+        yuklenen isler (onay sonrasi Adet Girisi'nden kosulur).
+        """
+        from src.runtime.not_onay import NOT_ONAY_REASON
+        bekleyenler = [m for m in _pending_store.list()
+                       if m.get("not_adaylari")]
+        oto = [m for m in bekleyenler
+               if m.get("review_reason") == NOT_ONAY_REASON
+               and m.get("kaynak_tip") != "manuel"]
+        manuel = [m for m in bekleyenler if m not in oto]
+        return render_template(
+            "kisit_onay.html",
+            notlu_bekleyenler=bekleyenler,
+            oto_bekleyenler=oto,
+            manuel_bekleyenler=manuel,
+            kosular=app.config.get("NOT_KOSU") or {},
+            detay=None, oneriler=None, analiz_hata=None,
+            n_ornekleme=0,
+            hata=request.args.get("hata"),
+            kaydedildi=request.args.get("kaydedildi"),
+            kosuluyor=request.args.get("kosuluyor"),
+            silindi=request.args.get("silindi"),
+        )
+
+    @app.route("/kisit-onay/<order_id>", methods=["GET"])
+    def kisit_onay_detay(order_id):
+        """Tek siparis: notlar + canli kisit onerisi (oylama+hakem) + form.
+
+        Oneriler meta'ya `kisit_onerileri` olarak KAYDEDILIR — POST tarafi
+        LLM'i yeniden cagirmadan ayni listeden calisir (determinizm).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None or not meta.get("not_adaylari"):
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        # 2026-08-16 "Incele bug" fix: LLM analizi burada SENKRON kosuluyordu
+        # (olculen 15-60sn) — baloncuktan tiklayan operator "hicbir sey
+        # olmuyor" saniyordu. Artik sayfa ANINDA acilir; analiz yoksa sablon
+        # "analiz suruyor" gosterip /api/kisit-analiz'i cagirir, sonuc meta'ya
+        # kaydedildigi icin reload deterministik formu basar.
+        analiz_bekliyor = "kisit_onerileri" not in meta
+        oneriler = meta.get("kisit_onerileri")
+        return render_template(
+            "kisit_onay.html",
+            notlu_bekleyenler=None,
+            oto_bekleyenler=None, manuel_bekleyenler=None,
+            kosular={}, kosuluyor=None,
+            detay=meta, oneriler=oneriler, analiz_hata=None,
+            analiz_bekliyor=analiz_bekliyor,
+            n_ornekleme=meta.get("kisit_n_ornekleme", 0),
+            hata=None, kaydedildi=None,
+        )
+
+    @app.route("/api/kisit-analiz/<order_id>", methods=["GET"])
+    @_limit("10 per minute")
+    def kisit_analiz_api(order_id):
+        """Notlari LLM ile analiz et, onerileri meta'ya kaydet (JSON).
+
+        kisit_onay_detay'in eski senkron govdesi — sayfa acilisini bloklamasin
+        diye API'ye tasindi (2026-08-16). Basarili analizde kisit_onerileri +
+        kisit_n_ornekleme meta'ya yazilir; POST tarafi ayni listeden calisir.
+        ?force=1 mevcut onerileri yeniden uretir.
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None or not meta.get("not_adaylari"):
+            return jsonify({"analiz_hata": "Siparis bulunamadi."}), 404
+        order_id = _safe_order_id(order_id)
+        if "kisit_onerileri" in meta and request.args.get("force") != "1":
+            return jsonify({
+                "oneriler": meta.get("kisit_onerileri") or [],
+                "analiz_hata": None,
+                "n_ornekleme": meta.get("kisit_n_ornekleme", 0),
+            }), 200
+
+        kisit_role = (llm_components or {}).get("kisit_role")
+        if kisit_role is None:
+            return jsonify({
+                "analiz_hata": "LLM aktif degil (Ollama kapali olabilir)",
+            }), 200
+        try:
+            from src.runtime.note_pipeline import analyze_order_notes
+            sahte_order = {
+                "order_id": order_id,
+                "not_adaylari": meta["not_adaylari"],
+                "stl_names": meta.get("stl_names") or [],
+                "container": meta.get("container"),
+            }
+            sahte_order = analyze_order_notes(
+                sahte_order, kisit_role,
+                (llm_components or {}).get("kisit_hakem_role"),
+                mode="golge",  # oneri uretimi — uygulama karari operatorde
+            )
+            na = sahte_order.get("not_analizi") or {}
+            if na.get("hata"):
+                return jsonify({"analiz_hata": na["hata"]}), 200
+            if na.get("injection_suphesi"):
+                return jsonify({
+                    "analiz_hata": ("injection suphesi — oneriler guvenilmez, "
+                                    "maili elle inceleyin"),
+                }), 200
+            oneriler = na.get("kisitlar") or []
+            n_orn = na.get("n_ornekleme", 0)
+            _pending_store.update_meta(
+                order_id, kisit_onerileri=oneriler,
+                kisit_n_ornekleme=n_orn)
+            return jsonify({
+                "oneriler": oneriler, "analiz_hata": None,
+                "n_ornekleme": n_orn,
+            }), 200
+        except Exception as exc:
+            logger.exception("kisit-analiz: analiz hatasi: %s", exc)
+            return jsonify({"analiz_hata": str(exc)}), 200
+
+    @app.route("/kisit-onay/<order_id>", methods=["POST"])
+    def kisit_onay_isle(order_id):
+        """Secili onerileri derleyip meta.motor_kisitlari'na kaydet.
+
+        LLM YENIDEN CAGRILMAZ: oneriler GET aninda meta'ya yazilan
+        `kisit_onerileri` listesinden okunur; form yalniz indeks secer.
+        Hicbir secim yoksa motor_kisitlari SILINIR (onay geri alma).
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+
+        oneriler = meta.get("kisit_onerileri") or []
+        secili = [k for i, k in enumerate(oneriler)
+                  if request.form.get(f"onay_{i}")]
+
+        from src.runtime.constraint_compiler import compile_constraints
+        from src.runtime.note_pipeline import URETIM_N_ORIENTATIONS
+        cont = meta.get("container") or {}
+        derlenen = compile_constraints(
+            secili, meta.get("stl_names") or [],
+            plate_w_mm=cont.get("width_mm"), plate_d_mm=cont.get("depth_mm"),
+            n_orientations=URETIM_N_ORIENTATIONS,
+        )
+        # Operator mod tercihi (opsiyonel; bos/auto = aile-yonlendirme)
+        _kmod = (request.form.get("kosu_modu") or "").strip().lower()
+        _pending_store.update_meta(
+            order_id,
+            motor_kisitlari=derlenen.motor_kisitlari or None,
+            onaylanan_kisitlar=secili or None,
+            kosu_modu=_kmod if _kmod in ("nfv", "heightmap") else None,
+        )
+        logger.info(
+            "kisit-onay: %s icin %d kisit onaylandi (motor: %s)",
+            order_id, len(secili),
+            list((derlenen.motor_kisitlari or {}).keys()) or "yok")
+
+        # NOT-ONAY DEVAMI (2026-08-16): mail akisinin park ettigi siparis
+        # (adetleri belli) onay aninda OTOMATIK kosulur — operator ekstra
+        # adim atmaz; durum baloncukta + listede "kosuluyor" olarak gorunur.
+        if meta.get("not_onay_quantities"):
+            import threading
+            threading.Thread(
+                target=_not_onay_devam, args=(order_id,), daemon=True,
+            ).start()
+            return redirect(url_for("kisit_onay_liste")
+                            + f"?kaydedildi=1&kosuluyor={order_id}")
+        return redirect(url_for("kisit_onay_liste") + "?kaydedildi=1")
+
+    @app.route("/kisit-onay/<order_id>/sil", methods=["POST"])
+    def kisit_onay_sil(order_id):
+        """Siparisin ONAY BEKLEME durumunu kaldir (yalniz kuyruktan cikar).
+
+        SADECE not/oneri alanlari meta'dan dusurulur — siparisin kendisi,
+        STL'leri ve varsa onaylanmis kisitlari AYNEN KALIR (siparis
+        silme isi /gecmis ve /siparisler'de; burasi degil). Liste filtresi
+        not_adaylari'na baktigi icin kayit bu sayfadan kaybolur; siparis
+        Adet Girisi'nden normal islenebilir.
+        """
+        meta = _pending_store.get(order_id)
+        if meta is None:
+            return redirect(url_for("kisit_onay_liste") + "?hata=bulunamadi")
+        order_id = _safe_order_id(order_id)
+        _pending_store.update_meta(
+            order_id,
+            not_adaylari=None, kisit_onerileri=None,
+            kisit_n_ornekleme=None, govde_metni=None,
+        )
+        logger.info("kisit-onay: %s onay bekleme kuyrugundan cikarildi "
+                    "(siparis + STL'ler duruyor)", order_id)
+        return redirect(url_for("kisit_onay_liste") + "?silindi=1")
+
+    # -----------------------------------------------------------------------
+    # Oncelik Plani rotasi (deterministik, LLM gerektirmez)
+    # -----------------------------------------------------------------------
+
+    @app.route("/oncelik", methods=["GET"])
+    def oncelik():
+        """Cok-sirketli siparis onceliklendirme + parti plani + termin/kapasite uyarilari.
+
+        Tamamen deterministik: Ollama kapali olsa da calisir.
+        today = date(2026, 6, 13) SABiT — demo tutarliligini garantiler.
+        """
+        from datetime import date as _date
+        from src.scheduling.models import Order as _Order, Capacity as _Capacity
+        from src.scheduling.rules import PriorityConfig as _PriorityConfig, rank_orders as _rank_orders
+        from src.scheduling.batcher import build_batches as _build_batches
+        from src.scheduling.feasibility import check_feasibility as _check_feasibility
+        from src.scheduling.report import build_report as _build_report
+
+        _today = _date(2026, 6, 13)
+
+        _orders = [
+            _Order("ORD-FORD-001",    "FORD",     "motor-govde-A",       20, 8500.0,  "2026-06-18", 1),
+            _Order("ORD-FORD-002",    "FORD",     "dirsek-traversi-B",   12, 4200.0,  "2026-06-25", 2),
+            _Order("ORD-BAYKAR-001",  "BAYKAR",   "uc-govde-kanat",       8, 6800.0,  "2026-06-20", 1),
+            _Order("ORD-BAYKAR-002",  "BAYKAR",   "aviyonik-braket",     15, 3100.0,  "2026-07-05", 3),
+            _Order("ORD-ASELSAN-001", "ASELSAN",  "radar-muhafaza",       6, 9200.0,  "2026-06-22", 1),
+            _Order("ORD-ASELSAN-002", "ASELSAN",  "anten-tasiyi",        10, 5400.0,  "2026-07-10", 2),
+            _Order("ORD-ASELSAN-003", "ASELSAN",  "elektronik-kutu",      5, 2800.0,  "2026-07-15", 3),
+            _Order("ORD-TUSAS-001",   "TUSAS",    "kanat-nervuru",       18, 11000.0, "2026-06-19", 1),
+            _Order("ORD-TUSAS-002",   "TUSAS",    "iniş-takimi-bağlantı", 7, 7300.0,  "2026-06-28", 2),
+            _Order("ORD-TUSAS-003",   "TUSAS",    "yakıt-hücresi-kapak",  9, 4600.0,  "2026-07-08", 3),
+            _Order("ORD-ROKETSAN-001","ROKETSAN", "firlatici-govde",      4, 13500.0, "2026-06-21", 1),
+            _Order("ORD-ROKETSAN-002","ROKETSAN", "stabilizator-kanat",  11, 6100.0,  "2026-07-02", 2),
+            _Order("ORD-ROKETSAN-003","ROKETSAN", "guvdeli-eklenti",      6, 3900.0,  "2026-07-18", 3),
+        ]
+
+        _capacity = _Capacity(
+            num_machines=1,
+            batch_duration_hours=8,
+            shifts_per_day=1,
+            max_volume_per_batch_cm3=20000.0,
+        )
+
+        for o in _orders:
+            o.validate(_today)
+        _capacity.validate()
+
+        _ranked = _rank_orders(_orders, _PriorityConfig.default(), _today)
+        _batches = _build_batches(_ranked, _capacity, allow_mixing=False)
+        _warnings = _check_feasibility(_batches, _capacity, _today)
+        _report = _build_report(_ranked, _batches, _warnings, _today)
+
+        return render_template("oncelik.html", report=_report)
+
+    # -----------------------------------------------------------------------
+    # Siparis havuzu rotalar
+    # -----------------------------------------------------------------------
+    # CSRF (Bulgu 8): /siparisler, /siparisler/csv, /siparisler/sil state-mutating
+    # form rotalaridir. flask-wtf CSRF token eklenmesi template degisikliği
+    # gerektirir ve localhost demo'yu kırabilir.
+    # ERTELENDI: localhost demo — SaaS fazinda flask-wtf CSRFProtect ekle.
+
+    @app.route("/demo-not-yukle", methods=["POST"])
+    def demo_not_yukle():
+        """Tek tikla NOTLU demo siparislerini yukle (hoca-demo vitrini).
+
+        scripts.demo_not_ornegi_seed.tohumla_hepsi -> bekleyen depoya iki
+        notlu siparis (basit 'dik' notu + hocanin gercek kupon notu);
+        ana sayfa bildirim kutusu aninda dolar. Idempotent (ustune yazar).
+        """
+        try:
+            from scripts.demo_not_ornegi_seed import tohumla_hepsi
+            eklenen = tohumla_hepsi(_pending_store)
+            adlar = ", ".join(sid for sid, _n in eklenen)
+            logger.info("demo-not-yukle: %s tohumlandi", adlar)
+            return redirect(url_for("index"))
+        except Exception as exc:
+            logger.exception("demo-not-yukle hatasi: %s", exc)
+            return redirect(url_for("siparisler",
+                                    errors=f"Demo yuklenemedi: {exc}"))
+
+    @app.route("/siparisler", methods=["GET"])
+    def siparisler():
+        """Havuz sayfasi: siparis tablosu + manuel form + CSV yukleme."""
+        from src.webapp.orders_store import load_orders
+
+        _opath = app.config.get("ORDERS_PATH")
+        orders = load_orders(_opath)
+
+        # Toplam parca sayisi ve hacim ozeti her siparis icin
+        summaries = []
+        for o in orders:
+            parts = o.get("parts", [])
+            n_parts = sum(p.get("qty", 1) for p in parts)
+            vol_cm3 = sum(
+                p.get("width_mm", 0) * p.get("depth_mm", 0)
+                * p.get("height_mm", 0) / 1000.0 * p.get("qty", 1)
+                for p in parts
+            )
+            summaries.append({
+                "order_id": o["order_id"],
+                "customer": o.get("customer", ""),
+                "deadline": o.get("deadline", ""),
+                "priority_class": o.get("priority_class", 2),
+                "n_parts": n_parts,
+                "vol_cm3": vol_cm3,
+            })
+
+        flash_errors = request.args.getlist("errors")
+        flash_info = request.args.get("info", "")
+        return render_template(
+            "siparisler.html",
+            summaries=summaries,
+            errors=flash_errors,
+            info=flash_info,
+        )
+
+    @app.route("/siparisler", methods=["POST"])
+    def siparisler_ekle():
+        """Manuel form ile yeni siparis ekle."""
+        from src.webapp.orders_store import (
+            add_order, load_orders, parse_parts_text,
+        )
+
+        order_id = (request.form.get("order_id") or "").strip()
+        customer = (request.form.get("customer") or "").strip()
+        deadline = (request.form.get("deadline") or "").strip()
+        priority_str = (request.form.get("priority_class") or "2").strip()
+        parts_text = (request.form.get("parts_text") or "").strip()
+
+        errors: List[str] = []
+
+        if not order_id:
+            errors.append("Siparis ID bos olamaz (zorunlu alan).")
+        if not customer:
+            errors.append("Musteri adi bos olamaz.")
+        if not deadline:
+            errors.append("Termin tarihi bos olamaz.")
+        if not parts_text:
+            errors.append("En az bir parca satiri girilmeli.")
+
+        try:
+            priority = int(priority_str)
+        except ValueError:
+            priority = 2
+
+        parts: List[Dict[str, Any]] = []
+        if parts_text and not errors:
+            parts, part_errors = parse_parts_text(parts_text)
+            for line_no, msg in part_errors:
+                errors.append(f"Satir {line_no}: {msg}")
+            if not parts and not part_errors:
+                errors.append("Parca listesi bos — en az bir gecerli satir gerekli.")
+            elif parts and part_errors:
+                # Kismen gecerli: sadece gecerli parcalari kullan, hatalari raporla
+                pass
+
+        if errors:
+            _opath = app.config.get("ORDERS_PATH")
+            orders = load_orders(_opath)
+            summaries = _build_summaries(orders)
+            return render_template(
+                "siparisler.html",
+                summaries=summaries,
+                errors=errors,
+                info="",
+            ), 400
+
+        new_order = {
+            "order_id": order_id,
+            "customer": customer,
+            "deadline": deadline,
+            "priority_class": priority,
+            "parts": parts,
+        }
+
+        _opath = app.config.get("ORDERS_PATH")
+        try:
+            add_order(new_order, _opath)
+        except ValueError as exc:
+            orders = load_orders(_opath)
+            summaries = _build_summaries(orders)
+            return render_template(
+                "siparisler.html",
+                summaries=summaries,
+                errors=[f"Siparis eklenemedi: {exc} — zaten mevcut bir siparis ID."],
+                info="",
+            ), 400
+
+        return redirect(url_for("siparisler", info="Siparis eklendi."))
+
+    @app.route("/siparisler/sil/<order_id>", methods=["POST"])
+    def siparisler_sil(order_id: str):
+        """Havuzdan siparis sil."""
+        from src.webapp.orders_store import delete_order
+
+        _opath = app.config.get("ORDERS_PATH")
+        try:
+            delete_order(order_id, _opath)
+        except ValueError as exc:
+            logger.warning("Siparis sil hatasi: %s", exc)
+        return redirect(url_for("siparisler"))
+
+    @app.route("/siparisler/sablon.csv", methods=["GET"])
+    def siparisler_sablon():
+        """Ornek CSV sablonu indir."""
+        header = "order_id,customer,deadline,priority,part_name,width_mm,depth_mm,height_mm,qty\n"
+        example = "ORD-ORNEK-001,MUSTERI-ADI,2027-01-15,1,parca_adi,80,60,40,2\n"
+        content = header + example
+        return Response(
+            content,
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": "attachment; filename=siparis_sablon.csv"
+            },
+        )
+
+    @app.route("/siparisler/csv", methods=["POST"])
+    def siparisler_csv():
+        """CSV dosyasi yukle; gecerli satirlari ekle, hatalilari raporla."""
+        from src.webapp.orders_store import (
+            add_order, load_orders, parse_csv_upload,
+        )
+
+        _opath = app.config.get("ORDERS_PATH")
+        existing = load_orders(_opath)
+        existing_ids = {o["order_id"] for o in existing}
+
+        csv_file = request.files.get("csv_file")
+        if not csv_file or not csv_file.filename:
+            orders = load_orders(_opath)
+            summaries = _build_summaries(orders)
+            return render_template(
+                "siparisler.html",
+                summaries=summaries,
+                errors=["CSV dosyasi secilmedi."],
+                info="",
+            ), 400
+
+        try:
+            csv_text = csv_file.read().decode("utf-8")
+        except Exception as exc:
+            orders = load_orders(_opath)
+            summaries = _build_summaries(orders)
+            return render_template(
+                "siparisler.html",
+                summaries=summaries,
+                errors=[f"CSV okunamadi: {exc}"],
+                info="",
+            ), 400
+
+        new_orders, parse_errors = parse_csv_upload(csv_text, existing_ids)
+
+        added = 0
+        add_errors: List[str] = []
+        for order in new_orders:
+            try:
+                add_order(order, _opath)
+                added += 1
+            except ValueError as exc:
+                add_errors.append(str(exc))
+
+        all_errors = [f"Satir {ln}: {msg}" for ln, msg in parse_errors] + add_errors
+
+        info_msg = f"{added} siparis eklendi."
+        if parse_errors or add_errors:
+            info_msg += f" {len(all_errors)} hata var (asagida listelendi)."
+
+        orders = load_orders(_opath)
+        summaries = _build_summaries(orders)
+        return render_template(
+            "siparisler.html",
+            summaries=summaries,
+            errors=all_errors,
+            info=info_msg,
+        )
+
+
+def _build_summaries(orders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Siparis listesinden goruntu ozeti uretir."""
+    summaries = []
+    for o in orders:
+        parts = o.get("parts", [])
+        n_parts = sum(p.get("qty", 1) for p in parts)
+        vol_cm3 = sum(
+            p.get("width_mm", 0) * p.get("depth_mm", 0)
+            * p.get("height_mm", 0) / 1000.0 * p.get("qty", 1)
+            for p in parts
+        )
+        summaries.append({
+            "order_id": o["order_id"],
+            "customer": o.get("customer", ""),
+            "deadline": o.get("deadline", ""),
+            "priority_class": o.get("priority_class", 2),
+            "n_parts": n_parts,
+            "vol_cm3": vol_cm3,
+        })
+    return summaries
+
+
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _fail_open_admin_warning(host: str, admin_password: str) -> Optional[str]:
+    """FIX 3: host loopback-disi + ADMIN_PASSWORD bos ise uyari metni doner.
+
+    Aksi halde (loopback bind VEYA parola set) None doner — baslatmayi
+    engellemez, sadece sessiz-acik-admin durumunu gorunur kilar.
+    """
+    if host not in _LOOPBACK_HOSTS and not admin_password:
+        return (
+            "GUVENLIK: ADMIN_PASSWORD BOS ve sunucu agdan erisilebilir bind "
+            f"({host}) ile baslatiliyor -- tum state-degistiren rotalar "
+            "(mail-ayar dahil) KIMLIKSIZ erisilebilir. ADMIN_PASSWORD ortam "
+            "degiskenini ayarlayin veya host'u 127.0.0.1'de birakin."
+        )
+    return None
+
+
+def _startup_health_report(app: Flask, host: str = "127.0.0.1") -> None:
+    """Sunucu acilirken konsola net 'demo hazir mi' raporu bas (canli probe).
+
+    Demo'dan ONCE Ollama kapaliysa/model cekilmemisse burada gorunur — demo
+    sirasinda surpriz olmaz. Probe asla baslatmayi engellemez (sadece uyarir).
+    """
+    _admin_pw = os.environ.get("ADMIN_PASSWORD", "")
+    _warn = _fail_open_admin_warning(host, _admin_pw)
+    if _warn:
+        logger.warning(_warn)
+        print("!" * 60)
+        print(f"  {_warn}")
+        print("!" * 60)
+
+    llm = app.config.get("LLM_COMPONENTS")
+    print("-" * 60)
+    if not llm:
+        print("  LLM: DEVRE DISI (configs/llm.local.json yok/yuklenemedi).")
+        print("  -> Nesting calisir; asistan/teklif/aciklama calismaz.")
+        print("-" * 60)
+        return
+    provider = llm.get("health_provider")
+    checker = getattr(provider, "health_check", None)
+    if not callable(checker):
+        print("  LLM: aktif (saglayici probe desteklemiyor).")
+        print("-" * 60)
+        return
+    try:
+        ok, detail = checker()
+    except Exception as exc:  # noqa: BLE001
+        ok, detail = False, str(exc)
+    if ok:
+        print(f"  LLM HAZIR ✓  {detail}")
+    else:
+        print(f"  ⚠ LLM PROBE BASARISIZ: {detail}")
+        print("  -> Demo asistan/teklif ozellikleri calismayabilir.")
+        print("  -> Durumu sonra kontrol: http://127.0.0.1:8765/health")
+    print("-" * 60)
+
+
+def _main() -> None:
+    """Sunucuyu dogrudan baslatir (python -m src.webapp.app)."""
+    # Windows konsolu cp1254/cp437 olabilir; '✓'/'⚠' gibi karakterler
+    # UnicodeEncodeError ile sunucuyu COKERTIR. Cikti kodlamasini UTF-8'e
+    # (hata toleranslı) sabitle — boylece her kod sayfasinda guvenli.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 — reconfigure yoksa sessizce gec
+            pass
+    logging.basicConfig(level=logging.INFO)
+    app = create_app(testing=False, llm_enabled=True)
+    # FLASK_HOST varsayilan 127.0.0.1 (loopback) -- LAN'a acmak icin bilincli
+    # env ayari gerekir; FIX 3 bu durumda ADMIN_PASSWORD bossa uyarir.
+    _host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    _startup_health_report(app, host=_host)
+    # threaded=True: asenkron otonom job thread'i koşarken polling istekleri
+    # (/otonom/durum) ve diger rotalar bloke olmadan islenebilsin.
+    app.run(host=_host, port=8765, debug=False, threaded=True)
+
+
+if __name__ == "__main__":
+    _main()

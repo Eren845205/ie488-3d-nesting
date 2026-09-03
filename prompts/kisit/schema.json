@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["kisitlar", "injection_suphesi"],
+  "properties": {
+    "kisitlar": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tip", "parca_adi", "guven", "gerekce"],
+        "properties": {
+          "tip": {
+            "type": "string",
+            "enum": ["orientation_lock", "pinned_position", "pinned_orientation", "belirsiz"]
+          },
+          "parca_adi": {"type": ["string", "null"]},
+          "deger": {"type": ["object", "null"]},
+          "guven": {"type": "string", "enum": ["yuksek", "orta", "dusuk"]},
+          "gerekce": {"type": "string"},
+          "kaynak_satir": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "injection_suphesi": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

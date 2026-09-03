@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Plate Setup &mdash; NESTING.FORGE{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Plaka Ayarı &mdash; Yazıcı Tabanı (mm)</div>
+    <p style="font-size:14px; color:var(--color-text-muted); margin-top:4px;">
+        Üç boyutlu yazıcınızın <strong>gerçek baskı tablası</strong> boyutunu girin.
+        Plaka boyutu sonucu doğrudan etkiler (yükseklik, doluluk, süre) — bu yüzden
+        gerçek makinenizin tabanını girmeniz önerilir.
+    </p>
+
+    {% if otomatik %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#fff8e6; border:1px solid #f0d98c; font-size:13px;">
+        Şu an <strong>Otomatik plaka</strong> kullanılıyor — sistem her sipariş için
+        plakayı parçalara göre belirler (en büyük parça + küçük pay). Sabit plaka
+        girmek için aşağıdaki alanları doldurun.
+    </div>
+    {% else %}
+    <div style="margin:12px 0; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:13px;">
+        ✓ Sabit plaka aktif: <strong>{{ aktif_w }} &times; {{ aktif_d }} mm</strong>
+        {% if aktif_h %} (yükseklik {{ aktif_h }} mm){% endif %}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/plaka-ayar" style="margin-top:16px; max-width:480px;">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+
+        <div style="display:flex; gap:12px;">
+            <div style="flex:1;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Genişlik (W, mm)</label>
+                <input type="text" inputmode="decimal" name="width_mm" value="{{ aktif_w }}" placeholder="örn. 335"
+                       style="width:100%; padding:8px; margin-bottom:14px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Derinlik (D, mm)</label>
+                <input type="text" inputmode="decimal" name="depth_mm" value="{{ aktif_d }}" placeholder="örn. 335"
+                       style="width:100%; padding:8px; margin-bottom:14px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+            </div>
+        </div>
+
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">
+            Yükseklik (H, mm) — opsiyonel
+        </label>
+        <input type="text" inputmode="decimal" name="height_mm" value="{{ aktif_h }}" placeholder="boş = sınırsız (açık yükseklik)"
+               style="width:100%; padding:8px; margin-bottom:6px; border-radius:6px; border:1px solid var(--color-border); font-size:14px;">
+        <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 16px;">
+            Boş bırakılırsa yükseklik sınırsız sayılır (parçalar yükseldikçe yığılır).
+        </p>
+
+        <div style="margin:4px 0 16px; padding:10px 12px; border-radius:8px; border:1px solid var(--color-border);">
+            <div style="font-size:13px; font-weight:600; margin-bottom:4px;">Yasak bölge (no-go) — opsiyonel</div>
+            <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 8px;">
+                Plakada parça yerleştirilemeyen dikdörtgen kolon (örn. recoater/sensör
+                bölgesi). Tam yükseklik boyunca uygulanır. Boş = yasak bölge yok.
+            </p>
+            <div style="display:flex; gap:8px;">
+                <input type="text" inputmode="decimal" name="ng_x1" value="{{ ng_x1 }}" placeholder="x1 (örn. 152.5)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_y1" value="{{ ng_y1 }}" placeholder="y1 (örn. 0.2)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_x2" value="{{ ng_x2 }}" placeholder="x2 (örn. 185.5)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+                <input type="text" inputmode="decimal" name="ng_y2" value="{{ ng_y2 }}" placeholder="y2 (örn. 45)"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--color-border); font-size:13px;">
+            </div>
+        </div>
+
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:16px; cursor:pointer;">
+            <input type="checkbox" name="otomatik" value="1">
+            Sabit plakayı kaldır — <strong>otomatik</strong> plakaya dön (parçalara göre)
+        </label>
+
+        <button type="submit" class="btn btn-primary" style="font-size:15px; padding:10px 18px;">Kaydet</button>
+    </form>
+
+    {% if kaydedildi %}
+    <div style="margin-top:14px; padding:10px 12px; border-radius:8px; background:#f0fff4; border:1px solid #b7e4c7; font-size:14px;">
+        ✓ Plaka ayarı kaydedildi.
+    </div>
+    {% endif %}
+
+    <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-muted);">
+        Plaka <code>configs/plate.local.json</code> dosyasına yazılır. Boş/otomatik
+        seçilirse dosya kaldırılır ve sistem otomatik plakaya döner. Bu ayar tüm
+        pipeline çağrılarında (mail, otonom, doğrudan) geçerlidir.
+    </div>
+</div>
+{% endblock %}
